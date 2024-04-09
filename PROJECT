@@ -7,4 +7,50 @@ layout:
 - go.kubebuilder.io/v4
 projectName: promoter
 repo: github.com/argoproj/promoter
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: argoproj.io
+  group: promoter
+  kind: PullRequest
+  path: github.com/argoproj/promoter/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: argoproj.io
+  group: promoter
+  kind: CommitStatus
+  path: github.com/argoproj/promoter/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: argoproj.io
+  group: promoter
+  kind: RevertCommit
+  path: github.com/argoproj/promoter/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: argoproj.io
+  group: promoter
+  kind: ProposedCommit
+  path: github.com/argoproj/promoter/api/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: argoproj.io
+  group: promoter
+  kind: PromotionStrategy
+  path: github.com/argoproj/promoter/api/v1alpha1
+  version: v1alpha1
 version: "3"
