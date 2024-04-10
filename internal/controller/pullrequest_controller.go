@@ -18,7 +18,8 @@ package controller
 
 import (
 	"context"
-
+	"github.com/argoproj/promoter/internal/scms"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,6 +32,7 @@ import (
 type PullRequestReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	//InformerFactory informers.SharedInformerFactory
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch;delete
@@ -52,11 +54,81 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	var pr promoterv1alpha1.PullRequest
 	err := r.Get(ctx, req.NamespacedName, &pr, &client.GetOptions{})
 	if err != nil {
-		logger.Error(err, "failed to get object: %s", req.NamespacedName)
+		if errors.IsNotFound(err) {
+			logger.Info("PullRequest not found", "namespace", req.Namespace, "name", req.Name)
+			return ctrl.Result{
+				Requeue:      false,
+				RequeueAfter: 0,
+			}, nil
+		}
+
+		logger.Error(err, "failed to get PullRequest", "namespace", req.Namespace, "name", req.Name)
 		return ctrl.Result{
 			Requeue:      false,
 			RequeueAfter: 0,
 		}, err
+	}
+
+	if pr.Status.State != "" && pr.Spec.State == pr.Status.State {
+		logger.Info("Reconcile not needed")
+		return ctrl.Result{}, nil
+	}
+
+	var scmProvider promoterv1alpha1.ScmProvider
+	namespace := "default"
+	objectKey := client.ObjectKey{
+		Namespace: namespace,
+		Name:      pr.Spec.RepositoryReference.ProviderRef.Name,
+	}
+	err = r.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
+			return ctrl.Result{
+				Requeue:      false,
+				RequeueAfter: 0,
+			}, nil
+		}
+
+		logger.Error(err, "failed to get ScmProvider", "namespace", namespace, "name", objectKey.Name)
+		return ctrl.Result{
+			Requeue:      false,
+			RequeueAfter: 0,
+		}, err
+	}
+
+	pullRequestProvider, err := r.getPullRequestProvider(ctx, pr)
+
+	if pr.Spec.State == "open" && pr.Status.State != "open" {
+		updatePR, err := pullRequestProvider.Create(
+			pr.Spec.Title,
+			pr.Spec.SourceBranch,
+			pr.Spec.TargetBranch,
+			pr.Spec.Description,
+			&pr)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		hash, err := updatePR.Hash()
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		updatePR.Status.SpecHash = hash
+		err = r.Status().Update(ctx, updatePR)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if pr.Spec.State == "merged" && pr.Status.State != "merged" {
+
+		return ctrl.Result{}, nil
+	}
+
+	if pr.Spec.State == "closed" && pr.Status.State != "closed" {
+		return ctrl.Result{}, nil
 	}
 
 	return ctrl.Result{}, nil
@@ -67,4 +139,32 @@ func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PullRequest{}).
 		Complete(r)
+}
+
+func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
+	logger := log.FromContext(ctx)
+
+	var scmProvider promoterv1alpha1.ScmProvider
+	namespace := "default"
+	objectKey := client.ObjectKey{
+		Namespace: namespace,
+		Name:      pr.Spec.RepositoryReference.ProviderRef.Name,
+	}
+	err := r.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
+			return nil, err
+		}
+
+		logger.Error(err, "failed to get ScmProvider", "namespace", namespace, "name", objectKey.Name)
+		return nil, err
+	}
+
+	switch {
+	case scmProvider.Spec.GitHub != nil:
+		return scms.NewScmProvider(scms.GitHub), nil
+	default:
+		return nil, nil
+	}
 }

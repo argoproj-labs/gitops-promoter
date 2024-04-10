@@ -28,3 +28,4 @@ go.work
 
 # Github Certificates
 *.pem
+secret.yaml

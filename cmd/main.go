@@ -20,7 +20,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
-
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -122,9 +121,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	//TODO: Create secret informer, and possibly ScmProvider Informer to pass into controllers
+	//kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
+	//informerFactory := informers.NewSharedInformerFactory(kubeClient, 10*time.Minute)
+
 	if err = (&controller.PullRequestReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		//InformerFactory: informerFactory,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PullRequest")
 		os.Exit(1)
@@ -175,8 +179,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	processSignals := ctrl.SetupSignalHandler()
+
+	//setupLog.Info("starting informer factory")
+	//informerFactory.Start(processSignals.Done())
+	//informerFactory.WaitForCacheSync(processSignals.Done())
+
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(processSignals); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

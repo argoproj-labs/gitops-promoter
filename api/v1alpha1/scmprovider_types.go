@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -28,8 +29,11 @@ type ScmProviderSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of ScmProvider. Edit scmprovider_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// SecretRef contains the credentials required to auth to a specific provider
+	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
+
+	// GitHub required configuration for GitHub as the SCM provider
+	GitHub *GitHub `json:"github,omitempty"`
 }
 
 // ScmProviderStatus defines the observed state of ScmProvider

@@ -39,10 +39,24 @@ spec:
           spec:
             description: ScmProviderSpec defines the desired state of ScmProvider
             properties:
-              foo:
-                description: Foo is an example field of ScmProvider. Edit scmprovider_types.go
-                  to remove/update
-                type: string
+              github:
+                description: GitHub required configuration for GitHub as the SCM provider
+                properties:
+                  url:
+                    type: string
+                type: object
+              secretRef:
+                description: SecretRef contains the credentials required to auth to
+                  a specific provider
+                properties:
+                  name:
+                    description: |-
+                      Name of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      TODO: Add other useful fields. apiVersion, kind, uid?
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
             type: object
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider

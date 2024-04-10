@@ -17,7 +17,10 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"crypto/sha1"
+	"fmt"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/json"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -28,6 +31,8 @@ type PullRequestSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// RepositoryReference what repository to open the PR on.
+	RepositoryReference RepositoryRef `json:"repositoryRef,omitempty"`
 	// Title is the title of the pull request.
 	Title string `json:"title,omitempty"`
 	// Head the git reference we are merging from Head ---> Base
@@ -37,6 +42,7 @@ type PullRequestSpec struct {
 	// Body the description body of the pull/merge request
 	Description string `json:"description,omitempty"`
 	// State of the merge request closed/merged/open
+	// +kubebuilder:default:=open
 	State string `json:"state,omitempty"`
 }
 
@@ -49,6 +55,8 @@ type PullRequestStatus struct {
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
 	State string `json:"state,omitempty"`
+	// SpecHash used to track if we need to update
+	SpecHash string `json:"specHash,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -74,4 +82,13 @@ type PullRequestList struct {
 
 func init() {
 	SchemeBuilder.Register(&PullRequest{}, &PullRequestList{})
+}
+
+func (pr PullRequest) Hash() (string, error) {
+	jsonSpec, err := json.Marshal(pr.Spec)
+	if err != nil {
+		return "", err
+	}
+	sum := sha1.Sum(jsonSpec)
+	return fmt.Sprintf("%x", sum), nil
 }

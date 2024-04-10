@@ -6,4 +6,13 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: pullrequest-sample
 spec:
-  # TODO(user): Add fields here
+  repositoryRef:
+    owner: zachaller
+    name: promoter-testing
+    providerRef:
+      name: scmprovider-sample
+  title: "My awesome pull request"
+  description: "This is the description of the PR created with the package `github. com/ google/ go-github/ github`"
+  sourceBranch: "environment/development-next"
+  targetBranch: "environment/development"
+

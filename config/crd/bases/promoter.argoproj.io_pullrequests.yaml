@@ -42,11 +42,33 @@ spec:
               description:
                 description: Body the description body of the pull/merge request
                 type: string
+              repositoryRef:
+                description: RepositoryReference what repository to open the PR on.
+                properties:
+                  name:
+                    type: string
+                  owner:
+                    type: string
+                  providerRef:
+                    description: |-
+                      LocalObjectReference contains enough information to let you locate the
+                      referenced object inside the same namespace.
+                    properties:
+                      name:
+                        description: |-
+                          Name of the referent.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          TODO: Add other useful fields. apiVersion, kind, uid?
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
               sourceBranch:
                 description: Base the git reference that we are merging into Head
                   ---> Base
                 type: string
               state:
+                default: open
                 description: State of the merge request closed/merged/open
                 type: string
               targetBranch:
@@ -62,6 +84,9 @@ spec:
             properties:
               id:
                 description: ID the id of the pull request
+                type: string
+              specHash:
+                description: SpecHash used to track if we need to update
                 type: string
               state:
                 description: State of the merge request closed/merged/open

@@ -6,4 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: scmprovider-sample
 spec:
-  # TODO(user): Add fields here
+  github:
+    url: https://github.com
+  secretRef:
+    name: my-auth
