@@ -23,55 +23,42 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// PullRequestSpec defines the desired state of PullRequest
-type PullRequestSpec struct {
+// ScmProviderSpec defines the desired state of ScmProvider
+type ScmProviderSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Title is the title of the pull request.
-	Title string `json:"title,omitempty"`
-	// Head the git reference we are merging from Head ---> Base
-	TargetBranch string `json:"targetBranch,omitempty"`
-	// Base the git reference that we are merging into Head ---> Base
-	SourceBranch string `json:"sourceBranch,omitempty"`
-	// Body the description body of the pull/merge request
-	Description string `json:"description,omitempty"`
-	// State of the merge request closed/merged/open
-	State string `json:"state,omitempty"`
+	// Foo is an example field of ScmProvider. Edit scmprovider_types.go to remove/update
+	Foo string `json:"foo,omitempty"`
 }
 
-// PullRequestStatus defines the observed state of PullRequest
-type PullRequestStatus struct {
+// ScmProviderStatus defines the observed state of ScmProvider
+type ScmProviderStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-
-	// ID the id of the pull request
-	ID string `json:"id,omitempty"`
-	// State of the merge request closed/merged/open
-	State string `json:"state,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// PullRequest is the Schema for the pullrequests API
-type PullRequest struct {
+// ScmProvider is the Schema for the scmproviders API
+type ScmProvider struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   PullRequestSpec   `json:"spec,omitempty"`
-	Status PullRequestStatus `json:"status,omitempty"`
+	Spec   ScmProviderSpec   `json:"spec,omitempty"`
+	Status ScmProviderStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// PullRequestList contains a list of PullRequest
-type PullRequestList struct {
+// ScmProviderList contains a list of ScmProvider
+type ScmProviderList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []PullRequest `json:"items"`
+	Items           []ScmProvider `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&PullRequest{}, &PullRequestList{})
+	SchemeBuilder.Register(&ScmProvider{}, &ScmProviderList{})
 }

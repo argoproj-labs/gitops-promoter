@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.14.0
-  name: pullrequests.promoter.argoproj.io
+  name: scmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: PullRequest
-    listKind: PullRequestList
-    plural: pullrequests
-    singular: pullrequest
+    kind: ScmProvider
+    listKind: ScmProviderList
+    plural: scmproviders
+    singular: scmprovider
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PullRequest is the Schema for the pullrequests API
+        description: ScmProvider is the Schema for the scmproviders API
         properties:
           apiVersion:
             description: |-
@@ -37,35 +37,15 @@ spec:
           metadata:
             type: object
           spec:
-            description: PullRequestSpec defines the desired state of PullRequest
+            description: ScmProviderSpec defines the desired state of ScmProvider
             properties:
-              description:
-                description: Body the description body of the pull/merge request
-                type: string
-              sourceBranch:
-                description: Base the git reference that we are merging into Head
-                  ---> Base
-                type: string
-              state:
-                description: State of the merge request closed/merged/open
-                type: string
-              targetBranch:
-                description: Head the git reference we are merging from Head --->
-                  Base
-                type: string
-              title:
-                description: Title is the title of the pull request.
+              foo:
+                description: Foo is an example field of ScmProvider. Edit scmprovider_types.go
+                  to remove/update
                 type: string
             type: object
           status:
-            description: PullRequestStatus defines the observed state of PullRequest
-            properties:
-              id:
-                description: ID the id of the pull request
-                type: string
-              state:
-                description: State of the merge request closed/merged/open
-                type: string
+            description: ScmProviderStatus defines the observed state of ScmProvider
             type: object
         type: object
     served: true

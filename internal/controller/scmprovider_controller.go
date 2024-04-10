@@ -27,44 +27,36 @@ import (
 	promoterv1alpha1 "github.com/argoproj/promoter/api/v1alpha1"
 )
 
-// PullRequestReconciler reconciles a PullRequest object
-type PullRequestReconciler struct {
+// ScmProviderReconciler reconciles a ScmProvider object
+type ScmProviderReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/finalizers,verbs=update
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=scmproviders/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the PullRequest object against the actual cluster state, and then
+// the ScmProvider object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
-func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
+func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	_ = log.FromContext(ctx)
 
-	var pr promoterv1alpha1.PullRequest
-	err := r.Get(ctx, req.NamespacedName, &pr, &client.GetOptions{})
-	if err != nil {
-		logger.Error(err, "failed to get object: %s", req.NamespacedName)
-		return ctrl.Result{
-			Requeue:      false,
-			RequeueAfter: 0,
-		}, err
-	}
+	// TODO(user): your logic here
 
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ScmProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.PullRequest{}).
+		For(&promoterv1alpha1.ScmProvider{}).
 		Complete(r)
 }

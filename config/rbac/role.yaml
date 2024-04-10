@@ -134,3 +134,29 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders/status
+  verbs:
+  - get
+  - patch
+  - update
