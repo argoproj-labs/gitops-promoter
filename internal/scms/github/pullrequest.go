@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	v1 "k8s.io/api/core/v1"
 	"strconv"
 
 	"github.com/argoproj/promoter/api/v1alpha1"
@@ -13,9 +14,9 @@ type GithubPullRequest struct {
 	client *github.Client
 }
 
-func NewGithubProvider() GithubPullRequest {
+func NewGithubProvider(secret v1.Secret) GithubPullRequest {
 	return GithubPullRequest{
-		client: GetClient(),
+		client: GetClient(secret),
 	}
 }
 

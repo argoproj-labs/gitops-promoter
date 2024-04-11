@@ -3,12 +3,13 @@ package scms
 import (
 	"github.com/argoproj/promoter/api/v1alpha1"
 	"github.com/argoproj/promoter/internal/scms/github"
+	v1 "k8s.io/api/core/v1"
 )
 
-func NewScmProvider(providerType ScmProviderType) PullRequestProvider {
+func NewScmProvider(providerType ScmProviderType, secret v1.Secret) PullRequestProvider {
 	switch providerType {
-	case "github":
-		return github.NewGithubProvider()
+	case GitHub:
+		return github.NewGithubProvider(secret)
 	default:
 		return nil
 	}

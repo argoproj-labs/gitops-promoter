@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	v1 "k8s.io/api/core/v1"
 
 	"github.com/argoproj/promoter/internal/scms"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -188,9 +189,19 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 		return nil, err
 	}
 
+	var secret v1.Secret
+	objectKey = client.ObjectKey{
+		Namespace: scmProvider.Namespace,
+		Name:      scmProvider.Spec.SecretRef.Name,
+	}
+	err = r.Get(ctx, objectKey, &secret)
+	if err != nil {
+		return nil, err
+	}
+
 	switch {
 	case scmProvider.Spec.GitHub != nil:
-		return scms.NewScmProvider(scms.GitHub), nil
+		return scms.NewScmProvider(scms.GitHub, secret), nil
 	default:
 		return nil, nil
 	}
