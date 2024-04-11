@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	v1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/argoproj/promoter/internal/scms"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -71,6 +72,16 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}, err
 	}
 
+	pullRequestProvider, err := r.getPullRequestProvider(ctx, pr)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	err = r.handleFinalizer(ctx, &pr, pullRequestProvider)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	hash, err := pr.Hash()
 	if err != nil {
 		return ctrl.Result{}, err
@@ -79,34 +90,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if pr.Status.State != "" && pr.Spec.State == pr.Status.State && pr.Status.SpecHash == hash {
 		logger.Info("Reconcile not needed")
 		return ctrl.Result{}, nil
-	}
-
-	var scmProvider promoterv1alpha1.ScmProvider
-	namespace := "default"
-	objectKey := client.ObjectKey{
-		Namespace: namespace,
-		Name:      pr.Spec.RepositoryReference.ProviderRef.Name,
-	}
-	err = r.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
-			return ctrl.Result{
-				Requeue:      false,
-				RequeueAfter: 0,
-			}, nil
-		}
-
-		logger.Error(err, "failed to get ScmProvider", "namespace", namespace, "name", objectKey.Name)
-		return ctrl.Result{
-			Requeue:      false,
-			RequeueAfter: 0,
-		}, err
-	}
-
-	pullRequestProvider, err := r.getPullRequestProvider(ctx, pr)
-	if err != nil {
-		return ctrl.Result{}, err
 	}
 
 	if pr.Spec.State == "open" && pr.Status.State != "open" {
@@ -150,12 +133,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
-		//err = r.Delete(ctx, &pr)
-		//if err != nil {
-		//	return ctrl.Result{}, err
-		//}
-
 		return ctrl.Result{}, nil
+	}
+
+	if pr.Status.SpecHash == hash {
+
 	}
 
 	logger.Info("no known states found")
@@ -205,6 +187,43 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	default:
 		return nil, nil
 	}
+}
+
+func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
+	// name of our custom finalizer
+	finalizerName := "pullrequest.promoter.argoporoj.io/finalizer"
+
+	// examine DeletionTimestamp to determine if object is under deletion
+	if pr.ObjectMeta.DeletionTimestamp.IsZero() {
+		// The object is not being deleted, so if it does not have our finalizer,
+		// then lets add the finalizer and update the object. This is equivalent
+		// to registering our finalizer.
+		if !controllerutil.ContainsFinalizer(pr, finalizerName) {
+			controllerutil.AddFinalizer(pr, finalizerName)
+			if err := r.Update(ctx, pr); err != nil {
+				return err
+			}
+		}
+	} else {
+		// The object is being deleted
+		if controllerutil.ContainsFinalizer(pr, finalizerName) {
+			// our finalizer is present, so lets handle any external dependency
+			_, err := r.closePullRequest(ctx, *pr, pullRequestProvider)
+			if err != nil {
+				// if fail to delete the external dependency here, return with error
+				// so that it can be retried.
+				return err
+			}
+
+			// remove our finalizer from the list and update it.
+			controllerutil.RemoveFinalizer(pr, finalizerName)
+			if err := r.Update(ctx, pr); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {
