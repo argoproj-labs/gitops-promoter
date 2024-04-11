@@ -39,13 +39,69 @@ spec:
           spec:
             description: ProposedCommitSpec defines the desired state of ProposedCommit
             properties:
-              foo:
-                description: Foo is an example field of ProposedCommit. Edit proposedcommit_types.go
-                  to remove/update
+              activeBranch:
+                description: ActiveBranch staging hydrated branch
                 type: string
+              commitStatuses:
+                items:
+                  properties:
+                    key:
+                      description: Key staging hydrated branch
+                      type: string
+                  type: object
+                type: array
+              proposedBranch:
+                description: ProposedBranch staging hydrated branch
+                type: string
+              repositoryRef:
+                description: RepositoryReference what repository to open the PR on.
+                properties:
+                  name:
+                    type: string
+                  owner:
+                    type: string
+                  providerRef:
+                    description: |-
+                      LocalObjectReference contains enough information to let you locate the
+                      referenced object inside the same namespace.
+                    properties:
+                      name:
+                        description: |-
+                          Name of the referent.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          TODO: Add other useful fields. apiVersion, kind, uid?
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
             type: object
           status:
             description: ProposedCommitStatus defines the observed state of ProposedCommit
+            properties:
+              active:
+                properties:
+                  drySha:
+                    type: string
+                  hydratedSha:
+                    type: string
+                type: object
+              commitStatuses:
+                items:
+                  properties:
+                    key:
+                      description: Key staging hydrated branch
+                      type: string
+                    phase:
+                      type: string
+                  type: object
+                type: array
+              proposed:
+                properties:
+                  drySha:
+                    type: string
+                  hydratedSha:
+                    type: string
+                type: object
             type: object
         type: object
     served: true

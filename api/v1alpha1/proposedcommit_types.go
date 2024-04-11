@@ -28,14 +28,44 @@ type ProposedCommitSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of ProposedCommit. Edit proposedcommit_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// RepositoryReference what repository to open the PR on.
+	RepositoryReference RepositoryRef `json:"repositoryRef,omitempty"`
+
+	// ProposedBranch staging hydrated branch
+	ProposedBranch string `json:"proposedBranch,omitempty"`
+
+	// ActiveBranch staging hydrated branch
+	ActiveBranch string `json:"activeBranch,omitempty"`
+
+	CommitStatuses []CommitStatusProposedCommitSpec `json:"commitStatuses,omitempty"`
+}
+
+type CommitStatusProposedCommitSpec struct {
+	// Key staging hydrated branch
+	Key string `json:"key,omitempty"`
+}
+
+type CommitStatusProposedCommitStatus struct {
+	// Key staging hydrated branch
+	Key string `json:"key,omitempty"`
+
+	// Phase what phase is the status in
+	Phase string `json:"phase,omitempty"`
+}
+
+type BranchState struct {
+	DrySha      string `json:"drySha,omitempty"`
+	HydratedSha string `json:"hydratedSha,omitempty"`
 }
 
 // ProposedCommitStatus defines the observed state of ProposedCommit
 type ProposedCommitStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	Proposed       BranchState                        `json:"proposed,omitempty"`
+	Active         BranchState                        `json:"active,omitempty"`
+	CommitStatuses []CommitStatusProposedCommitStatus `json:"commitStatuses,omitempty"`
 }
 
 //+kubebuilder:object:root=true
