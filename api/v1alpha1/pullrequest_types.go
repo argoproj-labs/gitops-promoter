@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	"crypto/sha1"
 	"fmt"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/json"
 )
@@ -36,8 +37,10 @@ type PullRequestSpec struct {
 	// Title is the title of the pull request.
 	Title string `json:"title,omitempty"`
 	// Head the git reference we are merging from Head ---> Base
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	TargetBranch string `json:"targetBranch,omitempty"`
 	// Base the git reference that we are merging into Head ---> Base
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	SourceBranch string `json:"sourceBranch,omitempty"`
 	// Body the description body of the pull/merge request
 	Description string `json:"description,omitempty"`

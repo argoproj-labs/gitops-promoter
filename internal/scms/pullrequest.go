@@ -18,11 +18,12 @@ type ScmProviderType string
 
 const (
 	GitHub ScmProviderType = "github"
+	GitLab ScmProviderType = "gitlab"
 )
 
 type PullRequestProvider interface {
 	Create(title, head, base, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error)
 	Close(pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error)
-	Update(title, head, base, body string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error)
-	Merge(pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error)
+	Update(title, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error)
+	Merge(commitMessage string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error)
 }

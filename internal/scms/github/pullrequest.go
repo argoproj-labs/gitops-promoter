@@ -3,9 +3,10 @@ package github
 import (
 	"context"
 	"fmt"
+	"strconv"
+
 	"github.com/argoproj/promoter/api/v1alpha1"
 	"github.com/google/go-github/v61/github"
-	"strconv"
 )
 
 type GithubPullRequest struct {
@@ -37,21 +38,88 @@ func (pr GithubPullRequest) Create(title, head, base, description string, pullRe
 		ObjectMeta: pullRequest.ObjectMeta,
 		Spec:       pullRequest.Spec,
 		Status: v1alpha1.PullRequestStatus{
+			ID:    strconv.Itoa(*githubPullRequest.Number),
+			State: *githubPullRequest.State,
+		},
+	}, nil
+}
+
+func (pr GithubPullRequest) Update(title, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+
+	newPR := &github.PullRequest{
+		Title: github.String(title),
+		Body:  github.String(description),
+	}
+
+	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, *newPR.Number, newPR)
+	fmt.Println(pullRequest)
+	fmt.Println(response)
+	fmt.Println(err)
+
+	return &v1alpha1.PullRequest{
+		TypeMeta:   pullRequest.TypeMeta,
+		ObjectMeta: pullRequest.ObjectMeta,
+		Spec:       pullRequest.Spec,
+		Status: v1alpha1.PullRequestStatus{
+			ID:    strconv.FormatInt(*githubPullRequest.ID, 10),
+			State: *githubPullRequest.State,
+		},
+	}, nil
+
+}
+
+func (pr GithubPullRequest) Close(pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+	newPR := &github.PullRequest{
+		State: github.String("closed"),
+	}
+
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return pullRequest, err
+	}
+
+	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(pullRequest)
+	fmt.Println(response)
+	fmt.Println(err)
+
+	return &v1alpha1.PullRequest{
+		TypeMeta:   pullRequest.TypeMeta,
+		ObjectMeta: pullRequest.ObjectMeta,
+		Spec:       pullRequest.Spec,
+		Status: v1alpha1.PullRequestStatus{
 			ID:    strconv.FormatInt(*githubPullRequest.ID, 10),
 			State: *githubPullRequest.State,
 		},
 	}, nil
 }
 
-func (pr GithubPullRequest) Update(title, head, base, body string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+func (pr GithubPullRequest) Merge(commitMessage string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return pullRequest, err
+	}
 
-	return &v1alpha1.PullRequest{}, nil
-}
+	_, response, err := pr.client.PullRequests.Merge(
+		context.Background(),
+		pullRequest.Spec.RepositoryReference.Owner,
+		pullRequest.Spec.RepositoryReference.Name,
+		prNumber,
+		commitMessage,
+		&github.PullRequestOptions{
+			MergeMethod:        "merge",
+			DontDefaultIfBlank: false,
+		})
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(pullRequest)
+	fmt.Println(response)
+	fmt.Println(err)
 
-func (pr GithubPullRequest) Close(pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
-	return &v1alpha1.PullRequest{}, nil
-}
-
-func (pr GithubPullRequest) Merge(pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
-	return &v1alpha1.PullRequest{}, nil
+	pullRequest.Status.State = "merged"
+	return pullRequest, nil
 }

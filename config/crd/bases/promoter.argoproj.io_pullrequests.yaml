@@ -67,6 +67,9 @@ spec:
                 description: Base the git reference that we are merging into Head
                   ---> Base
                 type: string
+                x-kubernetes-validations:
+                - message: Value is immutable
+                  rule: self == oldSelf
               state:
                 default: open
                 description: State of the merge request closed/merged/open
@@ -75,6 +78,9 @@ spec:
                 description: Head the git reference we are merging from Head --->
                   Base
                 type: string
+                x-kubernetes-validations:
+                - message: Value is immutable
+                  rule: self == oldSelf
               title:
                 description: Title is the title of the pull request.
                 type: string

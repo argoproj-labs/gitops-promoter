@@ -3,8 +3,9 @@ package github
 import (
 	"context"
 	"fmt"
-	"github.com/google/go-github/v61/github"
 	"testing"
+
+	"github.com/google/go-github/v61/github"
 )
 
 func TestGetClient(t *testing.T) {

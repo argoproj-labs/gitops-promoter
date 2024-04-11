@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+
 	"github.com/argoproj/promoter/internal/scms"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -69,7 +70,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}, err
 	}
 
-	if pr.Status.State != "" && pr.Spec.State == pr.Status.State {
+	hash, err := pr.Hash()
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if pr.Status.State != "" && pr.Spec.State == pr.Status.State && pr.Status.SpecHash == hash {
 		logger.Info("Reconcile not needed")
 		return ctrl.Result{}, nil
 	}
@@ -98,39 +104,60 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	pullRequestProvider, err := r.getPullRequestProvider(ctx, pr)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	if pr.Spec.State == "open" && pr.Status.State != "open" {
-		updatePR, err := pullRequestProvider.Create(
-			pr.Spec.Title,
-			pr.Spec.SourceBranch,
-			pr.Spec.TargetBranch,
-			pr.Spec.Description,
-			&pr)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		hash, err := updatePR.Hash()
+		updatedPR, err := r.createPullRequest(ctx, pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
-		updatePR.Status.SpecHash = hash
-		err = r.Status().Update(ctx, updatePR)
+		err = r.Status().Update(ctx, updatedPR)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+
 		return ctrl.Result{}, nil
 	}
 
 	if pr.Spec.State == "merged" && pr.Status.State != "merged" {
+		logger.Info("Merging Pull Request")
+
+		updatedPR, err := r.mergePullRequest(ctx, pr, pullRequestProvider)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		err = r.Status().Update(ctx, updatedPR)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 
 		return ctrl.Result{}, nil
 	}
 
 	if pr.Spec.State == "closed" && pr.Status.State != "closed" {
+		updatedPR, err := r.closePullRequest(ctx, pr, pullRequestProvider)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		err = r.Status().Update(ctx, updatedPR)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		//err = r.Delete(ctx, &pr)
+		//if err != nil {
+		//	return ctrl.Result{}, err
+		//}
+
 		return ctrl.Result{}, nil
 	}
 
+	logger.Info("no known states found")
 	return ctrl.Result{}, nil
 }
 
@@ -167,4 +194,65 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	default:
 		return nil, nil
 	}
+}
+
+func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Opening Pull Request")
+
+	updatePR, err := pullRequestProvider.Create(
+		pr.Spec.Title,
+		pr.Spec.SourceBranch,
+		pr.Spec.TargetBranch,
+		pr.Spec.Description,
+		&pr)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedHash, err := updatePR.Hash()
+	if err != nil {
+		return nil, err
+	}
+
+	updatePR.Status.SpecHash = updatedHash
+	return updatePR, nil
+}
+
+func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Merging Pull Request")
+
+	updatedPR, err := pullRequestProvider.Merge("", &pr)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedHash, err := updatedPR.Hash()
+	if err != nil {
+		return nil, err
+	}
+
+	updatedPR.Status.SpecHash = updatedHash
+
+	return updatedPR, nil
+}
+
+func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Closing Pull Request")
+
+	updatedPR, err := pullRequestProvider.Close(&pr)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedHash, err := updatedPR.Hash()
+	if err != nil {
+		return nil, err
+	}
+
+	updatedPR.Status.SpecHash = updatedHash
+	updatedPR.Status.State = "closed"
+	return updatedPR, nil
 }
