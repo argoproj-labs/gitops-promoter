@@ -59,17 +59,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("PullRequest not found", "namespace", req.Namespace, "name", req.Name)
-			return ctrl.Result{
-				Requeue:      false,
-				RequeueAfter: 0,
-			}, nil
+			return ctrl.Result{}, nil
 		}
 
 		logger.Error(err, "failed to get PullRequest", "namespace", req.Namespace, "name", req.Name)
-		return ctrl.Result{
-			Requeue:      false,
-			RequeueAfter: 0,
-		}, err
+		return ctrl.Result{}, err
 	}
 
 	pullRequestProvider, err := r.getPullRequestProvider(ctx, pr)
@@ -136,8 +130,15 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	if pr.Status.SpecHash == hash {
-
+	if pr.Status.SpecHash != hash {
+		updatedPR, err := r.updatePullRequest(ctx, pr, pullRequestProvider)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		err = r.Status().Update(ctx, updatedPR)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	logger.Info("no known states found")
@@ -247,6 +248,25 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr promot
 
 	updatePR.Status.SpecHash = updatedHash
 	return updatePR, nil
+}
+
+func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Updating Pull Request")
+
+	updatedPR, err := pullRequestProvider.Update(pr.Spec.Title, pr.Spec.Description, &pr)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedHash, err := updatedPR.Hash()
+	if err != nil {
+		return nil, err
+	}
+
+	updatedPR.Status.SpecHash = updatedHash
+
+	return updatedPR, nil
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {

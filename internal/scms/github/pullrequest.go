@@ -52,7 +52,12 @@ func (pr GithubPullRequest) Update(title, description string, pullRequest *v1alp
 		Body:  github.String(description),
 	}
 
-	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, *newPR.Number, newPR)
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return pullRequest, err
+	}
+
+	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
 	fmt.Println(pullRequest)
 	fmt.Println(response)
 	fmt.Println(err)
@@ -62,7 +67,7 @@ func (pr GithubPullRequest) Update(title, description string, pullRequest *v1alp
 		ObjectMeta: pullRequest.ObjectMeta,
 		Spec:       pullRequest.Spec,
 		Status: v1alpha1.PullRequestStatus{
-			ID:    strconv.FormatInt(*githubPullRequest.ID, 10),
+			ID:    strconv.Itoa(*githubPullRequest.Number),
 			State: *githubPullRequest.State,
 		},
 	}, nil
@@ -92,7 +97,7 @@ func (pr GithubPullRequest) Close(pullRequest *v1alpha1.PullRequest) (*v1alpha1.
 		ObjectMeta: pullRequest.ObjectMeta,
 		Spec:       pullRequest.Spec,
 		Status: v1alpha1.PullRequestStatus{
-			ID:    strconv.FormatInt(*githubPullRequest.ID, 10),
+			ID:    strconv.Itoa(*githubPullRequest.Number),
 			State: *githubPullRequest.State,
 		},
 	}, nil
