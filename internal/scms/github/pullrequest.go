@@ -3,8 +3,10 @@ package github
 import (
 	"context"
 	"fmt"
-	v1 "k8s.io/api/core/v1"
 	"strconv"
+
+	v1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj/promoter/api/v1alpha1"
 	"github.com/google/go-github/v61/github"
@@ -20,7 +22,7 @@ func NewGithubProvider(secret v1.Secret) GithubPullRequest {
 	}
 }
 
-func (pr GithubPullRequest) Create(title, head, base, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+func (pr GithubPullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
 
 	newPR := &github.NewPullRequest{
 		Title: github.String(title),
@@ -30,61 +32,6 @@ func (pr GithubPullRequest) Create(title, head, base, description string, pullRe
 	}
 
 	githubPullRequest, response, err := pr.client.PullRequests.Create(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, newPR)
-	fmt.Println(pullRequest)
-	fmt.Println(response)
-	fmt.Println(err)
-
-	return &v1alpha1.PullRequest{
-		TypeMeta:   pullRequest.TypeMeta,
-		ObjectMeta: pullRequest.ObjectMeta,
-		Spec:       pullRequest.Spec,
-		Status: v1alpha1.PullRequestStatus{
-			ID:    strconv.Itoa(*githubPullRequest.Number),
-			State: *githubPullRequest.State,
-		},
-	}, nil
-}
-
-func (pr GithubPullRequest) Update(title, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
-
-	newPR := &github.PullRequest{
-		Title: github.String(title),
-		Body:  github.String(description),
-	}
-
-	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
-	if err != nil {
-		return pullRequest, err
-	}
-
-	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
-	fmt.Println(pullRequest)
-	fmt.Println(response)
-	fmt.Println(err)
-
-	return &v1alpha1.PullRequest{
-		TypeMeta:   pullRequest.TypeMeta,
-		ObjectMeta: pullRequest.ObjectMeta,
-		Spec:       pullRequest.Spec,
-		Status: v1alpha1.PullRequestStatus{
-			ID:    strconv.Itoa(*githubPullRequest.Number),
-			State: *githubPullRequest.State,
-		},
-	}, nil
-
-}
-
-func (pr GithubPullRequest) Close(pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
-	newPR := &github.PullRequest{
-		State: github.String("closed"),
-	}
-
-	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
-	if err != nil {
-		return pullRequest, err
-	}
-
-	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
 	if err != nil {
 		return nil, err
 	}
@@ -98,12 +45,86 @@ func (pr GithubPullRequest) Close(pullRequest *v1alpha1.PullRequest) (*v1alpha1.
 		Spec:       pullRequest.Spec,
 		Status: v1alpha1.PullRequestStatus{
 			ID:    strconv.Itoa(*githubPullRequest.Number),
-			State: *githubPullRequest.State,
+			State: v1alpha1.Open,
 		},
 	}, nil
 }
 
-func (pr GithubPullRequest) Merge(commitMessage string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+func (pr GithubPullRequest) Update(ctx context.Context, title, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+	logger := log.FromContext(ctx)
+
+	newPR := &github.PullRequest{
+		Title: github.String(title),
+		Body:  github.String(description),
+	}
+
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return pullRequest, err
+	}
+
+	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
+	if err != nil {
+		return nil, err
+	}
+	logger.Info("github rate limit",
+		"limit", response.Rate.Limit,
+		"remaining", response.Rate.Remaining,
+		"reset", response.Rate.Remaining)
+	logger.Info("github response status",
+		"status", response.Status)
+
+	fmt.Println(err)
+
+	return &v1alpha1.PullRequest{
+		TypeMeta:   pullRequest.TypeMeta,
+		ObjectMeta: pullRequest.ObjectMeta,
+		Spec:       pullRequest.Spec,
+		Status: v1alpha1.PullRequestStatus{
+			ID:    strconv.Itoa(*githubPullRequest.Number),
+			State: pullRequest.Status.State,
+		},
+	}, nil
+
+}
+
+func (pr GithubPullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+	logger := log.FromContext(ctx)
+
+	newPR := &github.PullRequest{
+		State: github.String("closed"),
+	}
+
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return pullRequest, err
+	}
+
+	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
+	if err != nil {
+		return nil, err
+	}
+	logger.Info("github rate limit",
+		"limit", response.Rate.Limit,
+		"remaining", response.Rate.Remaining,
+		"reset", response.Rate.Remaining)
+	logger.Info("github response status",
+		"status", response.Status)
+
+	return &v1alpha1.PullRequest{
+		TypeMeta:   pullRequest.TypeMeta,
+		ObjectMeta: pullRequest.ObjectMeta,
+		Spec:       pullRequest.Spec,
+		Status: v1alpha1.PullRequestStatus{
+			ID:    strconv.Itoa(*githubPullRequest.Number),
+			State: v1alpha1.Closed,
+		},
+	}, nil
+}
+
+func (pr GithubPullRequest) Merge(ctx context.Context, commitMessage string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+	logger := log.FromContext(ctx)
+
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
 		return pullRequest, err
@@ -122,10 +143,13 @@ func (pr GithubPullRequest) Merge(commitMessage string, pullRequest *v1alpha1.Pu
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(pullRequest)
-	fmt.Println(response)
-	fmt.Println(err)
+	logger.Info("github rate limit",
+		"limit", response.Rate.Limit,
+		"remaining", response.Rate.Remaining,
+		"reset", response.Rate.Remaining)
+	logger.Info("github response status",
+		"status", response.Status)
 
-	pullRequest.Status.State = "merged"
+	pullRequest.Status.State = v1alpha1.Merged
 	return pullRequest, nil
 }

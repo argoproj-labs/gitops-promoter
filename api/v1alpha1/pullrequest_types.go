@@ -87,6 +87,14 @@ func init() {
 	SchemeBuilder.Register(&PullRequest{}, &PullRequestList{})
 }
 
+type PullRequestState string
+
+const (
+	Closed = "closed"
+	Open   = "open"
+	Merged = "merged"
+)
+
 func (pr PullRequest) Hash() (string, error) {
 	jsonSpec, err := json.Marshal(pr.Spec)
 	if err != nil {

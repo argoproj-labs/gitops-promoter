@@ -11,7 +11,7 @@ spec:
     name: promoter-testing
     providerRef:
       name: scmprovider-sample
-  title: "My awesome pull request"
+  title: "My awesome pull request 1"
   description: "This is the description of the PR created with the package `github. com/ google/ go-github/ github`"
   sourceBranch: "environment/development-next"
   targetBranch: "environment/development"

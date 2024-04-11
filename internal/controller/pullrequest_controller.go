@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -86,7 +87,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	if pr.Spec.State == "open" && pr.Status.State != "open" {
+	if pr.Spec.State == promoterv1alpha1.Open && pr.Status.State != promoterv1alpha1.Open {
 		updatedPR, err := r.createPullRequest(ctx, pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -100,7 +101,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	if pr.Spec.State == "merged" && pr.Status.State != "merged" {
+	if pr.Spec.State == promoterv1alpha1.Merged && pr.Status.State != promoterv1alpha1.Merged {
 		logger.Info("Merging Pull Request")
 
 		updatedPR, err := r.mergePullRequest(ctx, pr, pullRequestProvider)
@@ -116,7 +117,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	if pr.Spec.State == "closed" && pr.Status.State != "closed" {
+	if pr.Spec.State == promoterv1alpha1.Closed && pr.Status.State != promoterv1alpha1.Closed {
 		updatedPR, err := r.closePullRequest(ctx, pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -139,6 +140,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+
+		return ctrl.Result{}, nil
 	}
 
 	logger.Info("no known states found")
@@ -232,6 +235,7 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr promot
 	logger.Info("Opening Pull Request")
 
 	updatePR, err := pullRequestProvider.Create(
+		ctx,
 		pr.Spec.Title,
 		pr.Spec.SourceBranch,
 		pr.Spec.TargetBranch,
@@ -247,6 +251,7 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr promot
 	}
 
 	updatePR.Status.SpecHash = updatedHash
+	updatePR.Status.State = promoterv1alpha1.Open
 	return updatePR, nil
 }
 
@@ -254,7 +259,7 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 	logger := log.FromContext(ctx)
 	logger.Info("Updating Pull Request")
 
-	updatedPR, err := pullRequestProvider.Update(pr.Spec.Title, pr.Spec.Description, &pr)
+	updatedPR, err := pullRequestProvider.Update(ctx, pr.Spec.Title, pr.Spec.Description, &pr)
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +278,7 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr promote
 	logger := log.FromContext(ctx)
 	logger.Info("Merging Pull Request")
 
-	updatedPR, err := pullRequestProvider.Merge("", &pr)
+	updatedPR, err := pullRequestProvider.Merge(ctx, "", &pr)
 	if err != nil {
 		return nil, err
 	}
@@ -284,6 +289,7 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr promote
 	}
 
 	updatedPR.Status.SpecHash = updatedHash
+	updatedPR.Status.State = promoterv1alpha1.Merged
 
 	return updatedPR, nil
 }
@@ -292,7 +298,7 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr promote
 	logger := log.FromContext(ctx)
 	logger.Info("Closing Pull Request")
 
-	updatedPR, err := pullRequestProvider.Close(&pr)
+	updatedPR, err := pullRequestProvider.Close(ctx, &pr)
 	if err != nil {
 		return nil, err
 	}
@@ -303,6 +309,6 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr promote
 	}
 
 	updatedPR.Status.SpecHash = updatedHash
-	updatedPR.Status.State = "closed"
+	updatedPR.Status.State = promoterv1alpha1.Closed
 	return updatedPR, nil
 }
