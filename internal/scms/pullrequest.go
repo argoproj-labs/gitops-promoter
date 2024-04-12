@@ -2,6 +2,7 @@ package scms
 
 import (
 	"context"
+	"github.com/argoproj/promoter/internal/scms/fake"
 
 	"github.com/argoproj/promoter/internal/scms/github"
 	v1 "k8s.io/api/core/v1"
@@ -18,6 +19,8 @@ type PullRequestProvider interface {
 
 func NewScmPullRequestProvider(providerType ScmProviderType, secret v1.Secret) PullRequestProvider {
 	switch providerType {
+	case Fake:
+		return fake.NewFakeProvider()
 	case GitHub:
 		return github.NewGithubProvider(secret)
 	default:

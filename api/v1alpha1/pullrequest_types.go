@@ -33,20 +33,25 @@ type PullRequestSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// RepositoryReference what repository to open the PR on.
-	RepositoryReference RepositoryRef `json:"repositoryRef,omitempty"`
+	// +kubebuilder:validation:Required
+	RepositoryReference RepositoryRef `json:"repositoryRef"`
 	// Title is the title of the pull request.
-	Title string `json:"title,omitempty"`
+	// +kubebuilder:validation:Required
+	Title string `json:"title"`
 	// Head the git reference we are merging from Head ---> Base
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
-	TargetBranch string `json:"targetBranch,omitempty"`
+	// +kubebuilder:validation:Required
+	TargetBranch string `json:"targetBranch"`
 	// Base the git reference that we are merging into Head ---> Base
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
-	SourceBranch string `json:"sourceBranch,omitempty"`
+	// +kubebuilder:validation:Required
+	SourceBranch string `json:"sourceBranch"`
 	// Body the description body of the pull/merge request
 	Description string `json:"description,omitempty"`
 	// State of the merge request closed/merged/open
 	// +kubebuilder:default:=open
-	State string `json:"state,omitempty"`
+	// +kubebuilder:validation:Required
+	State string `json:"state"`
 }
 
 // PullRequestStatus defines the observed state of PullRequest

@@ -7,7 +7,10 @@ type GitHub struct {
 }
 
 type RepositoryRef struct {
-	Owner       string                  `json:"owner,omitempty"`
-	Name        string                  `json:"name,omitempty"`
-	ProviderRef v1.LocalObjectReference `json:"providerRef,omitempty"`
+	// +kubebuilder:validation:Required
+	Owner string `json:"owner"`
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+	// +kubebuilder:validation:Required
+	ProviderRef v1.LocalObjectReference `json:"providerRef"`
 }

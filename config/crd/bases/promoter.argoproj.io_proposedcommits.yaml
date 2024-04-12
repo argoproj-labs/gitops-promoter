@@ -73,6 +73,10 @@ spec:
                         type: string
                     type: object
                     x-kubernetes-map-type: atomic
+                required:
+                - name
+                - owner
+                - providerRef
                 type: object
             type: object
           status:
@@ -92,6 +96,7 @@ spec:
                       description: Key staging hydrated branch
                       type: string
                     phase:
+                      description: Phase what phase is the status in
                       type: string
                   type: object
                 type: array

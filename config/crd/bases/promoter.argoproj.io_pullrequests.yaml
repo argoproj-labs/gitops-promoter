@@ -62,6 +62,10 @@ spec:
                         type: string
                     type: object
                     x-kubernetes-map-type: atomic
+                required:
+                - name
+                - owner
+                - providerRef
                 type: object
               sourceBranch:
                 description: Base the git reference that we are merging into Head
@@ -84,6 +88,12 @@ spec:
               title:
                 description: Title is the title of the pull request.
                 type: string
+            required:
+            - repositoryRef
+            - sourceBranch
+            - state
+            - targetBranch
+            - title
             type: object
           status:
             description: PullRequestStatus defines the observed state of PullRequest
