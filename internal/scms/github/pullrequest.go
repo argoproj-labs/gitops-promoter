@@ -2,7 +2,6 @@ package github
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
@@ -23,6 +22,7 @@ func NewGithubProvider(secret v1.Secret) GithubPullRequest {
 }
 
 func (pr GithubPullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+	logger := log.FromContext(ctx)
 
 	newPR := &github.NewPullRequest{
 		Title: github.String(title),
@@ -35,9 +35,12 @@ func (pr GithubPullRequest) Create(ctx context.Context, title, head, base, descr
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println(pullRequest)
-	fmt.Println(response)
-	fmt.Println(err)
+	logger.Info("github rate limit",
+		"limit", response.Rate.Limit,
+		"remaining", response.Rate.Remaining,
+		"reset", response.Rate.Remaining)
+	logger.Info("github response status",
+		"status", response.Status)
 
 	return &v1alpha1.PullRequest{
 		TypeMeta:   pullRequest.TypeMeta,
@@ -73,8 +76,6 @@ func (pr GithubPullRequest) Update(ctx context.Context, title, description strin
 		"reset", response.Rate.Remaining)
 	logger.Info("github response status",
 		"status", response.Status)
-
-	fmt.Println(err)
 
 	return &v1alpha1.PullRequest{
 		TypeMeta:   pullRequest.TypeMeta,

@@ -18,8 +18,8 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	v1 "k8s.io/api/core/v1"
+	"os"
 	controllerClient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -126,9 +126,10 @@ var _ = Describe("PullRequest Controller", func() {
 				Namespace: "default",
 				Name:      resourceName,
 			}, &pr)).To(Succeed())
-
-			fmt.Println(pr)
+			GinkgoWriter.TeeTo(os.Stdout)
+			GinkgoWriter.Println(pr)
 			Expect(pr.Status.ID).To(Equal("1"))
+			Expect(pr.Status.State).To(Equal("open"))
 		})
 	})
 })

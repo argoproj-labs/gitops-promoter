@@ -1,0 +1,13 @@
+with-expecter: true
+packages:
+  github.com/argoproj/promoter/internal/scms:
+    # place your package-specific config here
+    config:
+    interfaces:
+      # select the interfaces you want mocked
+      PullRequestProvider:
+        # Modify package-level config for this specific interface (if applicable)
+        config:
+      CommitStatusProvider:
+        # Modify package-level config for this specific interface (if applicable)
+        config:
