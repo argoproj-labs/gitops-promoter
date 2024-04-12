@@ -29,28 +29,34 @@ type ProposedCommitSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// RepositoryReference what repository to open the PR on.
-	RepositoryReference RepositoryRef `json:"repositoryRef,omitempty"`
+	// +kubebuilder:validation:Required
+	RepositoryReference RepositoryRef `json:"repositoryRef"`
 
 	// ProposedBranch staging hydrated branch
-	ProposedBranch string `json:"proposedBranch,omitempty"`
+	// +kubebuilder:validation:Required
+	ProposedBranch string `json:"proposedBranch"`
 
 	// ActiveBranch staging hydrated branch
-	ActiveBranch string `json:"activeBranch,omitempty"`
+	// +kubebuilder:validation:Required
+	ActiveBranch string `json:"activeBranch"`
 
 	CommitStatuses []CommitStatusProposedCommitSpec `json:"commitStatuses,omitempty"`
 }
 
 type CommitStatusProposedCommitSpec struct {
 	// Key staging hydrated branch
-	Key string `json:"key,omitempty"`
+	// +kubebuilder:validation:Required
+	Key string `json:"key"`
 }
 
 type CommitStatusProposedCommitStatus struct {
 	// Key staging hydrated branch
-	Key string `json:"key,omitempty"`
+	// +kubebuilder:validation:Required
+	Key string `json:"key"`
 
 	// Phase what phase is the status in
-	Phase string `json:"phase,omitempty"`
+	// +kubebuilder:validation:Required
+	Phase string `json:"phase"`
 }
 
 type BranchState struct {
@@ -62,7 +68,6 @@ type BranchState struct {
 type ProposedCommitStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-
 	Proposed       BranchState                        `json:"proposed,omitempty"`
 	Active         BranchState                        `json:"active,omitempty"`
 	CommitStatuses []CommitStatusProposedCommitStatus `json:"commitStatuses,omitempty"`

@@ -48,6 +48,8 @@ spec:
                     key:
                       description: Key staging hydrated branch
                       type: string
+                  required:
+                  - key
                   type: object
                 type: array
               proposedBranch:
@@ -60,24 +62,24 @@ spec:
                     type: string
                   owner:
                     type: string
-                  providerRef:
-                    description: |-
-                      LocalObjectReference contains enough information to let you locate the
-                      referenced object inside the same namespace.
+                  scmProviderRef:
                     properties:
                       name:
-                        description: |-
-                          Name of the referent.
-                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                          TODO: Add other useful fields. apiVersion, kind, uid?
                         type: string
+                      namespace:
+                        type: string
+                    required:
+                    - name
                     type: object
-                    x-kubernetes-map-type: atomic
                 required:
                 - name
                 - owner
-                - providerRef
+                - scmProviderRef
                 type: object
+            required:
+            - activeBranch
+            - proposedBranch
+            - repositoryRef
             type: object
           status:
             description: ProposedCommitStatus defines the observed state of ProposedCommit
@@ -98,9 +100,15 @@ spec:
                     phase:
                       description: Phase what phase is the status in
                       type: string
+                  required:
+                  - key
+                  - phase
                   type: object
                 type: array
               proposed:
+                description: |-
+                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
                 properties:
                   drySha:
                     type: string

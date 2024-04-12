@@ -18,6 +18,9 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	v1 "k8s.io/api/core/v1"
+	controllerClient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -47,12 +50,51 @@ var _ = Describe("PullRequest Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, pullrequest)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &promoterv1alpha1.PullRequest{
+					TypeMeta: metav1.TypeMeta{},
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: promoterv1alpha1.PullRequestSpec{
+						RepositoryReference: promoterv1alpha1.RepositoryRef{
+							Owner: "test",
+							Name:  "test",
+							ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
+								Name:      "fake",
+								Namespace: "default",
+							},
+						},
+						Title:        "test",
+						TargetBranch: "test",
+						SourceBranch: "test-next",
+						Description:  "test",
+						State:        "open",
+					},
+					Status: promoterv1alpha1.PullRequestStatus{},
 				}
+
+				Expect(k8sClient.Create(ctx, &promoterv1alpha1.ScmProvider{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "fake",
+						Namespace: "default",
+					},
+					Spec: promoterv1alpha1.ScmProviderSpec{
+						SecretRef: &v1.LocalObjectReference{Name: "fake"},
+						Fake:      &promoterv1alpha1.Fake{},
+					},
+					Status: promoterv1alpha1.ScmProviderStatus{},
+				})).To(Succeed())
+
+				Expect(k8sClient.Create(ctx, &v1.Secret{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "fake",
+						Namespace: "default",
+					},
+					Data: nil,
+				})).To(Succeed())
+
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 		})
@@ -78,7 +120,15 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+
+			var pr promoterv1alpha1.PullRequest
+			Expect(k8sClient.Get(ctx, controllerClient.ObjectKey{
+				Namespace: "default",
+				Name:      resourceName,
+			}, &pr)).To(Succeed())
+
+			fmt.Println(pr)
+			Expect(pr.Status.ID).To(Equal("1"))
 		})
 	})
 })

@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -159,10 +158,15 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	logger := log.FromContext(ctx)
 
 	var scmProvider promoterv1alpha1.ScmProvider
-	namespace := "default"
+	var namespace string
+	if pr.Spec.RepositoryReference.ScmProviderRef.Namespace != "" {
+		namespace = pr.Spec.RepositoryReference.ScmProviderRef.Namespace
+	} else {
+		namespace = pr.Namespace
+	}
 	objectKey := client.ObjectKey{
 		Namespace: namespace,
-		Name:      pr.Spec.RepositoryReference.ProviderRef.Name,
+		Name:      pr.Spec.RepositoryReference.ScmProviderRef.Name,
 	}
 	err := r.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
 	if err != nil {
@@ -188,6 +192,8 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	switch {
 	case scmProvider.Spec.GitHub != nil:
 		return scms.NewScmPullRequestProvider(scms.GitHub, secret), nil
+	case scmProvider.Spec.Fake != nil:
+		return scms.NewScmPullRequestProvider(scms.Fake, secret), nil
 	default:
 		return nil, nil
 	}
