@@ -40,7 +40,7 @@ spec:
             description: ScmProviderSpec defines the desired state of ScmProvider
             properties:
               fake:
-                description: Fake required configuration for GitHub as the SCM provider
+                description: Fake required configuration for Fake as the SCM provider
                 type: object
               github:
                 description: GitHub required configuration for GitHub as the SCM provider

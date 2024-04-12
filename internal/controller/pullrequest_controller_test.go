@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	v1 "k8s.io/api/core/v1"
-	"os"
 	controllerClient "sigs.k8s.io/controller-runtime/pkg/client"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -126,10 +125,55 @@ var _ = Describe("PullRequest Controller", func() {
 				Namespace: "default",
 				Name:      resourceName,
 			}, &pr)).To(Succeed())
-			GinkgoWriter.TeeTo(os.Stdout)
-			GinkgoWriter.Println(pr)
 			Expect(pr.Status.ID).To(Equal("1"))
 			Expect(pr.Status.State).To(Equal("open"))
+			Expect(pr.Status.SpecHash).To(Equal("5c47999547ca67dbcd1ee595688610a55695ef7e"))
+
+			By("Reconciling updating of the PullRequest")
+			pr.Spec.Title = "Updated Title"
+			Expect(k8sClient.Update(ctx, &pr)).To(Succeed())
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, controllerClient.ObjectKey{
+				Namespace: "default",
+				Name:      resourceName,
+			}, &pr)).To(Succeed())
+			Expect(pr.Spec.Title).To(Equal("Updated Title"))
+
+			By("Reconciling closing of the PullRequest")
+			pr.Spec.State = "closed"
+			Expect(k8sClient.Update(ctx, &pr)).To(Succeed())
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, controllerClient.ObjectKey{
+				Namespace: "default",
+				Name:      resourceName,
+			}, &pr)).To(Succeed())
+			Expect(pr.Status.State).To(Equal("closed"))
+
+			By("Reconciling merging of the PullRequest")
+			pr.Spec.State = "merged"
+			Expect(k8sClient.Update(ctx, &pr)).To(Succeed())
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, controllerClient.ObjectKey{
+				Namespace: "default",
+				Name:      resourceName,
+			}, &pr)).To(Succeed())
+			Expect(pr.Status.State).To(Equal("merged"))
+
 		})
 	})
 })
