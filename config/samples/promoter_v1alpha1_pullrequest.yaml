@@ -9,7 +9,7 @@ spec:
   repositoryRef:
     owner: zachaller
     name: promoter-testing
-    providerRef:
+    scmProviderRef:
       name: scmprovider-sample
   title: "My awesome pull request 1"
   description: "This is the description of the PR created with the package `github. com/ google/ go-github/ github`"

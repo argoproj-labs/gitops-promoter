@@ -19,6 +19,11 @@ package controller
 import (
 	"context"
 
+	"github.com/argoproj/promoter/internal/controller/utils"
+	"github.com/argoproj/promoter/internal/scms"
+	"github.com/argoproj/promoter/internal/scms/github"
+	"k8s.io/apimachinery/pkg/api/errors"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -49,7 +54,26 @@ type ProposedCommitReconciler struct {
 func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	logger := log.FromContext(ctx)
+
+	var pc promoterv1alpha1.ProposedCommit
+	err := r.Get(ctx, req.NamespacedName, &pc, &client.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("ProposedCommit not found", "namespace", req.Namespace, "name", req.Name)
+			return ctrl.Result{}, nil
+		}
+
+		logger.Error(err, "failed to get ProposedCommit", "namespace", req.Namespace, "name", req.Name)
+		return ctrl.Result{}, err
+	}
+
+	scmProvider, secret, _ := utils.GetScmProviderAndSecret(ctx, r.Client, pc.Spec.RepositoryReference, &pc)
+	logger.Info("", "scmProvider", scmProvider, "secret", secret)
+
+	//gitAuthProvider, _ := r.getGitAuthenticationProvider(ctx, pc)
+	//u, p, _ := gitAuthProvider.GetGitAuthentication(ctx)
+	//logger.Info("creds", "user", u, "password", p)
 
 	return ctrl.Result{}, nil
 }
@@ -59,4 +83,18 @@ func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ProposedCommit{}).
 		Complete(r)
+}
+
+func (r *ProposedCommitReconciler) getGitAuthenticationProvider(ctx context.Context, pc promoterv1alpha1.ProposedCommit) (scms.GitAuthenticationProvider, error) {
+	scmProvider, secret, err := utils.GetScmProviderAndSecret(ctx, r.Client, pc.Spec.RepositoryReference, &pc)
+	if err != nil {
+		return nil, err
+	}
+
+	switch {
+	case scmProvider.Spec.GitHub != nil:
+		return github.NewGithubGitAuthenticationProvider(secret), nil
+	default:
+		return nil, nil
+	}
 }

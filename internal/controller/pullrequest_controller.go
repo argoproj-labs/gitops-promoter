@@ -18,7 +18,10 @@ package controller
 
 import (
 	"context"
-	v1 "k8s.io/api/core/v1"
+
+	"github.com/argoproj/promoter/internal/controller/utils"
+	"github.com/argoproj/promoter/internal/scms/fake"
+	"github.com/argoproj/promoter/internal/scms/github"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/argoproj/promoter/internal/scms"
@@ -155,45 +158,18 @@ func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
-	logger := log.FromContext(ctx)
-
-	var scmProvider promoterv1alpha1.ScmProvider
-	var namespace string
-	if pr.Spec.RepositoryReference.ScmProviderRef.Namespace != "" {
-		namespace = pr.Spec.RepositoryReference.ScmProviderRef.Namespace
-	} else {
-		namespace = pr.Namespace
-	}
-	objectKey := client.ObjectKey{
-		Namespace: namespace,
-		Name:      pr.Spec.RepositoryReference.ScmProviderRef.Name,
-	}
-	err := r.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
-			return nil, err
-		}
-
-		logger.Error(err, "failed to get ScmProvider", "namespace", namespace, "name", objectKey.Name)
-		return nil, err
-	}
-
-	var secret v1.Secret
-	objectKey = client.ObjectKey{
-		Namespace: scmProvider.Namespace,
-		Name:      scmProvider.Spec.SecretRef.Name,
-	}
-	err = r.Get(ctx, objectKey, &secret)
+	scmProvider, secret, err := utils.GetScmProviderAndSecret(ctx, r.Client, pr.Spec.RepositoryReference, &pr)
 	if err != nil {
 		return nil, err
 	}
 
 	switch {
 	case scmProvider.Spec.GitHub != nil:
-		return scms.NewScmPullRequestProvider(scms.GitHub, secret), nil
+		return github.NewGithubPullRequestProvider(*secret), nil
+		//return scms.NewScmPullRequestProvider(scms.GitHub, *secret), nil
 	case scmProvider.Spec.Fake != nil:
-		return scms.NewScmPullRequestProvider(scms.Fake, secret), nil
+		return fake.NewFakePullRequestProvider(), nil
+		//return scms.NewScmPullRequestProvider(scms.Fake, *secret), nil
 	default:
 		return nil, nil
 	}

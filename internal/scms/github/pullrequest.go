@@ -11,17 +11,17 @@ import (
 	"github.com/google/go-github/v61/github"
 )
 
-type GithubPullRequest struct {
+type PullRequest struct {
 	client *github.Client
 }
 
-func NewGithubProvider(secret v1.Secret) GithubPullRequest {
-	return GithubPullRequest{
+func NewGithubPullRequestProvider(secret v1.Secret) PullRequest {
+	return PullRequest{
 		client: GetClient(secret),
 	}
 }
 
-func (pr GithubPullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+func (pr PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 
 	newPR := &github.NewPullRequest{
@@ -53,7 +53,7 @@ func (pr GithubPullRequest) Create(ctx context.Context, title, head, base, descr
 	}, nil
 }
 
-func (pr GithubPullRequest) Update(ctx context.Context, title, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+func (pr PullRequest) Update(ctx context.Context, title, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 
 	newPR := &github.PullRequest{
@@ -89,7 +89,7 @@ func (pr GithubPullRequest) Update(ctx context.Context, title, description strin
 
 }
 
-func (pr GithubPullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+func (pr PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 
 	newPR := &github.PullRequest{
@@ -123,7 +123,7 @@ func (pr GithubPullRequest) Close(ctx context.Context, pullRequest *v1alpha1.Pul
 	}, nil
 }
 
-func (pr GithubPullRequest) Merge(ctx context.Context, commitMessage string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+func (pr PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)

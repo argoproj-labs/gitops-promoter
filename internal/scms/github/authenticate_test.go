@@ -3,9 +3,10 @@ package github
 import (
 	"context"
 	"fmt"
-	"github.com/bradleyfalzon/ghinstallation/v2"
 	"net/http"
 	"testing"
+
+	"github.com/bradleyfalzon/ghinstallation/v2"
 )
 
 func TestGetClient(t *testing.T) {
