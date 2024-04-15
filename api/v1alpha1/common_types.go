@@ -1,7 +1,7 @@
 package v1alpha1
 
 type GitHub struct {
-	Url string `json:"url,omitempty"`
+	Domain string `json:"domain,omitempty"`
 }
 
 type Fake struct {

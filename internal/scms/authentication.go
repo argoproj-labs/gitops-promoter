@@ -2,8 +2,9 @@ package scms
 
 import (
 	"context"
+	"github.com/argoproj/promoter/api/v1alpha1"
 )
 
 type GitAuthenticationProvider interface {
-	GetGitAuthentication(ctx context.Context) (string, string, error)
+	GetGitRepoUrl(context.Context, v1alpha1.RepositoryRef) (string, error)
 }

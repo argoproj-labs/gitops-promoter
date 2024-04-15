@@ -45,7 +45,7 @@ spec:
               github:
                 description: GitHub required configuration for GitHub as the SCM provider
                 properties:
-                  url:
+                  domain:
                     type: string
                 type: object
               secretRef:

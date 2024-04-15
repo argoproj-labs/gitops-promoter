@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func GetScmProviderAndSecret(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.RepositoryRef, obj metav1.Object) (*promoterv1alpha1.ScmProvider, *v1.Secret, error) {
+func GetScmProviderFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.RepositoryRef, obj metav1.Object) (*promoterv1alpha1.ScmProvider, error) {
 	logger := log.FromContext(ctx)
 
 	var scmProvider promoterv1alpha1.ScmProvider
@@ -29,28 +29,39 @@ func GetScmProviderAndSecret(ctx context.Context, k8sClient client.Client, repos
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
-			return nil, nil, err
+			return nil, err
 		}
 
 		logger.Error(err, "failed to get ScmProvider", "namespace", namespace, "name", objectKey.Name)
+		return nil, err
+	}
+
+	return &scmProvider, nil
+}
+
+func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.RepositoryRef, obj metav1.Object) (*promoterv1alpha1.ScmProvider, *v1.Secret, error) {
+	logger := log.FromContext(ctx)
+
+	scmProvider, err := GetScmProviderFromRepositoryReference(ctx, k8sClient, repositoryRef, obj)
+	if err != nil {
 		return nil, nil, err
 	}
 
 	var secret v1.Secret
-	objectKey = client.ObjectKey{
+	objectKey := client.ObjectKey{
 		Namespace: scmProvider.Namespace,
 		Name:      scmProvider.Spec.SecretRef.Name,
 	}
 	err = k8sClient.Get(ctx, objectKey, &secret)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("Secret from ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
+			logger.Info("Secret from ScmProvider not found", "namespace", scmProvider.Namespace, "name", objectKey.Name)
 			return nil, nil, err
 		}
 
-		logger.Error(err, "failed to get Secret from ScmProvider", "namespace", namespace, "name", objectKey.Name)
+		logger.Error(err, "failed to get Secret from ScmProvider", "namespace", scmProvider.Namespace, "name", objectKey.Name)
 		return nil, nil, err
 	}
 
-	return &scmProvider, &secret, nil
+	return scmProvider, &secret, nil
 }

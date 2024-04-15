@@ -7,6 +7,6 @@ metadata:
   name: scmprovider-sample
 spec:
   github:
-    url: https://github.com
+    domain: github.com
   secretRef:
     name: my-auth

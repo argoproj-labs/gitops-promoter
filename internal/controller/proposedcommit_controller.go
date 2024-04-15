@@ -18,8 +18,9 @@ package controller
 
 import (
 	"context"
+	"github.com/argoproj/promoter/internal/utils"
+	v1 "k8s.io/api/core/v1"
 
-	"github.com/argoproj/promoter/internal/controller/utils"
 	"github.com/argoproj/promoter/internal/scms"
 	"github.com/argoproj/promoter/internal/scms/github"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -68,12 +69,17 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	scmProvider, secret, _ := utils.GetScmProviderAndSecret(ctx, r.Client, pc.Spec.RepositoryReference, &pc)
-	logger.Info("", "scmProvider", scmProvider, "secret", secret)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, pc.Spec.RepositoryReference, &pc)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
-	//gitAuthProvider, _ := r.getGitAuthenticationProvider(ctx, pc)
-	//u, p, _ := gitAuthProvider.GetGitAuthentication(ctx)
-	//logger.Info("creds", "user", u, "password", p)
+	gitAuthProvider, _ := r.getAuthenticatedGitUrl(ctx, scmProvider, secret, pc)
+	url, err := gitAuthProvider.GetGitRepoUrl(ctx, pc.Spec.RepositoryReference)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	logger.Info("git url", "url", url)
 
 	return ctrl.Result{}, nil
 }
@@ -85,15 +91,10 @@ func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *ProposedCommitReconciler) getGitAuthenticationProvider(ctx context.Context, pc promoterv1alpha1.ProposedCommit) (scms.GitAuthenticationProvider, error) {
-	scmProvider, secret, err := utils.GetScmProviderAndSecret(ctx, r.Client, pc.Spec.RepositoryReference, &pc)
-	if err != nil {
-		return nil, err
-	}
-
+func (r *ProposedCommitReconciler) getAuthenticatedGitUrl(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret, pc promoterv1alpha1.ProposedCommit) (scms.GitAuthenticationProvider, error) {
 	switch {
 	case scmProvider.Spec.GitHub != nil:
-		return github.NewGithubGitAuthenticationProvider(secret), nil
+		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
 	default:
 		return nil, nil
 	}

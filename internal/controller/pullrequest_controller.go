@@ -18,8 +18,8 @@ package controller
 
 import (
 	"context"
+	"github.com/argoproj/promoter/internal/utils"
 
-	"github.com/argoproj/promoter/internal/controller/utils"
 	"github.com/argoproj/promoter/internal/scms/fake"
 	"github.com/argoproj/promoter/internal/scms/github"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -158,14 +158,14 @@ func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
-	scmProvider, secret, err := utils.GetScmProviderAndSecret(ctx, r.Client, pr.Spec.RepositoryReference, &pr)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, pr.Spec.RepositoryReference, &pr)
 	if err != nil {
 		return nil, err
 	}
 
 	switch {
 	case scmProvider.Spec.GitHub != nil:
-		return github.NewGithubPullRequestProvider(*secret), nil
+		return github.NewGithubPullRequestProvider(*secret)
 		//return scms.NewScmPullRequestProvider(scms.GitHub, *secret), nil
 	case scmProvider.Spec.Fake != nil:
 		return fake.NewFakePullRequestProvider(), nil
