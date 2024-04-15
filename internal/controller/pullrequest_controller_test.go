@@ -35,7 +35,7 @@ import (
 
 var _ = Describe("PullRequest Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+		const resourceName = "test-resource-pr"
 
 		ctx := context.Background()
 
@@ -60,7 +60,7 @@ var _ = Describe("PullRequest Controller", func() {
 							Owner: "test",
 							Name:  "test",
 							ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-								Name:      "fake",
+								Name:      resourceName,
 								Namespace: "default",
 							},
 						},
@@ -76,11 +76,11 @@ var _ = Describe("PullRequest Controller", func() {
 				Expect(k8sClient.Create(ctx, &promoterv1alpha1.ScmProvider{
 					TypeMeta: metav1.TypeMeta{},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "fake",
+						Name:      resourceName,
 						Namespace: "default",
 					},
 					Spec: promoterv1alpha1.ScmProviderSpec{
-						SecretRef: &v1.LocalObjectReference{Name: "fake"},
+						SecretRef: &v1.LocalObjectReference{Name: resourceName},
 						Fake:      &promoterv1alpha1.Fake{},
 					},
 					Status: promoterv1alpha1.ScmProviderStatus{},
@@ -89,7 +89,7 @@ var _ = Describe("PullRequest Controller", func() {
 				Expect(k8sClient.Create(ctx, &v1.Secret{
 					TypeMeta: metav1.TypeMeta{},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "fake",
+						Name:      resourceName,
 						Namespace: "default",
 					},
 					Data: nil,
@@ -128,7 +128,7 @@ var _ = Describe("PullRequest Controller", func() {
 			}, &pr)).To(Succeed())
 			Expect(pr.Status.ID).To(Equal("1"))
 			Expect(pr.Status.State).To(Equal("open"))
-			Expect(pr.Status.SpecHash).To(Equal("5c47999547ca67dbcd1ee595688610a55695ef7e"))
+			Expect(pr.Status.SpecHash).To(Equal("2ac637b791376e069498c3c0c2d73ad13a11966f"))
 
 			By("Reconciling updating of the PullRequest")
 			pr.Spec.Title = "Updated Title"

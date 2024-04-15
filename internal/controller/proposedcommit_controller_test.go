@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	v1 "k8s.io/api/core/v1"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -32,7 +33,7 @@ import (
 
 var _ = Describe("ProposedCommit Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+		const resourceName = "test-resource-pc"
 
 		ctx := context.Background()
 
@@ -51,9 +52,44 @@ var _ = Describe("ProposedCommit Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
+					Spec: promoterv1alpha1.ProposedCommitSpec{
+						RepositoryReference: promoterv1alpha1.RepositoryRef{
+							Owner: "test",
+							Name:  "test",
+							ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
+								Name:      resourceName,
+								Namespace: "default",
+							},
+						},
+						ProposedBranch: "environment/development-next",
+						ActiveBranch:   "environment/development",
+						CommitStatuses: nil,
+					},
 					// TODO(user): Specify other spec details if needed.
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+				Expect(k8sClient.Create(ctx, &promoterv1alpha1.ScmProvider{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      resourceName,
+						Namespace: "default",
+					},
+					Spec: promoterv1alpha1.ScmProviderSpec{
+						SecretRef: &v1.LocalObjectReference{Name: resourceName},
+						Fake:      &promoterv1alpha1.Fake{},
+					},
+					Status: promoterv1alpha1.ScmProviderStatus{},
+				})).To(Succeed())
+
+				Expect(k8sClient.Create(ctx, &v1.Secret{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      resourceName,
+						Namespace: "default",
+					},
+					Data: nil,
+				})).To(Succeed())
 			}
 		})
 

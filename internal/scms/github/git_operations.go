@@ -25,15 +25,15 @@ func NewGithubGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secre
 	}
 }
 
-func (gh GitAuthenticationProvider) GetGitRepoUrl(ctx context.Context, repoRef v1alpha1.RepositoryRef) (string, error) {
-	token, err := GetToken(ctx, *gh.secret)
-	if err != nil {
-		return "", err
-	}
+func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(repoRef v1alpha1.RepositoryRef) string {
 	if gh.scmProvider.Spec.GitHub != nil && gh.scmProvider.Spec.GitHub.Domain == "" {
-		return fmt.Sprintf("https://git:%s@github.com/%s/%s.git", token, repoRef.Owner, repoRef.Name), nil
+		return fmt.Sprintf("https://github.com/%s/%s.git", repoRef.Owner, repoRef.Name)
 	}
-	return fmt.Sprintf("https://git:%s@%s/%s/%s.git", token, gh.scmProvider.Spec.GitHub.Domain, repoRef.Owner, repoRef.Name), nil
+	return fmt.Sprintf("https://%s/%s/%s.git", gh.scmProvider.Spec.GitHub.Domain, repoRef.Owner, repoRef.Name)
+}
+
+func (gh GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
+	return GetToken(ctx, *gh.secret)
 }
 
 func GetClient(secret v1.Secret) (*github.Client, error) {

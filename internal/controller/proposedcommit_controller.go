@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"github.com/argoproj/promoter/internal/git"
 	"github.com/argoproj/promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
 
@@ -36,7 +37,8 @@ import (
 // ProposedCommitReconciler reconciles a ProposedCommit object
 type ProposedCommitReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme     *runtime.Scheme
+	PathLookup utils.PathLookup
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=proposedcommits,verbs=get;list;watch;create;update;patch;delete
@@ -74,12 +76,16 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	gitAuthProvider, _ := r.getAuthenticatedGitUrl(ctx, scmProvider, secret, pc)
-	url, err := gitAuthProvider.GetGitRepoUrl(ctx, pc.Spec.RepositoryReference)
+	gitAuthProvider, err := r.getAuthenticatedGitUrl(ctx, scmProvider, secret, pc)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	logger.Info("git url", "url", url)
+	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, pc.Spec.RepositoryReference, &pc)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	gitOperations.Clone(ctx)
 
 	return ctrl.Result{}, nil
 }
@@ -91,7 +97,7 @@ func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *ProposedCommitReconciler) getAuthenticatedGitUrl(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret, pc promoterv1alpha1.ProposedCommit) (scms.GitAuthenticationProvider, error) {
+func (r *ProposedCommitReconciler) getAuthenticatedGitUrl(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret, pc promoterv1alpha1.ProposedCommit) (scms.GitOperationsProvider, error) {
 	switch {
 	case scmProvider.Spec.GitHub != nil:
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil

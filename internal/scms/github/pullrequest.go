@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"github.com/argoproj/promoter/internal/scms"
 	"strconv"
 
 	v1 "k8s.io/api/core/v1"
@@ -14,6 +15,8 @@ import (
 type PullRequest struct {
 	client *github.Client
 }
+
+var _ scms.PullRequestProvider = &PullRequest{}
 
 func NewGithubPullRequestProvider(secret v1.Secret) (*PullRequest, error) {
 	client, err := GetClient(secret)

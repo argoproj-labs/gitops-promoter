@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"github.com/argoproj/promoter/internal/utils"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -126,10 +127,11 @@ func main() {
 	//kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
 	//informerFactory := informers.NewSharedInformerFactory(kubeClient, 10*time.Minute)
 
+	pathLookup := utils.NewPathLookup()
+
 	if err = (&controller.PullRequestReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-		//InformerFactory: informerFactory,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PullRequest")
 		os.Exit(1)
@@ -149,8 +151,9 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&controller.ProposedCommitReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		PathLookup: pathLookup,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ProposedCommit")
 		os.Exit(1)

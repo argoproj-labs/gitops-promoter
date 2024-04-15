@@ -5,6 +5,7 @@ import (
 	"github.com/argoproj/promoter/api/v1alpha1"
 )
 
-type GitAuthenticationProvider interface {
-	GetGitRepoUrl(context.Context, v1alpha1.RepositoryRef) (string, error)
+type GitOperationsProvider interface {
+	GetGitHttpsRepoUrl(repoRef v1alpha1.RepositoryRef) string
+	GetToken(ctx context.Context) (string, error)
 }
