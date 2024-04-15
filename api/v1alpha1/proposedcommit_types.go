@@ -30,7 +30,7 @@ type ProposedCommitSpec struct {
 
 	// RepositoryReference what repository to open the PR on.
 	// +kubebuilder:validation:Required
-	RepositoryReference RepositoryRef `json:"repositoryRef"`
+	RepositoryReference *RepositoryRef `json:"repositoryRef"`
 
 	// ProposedBranch staging hydrated branch
 	// +kubebuilder:validation:Required

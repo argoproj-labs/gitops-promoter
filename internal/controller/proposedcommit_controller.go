@@ -71,7 +71,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, pc.Spec.RepositoryReference, &pc)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, *pc.Spec.RepositoryReference, &pc)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -80,7 +80,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, pc.Spec.RepositoryReference, &pc)
+	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, *pc.Spec.RepositoryReference, &pc)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

@@ -53,7 +53,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 						Namespace: "default",
 					},
 					Spec: promoterv1alpha1.ProposedCommitSpec{
-						RepositoryReference: promoterv1alpha1.RepositoryRef{
+						RepositoryReference: &promoterv1alpha1.RepositoryRef{
 							Owner: "test",
 							Name:  "test",
 							ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
