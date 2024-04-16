@@ -18,10 +18,14 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"github.com/argoproj/promoter/internal/git"
 	"github.com/argoproj/promoter/internal/scms/fake"
 	"github.com/argoproj/promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/pointer"
+	"regexp"
 	"time"
 
 	"github.com/argoproj/promoter/internal/scms"
@@ -87,7 +91,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	err = gitOperations.GetUpdateRepo(ctx)
+	err = gitOperations.CloneRepo(ctx)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -114,6 +118,46 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if branch == pc.Spec.ProposedBranch {
 			pc.Status.Proposed.HydratedSha = hydratedBranchShas[branch]
 			pc.Status.Proposed.DrySha = dryBranchShas[branch]
+		}
+	}
+
+	prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
+	prName = utils.TruncateString(prName, 250)
+	m1 := regexp.MustCompile("[^a-zA-Z0-9]+")
+	prName = m1.ReplaceAllString(prName, "-")
+
+	var pr promoterv1alpha1.PullRequest
+	err = r.Get(ctx, client.ObjectKey{
+		Namespace: pc.Namespace,
+		Name:      prName,
+	}, &pr)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			pr = promoterv1alpha1.PullRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      prName,
+					Namespace: pc.Namespace,
+					OwnerReferences: []metav1.OwnerReference{{
+						APIVersion:         pc.APIVersion,
+						Kind:               pc.Kind,
+						Name:               pc.Name,
+						UID:                pc.UID,
+						BlockOwnerDeletion: pointer.Bool(true),
+					}},
+				},
+				Spec: promoterv1alpha1.PullRequestSpec{
+					RepositoryReference: pc.Spec.RepositoryReference,
+					Title:               prName,
+					TargetBranch:        pc.Spec.ActiveBranch,
+					SourceBranch:        pc.Spec.ProposedBranch,
+					Description:         "",
+					State:               "open",
+				},
+			}
+			err = r.Create(ctx, &pr)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 	}
 

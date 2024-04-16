@@ -40,7 +40,7 @@ func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.Git
 	return &gitOperations, nil
 }
 
-func (g *GitOperations) GetUpdateRepo(ctx context.Context) error {
+func (g *GitOperations) CloneRepo(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)) == "" {
 		path, err := os.MkdirTemp("", "*")
@@ -57,14 +57,6 @@ func (g *GitOperations) GetUpdateRepo(ctx context.Context) error {
 		g.pathLookup.Set(g.gap.GetGitHttpsRepoUrl(*g.repoRef), path)
 		logger.Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef))
 
-	} else {
-		//logger.Info("Repo exists, fetching instead")
-		//_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "fetch", "origin")
-		//if err != nil {
-		//	return err
-		//}
-		//
-		//logger.Info("Fetched Repo", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef), "stdout", stdout, "stderr", stderr)
 	}
 
 	return nil
@@ -73,7 +65,7 @@ func (g *GitOperations) GetUpdateRepo(ctx context.Context) error {
 func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (dry map[string]string, hydrated map[string]string, err error) {
 	logger := log.FromContext(ctx)
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)) == "" {
-		return nil, nil, fmt.Errorf("no repo path available")
+		return nil, nil, fmt.Errorf("no repo path found")
 	}
 
 	hydratedBranchShas := make(map[string]string)
