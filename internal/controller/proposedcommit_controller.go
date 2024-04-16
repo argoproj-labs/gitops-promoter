@@ -92,25 +92,28 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	branchShas, err := gitOperations.GetBranchShas(ctx, []string{pc.Spec.ActiveBranch, pc.Spec.ProposedBranch})
+	dryBranchShas, hydratedBranchShas, err := gitOperations.GetBranchShas(ctx, []string{pc.Spec.ActiveBranch, pc.Spec.ProposedBranch})
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	logger.Info("Branch SHAs", "shas", branchShas)
+	logger.Info("Branch SHAs", "dryBranchShas", dryBranchShas, "hydratedBranchShas", hydratedBranchShas)
 
-	for branch, sha := range branchShas {
+	for branch, _ := range hydratedBranchShas {
+		if pc.Status.Active == nil {
+			pc.Status.Active = &promoterv1alpha1.BranchState{}
+		}
+
+		if pc.Status.Proposed == nil {
+			pc.Status.Proposed = &promoterv1alpha1.BranchState{}
+		}
+
 		if branch == pc.Spec.ActiveBranch {
-			if pc.Status.Active == nil {
-				pc.Status.Active = &promoterv1alpha1.BranchState{}
-			}
-
-			if pc.Status.Proposed == nil {
-				pc.Status.Proposed = &promoterv1alpha1.BranchState{}
-			}
-			pc.Status.Active.HydratedSha = sha
+			pc.Status.Active.HydratedSha = hydratedBranchShas[branch]
+			pc.Status.Active.DrySha = dryBranchShas[branch]
 		}
 		if branch == pc.Spec.ProposedBranch {
-			pc.Status.Proposed.HydratedSha = sha
+			pc.Status.Proposed.HydratedSha = hydratedBranchShas[branch]
+			pc.Status.Proposed.DrySha = dryBranchShas[branch]
 		}
 	}
 

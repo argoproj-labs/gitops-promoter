@@ -70,30 +70,32 @@ func (g *GitOperations) GetUpdateRepo(ctx context.Context) error {
 	return nil
 }
 
-func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (map[string]string, error) {
+func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (dry map[string]string, hydrated map[string]string, err error) {
 	logger := log.FromContext(ctx)
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)) == "" {
-		return nil, fmt.Errorf("no repo path available")
+		return nil, nil, fmt.Errorf("no repo path available")
 	}
 
-	branchShas := make(map[string]string)
+	hydratedBranchShas := make(map[string]string)
+	dryBranchShas := make(map[string]string)
 
 	for _, branch := range branches {
 		logger.Info("Checking out branch", "branch", branch)
 		_, _, _, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "rev-parse", branch)
 		if err != nil {
 			logger.Error(err, "could not get brach shas", "gitError", stderr)
-			return nil, err
+			return nil, nil, err
 		}
-		branchShas[branch] = strings.TrimSpace(stdout)
+		hydratedBranchShas[branch] = strings.TrimSpace(stdout)
+		dryBranchShas[branch] = "todo:look-into-file"
 	}
 
-	return branchShas, nil
+	return dryBranchShas, hydratedBranchShas, nil
 }
 
 func (g *GitOperations) runCmd(ctx context.Context, directory string, name string, args ...string) (*exec.Cmd, string, string, error) {
