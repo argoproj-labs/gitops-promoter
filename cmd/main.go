@@ -194,4 +194,13 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+	setupLog.Info("Cleaning up cloned directories")
+
+	for _, path := range pathLookup.GetAll() {
+		err := os.RemoveAll(path)
+		if err != nil {
+			setupLog.Error(err, "failed to cleanup directory")
+		}
+		setupLog.Info("cleaning directory", "directory", path)
+	}
 }

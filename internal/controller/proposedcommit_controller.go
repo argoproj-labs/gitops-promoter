@@ -19,8 +19,10 @@ package controller
 import (
 	"context"
 	"github.com/argoproj/promoter/internal/git"
+	"github.com/argoproj/promoter/internal/scms/fake"
 	"github.com/argoproj/promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
+	"time"
 
 	"github.com/argoproj/promoter/internal/scms"
 	"github.com/argoproj/promoter/internal/scms/github"
@@ -76,7 +78,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	gitAuthProvider, err := r.getAuthenticatedGitUrl(ctx, scmProvider, secret, pc)
+	gitAuthProvider, err := r.getGitAuthProvider(ctx, scmProvider, secret, pc)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -85,9 +87,15 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	gitOperations.Clone(ctx)
+	err = gitOperations.GetUpdateRepo(ctx)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{
+		Requeue:      true,
+		RequeueAfter: 1 * time.Minute,
+	}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -97,8 +105,10 @@ func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *ProposedCommitReconciler) getAuthenticatedGitUrl(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret, pc promoterv1alpha1.ProposedCommit) (scms.GitOperationsProvider, error) {
+func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret, pc promoterv1alpha1.ProposedCommit) (scms.GitOperationsProvider, error) {
 	switch {
+	case scmProvider.Spec.Fake != nil:
+		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
 	case scmProvider.Spec.GitHub != nil:
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
 	default:

@@ -5,6 +5,7 @@ type GitHub struct {
 }
 
 type Fake struct {
+	Domain string `json:"domain,omitempty"`
 }
 
 type RepositoryRef struct {

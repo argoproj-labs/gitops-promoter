@@ -41,6 +41,9 @@ spec:
             properties:
               fake:
                 description: Fake required configuration for Fake as the SCM provider
+                properties:
+                  domain:
+                    type: string
                 type: object
               github:
                 description: GitHub required configuration for GitHub as the SCM provider

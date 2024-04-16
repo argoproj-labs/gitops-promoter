@@ -16,24 +16,46 @@ import (
 type GitAuthenticationProvider struct {
 	scmProvider *v1alpha1.ScmProvider
 	secret      *v1.Secret
+	transport   *ghinstallation.Transport
 }
 
 func NewGithubGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret *v1.Secret) GitAuthenticationProvider {
+	appID, err := strconv.ParseInt(string(secret.Data["appID"]), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	installationID, err := strconv.ParseInt(string(secret.Data["installationID"]), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	itr, err := ghinstallation.New(http.DefaultTransport, appID, installationID, secret.Data["privateKey"])
+	if err != nil {
+		panic(err)
+	}
+
 	return GitAuthenticationProvider{
 		scmProvider: scmProvider,
 		secret:      secret,
+		transport:   itr,
 	}
 }
 
 func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(repoRef v1alpha1.RepositoryRef) string {
 	if gh.scmProvider.Spec.GitHub != nil && gh.scmProvider.Spec.GitHub.Domain == "" {
-		return fmt.Sprintf("https://github.com/%s/%s.git", repoRef.Owner, repoRef.Name)
+		return fmt.Sprintf("https://git@github.com/%s/%s.git", repoRef.Owner, repoRef.Name)
 	}
-	return fmt.Sprintf("https://%s/%s/%s.git", gh.scmProvider.Spec.GitHub.Domain, repoRef.Owner, repoRef.Name)
+	return fmt.Sprintf("https://git@%s/%s/%s.git", gh.scmProvider.Spec.GitHub.Domain, repoRef.Owner, repoRef.Name)
 }
 
 func (gh GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
-	return GetToken(ctx, *gh.secret)
+	// Token expires in 1 minute
+	return gh.transport.Token(ctx)
+}
+
+func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error) {
+	return "git", nil
 }
 
 func GetClient(secret v1.Secret) (*github.Client, error) {
@@ -54,25 +76,6 @@ func GetClient(secret v1.Secret) (*github.Client, error) {
 	}
 	client := github.NewClient(&http.Client{Transport: itr})
 	return client, nil
-}
-
-func GetToken(ctx context.Context, secret v1.Secret) (string, error) {
-
-	appID, err := strconv.ParseInt(string(secret.Data["appID"]), 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	installationID, err := strconv.ParseInt(string(secret.Data["installationID"]), 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	itr, err := ghinstallation.New(http.DefaultTransport, appID, installationID, secret.Data["privateKey"])
-	if err != nil {
-		return "", err
-	}
-	return itr.Token(ctx)
 }
 
 //func GetEnterpriseClient(secret v1.Secret) (*github.Client, error) {

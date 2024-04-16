@@ -68,8 +68,8 @@ type BranchState struct {
 type ProposedCommitStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Proposed       BranchState                        `json:"proposed,omitempty"`
-	Active         BranchState                        `json:"active,omitempty"`
+	Proposed       *BranchState                       `json:"proposed,omitempty"`
+	Active         *BranchState                       `json:"active,omitempty"`
 	CommitStatuses []CommitStatusProposedCommitStatus `json:"commitStatuses,omitempty"`
 }
 
