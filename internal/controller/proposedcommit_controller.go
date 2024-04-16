@@ -92,6 +92,33 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	branchShas, err := gitOperations.GetBranchShas(ctx, []string{pc.Spec.ActiveBranch, pc.Spec.ProposedBranch})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	logger.Info("Branch SHAs", "shas", branchShas)
+
+	for branch, sha := range branchShas {
+		if branch == pc.Spec.ActiveBranch {
+			if pc.Status.Active == nil {
+				pc.Status.Active = &promoterv1alpha1.BranchState{}
+			}
+
+			if pc.Status.Proposed == nil {
+				pc.Status.Proposed = &promoterv1alpha1.BranchState{}
+			}
+			pc.Status.Active.HydratedSha = sha
+		}
+		if branch == pc.Spec.ProposedBranch {
+			pc.Status.Proposed.HydratedSha = sha
+		}
+	}
+
+	err = r.Status().Update(ctx, &pc)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{
 		Requeue:      true,
 		RequeueAfter: 1 * time.Minute,

@@ -1,6 +1,7 @@
 package git
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"strings"
 )
 
 type GitOperations struct {
@@ -45,46 +47,64 @@ func (g *GitOperations) GetUpdateRepo(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		logger.Info("Creating Directory", "directory", path)
+		logger.Info("Created directory", "directory", path)
 
-		cmd, err := g.runCmd(ctx, "git", "clone", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.repoRef), path)
+		_, stdout, stderr, err := g.runCmd(ctx, path, "git", "clone", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.repoRef), path)
 		if err != nil {
-			return err
-		}
-
-		logger.Info("Cloning Repo", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef))
-		_, err = cmd.Output()
-		if err != nil {
+			logger.Info("Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef), "stdout", stdout, "stderr", stderr)
 			return err
 		}
 		g.pathLookup.Set(g.gap.GetGitHttpsRepoUrl(*g.repoRef), path)
+		logger.Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef))
 
 	} else {
-		logger.Info("Repo Exists, Fetching Instead")
-		//TODO: fetch
-		cmd, err := g.runCmd(ctx, "git", "fetch", "origin", "-v")
-		if err != nil {
-			return nil
-		}
-		stdout, err := cmd.Output()
-		if err != nil {
-			return err
-		}
-		logger.Info("Fetched Repo", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef), "stdout", string(stdout))
+		//logger.Info("Repo exists, fetching instead")
+		//_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "fetch", "origin")
+		//if err != nil {
+		//	return err
+		//}
+		//
+		//logger.Info("Fetched Repo", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef), "stdout", stdout, "stderr", stderr)
 	}
 
 	return nil
 }
 
-func (g *GitOperations) runCmd(ctx context.Context, name string, args ...string) (*exec.Cmd, error) {
+func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (map[string]string, error) {
+	logger := log.FromContext(ctx)
+	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)) == "" {
+		return nil, fmt.Errorf("no repo path available")
+	}
+
+	branchShas := make(map[string]string)
+
+	for _, branch := range branches {
+		logger.Info("Checking out branch", "branch", branch)
+		_, _, _, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
+		if err != nil {
+			return nil, err
+		}
+
+		_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "rev-parse", branch)
+		if err != nil {
+			logger.Error(err, "could not get brach shas", "gitError", stderr)
+			return nil, err
+		}
+		branchShas[branch] = strings.TrimSpace(stdout)
+	}
+
+	return branchShas, nil
+}
+
+func (g *GitOperations) runCmd(ctx context.Context, directory string, name string, args ...string) (*exec.Cmd, string, string, error) {
 	user, err := g.gap.GetUser(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 
 	token, err := g.gap.GetToken(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
 	}
 
 	cmd := exec.Command(name, args...)
@@ -93,7 +113,22 @@ func (g *GitOperations) runCmd(ctx context.Context, name string, args ...string)
 		fmt.Sprintf("GIT_USER=%s", user),
 		fmt.Sprintf("GIT_PASSWORD=%s", token),
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
+		"GIT_TERMINAL_PROMPT=0",
+	}
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	cmd.Dir = directory
+
+	if cmd.Start() != nil {
+		return nil, "", "failed to start", err
 	}
 
-	return cmd, nil
+	if err := cmd.Wait(); err != nil {
+		exitErr := err.(*exec.ExitError)
+		return nil, "", exitErr.String(), err
+	}
+
+	return cmd, stdoutBuf.String(), stderrBuf.String(), nil
 }
