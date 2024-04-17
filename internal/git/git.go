@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"github.com/argoproj/promoter/api/v1alpha1"
 	"github.com/argoproj/promoter/internal/scms"
 	"github.com/argoproj/promoter/internal/utils"
+	"io"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
 	"os/exec"
@@ -21,6 +23,11 @@ type GitOperations struct {
 	repoRef     *v1alpha1.RepositoryRef
 	scmProvider *v1alpha1.ScmProvider
 	pathLookup  utils.PathLookup
+}
+
+type HydratorMetadataFile struct {
+	Commands []string `json:"commands"`
+	DrySHA   string   `json:"drySha"`
 }
 
 func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, pathLookup utils.PathLookup, repoRef v1alpha1.RepositoryRef, obj v1.Object) (*GitOperations, error) {
@@ -72,19 +79,41 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (d
 	dryBranchShas := make(map[string]string)
 
 	for _, branch := range branches {
-		logger.Info("Checking out branch", "branch", branch)
 		_, _, _, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
 		if err != nil {
 			return nil, nil, err
 		}
+		logger.Info("Checked out branch", "branch", branch)
+
+		_, _, _, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "pull", "--progress")
+		if err != nil {
+			return nil, nil, err
+		}
+		logger.Info("Pulled branch", "branch", branch)
 
 		_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "rev-parse", branch)
 		if err != nil {
-			logger.Error(err, "could not get brach shas", "gitError", stderr)
+			logger.Error(err, "could not get branch shas", "gitError", stderr)
 			return nil, nil, err
 		}
 		hydratedBranchShas[branch] = strings.TrimSpace(stdout)
-		dryBranchShas[branch] = "todo:look-into-file"
+		logger.Info("Got hydrated branch sha", "branch", branch, "sha", hydratedBranchShas[branch])
+
+		jsonFile, err := os.Open(g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)) + "/hydrator.metadata")
+		if err != nil {
+			return nil, nil, err
+		}
+		byteValue, err := io.ReadAll(jsonFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		var hydratorFile HydratorMetadataFile
+		err = json.Unmarshal(byteValue, &hydratorFile)
+		if err != nil {
+			return nil, nil, err
+		}
+		dryBranchShas[branch] = hydratorFile.DrySHA
+		logger.Info("Got dry branch sha", "branch", branch, "sha", dryBranchShas[branch])
 	}
 
 	return dryBranchShas, hydratedBranchShas, nil

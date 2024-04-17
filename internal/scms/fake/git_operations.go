@@ -13,6 +13,8 @@ type GitAuthenticationProvider struct {
 }
 
 func NewFakeGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret *v1.Secret) GitAuthenticationProvider {
+	//TODO: Setup git server https://git-scm.com/book/en/v2/Git-on-the-Server-Setting-Up-the-Server
+
 	return GitAuthenticationProvider{
 		scmProvider: scmProvider,
 		secret:      secret,

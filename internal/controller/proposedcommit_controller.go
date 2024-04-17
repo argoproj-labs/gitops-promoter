@@ -102,6 +102,8 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	logger.Info("Branch SHAs", "dryBranchShas", dryBranchShas, "hydratedBranchShas", hydratedBranchShas)
 
+	//oldActiveDrySha := pc.Status.Active.DrySha
+	//oldProposedDrySha := pc.Status.Proposed.DrySha
 	for branch, _ := range hydratedBranchShas {
 		if pc.Status.Active == nil {
 			pc.Status.Active = &promoterv1alpha1.BranchState{}
@@ -121,43 +123,63 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
-	prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
-	prName = utils.TruncateString(prName, 250)
-	m1 := regexp.MustCompile("[^a-zA-Z0-9]+")
-	prName = m1.ReplaceAllString(prName, "-")
+	if pc.Status.Proposed.DrySha != pc.Status.Active.DrySha {
+		logger.Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.DrySha, "activeDrySha", pc.Status.Active.DrySha)
+		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
+		prName = utils.TruncateString(prName, 250)
+		m1 := regexp.MustCompile("[^a-zA-Z0-9]+")
+		prName = m1.ReplaceAllString(prName, "-")
 
-	var pr promoterv1alpha1.PullRequest
-	err = r.Get(ctx, client.ObjectKey{
-		Namespace: pc.Namespace,
-		Name:      prName,
-	}, &pr)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			pr = promoterv1alpha1.PullRequest{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      prName,
-					Namespace: pc.Namespace,
-					OwnerReferences: []metav1.OwnerReference{{
-						APIVersion:         pc.APIVersion,
-						Kind:               pc.Kind,
-						Name:               pc.Name,
-						UID:                pc.UID,
-						BlockOwnerDeletion: pointer.Bool(true),
-					}},
-				},
-				Spec: promoterv1alpha1.PullRequestSpec{
-					RepositoryReference: pc.Spec.RepositoryReference,
-					Title:               prName,
-					TargetBranch:        pc.Spec.ActiveBranch,
-					SourceBranch:        pc.Spec.ProposedBranch,
-					Description:         "",
-					State:               "open",
-				},
+		var pr promoterv1alpha1.PullRequest
+		err = r.Get(ctx, client.ObjectKey{
+			Namespace: pc.Namespace,
+			Name:      prName,
+		}, &pr)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				pr = promoterv1alpha1.PullRequest{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      prName,
+						Namespace: pc.Namespace,
+						OwnerReferences: []metav1.OwnerReference{{
+							APIVersion:         pc.APIVersion,
+							Kind:               pc.Kind,
+							Name:               pc.Name,
+							UID:                pc.UID,
+							BlockOwnerDeletion: pointer.Bool(true),
+						}},
+					},
+					Spec: promoterv1alpha1.PullRequestSpec{
+						RepositoryReference: pc.Spec.RepositoryReference,
+						Title:               fmt.Sprintf("Promotion of `%s` to dry sha `%s`", pc.Spec.ActiveBranch, pc.Status.Proposed.DrySha),
+						TargetBranch:        pc.Spec.ActiveBranch,
+						SourceBranch:        pc.Spec.ProposedBranch,
+						Description:         fmt.Sprintf("This pr is promoting the environment branch `%s` which currently on dry sha `%s` to dry sha `%s`.", pc.Spec.ActiveBranch, pc.Status.Active.DrySha, pc.Status.Proposed.DrySha),
+						State:               "open",
+					},
+				}
+				err = r.Create(ctx, &pr)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+				logger.Info("Created pull request")
+			} else {
+				return ctrl.Result{}, err
 			}
-			err = r.Create(ctx, &pr)
+		} else {
+			pr.Spec = promoterv1alpha1.PullRequestSpec{
+				RepositoryReference: pc.Spec.RepositoryReference,
+				Title:               fmt.Sprintf("Promotion of `%s` to dry sha `%s`", pc.Spec.ActiveBranch, pc.Status.Proposed.DrySha),
+				TargetBranch:        pc.Spec.ActiveBranch,
+				SourceBranch:        pc.Spec.ProposedBranch,
+				Description:         fmt.Sprintf("This pr is promoting the environment branch `%s` which currently on dry sha `%s` to dry sha `%s`.", pc.Spec.ActiveBranch, pc.Status.Active.DrySha, pc.Status.Proposed.DrySha),
+				State:               "open",
+			}
+			err = r.Update(ctx, &pr)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
+			logger.Info("Updated pull request")
 		}
 	}
 
