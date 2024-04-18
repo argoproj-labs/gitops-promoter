@@ -24,7 +24,7 @@ import (
 	"github.com/argoproj/promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/pointer"
+	"reflect"
 	"regexp"
 	"time"
 
@@ -135,17 +135,17 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}, &pr)
 		if err != nil {
 			if errors.IsNotFound(err) {
+
+				// The code below sets the ownership for the Release Object
+				kind := reflect.TypeOf(promoterv1alpha1.ProposedCommit{}).Name()
+				gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+				controllerRef := metav1.NewControllerRef(&pc, gvk)
+
 				pr = promoterv1alpha1.PullRequest{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      prName,
-						Namespace: pc.Namespace,
-						OwnerReferences: []metav1.OwnerReference{{
-							APIVersion:         pc.APIVersion,
-							Kind:               pc.Kind,
-							Name:               pc.Name,
-							UID:                pc.UID,
-							BlockOwnerDeletion: pointer.Bool(true),
-						}},
+						Name:            prName,
+						Namespace:       pc.Namespace,
+						OwnerReferences: []metav1.OwnerReference{*controllerRef},
 					},
 					Spec: promoterv1alpha1.PullRequestSpec{
 						RepositoryReference: pc.Spec.RepositoryReference,

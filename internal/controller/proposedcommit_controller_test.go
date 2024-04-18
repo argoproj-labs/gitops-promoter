@@ -18,7 +18,10 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	v1 "k8s.io/api/core/v1"
+	"os"
+	"path"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -45,6 +48,9 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind ProposedCommit")
+
+			setupInitialTestGitRepo("test", "test")
+
 			err := k8sClient.Get(ctx, typeNamespacedName, proposedcommit)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &promoterv1alpha1.ProposedCommit{
@@ -99,10 +105,22 @@ var _ = Describe("ProposedCommit Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
+			scmProvider := &promoterv1alpha1.ScmProvider{}
+			err = k8sClient.Get(ctx, typeNamespacedName, scmProvider)
+			Expect(err).NotTo(HaveOccurred())
+
+			secret := &v1.Secret{}
+			err = k8sClient.Get(ctx, typeNamespacedName, secret)
+			Expect(err).NotTo(HaveOccurred())
+
 			By("Cleanup the specific resource instance ProposedCommit")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+			deleteRepo("test", "test")
 		})
-		It("should successfully reconcile the resource", func() {
+
+		It("should successfully reconcile the resource - with no git change", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &ProposedCommitReconciler{
 				Client: k8sClient,
@@ -113,8 +131,46 @@ var _ = Describe("ProposedCommit Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+		It("should successfully reconcile the resource - with a pending commit", func() {
+			By("Adding a pending commit")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			err = runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", "test", "test"), ".")
+			Expect(err).NotTo(HaveOccurred())
+
+			err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
+			Expect(err).NotTo(HaveOccurred())
+			err = runGitCmd(gitPath, "git", "config", "user.email", "testemail@test.com")
+			Expect(err).NotTo(HaveOccurred())
+
+			err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
+			Expect(err).NotTo(HaveOccurred())
+
+			f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
+			Expect(err).NotTo(HaveOccurred())
+			_, err = f.WriteString("{\"drySHA\": \"5468b78dfef356739559abf1f883cd713794fd97\"}")
+			Expect(err).NotTo(HaveOccurred())
+			err = f.Close()
+			Expect(err).NotTo(HaveOccurred())
+
+			err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
+			Expect(err).NotTo(HaveOccurred())
+			err = runGitCmd(gitPath, "git", "commit", "-m", "bump dry sha")
+			Expect(err).NotTo(HaveOccurred())
+			err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Reconciling the created resource")
+			controllerReconciler := &ProposedCommitReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })

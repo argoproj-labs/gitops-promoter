@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -67,7 +68,7 @@ var _ = BeforeSuite(func() {
 	}
 	gitServer = startGitServer(gitStoragePath)
 
-	setupTestGitRepo()
+	//setupInitialTestGitRepo("test", "test")
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
@@ -143,7 +144,7 @@ func startGitServer(gitStoragePath string) *http.Server {
 	return server
 }
 
-func setupTestGitRepo() {
+func setupInitialTestGitRepo(owner string, name string) {
 	gitPath, err := os.MkdirTemp("", "*")
 	if err != nil {
 		panic("could not make temp dir for repo server")
@@ -152,10 +153,10 @@ func setupTestGitRepo() {
 	//GinkgoWriter.TeeTo(os.Stdout)
 	//GinkgoWriter.Println(gitPath)
 
-	err = runGitCmd(gitPath, "git", "clone", "http://localhost:5000/test/test", ".")
+	err = runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", owner, name), ".")
 	Expect(err).NotTo(HaveOccurred())
 
-	f, err := os.Create(gitPath + "/hydrator.metadata")
+	f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
 	_, err = f.WriteString("{\"drySHA\": \"5468b78dfef356739559abf1f883cd713794fd96\"}")
 	Expect(err).NotTo(HaveOccurred())
@@ -182,7 +183,11 @@ func setupTestGitRepo() {
 	Expect(err).NotTo(HaveOccurred())
 	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())
+}
 
+func deleteRepo(owner, name string) {
+	err := os.RemoveAll(path.Join(gitStoragePath, owner, name))
+	Expect(err).NotTo(HaveOccurred())
 }
 
 func runGitCmd(directory string, name string, args ...string) error {
