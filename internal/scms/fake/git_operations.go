@@ -13,8 +13,6 @@ type GitAuthenticationProvider struct {
 }
 
 func NewFakeGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret *v1.Secret) GitAuthenticationProvider {
-	//TODO: Setup git server https://git-scm.com/book/en/v2/Git-on-the-Server-Setting-Up-the-Server
-
 	return GitAuthenticationProvider{
 		scmProvider: scmProvider,
 		secret:      secret,
@@ -23,9 +21,9 @@ func NewFakeGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret 
 
 func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(repoRef v1alpha1.RepositoryRef) string {
 	if gh.scmProvider.Spec.Fake != nil && gh.scmProvider.Spec.Fake.Domain == "" {
-		return fmt.Sprintf("https://fake.com/%s/%s.git", repoRef.Owner, repoRef.Name)
+		return fmt.Sprintf("http://localhost:5000/%s/%s", repoRef.Owner, repoRef.Name)
 	}
-	return fmt.Sprintf("https://%s/%s/%s.git", gh.scmProvider.Spec.Fake.Domain, repoRef.Owner, repoRef.Name)
+	return fmt.Sprintf("http://localhost:5000/%s/%s", repoRef.Owner, repoRef.Name)
 }
 
 func (gh GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {

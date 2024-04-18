@@ -102,8 +102,6 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	logger.Info("Branch SHAs", "dryBranchShas", dryBranchShas, "hydratedBranchShas", hydratedBranchShas)
 
-	//oldActiveDrySha := pc.Status.Active.DrySha
-	//oldProposedDrySha := pc.Status.Proposed.DrySha
 	for branch, _ := range hydratedBranchShas {
 		if pc.Status.Active == nil {
 			pc.Status.Active = &promoterv1alpha1.BranchState{}

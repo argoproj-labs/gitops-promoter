@@ -17,7 +17,13 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/sosedoff/gitkit"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -42,6 +48,8 @@ import (
 var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
+var gitServer *http.Server
+var gitStoragePath string
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -51,6 +59,16 @@ func TestControllers(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+
+	By("setting up git server")
+	var mkDirErr error
+	gitStoragePath, mkDirErr = os.MkdirTemp("", "*")
+	if mkDirErr != nil {
+		panic("could not make temp dir for repo server")
+	}
+	gitServer = startGitServer(gitStoragePath)
+
+	setupTestGitRepo()
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
@@ -87,4 +105,106 @@ var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
+
+	err = gitServer.Close()
+	Expect(err).NotTo(HaveOccurred())
+
+	err = os.RemoveAll(gitStoragePath)
+	Expect(err).NotTo(HaveOccurred())
 })
+
+func startGitServer(gitStoragePath string) *http.Server {
+	hooks := &gitkit.HookScripts{
+		PreReceive: `echo "Hello World!"`,
+	}
+
+	// Configure git service
+	service := gitkit.New(gitkit.Config{
+		Dir:        gitStoragePath,
+		AutoCreate: true,
+		AutoHooks:  true,
+		Hooks:      hooks,
+	})
+
+	if err := service.Setup(); err != nil {
+		log.Fatal(err)
+	}
+
+	server := &http.Server{Addr: ":5000", Handler: service}
+
+	//http.Handle("/", service)
+
+	go func() {
+		// Start HTTP server
+		if err := server.ListenAndServe(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	return server
+}
+
+func setupTestGitRepo() {
+	gitPath, err := os.MkdirTemp("", "*")
+	if err != nil {
+		panic("could not make temp dir for repo server")
+	}
+
+	//GinkgoWriter.TeeTo(os.Stdout)
+	//GinkgoWriter.Println(gitPath)
+
+	err = runGitCmd(gitPath, "git", "clone", "http://localhost:5000/test/test", ".")
+	Expect(err).NotTo(HaveOccurred())
+
+	f, err := os.Create(gitPath + "/hydrator.metadata")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = f.WriteString("{\"drySHA\": \"5468b78dfef356739559abf1f883cd713794fd96\"}")
+	Expect(err).NotTo(HaveOccurred())
+	err = f.Close()
+	Expect(err).NotTo(HaveOccurred())
+
+	err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "config", "user.email", "testemail@test.com")
+	Expect(err).NotTo(HaveOccurred())
+
+	err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "commit", "-m", "init commit")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push")
+	Expect(err).NotTo(HaveOccurred())
+
+	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
+	Expect(err).NotTo(HaveOccurred())
+
+}
+
+func runGitCmd(directory string, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	cmd.Dir = directory
+
+	cmd.Env = []string{
+		"GIT_TERMINAL_PROMPT=0",
+	}
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return err
+	}
+
+	return nil
+}
