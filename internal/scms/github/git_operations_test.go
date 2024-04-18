@@ -1,18 +1,13 @@
 package github
 
 import (
-	"context"
-	"fmt"
-	"net/http"
 	"testing"
-
-	"github.com/bradleyfalzon/ghinstallation/v2"
 )
 
 func TestGetClient(t *testing.T) {
-	itr, _ := ghinstallation.NewKeyFromFile(http.DefaultTransport, 865488, 49029877, "/Users/zaller/Development/promoter/argoproj-promoter.2024-04-09.private-key.pem")
-	token, err := itr.Token(context.Background())
-	fmt.Println(token, err)
+	//itr, _ := ghinstallation.NewKeyFromFile(http.DefaultTransport, 865488, 49029877, "/Users/zaller/Development/promoter/argoproj-promoter.2024-04-09.private-key.pem")
+	//token, err := itr.Token(context.Background())
+	//fmt.Println(token, err)
 
 	//client := github.NewClient(&http.Client{Transport: itr})
 
