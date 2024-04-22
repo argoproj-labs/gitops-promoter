@@ -19,14 +19,15 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"regexp"
+	"time"
+
 	"github.com/argoproj/promoter/internal/git"
 	"github.com/argoproj/promoter/internal/scms/fake"
 	"github.com/argoproj/promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"reflect"
-	"regexp"
-	"time"
 
 	"github.com/argoproj/promoter/internal/scms"
 	"github.com/argoproj/promoter/internal/scms/github"
@@ -102,7 +103,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	logger.Info("Branch SHAs", "dryBranchShas", dryBranchShas, "hydratedBranchShas", hydratedBranchShas)
 
-	for branch, _ := range hydratedBranchShas {
+	for branch := range hydratedBranchShas {
 		if pc.Status.Active == nil {
 			pc.Status.Active = &promoterv1alpha1.BranchState{}
 		}
@@ -200,10 +201,13 @@ func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret, pc promoterv1alpha1.ProposedCommit) (scms.GitOperationsProvider, error) {
+	logger := log.FromContext(ctx)
 	switch {
 	case scmProvider.Spec.Fake != nil:
+		logger.Info("Creating fake git authentication provider")
 		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
 	case scmProvider.Spec.GitHub != nil:
+		logger.Info("Creating GitHub git authentication provider")
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
 	default:
 		return nil, nil

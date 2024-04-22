@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+
 	"github.com/argoproj/promoter/internal/utils"
 
 	"github.com/argoproj/promoter/internal/scms/fake"

@@ -2,6 +2,7 @@ package scms
 
 import (
 	"context"
+
 	"github.com/argoproj/promoter/api/v1alpha1"
 )
 

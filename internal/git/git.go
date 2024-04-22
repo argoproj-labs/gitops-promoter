@@ -6,16 +6,17 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
+
 	"github.com/argoproj/promoter/api/v1alpha1"
 	"github.com/argoproj/promoter/internal/scms"
 	"github.com/argoproj/promoter/internal/utils"
-	"io"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"os"
-	"os/exec"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"strings"
 )
 
 type GitOperations struct {

@@ -3,9 +3,10 @@ package github
 import (
 	"context"
 	"fmt"
-	"github.com/argoproj/promoter/api/v1alpha1"
 	"net/http"
 	"strconv"
+
+	"github.com/argoproj/promoter/api/v1alpha1"
 
 	v1 "k8s.io/api/core/v1"
 

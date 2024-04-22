@@ -2,8 +2,9 @@ package github
 
 import (
 	"context"
-	"github.com/argoproj/promoter/internal/scms"
 	"strconv"
+
+	"github.com/argoproj/promoter/internal/scms"
 
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"

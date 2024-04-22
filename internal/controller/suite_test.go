@@ -19,9 +19,6 @@ package controller
 import (
 	"bytes"
 	"fmt"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"github.com/sosedoff/gitkit"
 	"log"
 	"net/http"
 	"os"
@@ -30,6 +27,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"github.com/sosedoff/gitkit"
 
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -180,6 +181,36 @@ func setupInitialTestGitRepo(owner string, name string) {
 	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development")
 	Expect(err).NotTo(HaveOccurred())
 	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
+	Expect(err).NotTo(HaveOccurred())
+}
+
+func addPendingCommit(gitPath string, drySha string) {
+	//gitPath, err := os.MkdirTemp("", "*")
+	//Expect(err).NotTo(HaveOccurred())
+
+	err := runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", "test", "test"), ".")
+	Expect(err).NotTo(HaveOccurred())
+
+	err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "config", "user.email", "testemail@test.com")
+	Expect(err).NotTo(HaveOccurred())
+
+	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
+	Expect(err).NotTo(HaveOccurred())
+
+	f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
+	Expect(err).NotTo(HaveOccurred())
+	_, err = f.WriteString(fmt.Sprintf("{\"drySHA\": \"%s\"}", drySha))
+	Expect(err).NotTo(HaveOccurred())
+	err = f.Close()
+	Expect(err).NotTo(HaveOccurred())
+
+	err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "commit", "-m", "bump dry sha")
 	Expect(err).NotTo(HaveOccurred())
 	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())

@@ -18,13 +18,11 @@ package controller
 
 import (
 	"context"
-	"fmt"
-	v1 "k8s.io/api/core/v1"
 	"os"
-	"path"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -136,30 +134,8 @@ var _ = Describe("ProposedCommit Controller", func() {
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			err = runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", "test", "test"), ".")
-			Expect(err).NotTo(HaveOccurred())
 
-			err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
-			Expect(err).NotTo(HaveOccurred())
-			err = runGitCmd(gitPath, "git", "config", "user.email", "testemail@test.com")
-			Expect(err).NotTo(HaveOccurred())
-
-			err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
-			Expect(err).NotTo(HaveOccurred())
-
-			f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
-			Expect(err).NotTo(HaveOccurred())
-			_, err = f.WriteString("{\"drySHA\": \"5468b78dfef356739559abf1f883cd713794fd97\"}")
-			Expect(err).NotTo(HaveOccurred())
-			err = f.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
-			Expect(err).NotTo(HaveOccurred())
-			err = runGitCmd(gitPath, "git", "commit", "-m", "bump dry sha")
-			Expect(err).NotTo(HaveOccurred())
-			err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
-			Expect(err).NotTo(HaveOccurred())
+			addPendingCommit(gitPath, "5468b78dfef356739559abf1f883cd713794fd97")
 
 			By("Reconciling the created resource")
 			controllerReconciler := &ProposedCommitReconciler{
