@@ -34,7 +34,7 @@ type PullRequestSpec struct {
 
 	// RepositoryReference what repository to open the PR on.
 	// +kubebuilder:validation:Required
-	RepositoryReference *RepositoryRef `json:"repositoryRef"`
+	RepositoryReference *Repository `json:"repository"`
 	// Title is the title of the pull request.
 	// +kubebuilder:validation:Required
 	Title string `json:"title"`

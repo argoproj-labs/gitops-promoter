@@ -119,7 +119,7 @@ func main() {
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
 	})
-	if err != nil {
+	if err != nil || mgr == nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}

@@ -7,7 +7,7 @@ import (
 )
 
 type GitOperationsProvider interface {
-	GetGitHttpsRepoUrl(repoRef v1alpha1.RepositoryRef) string
+	GetGitHttpsRepoUrl(repoRef v1alpha1.Repository) string
 	GetToken(ctx context.Context) (string, error)
 	GetUser(ctx context.Context) (string, error)
 }

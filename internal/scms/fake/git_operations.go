@@ -20,7 +20,7 @@ func NewFakeGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret 
 	}
 }
 
-func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(repoRef v1alpha1.RepositoryRef) string {
+func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(repoRef v1alpha1.Repository) string {
 	if gh.scmProvider.Spec.Fake != nil && gh.scmProvider.Spec.Fake.Domain == "" {
 		return fmt.Sprintf("http://localhost:5000/%s/%s", repoRef.Owner, repoRef.Name)
 	}

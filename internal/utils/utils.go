@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func GetScmProviderFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.RepositoryRef, obj metav1.Object) (*promoterv1alpha1.ScmProvider, error) {
+func GetScmProviderFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.Repository, obj metav1.Object) (*promoterv1alpha1.ScmProvider, error) {
 	logger := log.FromContext(ctx)
 
 	var scmProvider promoterv1alpha1.ScmProvider
@@ -39,7 +39,7 @@ func GetScmProviderFromRepositoryReference(ctx context.Context, k8sClient client
 	return &scmProvider, nil
 }
 
-func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.RepositoryRef, obj metav1.Object) (*promoterv1alpha1.ScmProvider, *v1.Secret, error) {
+func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.Repository, obj metav1.Object) (*promoterv1alpha1.ScmProvider, *v1.Secret, error) {
 	logger := log.FromContext(ctx)
 
 	scmProvider, err := GetScmProviderFromRepositoryReference(ctx, k8sClient, repositoryRef, obj)

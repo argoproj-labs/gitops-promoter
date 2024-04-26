@@ -42,7 +42,7 @@ spec:
               description:
                 description: Body the description body of the pull/merge request
                 type: string
-              repositoryRef:
+              repository:
                 description: RepositoryReference what repository to open the PR on.
                 properties:
                   name:
@@ -85,7 +85,7 @@ spec:
                 description: Title is the title of the pull request.
                 type: string
             required:
-            - repositoryRef
+            - repository
             - sourceBranch
             - state
             - targetBranch

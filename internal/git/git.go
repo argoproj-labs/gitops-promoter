@@ -21,7 +21,7 @@ import (
 
 type GitOperations struct {
 	gap         scms.GitOperationsProvider
-	repoRef     *v1alpha1.RepositoryRef
+	repoRef     *v1alpha1.Repository
 	scmProvider *v1alpha1.ScmProvider
 	pathLookup  utils.PathLookup
 }
@@ -31,7 +31,7 @@ type HydratorMetadataFile struct {
 	DrySHA   string   `json:"drySha"`
 }
 
-func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, pathLookup utils.PathLookup, repoRef v1alpha1.RepositoryRef, obj v1.Object) (*GitOperations, error) {
+func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, pathLookup utils.PathLookup, repoRef v1alpha1.Repository, obj v1.Object) (*GitOperations, error) {
 
 	scmProvider, err := utils.GetScmProviderFromRepositoryReference(ctx, k8sClient, repoRef, obj)
 	if err != nil {

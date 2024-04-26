@@ -55,7 +55,7 @@ spec:
               proposedBranch:
                 description: ProposedBranch staging hydrated branch
                 type: string
-              repositoryRef:
+              repository:
                 description: RepositoryReference what repository to open the PR on.
                 properties:
                   name:
@@ -79,7 +79,7 @@ spec:
             required:
             - activeBranch
             - proposedBranch
-            - repositoryRef
+            - repository
             type: object
           status:
             description: ProposedCommitStatus defines the observed state of ProposedCommit

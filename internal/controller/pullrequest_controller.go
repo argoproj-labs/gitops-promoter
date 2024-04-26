@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/argoproj/promoter/internal/utils"
 
@@ -217,6 +218,10 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr promot
 	logger := log.FromContext(ctx)
 	logger.Info("Opening Pull Request")
 
+	if pullRequestProvider == nil {
+		return nil, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in createPullRequest")
+	}
+
 	updatePR, err := pullRequestProvider.Create(
 		ctx,
 		pr.Spec.Title,
@@ -226,6 +231,9 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr promot
 		&pr)
 	if err != nil {
 		return nil, err
+	}
+	if updatePR == nil {
+		return nil, fmt.Errorf("failed to create pull request, updatedPR is nil")
 	}
 
 	updatedHash, err := updatePR.Hash()
@@ -241,6 +249,10 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr promot
 func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Updating Pull Request")
+
+	if pullRequestProvider == nil {
+		return nil, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in updatePullRequest")
+	}
 
 	updatedPR, err := pullRequestProvider.Update(ctx, pr.Spec.Title, pr.Spec.Description, &pr)
 	if err != nil {
@@ -261,6 +273,10 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr promote
 	logger := log.FromContext(ctx)
 	logger.Info("Merging Pull Request")
 
+	if pullRequestProvider == nil {
+		return nil, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in mergePullRequest")
+	}
+
 	updatedPR, err := pullRequestProvider.Merge(ctx, "", &pr)
 	if err != nil {
 		return nil, err
@@ -280,6 +296,10 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr promote
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Closing Pull Request")
+
+	if pullRequestProvider == nil {
+		return nil, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in closePullRequest")
+	}
 
 	updatedPR, err := pullRequestProvider.Close(ctx, &pr)
 	if err != nil {

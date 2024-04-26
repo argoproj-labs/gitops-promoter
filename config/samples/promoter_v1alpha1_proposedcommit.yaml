@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: proposedcommit-sample
 spec:
-  repositoryRef:
+  repository:
     owner: zachaller
     name: promoter-testing
     scmProviderRef:

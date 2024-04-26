@@ -8,7 +8,7 @@ type Fake struct {
 	Domain string `json:"domain,omitempty"`
 }
 
-type RepositoryRef struct {
+type Repository struct {
 	// +kubebuilder:validation:Required
 	Owner string `json:"owner"`
 	// +kubebuilder:validation:Required
