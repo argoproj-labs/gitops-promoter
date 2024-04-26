@@ -80,14 +80,16 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (d
 	dryBranchShas := make(map[string]string)
 
 	for _, branch := range branches {
-		_, _, _, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
+		_, _, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
 		if err != nil {
+			logger.Error(err, "could not git checkout", "gitError", stderr)
 			return nil, nil, err
 		}
 		logger.Info("Checked out branch", "branch", branch)
 
-		_, _, _, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "pull", "--progress")
+		_, _, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "pull", "--progress")
 		if err != nil {
+			logger.Error(err, "could not git pull", "gitError", stderr)
 			return nil, nil, err
 		}
 		logger.Info("Pulled branch", "branch", branch)
