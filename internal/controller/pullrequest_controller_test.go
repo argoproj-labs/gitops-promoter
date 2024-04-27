@@ -128,7 +128,7 @@ var _ = Describe("PullRequest Controller", func() {
 			}, &pr)).To(Succeed())
 			Expect(pr.Status.ID).To(Equal("1"))
 			Expect(pr.Status.State).To(Equal("open"))
-			Expect(pr.Status.SpecHash).To(Equal("2ac637b791376e069498c3c0c2d73ad13a11966f"))
+			Expect(pr.Status.SpecHash).To(Equal("e38edf1eb9ba75fe755968551d9845ba64bc8e24"))
 
 			By("Reconciling updating of the PullRequest")
 			pr.Spec.Title = "Updated Title"
