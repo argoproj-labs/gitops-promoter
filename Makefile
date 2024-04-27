@@ -72,13 +72,17 @@ test: manifests generate fmt vet envtest ## Run tests.
 test-e2e:
 	go test ./test/e2e/ -v -ginkgo.v
 
-.PHONY: lint
+.PHONY: lint nilaway-no-test
 lint: golangci-lint ## Run golangci-lint linter & yamllint
 	$(GOLANGCI_LINT) run
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 	$(GOLANGCI_LINT) run --fix
+
+.PHONY: nilaway-no-test
+nilaway-no-test: ## Run nilaway to remove nil checks from the code
+	$(NILAWAY) --test=false ./...
 
 ##@ Build
 
@@ -161,6 +165,7 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 MOCKERY = $(LOCALBIN)/mockery-$(MOCKERY_VERSION)
+NILAWAY = $(LOCALBIN)/nilaway-$(NILAWAY_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.3.0
@@ -168,6 +173,7 @@ CONTROLLER_TOOLS_VERSION ?= v0.14.0
 ENVTEST_VERSION ?= release-0.17
 GOLANGCI_LINT_VERSION ?= v1.54.2
 MOCKERY_VERSION ?= v2.42.2
+NILAWAY_VERSION ?= latest
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -192,6 +198,10 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 .PHONY: mockery
 mockery:
 	$(call go-install-tool,$(MOCKERY),github.com/vektra/mockery/v2,${MOCKERY_VERSION})
+
+.PHONY: nilaway
+nilaway:
+	$(call go-install-tool,$(NILAWAY),go.uber.org/nilaway/cmd/nilaway,${NILAWAY_VERSION})
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)

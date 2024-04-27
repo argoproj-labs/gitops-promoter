@@ -159,13 +159,82 @@ spec:
           spec:
             description: ProposedCommitSpec defines the desired state of ProposedCommit
             properties:
-              foo:
-                description: Foo is an example field of ProposedCommit. Edit proposedcommit_types.go
-                  to remove/update
+              activeBranch:
+                description: ActiveBranch staging hydrated branch
                 type: string
+              commitStatuses:
+                items:
+                  properties:
+                    key:
+                      description: Key staging hydrated branch
+                      type: string
+                  required:
+                  - key
+                  type: object
+                type: array
+              proposedBranch:
+                description: ProposedBranch staging hydrated branch
+                type: string
+              repository:
+                description: RepositoryReference what repository to open the PR on.
+                properties:
+                  name:
+                    type: string
+                  owner:
+                    type: string
+                  scmProviderRef:
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - name
+                - owner
+                - scmProviderRef
+                type: object
+            required:
+            - activeBranch
+            - proposedBranch
+            - repository
             type: object
           status:
             description: ProposedCommitStatus defines the observed state of ProposedCommit
+            properties:
+              active:
+                properties:
+                  drySha:
+                    type: string
+                  hydratedSha:
+                    type: string
+                type: object
+              commitStatuses:
+                items:
+                  properties:
+                    key:
+                      description: Key staging hydrated branch
+                      type: string
+                    phase:
+                      description: Phase what phase is the status in
+                      type: string
+                  required:
+                  - key
+                  - phase
+                  type: object
+                type: array
+              proposed:
+                description: |-
+                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                properties:
+                  drySha:
+                    type: string
+                  hydratedSha:
+                    type: string
+                type: object
             type: object
         type: object
     served: true
@@ -213,13 +282,70 @@ spec:
           spec:
             description: PullRequestSpec defines the desired state of PullRequest
             properties:
-              foo:
-                description: Foo is an example field of PullRequest. Edit pullrequest_types.go
-                  to remove/update
+              description:
+                description: Body the description body of the pull/merge request
                 type: string
+              repository:
+                description: RepositoryReference what repository to open the PR on.
+                properties:
+                  name:
+                    type: string
+                  owner:
+                    type: string
+                  scmProviderRef:
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - name
+                - owner
+                - scmProviderRef
+                type: object
+              sourceBranch:
+                description: Base the git reference that we are merging into Head
+                  ---> Base
+                type: string
+                x-kubernetes-validations:
+                - message: Value is immutable
+                  rule: self == oldSelf
+              state:
+                default: open
+                description: State of the merge request closed/merged/open
+                type: string
+              targetBranch:
+                description: Head the git reference we are merging from Head --->
+                  Base
+                type: string
+                x-kubernetes-validations:
+                - message: Value is immutable
+                  rule: self == oldSelf
+              title:
+                description: Title is the title of the pull request.
+                type: string
+            required:
+            - repository
+            - sourceBranch
+            - state
+            - targetBranch
+            - title
             type: object
           status:
             description: PullRequestStatus defines the observed state of PullRequest
+            properties:
+              id:
+                description: ID the id of the pull request
+                type: string
+              specHash:
+                description: SpecHash used to track if we need to update
+                type: string
+              state:
+                description: State of the merge request closed/merged/open
+                type: string
             type: object
         type: object
     served: true
@@ -274,6 +400,80 @@ spec:
             type: object
           status:
             description: RevertCommitStatus defines the observed state of RevertCommit
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: scmproviders.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: ScmProvider
+    listKind: ScmProviderList
+    plural: scmproviders
+    singular: scmprovider
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ScmProvider is the Schema for the scmproviders API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ScmProviderSpec defines the desired state of ScmProvider
+            properties:
+              fake:
+                description: Fake required configuration for Fake as the SCM provider
+                properties:
+                  domain:
+                    type: string
+                type: object
+              github:
+                description: GitHub required configuration for GitHub as the SCM provider
+                properties:
+                  domain:
+                    type: string
+                type: object
+              secretRef:
+                description: SecretRef contains the credentials required to auth to
+                  a specific provider
+                properties:
+                  name:
+                    description: |-
+                      Name of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                      TODO: Add other useful fields. apiVersion, kind, uid?
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
+            type: object
+          status:
+            description: ScmProviderStatus defines the observed state of ScmProvider
             type: object
         type: object
     served: true
@@ -466,6 +666,32 @@ rules:
   - promoter.argoproj.io
   resources:
   - revertcommits/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - scmproviders/status
   verbs:
   - get
   - patch
