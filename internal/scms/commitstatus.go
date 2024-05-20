@@ -7,5 +7,5 @@ import (
 )
 
 type CommitStatusProvider interface {
-	Create(ctx context.Context) (*v1alpha1.CommitStatus, error)
+	Set(ctx context.Context, commitStatus *v1alpha1.CommitStatus) (*v1alpha1.CommitStatus, error)
 }

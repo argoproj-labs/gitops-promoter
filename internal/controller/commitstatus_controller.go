@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"github.com/argoproj/promoter/internal/scms"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -59,4 +60,11 @@ func (r *CommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.CommitStatus{}).
 		Complete(r)
+}
+
+func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, commitStatus promoterv1alpha1.CommitStatus) (scms.CommitStatusProvider, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Getting Commit Status Provider")
+
+	return nil, nil
 }

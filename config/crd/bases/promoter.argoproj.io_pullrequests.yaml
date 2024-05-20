@@ -98,7 +98,8 @@ spec:
                 description: ID the id of the pull request
                 type: string
               specHash:
-                description: SpecHash used to track if we need to update
+                description: SpecHash used to track if we need to update, should maybe
+                  use observedGeneration pattern
                 type: string
               state:
                 description: State of the merge request closed/merged/open

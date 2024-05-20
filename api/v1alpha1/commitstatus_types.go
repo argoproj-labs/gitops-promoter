@@ -28,14 +28,33 @@ type CommitStatusSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of CommitStatus. Edit commitstatus_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// +kubebuilder:validation:Required
+	RepositoryReference *Repository `json:"repository"`
+
+	// +kubebuilder:validation:Required
+	Sha string `json:"sha"`
+
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	Description string `json:"description"`
+
+	// +kubebuilder:validation:Required
+	State string `json:"state"` // queued, in_progress, success, failure, or cancelled
+	// (Github: error, failure, pending, success)
+	// (Gitlab: pending, running, success, failed, canceled)
+	// (Bitbucket: INPROGRESS, STOPPED, SUCCESSFUL, FAILED)
+
+	Url string `json:"url"`
 }
 
 // CommitStatusStatus defines the observed state of CommitStatus
 type CommitStatusStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Id    string `json:"id"`
+	Sha   string `json:"sha"`
+	State string `json:"state"`
 }
 
 //+kubebuilder:object:root=true

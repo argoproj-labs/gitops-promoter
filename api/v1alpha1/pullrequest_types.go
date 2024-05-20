@@ -63,7 +63,7 @@ type PullRequestStatus struct {
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
 	State string `json:"state,omitempty"`
-	// SpecHash used to track if we need to update
+	// SpecHash used to track if we need to update, should maybe use observedGeneration pattern
 	SpecHash string `json:"specHash,omitempty"`
 }
 
