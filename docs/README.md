@@ -59,7 +59,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: proposedcommit-sample
 spec:
-  repositoryRef:
+  repository:
     owner: crenshaw-dev
     name: argocd-example-apps
     scmProviderRef:
@@ -77,7 +77,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: proposedcommit-sample-test
 spec:
-  repositoryRef:
+  repository:
     owner: crenshaw-dev
     name: argocd-example-apps
     scmProviderRef:
@@ -95,7 +95,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: proposedcommit-sample-prod
 spec:
-  repositoryRef:
+  repository:
     owner: crenshaw-dev
     name: argocd-example-apps
     scmProviderRef:
