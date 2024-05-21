@@ -2,12 +2,13 @@ package github
 
 import (
 	"context"
+	"strconv"
+
 	promoterv1alpha1 "github.com/argoproj/promoter/api/v1alpha1"
 	"github.com/argoproj/promoter/internal/scms"
 	"github.com/google/go-github/v61/github"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"strconv"
 )
 
 type CommitStatus struct {
@@ -50,6 +51,5 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	commitStatus.Status.Id = strconv.FormatInt(*repoStatus.ID, 10)
 	commitStatus.Status.State = *repoStatus.State
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
-	commitStatus.Status.ObservedGeneration = commitStatus.Generation
 	return commitStatus, nil
 }

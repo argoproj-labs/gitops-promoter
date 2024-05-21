@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+
 	"github.com/argoproj/promoter/internal/scms"
 	"github.com/argoproj/promoter/internal/scms/github"
 	"github.com/argoproj/promoter/internal/utils"
@@ -79,6 +80,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	commitStatus.Status.ObservedGeneration = commitStatus.Generation
 	err = r.Status().Update(ctx, commitStatus)
 	if err != nil {
 		return ctrl.Result{}, err
