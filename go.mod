@@ -1,4 +1,4 @@
-module github.com/argoproj/promoter
+module github.com/zachaller/promoter
 
 go 1.21
 

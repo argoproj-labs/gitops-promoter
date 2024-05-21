@@ -39,7 +39,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	promoterv1alpha1 "github.com/argoproj/promoter/api/v1alpha1"
+	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 

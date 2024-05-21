@@ -3,7 +3,7 @@ package fake
 import (
 	"context"
 
-	"github.com/argoproj/promoter/api/v1alpha1"
+	"github.com/zachaller/promoter/api/v1alpha1"
 )
 
 type PullRequest struct {

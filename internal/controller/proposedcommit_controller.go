@@ -23,14 +23,14 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/argoproj/promoter/internal/git"
-	"github.com/argoproj/promoter/internal/scms/fake"
-	"github.com/argoproj/promoter/internal/utils"
+	"github.com/zachaller/promoter/internal/git"
+	"github.com/zachaller/promoter/internal/scms/fake"
+	"github.com/zachaller/promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/argoproj/promoter/internal/scms"
-	"github.com/argoproj/promoter/internal/scms/github"
+	"github.com/zachaller/promoter/internal/scms"
+	"github.com/zachaller/promoter/internal/scms/github"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -38,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	promoterv1alpha1 "github.com/argoproj/promoter/api/v1alpha1"
+	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
 )
 
 // ProposedCommitReconciler reconciles a ProposedCommit object

@@ -3,7 +3,7 @@ package utils
 import (
 	"context"
 
-	promoterv1alpha1 "github.com/argoproj/promoter/api/v1alpha1"
+	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

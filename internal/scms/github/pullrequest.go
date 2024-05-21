@@ -4,13 +4,13 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/argoproj/promoter/internal/scms"
+	"github.com/zachaller/promoter/internal/scms"
 
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/argoproj/promoter/api/v1alpha1"
 	"github.com/google/go-github/v61/github"
+	"github.com/zachaller/promoter/api/v1alpha1"
 )
 
 type PullRequest struct {
