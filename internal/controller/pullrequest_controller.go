@@ -91,7 +91,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	if pr.Spec.State == promoterv1alpha1.Open && pr.Status.State != promoterv1alpha1.Open {
+	if pr.Spec.State == promoterv1alpha1.PullRequestOpen && pr.Status.State != promoterv1alpha1.PullRequestOpen {
 		updatedPR, err := r.createPullRequest(ctx, pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -105,7 +105,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	if pr.Spec.State == promoterv1alpha1.Merged && pr.Status.State != promoterv1alpha1.Merged {
+	if pr.Spec.State == promoterv1alpha1.PullRequestMerged && pr.Status.State != promoterv1alpha1.PullRequestMerged {
 		logger.Info("Merging Pull Request")
 
 		updatedPR, err := r.mergePullRequest(ctx, pr, pullRequestProvider)
@@ -121,7 +121,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	if pr.Spec.State == promoterv1alpha1.Closed && pr.Status.State != promoterv1alpha1.Closed {
+	if pr.Spec.State == promoterv1alpha1.PullRequestClosed && pr.Status.State != promoterv1alpha1.PullRequestClosed {
 		updatedPR, err := r.closePullRequest(ctx, pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -242,7 +242,7 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr promot
 	}
 
 	updatePR.Status.SpecHash = updatedHash
-	updatePR.Status.State = promoterv1alpha1.Open
+	updatePR.Status.State = promoterv1alpha1.PullRequestOpen
 	return updatePR, nil
 }
 
@@ -288,7 +288,7 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr promote
 	}
 
 	updatedPR.Status.SpecHash = updatedHash
-	updatedPR.Status.State = promoterv1alpha1.Merged
+	updatedPR.Status.State = promoterv1alpha1.PullRequestMerged
 
 	return updatedPR, nil
 }
@@ -312,6 +312,6 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr promote
 	}
 
 	updatedPR.Status.SpecHash = updatedHash
-	updatedPR.Status.State = promoterv1alpha1.Closed
+	updatedPR.Status.State = promoterv1alpha1.PullRequestClosed
 	return updatedPR, nil
 }

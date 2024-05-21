@@ -66,7 +66,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if cs.Status.Sha == cs.Spec.Sha && cs.Generation == cs.Status.ObservedGeneration {
-		logger.Info("CommitStatus already set", "namespace", req.Namespace, "name", req.Name)
+		logger.Info("Reconcile not needed", "namespace", req.Namespace, "name", req.Name)
 		return ctrl.Result{}, nil
 	}
 

@@ -40,7 +40,8 @@ type CommitStatusSpec struct {
 	Description string `json:"description"`
 
 	// +kubebuilder:validation:Required
-	State string `json:"state"` // queued, in_progress, success, failure, or cancelled
+	// +kubebuilder:default:=pending
+	State CommitStatusState `json:"state"` // pending, success, failure
 	// (Github: error, failure, pending, success)
 	// (Gitlab: pending, running, success, failed, canceled)
 	// (Bitbucket: INPROGRESS, STOPPED, SUCCESSFUL, FAILED)
@@ -52,10 +53,10 @@ type CommitStatusSpec struct {
 type CommitStatusStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	ObservedGeneration int64  `json:"observedGeneration"`
-	Id                 string `json:"id"`
-	Sha                string `json:"sha"`
-	State              string `json:"state"`
+	ObservedGeneration int64             `json:"observedGeneration"`
+	Id                 string            `json:"id"`
+	Sha                string            `json:"sha"`
+	State              CommitStatusState `json:"state"`
 }
 
 //+kubebuilder:object:root=true
@@ -82,3 +83,11 @@ type CommitStatusList struct {
 func init() {
 	SchemeBuilder.Register(&CommitStatus{}, &CommitStatusList{})
 }
+
+type CommitStatusState string
+
+const (
+	CommitStatusFailure CommitStatusState = "failure"
+	CommitStatusSuccess CommitStatusState = "success"
+	CommitStatusPending CommitStatusState = "pending"
+)

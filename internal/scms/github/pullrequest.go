@@ -57,7 +57,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		Spec:       pullRequest.Spec,
 		Status: v1alpha1.PullRequestStatus{
 			ID:    strconv.Itoa(*githubPullRequest.Number),
-			State: v1alpha1.Open,
+			State: v1alpha1.PullRequestOpen,
 		},
 	}, nil
 }
@@ -127,7 +127,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 		Spec:       pullRequest.Spec,
 		Status: v1alpha1.PullRequestStatus{
 			ID:    strconv.Itoa(*githubPullRequest.Number),
-			State: v1alpha1.Closed,
+			State: v1alpha1.PullRequestClosed,
 		},
 	}, nil
 }
@@ -160,6 +160,6 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	logger.Info("github response status",
 		"status", response.Status)
 
-	pullRequest.Status.State = v1alpha1.Merged
+	pullRequest.Status.State = v1alpha1.PullRequestMerged
 	return pullRequest, nil
 }

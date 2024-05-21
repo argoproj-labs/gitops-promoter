@@ -51,7 +51,6 @@ func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(repoRef v1alpha1.Reposito
 }
 
 func (gh GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
-	// Token expires in 1 minute
 	return gh.transport.Token(ctx)
 }
 

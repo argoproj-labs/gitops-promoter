@@ -32,12 +32,14 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	logger := log.FromContext(ctx)
 	logger.Info("Setting Commit Status")
 
-	repoStatus, response, err := cs.client.Repositories.CreateStatus(ctx, commitStatus.Spec.RepositoryReference.Owner, commitStatus.Spec.RepositoryReference.Name, commitStatus.Spec.Sha, &github.RepoStatus{
-		State:       github.String(commitStatus.Spec.State),
+	commitStatusS := &github.RepoStatus{
+		State:       github.String(string(commitStatus.Spec.State)),
 		TargetURL:   github.String(commitStatus.Spec.Url),
 		Description: github.String(commitStatus.Spec.Description),
 		Context:     github.String(commitStatus.Spec.Name),
-	})
+	}
+
+	repoStatus, response, err := cs.client.Repositories.CreateStatus(ctx, commitStatus.Spec.RepositoryReference.Owner, commitStatus.Spec.RepositoryReference.Name, commitStatus.Spec.Sha, commitStatusS)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +51,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 		"status", response.Status)
 
 	commitStatus.Status.Id = strconv.FormatInt(*repoStatus.ID, 10)
-	commitStatus.Status.State = *repoStatus.State
+	commitStatus.Status.State = promoterv1alpha1.CommitStatusState(*repoStatus.State)
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
 	return commitStatus, nil
 }

@@ -51,7 +51,7 @@ type PullRequestSpec struct {
 	// State of the merge request closed/merged/open
 	// +kubebuilder:default:=open
 	// +kubebuilder:validation:Required
-	State string `json:"state"`
+	State PullRequestState `json:"state"`
 }
 
 // PullRequestStatus defines the observed state of PullRequest
@@ -62,7 +62,7 @@ type PullRequestStatus struct {
 	// ID the id of the pull request
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
-	State string `json:"state,omitempty"`
+	State PullRequestState `json:"state,omitempty"`
 	// SpecHash used to track if we need to update, should maybe use observedGeneration pattern
 	SpecHash string `json:"specHash,omitempty"`
 }
@@ -95,9 +95,9 @@ func init() {
 type PullRequestState string
 
 const (
-	Closed = "closed"
-	Open   = "open"
-	Merged = "merged"
+	PullRequestClosed PullRequestState = "closed"
+	PullRequestOpen   PullRequestState = "open"
+	PullRequestMerged PullRequestState = "merged"
 )
 
 func (pr PullRequest) Hash() (string, error) {

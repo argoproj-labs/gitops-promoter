@@ -66,6 +66,7 @@ spec:
               sha:
                 type: string
               state:
+                default: pending
                 type: string
               url:
                 type: string
