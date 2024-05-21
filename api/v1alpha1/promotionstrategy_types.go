@@ -29,7 +29,7 @@ type PromotionStrategySpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of PromotionStrategy. Edit promotionstrategy_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Test string `json:"test,omitempty"`
 }
 
 // PromotionStrategyStatus defines the observed state of PromotionStrategy
