@@ -6,4 +6,13 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: commitstatus-sample
 spec:
-  # TODO(user): Add fields here
+    sha: c920bd7e99ea399f30fe12a69a73e71899795d4d
+    repository:
+      owner: zachaller
+      name: promoter-testing
+      scmProviderRef:
+          name: scmprovider-sample
+    state: success
+    name: ci/circleci
+    description: "The build succeeded!"
+    url: "https://google.com"

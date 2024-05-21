@@ -19,7 +19,9 @@ package controller
 import (
 	"context"
 	"github.com/argoproj/promoter/internal/scms"
-
+	"github.com/argoproj/promoter/internal/scms/github"
+	"github.com/argoproj/promoter/internal/utils"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,9 +50,39 @@ type CommitStatusReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	var cs promoterv1alpha1.CommitStatus
+	err := r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("CommitStatus not found", "namespace", req.Namespace, "name", req.Name)
+			return ctrl.Result{}, nil
+		}
+
+		logger.Error(err, "failed to get CommitStatus", "namespace", req.Namespace, "name", req.Name)
+		return ctrl.Result{}, err
+	}
+
+	if cs.Status.Sha == cs.Spec.Sha && cs.Generation == cs.Status.ObservedGeneration {
+		logger.Info("CommitStatus already set", "namespace", req.Namespace, "name", req.Name)
+		return ctrl.Result{}, nil
+	}
+
+	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	commitStatus, err := commitStatusProvider.Set(ctx, &cs)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	err = r.Status().Update(ctx, commitStatus)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -63,8 +95,20 @@ func (r *CommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, commitStatus promoterv1alpha1.CommitStatus) (scms.CommitStatusProvider, error) {
-	logger := log.FromContext(ctx)
-	logger.Info("Getting Commit Status Provider")
 
-	return nil, nil
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, *commitStatus.Spec.RepositoryReference, &commitStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	switch {
+	case scmProvider.Spec.GitHub != nil:
+		return github.NewGithubCommitStatusProvider(*secret)
+		//return scms.NewScmPullRequestProvider(scms.GitHub, *secret), nil
+	//case scmProvider.Spec.Fake != nil:
+	//	return fake.NewFakePullRequestProvider(), nil
+	//return scms.NewScmPullRequestProvider(scms.Fake, *secret), nil
+	default:
+		return nil, nil
+	}
 }
