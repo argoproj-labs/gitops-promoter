@@ -18,6 +18,10 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"github.com/zachaller/promoter/internal/utils"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -47,9 +51,50 @@ type PromotionStrategyReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	var ps promoterv1alpha1.PromotionStrategy
+	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("PromotionStrategy not found", "namespace", req.Namespace, "name", req.Name)
+			return ctrl.Result{}, nil
+		}
+
+		logger.Error(err, "failed to get PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
+		return ctrl.Result{}, err
+	}
+
+	for _, environment := range ps.Spec.Environments {
+		logger.Info("Branch", "Name", environment.Branch)
+
+		pc := promoterv1alpha1.ProposedCommit{}
+		pcName := utils.KubeSafeName(fmt.Sprintf("%s-%s", ps.Name, environment.Branch), 250)
+		err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
+		if err != nil {
+			if errors.IsNotFound(err) {
+				logger.Info("ProposedCommit not found creating", "namespace", ps.Namespace, "name", pcName)
+				pc = promoterv1alpha1.ProposedCommit{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      pcName,
+						Namespace: ps.Namespace,
+					},
+					Spec: promoterv1alpha1.ProposedCommitSpec{
+						RepositoryReference: ps.Spec.RepositoryReference,
+						ProposedBranch:      fmt.Sprintf("%s-%s", environment.Branch, "next"),
+						ActiveBranch:        environment.Branch,
+					},
+				}
+				err := r.Create(ctx, &pc)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+			} else {
+				logger.Error(err, "failed to get ProposedCommit", "namespace", ps.Namespace, "name", pcName)
+				return ctrl.Result{}, err
+			}
+		}
+	}
 
 	return ctrl.Result{}, nil
 }

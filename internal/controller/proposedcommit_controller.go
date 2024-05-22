@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"regexp"
 	"time"
 
 	"github.com/zachaller/promoter/internal/git"
@@ -62,8 +61,6 @@ type ProposedCommitReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
-
 	logger := log.FromContext(ctx)
 
 	var pc promoterv1alpha1.ProposedCommit
@@ -87,7 +84,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, *pc.Spec.RepositoryReference, &pc)
+	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, *pc.Spec.RepositoryReference, &pc, pc.Spec.ActiveBranch)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -125,9 +122,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if pc.Status.Proposed.DrySha != pc.Status.Active.DrySha {
 		logger.Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.DrySha, "activeDrySha", pc.Status.Active.DrySha)
 		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
-		prName = utils.TruncateString(prName, 250)
-		m1 := regexp.MustCompile("[^a-zA-Z0-9]+")
-		prName = m1.ReplaceAllString(prName, "-")
+		prName = utils.KubeSafeName(prName, 250)
 
 		var pr promoterv1alpha1.PullRequest
 		err = r.Get(ctx, client.ObjectKey{

@@ -34,8 +34,10 @@ type PromotionStrategySpec struct {
 	// +kubebuilder:validation:Required
 	DryBanch string `json:"dryBranch"`
 
+	// +kubebuilder:validation:Optional
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 
+	// +kubebuilder:validation:Optional
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 
 	// +kubebuilder:validation:MinItems:=1
@@ -43,9 +45,13 @@ type PromotionStrategySpec struct {
 }
 
 type Environment struct {
-	Branch                 string                 `json:"branch"`
-	AutoMerge              bool                   `json:"autoMerge"`
-	ActiveCommitStatuses   []CommitStatusSelector `json:"activeCommitStatuses"`
+	// +kubebuilder:validation:Required
+	Branch string `json:"branch"`
+	// +kubebuilder:validation:Optional
+	AutoMerge bool `json:"autoMerge"`
+	// +kubebuilder:validation:Optional
+	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+	// +kubebuilder:validation:Optional
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 

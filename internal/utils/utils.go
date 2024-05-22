@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"regexp"
 
 	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
@@ -80,4 +81,11 @@ func TruncateString(str string, length int) string {
 		}
 	}
 	return truncated
+}
+
+func KubeSafeName(name string, charLimit int) string {
+	name = TruncateString(name, charLimit)
+	m1 := regexp.MustCompile("[^a-zA-Z0-9]+")
+	name = m1.ReplaceAllString(name, "-")
+	return name
 }

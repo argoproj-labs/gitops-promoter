@@ -76,10 +76,7 @@ spec:
                         type: object
                       type: array
                   required:
-                  - activeCommitStatuses
-                  - autoMerge
                   - branch
-                  - proposedCommitStatuses
                   type: object
                 minItems: 1
                 type: array

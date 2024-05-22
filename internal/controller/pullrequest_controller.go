@@ -19,11 +19,9 @@ package controller
 import (
 	"context"
 	"fmt"
-
-	"github.com/zachaller/promoter/internal/utils"
-
 	"github.com/zachaller/promoter/internal/scms/fake"
 	"github.com/zachaller/promoter/internal/scms/github"
+	"github.com/zachaller/promoter/internal/utils"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/zachaller/promoter/internal/scms"

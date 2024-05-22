@@ -24,6 +24,7 @@ type GitOperations struct {
 	repoRef     *v1alpha1.Repository
 	scmProvider *v1alpha1.ScmProvider
 	pathLookup  utils.PathLookup
+	pathContext string
 }
 
 type HydratorMetadataFile struct {
@@ -31,7 +32,7 @@ type HydratorMetadataFile struct {
 	DrySHA   string   `json:"drySha"`
 }
 
-func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, pathLookup utils.PathLookup, repoRef v1alpha1.Repository, obj v1.Object) (*GitOperations, error) {
+func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, pathLookup utils.PathLookup, repoRef v1alpha1.Repository, obj v1.Object, pathConext string) (*GitOperations, error) {
 
 	scmProvider, err := utils.GetScmProviderFromRepositoryReference(ctx, k8sClient, repoRef, obj)
 	if err != nil {
@@ -43,6 +44,7 @@ func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.Git
 		scmProvider: scmProvider,
 		repoRef:     &repoRef,
 		pathLookup:  pathLookup,
+		pathContext: pathConext,
 	}
 
 	return &gitOperations, nil
@@ -50,7 +52,7 @@ func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.Git
 
 func (g *GitOperations) CloneRepo(ctx context.Context) error {
 	logger := log.FromContext(ctx)
-	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)) == "" {
+	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) == "" {
 		path, err := os.MkdirTemp("", "*")
 		if err != nil {
 			return err
@@ -62,7 +64,7 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 			logger.Info("Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef), "stdout", stdout, "stderr", stderr)
 			return err
 		}
-		g.pathLookup.Set(g.gap.GetGitHttpsRepoUrl(*g.repoRef), path)
+		g.pathLookup.Set(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext, path)
 		logger.Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef))
 
 	}
@@ -72,7 +74,7 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 
 func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (dry map[string]string, hydrated map[string]string, err error) {
 	logger := log.FromContext(ctx)
-	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)) == "" {
+	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) == "" {
 		return nil, nil, fmt.Errorf("no repo path found")
 	}
 
@@ -80,21 +82,21 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (d
 	dryBranchShas := make(map[string]string)
 
 	for _, branch := range branches {
-		_, _, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
+		_, _, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
 		if err != nil {
 			logger.Error(err, "could not git checkout", "gitError", stderr)
 			return nil, nil, err
 		}
 		logger.Info("Checked out branch", "branch", branch)
 
-		_, _, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "pull", "--progress")
+		_, _, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "pull", "--progress")
 		if err != nil {
 			logger.Error(err, "could not git pull", "gitError", stderr)
 			return nil, nil, err
 		}
 		logger.Info("Pulled branch", "branch", branch)
 
-		_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "git", "rev-parse", branch)
+		_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "rev-parse", branch)
 		if err != nil {
 			logger.Error(err, "could not get branch shas", "gitError", stderr)
 			return nil, nil, err
@@ -102,7 +104,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (d
 		hydratedBranchShas[branch] = strings.TrimSpace(stdout)
 		logger.Info("Got hydrated branch sha", "branch", branch, "sha", hydratedBranchShas[branch])
 
-		jsonFile, err := os.Open(g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)) + "/hydrator.metadata")
+		jsonFile, err := os.Open(g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) + "/hydrator.metadata")
 		if err != nil {
 			return nil, nil, err
 		}
