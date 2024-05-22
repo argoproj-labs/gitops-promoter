@@ -121,6 +121,60 @@ spec:
             type: object
           status:
             description: PromotionStrategyStatus defines the observed state of PromotionStrategy
+            properties:
+              environments:
+                items:
+                  properties:
+                    active:
+                      properties:
+                        commitStatus:
+                          type: string
+                        drySha:
+                          type: string
+                        hydratedSha:
+                          type: string
+                      required:
+                      - commitStatus
+                      - drySha
+                      - hydratedSha
+                      type: object
+                    branch:
+                      type: string
+                    lastHealthyDryShas:
+                      items:
+                        properties:
+                          sha:
+                            type: string
+                          time:
+                            format: date-time
+                            type: string
+                        required:
+                        - sha
+                        - time
+                        type: object
+                      type: array
+                    proposed:
+                      properties:
+                        commitStatus:
+                          type: string
+                        drySha:
+                          type: string
+                        hydratedSha:
+                          type: string
+                      required:
+                      - commitStatus
+                      - drySha
+                      - hydratedSha
+                      type: object
+                  required:
+                  - active
+                  - branch
+                  - lastHealthyDryShas
+                  - proposed
+                  type: object
+                type: array
+            required:
+            - environments
             type: object
         type: object
     served: true

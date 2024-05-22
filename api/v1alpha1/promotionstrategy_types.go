@@ -55,8 +55,25 @@ type CommitStatusSelector struct {
 
 // PromotionStrategyStatus defines the observed state of PromotionStrategy
 type PromotionStrategyStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	Environments []EnvironmentStatus `json:"environments"`
+}
+
+type EnvironmentStatus struct {
+	Branch             string                             `json:"branch"`
+	Active             PromotionStrategyBranchStateStatus `json:"active"`
+	Proposed           PromotionStrategyBranchStateStatus `json:"proposed"`
+	LastHealthyDryShas []HealthyDryShas                   `json:"lastHealthyDryShas"`
+}
+
+type HealthyDryShas struct {
+	Sha  string      `json:"sha"`
+	Time metav1.Time `json:"time"`
+}
+
+type PromotionStrategyBranchStateStatus struct {
+	DrySha       string `json:"drySha"`
+	HydratedSHA  string `json:"hydratedSha"`
+	CommitStatus string `json:"commitStatus"`
 }
 
 //+kubebuilder:object:root=true

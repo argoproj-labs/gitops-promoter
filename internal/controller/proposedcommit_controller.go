@@ -105,11 +105,11 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	for branch := range hydratedBranchShas {
 		if pc.Status.Active == nil {
-			pc.Status.Active = &promoterv1alpha1.BranchState{}
+			pc.Status.Active = &promoterv1alpha1.ProposedCommitBranchState{}
 		}
 
 		if pc.Status.Proposed == nil {
-			pc.Status.Proposed = &promoterv1alpha1.BranchState{}
+			pc.Status.Proposed = &promoterv1alpha1.ProposedCommitBranchState{}
 		}
 
 		if branch == pc.Spec.ActiveBranch {

@@ -59,7 +59,7 @@ type CommitStatusProposedCommitStatus struct {
 	Phase string `json:"phase"`
 }
 
-type BranchState struct {
+type ProposedCommitBranchState struct {
 	DrySha      string `json:"drySha,omitempty"`
 	HydratedSha string `json:"hydratedSha,omitempty"`
 }
@@ -68,8 +68,8 @@ type BranchState struct {
 type ProposedCommitStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Proposed       *BranchState                       `json:"proposed,omitempty"`
-	Active         *BranchState                       `json:"active,omitempty"`
+	Proposed       *ProposedCommitBranchState         `json:"proposed,omitempty"`
+	Active         *ProposedCommitBranchState         `json:"active,omitempty"`
 	CommitStatuses []CommitStatusProposedCommitStatus `json:"commitStatuses,omitempty"`
 }
 
