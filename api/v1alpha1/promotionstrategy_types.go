@@ -28,8 +28,29 @@ type PromotionStrategySpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of PromotionStrategy. Edit promotionstrategy_types.go to remove/update
-	Test string `json:"test,omitempty"`
+	// +kubebuilder:validation:Required
+	RepositoryReference *Repository `json:"repository"`
+
+	// +kubebuilder:validation:Required
+	DryBanch string `json:"dryBranch"`
+
+	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+
+	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+
+	// +kubebuilder:validation:MinItems:=1
+	Environments []Environment `json:"environments"`
+}
+
+type Environment struct {
+	Branch                 string                 `json:"branch"`
+	AutoMerge              bool                   `json:"autoMerge"`
+	ActiveCommitStatuses   []CommitStatusSelector `json:"activeCommitStatuses"`
+	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+}
+
+type CommitStatusSelector struct {
+	Key string `json:"key"`
 }
 
 // PromotionStrategyStatus defines the observed state of PromotionStrategy

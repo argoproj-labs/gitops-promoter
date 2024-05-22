@@ -41,6 +41,7 @@ type CommitStatusSpec struct {
 
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=pending
+	// +kubebuilder:validation:Enum:=pending;success;failure
 	State CommitStatusState `json:"state"` // pending, success, failure
 	// (Github: error, failure, pending, success)
 	// (Gitlab: pending, running, success, failed, canceled)

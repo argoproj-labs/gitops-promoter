@@ -67,6 +67,10 @@ spec:
                 type: string
               state:
                 default: pending
+                enum:
+                - pending
+                - success
+                - failure
                 type: string
               url:
                 type: string

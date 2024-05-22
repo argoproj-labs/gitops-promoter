@@ -39,10 +39,85 @@ spec:
           spec:
             description: PromotionStrategySpec defines the desired state of PromotionStrategy
             properties:
-              foo:
-                description: Foo is an example field of PromotionStrategy. Edit promotionstrategy_types.go
-                  to remove/update
+              activeCommitStatuses:
+                items:
+                  properties:
+                    key:
+                      type: string
+                  required:
+                  - key
+                  type: object
+                type: array
+              dryBranch:
                 type: string
+              environments:
+                items:
+                  properties:
+                    activeCommitStatuses:
+                      items:
+                        properties:
+                          key:
+                            type: string
+                        required:
+                        - key
+                        type: object
+                      type: array
+                    autoMerge:
+                      type: boolean
+                    branch:
+                      type: string
+                    proposedCommitStatuses:
+                      items:
+                        properties:
+                          key:
+                            type: string
+                        required:
+                        - key
+                        type: object
+                      type: array
+                  required:
+                  - activeCommitStatuses
+                  - autoMerge
+                  - branch
+                  - proposedCommitStatuses
+                  type: object
+                minItems: 1
+                type: array
+              proposedCommitStatuses:
+                items:
+                  properties:
+                    key:
+                      type: string
+                  required:
+                  - key
+                  type: object
+                type: array
+              repository:
+                properties:
+                  name:
+                    type: string
+                  owner:
+                    type: string
+                  scmProviderRef:
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    required:
+                    - name
+                    type: object
+                required:
+                - name
+                - owner
+                - scmProviderRef
+                type: object
+            required:
+            - activeCommitStatuses
+            - dryBranch
+            - environments
+            - proposedCommitStatuses
+            - repository
             type: object
           status:
             description: PromotionStrategyStatus defines the observed state of PromotionStrategy
