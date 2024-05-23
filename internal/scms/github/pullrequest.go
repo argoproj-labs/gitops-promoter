@@ -154,8 +154,6 @@ func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullReque
 	logger := log.FromContext(ctx)
 	logger.Info("Finding Pull Request")
 
-	pullRequestCopy := pullRequest.DeepCopy()
-
 	pullRequests, response, err := pr.client.PullRequests.List(ctx, pullRequest.Spec.RepositoryReference.Owner,
 		pullRequest.Spec.RepositoryReference.Name,
 		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: pullRequest.Spec.SourceBranch})
@@ -169,8 +167,8 @@ func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullReque
 	logger.Info("github response status",
 		"status", response.Status)
 	if len(pullRequests) > 0 {
-		pullRequestCopy.Status.ID = strconv.Itoa(*pullRequests[0].Number)
-		pullRequestCopy.Status.State = v1alpha1.PullRequestOpen
+		pullRequest.Status.ID = strconv.Itoa(*pullRequests[0].Number)
+		pullRequest.Status.State = v1alpha1.PullRequestState(*pullRequests[0].State)
 		return nil
 	}
 

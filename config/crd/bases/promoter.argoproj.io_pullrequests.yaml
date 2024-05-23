@@ -97,6 +97,10 @@ spec:
               id:
                 description: ID the id of the pull request
                 type: string
+              prCreationTime:
+                description: PRCreationTime the time the PR was created
+                format: date-time
+                type: string
               specHash:
                 description: SpecHash used to track if we need to update, should maybe
                   use observedGeneration pattern

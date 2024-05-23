@@ -74,10 +74,10 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	//err := pullRequestProvider.Find(ctx, &pr)
-	//if err != nil {
-	//	return ctrl.Result{}, err
-	//}
+	err = pullRequestProvider.Find(ctx, &pr)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	err = r.handleFinalizer(ctx, &pr, pullRequestProvider)
 	if err != nil {
