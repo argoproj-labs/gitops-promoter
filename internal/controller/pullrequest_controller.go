@@ -19,16 +19,15 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/zachaller/promoter/internal/scms"
 	"github.com/zachaller/promoter/internal/scms/fake"
 	"github.com/zachaller/promoter/internal/scms/github"
 	"github.com/zachaller/promoter/internal/utils"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-
-	"github.com/zachaller/promoter/internal/scms"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
@@ -297,6 +296,10 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr promote
 
 	if pullRequestProvider == nil {
 		return nil, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in closePullRequest")
+	}
+
+	if pr.Status.State == promoterv1alpha1.PullRequestMerged {
+		return &pr, nil
 	}
 
 	updatedPR, err := pullRequestProvider.Close(ctx, &pr)

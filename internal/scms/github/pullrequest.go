@@ -2,9 +2,9 @@ package github
 
 import (
 	"context"
-	"strconv"
-
 	"github.com/zachaller/promoter/internal/scms"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -56,8 +56,9 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		ObjectMeta: pullRequest.ObjectMeta,
 		Spec:       pullRequest.Spec,
 		Status: v1alpha1.PullRequestStatus{
-			ID:    strconv.Itoa(*githubPullRequest.Number),
-			State: v1alpha1.PullRequestOpen,
+			ID:             strconv.Itoa(*githubPullRequest.Number),
+			State:          v1alpha1.PullRequestOpen,
+			PRCreationTime: metav1.Now(),
 		},
 	}, nil
 }

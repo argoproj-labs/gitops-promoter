@@ -29,6 +29,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"time"
 )
 
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
@@ -68,7 +69,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var createProposedCommitErr []error
 	for _, environment := range ps.Spec.Environments {
-		_, err := r.createProposedCommit(ctx, ps, environment)
+		pc, err := r.createProposedCommit(ctx, ps, environment)
 		if err != nil {
 			logger.Error(err, "failed to create ProposedCommit", "namespace", ps.Namespace, "name", ps.Name)
 			createProposedCommitErr = append(createProposedCommitErr, err)
@@ -80,11 +81,26 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			err := r.List(ctx, &prl, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(ps.Name, 63),
+					"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
 					"promoter.argoproj.io/environment":        utils.KubeSafeName(environment.Branch, 63),
 				}),
 			})
 			if err != nil {
 				return ctrl.Result{}, err
+			}
+			if len(prl.Items) == 0 {
+				return ctrl.Result{
+					Requeue:      true,
+					RequeueAfter: 15 * time.Second,
+				}, nil
+			}
+
+			if prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen {
+				prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
+				err = r.Update(ctx, &prl.Items[0])
+				if err != nil {
+					return ctrl.Result{}, err
+				}
 			}
 		}
 	}
@@ -126,6 +142,7 @@ func (r *PromotionStrategyReconciler) createProposedCommit(ctx context.Context, 
 					OwnerReferences: []metav1.OwnerReference{*controllerRef},
 					Labels: map[string]string{
 						"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(ps.Name, 63),
+						"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
 						"promoter.argoproj.io/environment":        utils.KubeSafeName(environment.Branch, 63),
 					},
 				},

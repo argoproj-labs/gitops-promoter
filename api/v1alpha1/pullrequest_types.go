@@ -65,6 +65,8 @@ type PullRequestStatus struct {
 	State PullRequestState `json:"state,omitempty"`
 	// SpecHash used to track if we need to update, should maybe use observedGeneration pattern
 	SpecHash string `json:"specHash,omitempty"`
+	// PRCreationTime the time the PR was created
+	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
 }
 
 //+kubebuilder:object:root=true
