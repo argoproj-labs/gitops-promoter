@@ -51,6 +51,17 @@ var _ = Describe("CommitStatus Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
+					Spec: promoterv1alpha1.CommitStatusSpec{
+						State: "pending",
+						RepositoryReference: &promoterv1alpha1.Repository{
+							Owner: "test",
+							Name:  "test",
+							ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
+								Name:      "test",
+								Namespace: "test",
+							},
+						},
+					},
 					// TODO(user): Specify other spec details if needed.
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())

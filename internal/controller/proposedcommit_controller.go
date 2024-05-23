@@ -142,6 +142,11 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 						Name:            prName,
 						Namespace:       pc.Namespace,
 						OwnerReferences: []metav1.OwnerReference{*controllerRef},
+						Labels: map[string]string{
+							"promoter.argoproj.io/promotion-strategy": pc.Labels["promoter.argoproj.io/promotion-strategy"],
+							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
+							"promoter.argoproj.io/environment":        utils.KubeSafeName(pc.Spec.ActiveBranch, 63),
+						},
 					},
 					Spec: promoterv1alpha1.PullRequestSpec{
 						RepositoryReference: pc.Spec.RepositoryReference,
@@ -192,6 +197,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ProposedCommit{}).
+		//Watches(&promoterv1alpha1.ProposedCommit{}, handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(), &promoterv1alpha1.ProposedCommit{}, handler.OnlyControllerOwner())).
 		Complete(r)
 }
 

@@ -127,7 +127,7 @@ var _ = Describe("PullRequest Controller", func() {
 				Name:      resourceName,
 			}, &pr)).To(Succeed())
 			Expect(pr.Status.ID).To(Equal("1"))
-			Expect(pr.Status.State).To(Equal("open"))
+			Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 			Expect(pr.Status.SpecHash).To(Equal("e38edf1eb9ba75fe755968551d9845ba64bc8e24"))
 
 			By("Reconciling updating of the PullRequest")
@@ -158,7 +158,7 @@ var _ = Describe("PullRequest Controller", func() {
 				Namespace: "default",
 				Name:      resourceName,
 			}, &pr)).To(Succeed())
-			Expect(pr.Status.State).To(Equal("closed"))
+			Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestClosed))
 
 			By("Reconciling merging of the PullRequest")
 			pr.Spec.State = "merged"
@@ -173,7 +173,7 @@ var _ = Describe("PullRequest Controller", func() {
 				Namespace: "default",
 				Name:      resourceName,
 			}, &pr)).To(Succeed())
-			Expect(pr.Status.State).To(Equal("merged"))
+			Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestMerged))
 
 		})
 	})

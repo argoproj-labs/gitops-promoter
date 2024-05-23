@@ -110,10 +110,8 @@ spec:
                 - scmProviderRef
                 type: object
             required:
-            - activeCommitStatuses
             - dryBranch
             - environments
-            - proposedCommitStatuses
             - repository
             type: object
           status:

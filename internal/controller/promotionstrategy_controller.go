@@ -19,17 +19,16 @@ package controller
 import (
 	"context"
 	"fmt"
+	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
 	"github.com/zachaller/promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"reflect"
-
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
 )
 
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
@@ -53,6 +52,7 @@ type PromotionStrategyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	logger.Info("Reconciling PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
 
 	var ps promoterv1alpha1.PromotionStrategy
 	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
@@ -66,43 +66,30 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
+	var createProposedCommitErr []error
 	for _, environment := range ps.Spec.Environments {
-		logger.Info("Branch", "Name", environment.Branch)
-
-		pc := promoterv1alpha1.ProposedCommit{}
-		pcName := utils.KubeSafeName(fmt.Sprintf("%s-%s", ps.Name, environment.Branch), 250)
-		err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
+		_, err := r.createProposedCommit(ctx, ps, environment)
 		if err != nil {
-			if errors.IsNotFound(err) {
-				logger.Info("ProposedCommit not found creating", "namespace", ps.Namespace, "name", pcName)
+			logger.Error(err, "failed to create ProposedCommit", "namespace", ps.Namespace, "name", ps.Name)
+			createProposedCommitErr = append(createProposedCommitErr, err)
+		}
 
-				// The code below sets the ownership for the Release Object
-				kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
-				gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-				controllerRef := metav1.NewControllerRef(&ps, gvk)
-
-				pc = promoterv1alpha1.ProposedCommit{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:            pcName,
-						Namespace:       ps.Namespace,
-						OwnerReferences: []metav1.OwnerReference{*controllerRef},
-					},
-					Spec: promoterv1alpha1.ProposedCommitSpec{
-						RepositoryReference: ps.Spec.RepositoryReference,
-						ProposedBranch:      fmt.Sprintf("%s-%s", environment.Branch, "next"),
-						ActiveBranch:        environment.Branch,
-					},
-				}
-
-				err = r.Create(ctx, &pc)
-				if err != nil {
-					return ctrl.Result{}, err
-				}
-			} else {
-				logger.Error(err, "failed to get ProposedCommit", "namespace", ps.Namespace, "name", pcName)
+		if environment.AutoMerge == true {
+			logger.Info("AutoMerge is enabled", "namespace", ps.Namespace, "name", ps.Name, "branch", environment.Branch)
+			prl := promoterv1alpha1.PullRequestList{}
+			err := r.List(ctx, &prl, &client.ListOptions{
+				LabelSelector: labels.SelectorFromSet(map[string]string{
+					"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(ps.Name, 63),
+					"promoter.argoproj.io/environment":        utils.KubeSafeName(environment.Branch, 63),
+				}),
+			})
+			if err != nil {
 				return ctrl.Result{}, err
 			}
 		}
+	}
+	if len(createProposedCommitErr) > 0 {
+		return ctrl.Result{}, fmt.Errorf("failed to create ProposedCommit: %w", createProposedCommitErr)
 	}
 
 	return ctrl.Result{}, nil
@@ -112,5 +99,52 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}).
+		Owns(&promoterv1alpha1.ProposedCommit{}).
+		//Watches(&promoterv1alpha1.ProposedCommit{}, handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(), &promoterv1alpha1.ProposedCommit{}, handler.OnlyControllerOwner())).
 		Complete(r)
+}
+
+func (r *PromotionStrategyReconciler) createProposedCommit(ctx context.Context, ps promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ProposedCommit, error) {
+	logger := log.FromContext(ctx)
+
+	pc := promoterv1alpha1.ProposedCommit{}
+	pcName := utils.KubeSafeName(fmt.Sprintf("%s-%s", ps.Name, environment.Branch), 250)
+	err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("ProposedCommit not found creating", "namespace", ps.Namespace, "name", pcName)
+
+			// The code below sets the ownership for the Release Object
+			kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
+			gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+			controllerRef := metav1.NewControllerRef(&ps, gvk)
+
+			pc = promoterv1alpha1.ProposedCommit{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            pcName,
+					Namespace:       ps.Namespace,
+					OwnerReferences: []metav1.OwnerReference{*controllerRef},
+					Labels: map[string]string{
+						"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(ps.Name, 63),
+						"promoter.argoproj.io/environment":        utils.KubeSafeName(environment.Branch, 63),
+					},
+				},
+				Spec: promoterv1alpha1.ProposedCommitSpec{
+					RepositoryReference: ps.Spec.RepositoryReference,
+					ProposedBranch:      fmt.Sprintf("%s-%s", environment.Branch, "next"),
+					ActiveBranch:        environment.Branch,
+				},
+			}
+
+			err = r.Create(ctx, &pc)
+			if err != nil {
+				return &pc, err
+			}
+		} else {
+			logger.Error(err, "failed to get ProposedCommit", "namespace", ps.Namespace, "name", pcName)
+			return &pc, err
+		}
+	}
+
+	return &pc, nil
 }
