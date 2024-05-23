@@ -74,6 +74,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	//err := pullRequestProvider.Find(ctx, &pr)
+	//if err != nil {
+	//	return ctrl.Result{}, err
+	//}
+
 	err = r.handleFinalizer(ctx, &pr, pullRequestProvider)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -90,12 +95,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if pr.Spec.State == promoterv1alpha1.PullRequestOpen && pr.Status.State != promoterv1alpha1.PullRequestOpen {
-		updatedPR, err := r.createPullRequest(ctx, pr, pullRequestProvider)
+		err := r.createPullRequest(ctx, &pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
-		err = r.Status().Update(ctx, updatedPR)
+		err = r.Status().Update(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -106,12 +111,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if pr.Spec.State == promoterv1alpha1.PullRequestMerged && pr.Status.State != promoterv1alpha1.PullRequestMerged {
 		logger.Info("Merging Pull Request")
 
-		updatedPR, err := r.mergePullRequest(ctx, pr, pullRequestProvider)
+		err := r.mergePullRequest(ctx, &pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
-		err = r.Status().Update(ctx, updatedPR)
+		err = r.Status().Update(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -120,12 +125,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if pr.Spec.State == promoterv1alpha1.PullRequestClosed && pr.Status.State != promoterv1alpha1.PullRequestClosed {
-		updatedPR, err := r.closePullRequest(ctx, pr, pullRequestProvider)
+		err := r.closePullRequest(ctx, &pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
-		err = r.Status().Update(ctx, updatedPR)
+		err = r.Status().Update(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -134,11 +139,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if pr.Status.SpecHash != hash {
-		updatedPR, err := r.updatePullRequest(ctx, pr, pullRequestProvider)
+		err := r.updatePullRequest(ctx, pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		err = r.Status().Update(ctx, updatedPR)
+		err = r.Status().Update(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -194,7 +199,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 		// The object is being deleted
 		if controllerutil.ContainsFinalizer(pr, finalizerName) {
 			// our finalizer is present, so lets handle any external dependency
-			_, err := r.closePullRequest(ctx, *pr, pullRequestProvider)
+			err := r.closePullRequest(ctx, pr, pullRequestProvider)
 			if err != nil {
 				// if fail to delete the external dependency here, return with error
 				// so that it can be retried.
@@ -212,108 +217,105 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 	return nil
 }
 
-func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {
+func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Opening Pull Request")
 
-	if pullRequestProvider == nil {
-		return nil, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in createPullRequest")
+	if pr == nil {
+		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in createPullRequest")
 	}
 
-	updatePR, err := pullRequestProvider.Create(
+	err := pullRequestProvider.Create(
 		ctx,
 		pr.Spec.Title,
 		pr.Spec.SourceBranch,
 		pr.Spec.TargetBranch,
 		pr.Spec.Description,
-		&pr)
+		pr)
 	if err != nil {
-		return nil, err
-	}
-	if updatePR == nil {
-		return nil, fmt.Errorf("failed to create pull request, updatedPR is nil")
+		return err
 	}
 
-	updatedHash, err := updatePR.Hash()
+	updatedHash, err := pr.Hash()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	updatePR.Status.SpecHash = updatedHash
-	updatePR.Status.State = promoterv1alpha1.PullRequestOpen
-	return updatePR, nil
+	pr.Status.SpecHash = updatedHash
+	pr.Status.State = promoterv1alpha1.PullRequestOpen
+	return nil
 }
 
-func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {
+func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Updating Pull Request")
 
 	if pullRequestProvider == nil {
-		return nil, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in updatePullRequest")
+		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in updatePullRequest")
 	}
 
-	updatedPR, err := pullRequestProvider.Update(ctx, pr.Spec.Title, pr.Spec.Description, &pr)
+	err := pullRequestProvider.Update(ctx, pr.Spec.Title, pr.Spec.Description, &pr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	updatedHash, err := updatedPR.Hash()
+	updatedHash, err := pr.Hash()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	updatedPR.Status.SpecHash = updatedHash
+	pr.Status.SpecHash = updatedHash
 
-	return updatedPR, nil
+	return nil
 }
 
-func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {
+func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Merging Pull Request")
 
 	if pullRequestProvider == nil {
-		return nil, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in mergePullRequest")
+		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in mergePullRequest")
 	}
 
-	updatedPR, err := pullRequestProvider.Merge(ctx, "", &pr)
+	err := pullRequestProvider.Merge(ctx, "", pr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	updatedHash, err := updatedPR.Hash()
+	updatedHash, err := pr.Hash()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	updatedPR.Status.SpecHash = updatedHash
-	updatedPR.Status.State = promoterv1alpha1.PullRequestMerged
+	pr.Status.SpecHash = updatedHash
+	pr.Status.State = promoterv1alpha1.PullRequestMerged
 
-	return updatedPR, nil
+	return nil
 }
 
-func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (*promoterv1alpha1.PullRequest, error) {
+func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Closing Pull Request")
 
 	if pullRequestProvider == nil {
-		return nil, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in closePullRequest")
+		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in closePullRequest")
 	}
 
 	if pr.Status.State == promoterv1alpha1.PullRequestMerged {
-		return &pr, nil
+		return nil
 	}
 
-	updatedPR, err := pullRequestProvider.Close(ctx, &pr)
+	err := pullRequestProvider.Close(ctx, pr)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	updatedHash, err := updatedPR.Hash()
+	updatedHash, err := pr.Hash()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	updatedPR.Status.SpecHash = updatedHash
-	updatedPR.Status.State = promoterv1alpha1.PullRequestClosed
-	return updatedPR, nil
+	pr.Status.SpecHash = updatedHash
+	pr.Status.State = promoterv1alpha1.PullRequestClosed
+	return nil
 }

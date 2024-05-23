@@ -13,22 +13,27 @@ func NewFakePullRequestProvider() *PullRequest {
 	return &PullRequest{}
 }
 
-func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) error {
 	pullRequest.Status.ID = "1"
-	return pullRequest, nil
+	return nil
 }
 
-func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest *v1alpha1.PullRequest) error {
 	pullRequest.Status.ID = "1"
-	return pullRequest, nil
+	return nil
 }
 
-func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequest) error {
 	pullRequest.Status.ID = "1"
-	return pullRequest, nil
+	return nil
 }
 
-func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest *v1alpha1.PullRequest) (*v1alpha1.PullRequest, error) {
+func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest *v1alpha1.PullRequest) error {
 	pullRequest.Status.ID = "1"
-	return pullRequest, nil
+	return nil
+}
+
+func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullRequest) error {
+	pullRequest.Status.ID = "1"
+	return nil
 }
