@@ -76,7 +76,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			createProposedCommitErr = append(createProposedCommitErr, err)
 		}
 
-		if environment.AutoMerge == true {
+		if environment.AutoMerge {
 			logger.Info("AutoMerge is enabled", "namespace", ps.Namespace, "name", ps.Name, "branch", environment.Branch)
 			prl := promoterv1alpha1.PullRequestList{}
 			err := r.List(ctx, &prl, &client.ListOptions{
@@ -106,7 +106,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 	}
 	if len(createProposedCommitErr) > 0 {
-		return ctrl.Result{}, fmt.Errorf("failed to create ProposedCommit: %w", createProposedCommitErr)
+		return ctrl.Result{}, fmt.Errorf("failed to create ProposedCommit: %v", createProposedCommitErr)
 	}
 
 	return ctrl.Result{}, nil
