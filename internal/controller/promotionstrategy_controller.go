@@ -22,6 +22,7 @@ import (
 	"github.com/zachaller/promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"reflect"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -74,10 +75,17 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if err != nil {
 			if errors.IsNotFound(err) {
 				logger.Info("ProposedCommit not found creating", "namespace", ps.Namespace, "name", pcName)
+
+				// The code below sets the ownership for the Release Object
+				kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
+				gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+				controllerRef := metav1.NewControllerRef(&ps, gvk)
+
 				pc = promoterv1alpha1.ProposedCommit{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      pcName,
-						Namespace: ps.Namespace,
+						Name:            pcName,
+						Namespace:       ps.Namespace,
+						OwnerReferences: []metav1.OwnerReference{*controllerRef},
 					},
 					Spec: promoterv1alpha1.ProposedCommitSpec{
 						RepositoryReference: ps.Spec.RepositoryReference,
@@ -85,7 +93,8 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 						ActiveBranch:        environment.Branch,
 					},
 				}
-				err := r.Create(ctx, &pc)
+
+				err = r.Create(ctx, &pc)
 				if err != nil {
 					return ctrl.Result{}, err
 				}
