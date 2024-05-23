@@ -2,9 +2,10 @@ package github
 
 import (
 	"context"
+	"strconv"
+
 	"github.com/zachaller/promoter/internal/scms"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"strconv"
 
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"

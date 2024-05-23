@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+
 	"github.com/zachaller/promoter/internal/scms"
 	"github.com/zachaller/promoter/internal/scms/fake"
 	"github.com/zachaller/promoter/internal/scms/github"
