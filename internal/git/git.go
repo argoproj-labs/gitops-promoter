@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -59,7 +60,7 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 		}
 		logger.Info("Created directory", "directory", path)
 
-		_, stdout, stderr, err := g.runCmd(ctx, path, "git", "clone", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.repoRef), path)
+		_, stdout, stderr, err := g.runCmd(ctx, path, "git", "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.repoRef), path)
 		if err != nil {
 			logger.Info("Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef), "stdout", stdout, "stderr", stderr)
 			return err
@@ -104,7 +105,14 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (d
 		hydratedBranchShas[branch] = strings.TrimSpace(stdout)
 		logger.Info("Got hydrated branch sha", "branch", branch, "sha", hydratedBranchShas[branch])
 
-		jsonFile, err := os.Open(g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) + "/hydrator.metadata")
+		metadataFile := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) + "/hydrator.metadata"
+		if _, err := os.Stat(metadataFile); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				logger.Info("dry sha does not exist", "branch", branch)
+				continue
+			}
+		}
+		jsonFile, err := os.Open(metadataFile)
 		if err != nil {
 			return nil, nil, err
 		}
