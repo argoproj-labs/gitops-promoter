@@ -178,7 +178,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			if err != nil {
 				return ctrl.Result{}, err
 			}
-			logger.Info("Updated pull request")
+			logger.Info("Updated pull request resource")
 		}
 	}
 

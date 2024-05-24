@@ -65,10 +65,11 @@ type PromotionStrategyStatus struct {
 }
 
 type EnvironmentStatus struct {
-	Branch             string                             `json:"branch"`
-	Active             PromotionStrategyBranchStateStatus `json:"active"`
-	Proposed           PromotionStrategyBranchStateStatus `json:"proposed"`
-	LastHealthyDryShas []HealthyDryShas                   `json:"lastHealthyDryShas"`
+	Branch   string                             `json:"branch"`
+	Active   PromotionStrategyBranchStateStatus `json:"active"`
+	Proposed PromotionStrategyBranchStateStatus `json:"proposed"`
+	// +kubebuilder:validation:Optional
+	LastHealthyDryShas []HealthyDryShas `json:"lastHealthyDryShas"`
 }
 
 type HealthyDryShas struct {

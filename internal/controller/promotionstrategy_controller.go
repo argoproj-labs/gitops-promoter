@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"time"
 
 	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
@@ -89,22 +90,62 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			if err != nil {
 				return ctrl.Result{}, err
 			}
-			if len(prl.Items) == 0 {
-				return ctrl.Result{
-					Requeue:      true,
-					RequeueAfter: 15 * time.Second,
-				}, nil
-			}
 
-			if prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen {
+			if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen {
 				prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
 				err = r.Update(ctx, &prl.Items[0])
 				if err != nil {
 					return ctrl.Result{}, err
 				}
-
 			}
 		}
+
+		if slices.ContainsFunc(ps.Status.Environments, func(e promoterv1alpha1.EnvironmentStatus) bool {
+			return e.Branch == environment.Branch
+		}) {
+			for i, _ := range ps.Status.Environments {
+				if ps.Status.Environments[i].Branch == environment.Branch {
+					if pc.Status.Active == nil || pc.Status.Proposed == nil {
+						continue
+					}
+
+					ps.Status.Environments[i].Active.DrySha = pc.Status.Active.DrySha
+					ps.Status.Environments[i].Active.HydratedSHA = pc.Status.Active.HydratedSha
+					ps.Status.Environments[i].Proposed.DrySha = pc.Status.Proposed.DrySha
+					ps.Status.Environments[i].Proposed.HydratedSHA = pc.Status.Proposed.HydratedSha
+
+					if len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
+						ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
+					}
+				}
+			}
+		} else {
+			if pc.Status.Active == nil || pc.Status.Proposed == nil {
+				break
+			}
+			ps.Status.Environments = append(ps.Status.Environments, func() promoterv1alpha1.EnvironmentStatus {
+				status := promoterv1alpha1.EnvironmentStatus{
+					Branch: environment.Branch,
+					Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
+						DrySha:       pc.Status.Active.DrySha,
+						HydratedSHA:  pc.Status.Active.HydratedSha,
+						CommitStatus: "todo",
+					},
+					Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
+						DrySha:       pc.Status.Proposed.DrySha,
+						HydratedSHA:  pc.Status.Proposed.HydratedSha,
+						CommitStatus: "todo",
+					},
+				}
+				return status
+			}())
+		}
+
+		err = r.Status().Update(ctx, &ps)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
 	}
 	if len(createProposedCommitErr) > 0 {
 		return ctrl.Result{}, fmt.Errorf("failed to create ProposedCommit: %v", createProposedCommitErr)
@@ -112,7 +153,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	return ctrl.Result{
 		Requeue:      true,
-		RequeueAfter: 5 * time.Second,
+		RequeueAfter: 10 * time.Second,
 	}, nil
 }
 
