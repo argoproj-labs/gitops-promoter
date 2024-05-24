@@ -42,7 +42,7 @@ metadata:
   labels:
     app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: scmprovider-sample
+  name: scmprovider-example
 spec:
   github:
     domain: github.com
@@ -52,54 +52,18 @@ spec:
 ---
 
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: ProposedCommit
+kind: PromotionStrategy
 metadata:
-  labels:
-    app.kubernetes.io/name: promoter
-    app.kubernetes.io/managed-by: kustomize
-  name: proposedcommit-sample
+  name: scmprovider-example
 spec:
-  repositoryRef:
-    owner: crenshaw-dev
+  dryBranch: master
+  environments:
+    - branch: environments/dev
+    - branch: environments/test
+    - branch: environments/prod
+  repository:
     name: argocd-example-apps
-    scmProviderRef:
-      name: scmprovider-sample
-  proposedBranch: environments/dev-next
-  activeBranch: environments/dev
-
----
-
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: ProposedCommit
-metadata:
-  labels:
-    app.kubernetes.io/name: promoter
-    app.kubernetes.io/managed-by: kustomize
-  name: proposedcommit-sample-test
-spec:
-  repositoryRef:
     owner: crenshaw-dev
-    name: argocd-example-apps
     scmProviderRef:
-      name: scmprovider-sample
-  proposedBranch: environments/test-next
-  activeBranch: environments/test
-
----
-
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: ProposedCommit
-metadata:
-  labels:
-    app.kubernetes.io/name: promoter
-    app.kubernetes.io/managed-by: kustomize
-  name: proposedcommit-sample-prod
-spec:
-  repositoryRef:
-    owner: crenshaw-dev
-    name: argocd-example-apps
-    scmProviderRef:
-      name: scmprovider-sample
-  proposedBranch: environments/prod-next
-  activeBranch: environments/prod
+      name: scmprovider-example
 ```
