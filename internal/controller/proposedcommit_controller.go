@@ -150,10 +150,10 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 					},
 					Spec: promoterv1alpha1.PullRequestSpec{
 						RepositoryReference: pc.Spec.RepositoryReference,
-						Title:               fmt.Sprintf("Promotion of `%s` to dry sha `%s`", pc.Spec.ActiveBranch, pc.Status.Proposed.DrySha),
+						Title:               fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch),
 						TargetBranch:        pc.Spec.ActiveBranch,
 						SourceBranch:        pc.Spec.ProposedBranch,
-						Description:         fmt.Sprintf("This pr is promoting the environment branch `%s` which currently on dry sha `%s` to dry sha `%s`.", pc.Spec.ActiveBranch, pc.Status.Active.DrySha, pc.Status.Proposed.DrySha),
+						Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.DrySha, pc.Status.Proposed.DrySha),
 						State:               "open",
 					},
 				}
@@ -168,10 +168,10 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		} else {
 			pr.Spec = promoterv1alpha1.PullRequestSpec{
 				RepositoryReference: pc.Spec.RepositoryReference,
-				Title:               fmt.Sprintf("Promotion of `%s` to dry sha `%s`", pc.Spec.ActiveBranch, pc.Status.Proposed.DrySha),
+				Title:               fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch),
 				TargetBranch:        pc.Spec.ActiveBranch,
 				SourceBranch:        pc.Spec.ProposedBranch,
-				Description:         fmt.Sprintf("This pr is promoting the environment branch `%s` which currently on dry sha `%s` to dry sha `%s`.", pc.Spec.ActiveBranch, pc.Status.Active.DrySha, pc.Status.Proposed.DrySha),
+				Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.DrySha, pc.Status.Proposed.DrySha),
 				State:               "open",
 			}
 			err = r.Update(ctx, &pr)

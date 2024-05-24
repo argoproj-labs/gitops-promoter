@@ -64,6 +64,18 @@ type ProposedCommitBranchState struct {
 	HydratedSha string `json:"hydratedSha,omitempty"`
 }
 
+func (b *ProposedCommitBranchState) DryShaShort() string {
+	if b == nil {
+		return ""
+	}
+
+	if len(b.DrySha) < 7 {
+		return b.DrySha
+	}
+
+	return b.DrySha[:7]
+}
+
 // ProposedCommitStatus defines the observed state of ProposedCommit
 type ProposedCommitStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
