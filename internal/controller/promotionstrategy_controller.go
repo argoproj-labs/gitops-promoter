@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"reflect"
 	"slices"
 	"time"
@@ -27,7 +29,6 @@ import (
 	"github.com/zachaller/promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -37,7 +38,8 @@ import (
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme  *runtime.Scheme
+	indexer client.FieldIndexer
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
@@ -77,6 +79,11 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			createProposedCommitErr = append(createProposedCommitErr, err)
 		}
 
+		err = r.calculateStatus(ctx, &ps, pc, environment)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
 		if environment.AutoMerge {
 			logger.Info("AutoMerge is enabled", "namespace", ps.Namespace, "name", ps.Name, "branch", environment.Branch)
 			prl := promoterv1alpha1.PullRequestList{}
@@ -100,10 +107,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			}
 		}
 
-		err = r.calculateStatus(ctx, &ps, pc, environment)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+		// If CommitStatus is healthy then merge the PR
 
 		err = r.Status().Update(ctx, &ps)
 		if err != nil {
@@ -123,6 +127,14 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.CommitStatus{}, ".spec.sha", func(rawObj client.Object) []string {
+		cs := rawObj.(*promoterv1alpha1.CommitStatus)
+		return []string{cs.Spec.Sha}
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}).
 		Owns(&promoterv1alpha1.ProposedCommit{}).
@@ -213,6 +225,31 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 				}
 				return status
 			}())
+		}
+	}
+
+	//Bumble up CommitStatus to PromotionStrategy Status
+
+	for _, status := range ps.Spec.ActiveCommitStatuses {
+		var csList promoterv1alpha1.CommitStatusList
+		err := r.List(ctx, &csList, &client.ListOptions{
+			LabelSelector: labels.SelectorFromSet(map[string]string{
+				"promoter.argoproj.io/commit-status": status.Key,
+			}),
+			FieldSelector: fields.SelectorFromSet(map[string]string{
+				".spec.sha": pc.Status.Active.HydratedSha,
+			}),
+		})
+		if err != nil {
+			return err
+		}
+
+		if len(csList.Items) > 0 {
+			for i, _ := range ps.Status.Environments {
+				if ps.Status.Environments[i].Branch == environment.Branch {
+					ps.Status.Environments[i].Active.CommitStatus = string(csList.Items[0].Spec.State)
+				}
+			}
 		}
 	}
 
