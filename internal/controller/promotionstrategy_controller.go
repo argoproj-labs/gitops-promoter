@@ -71,7 +71,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var createProposedCommitErr []error
 	for _, environment := range ps.Spec.Environments {
-		pc, err := r.createProposedCommit(ctx, ps, environment)
+		pc, err := r.createProposedCommit(ctx, &ps, environment)
 		if err != nil {
 			logger.Error(err, "failed to create ProposedCommit", "namespace", ps.Namespace, "name", ps.Name)
 			createProposedCommitErr = append(createProposedCommitErr, err)
@@ -100,45 +100,9 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			}
 		}
 
-		if slices.ContainsFunc(ps.Status.Environments, func(e promoterv1alpha1.EnvironmentStatus) bool {
-			return e.Branch == environment.Branch
-		}) {
-			for i, _ := range ps.Status.Environments {
-				if ps.Status.Environments[i].Branch == environment.Branch {
-					if pc.Status.Active == nil || pc.Status.Proposed == nil {
-						continue
-					}
-
-					ps.Status.Environments[i].Active.DrySha = pc.Status.Active.DrySha
-					ps.Status.Environments[i].Active.HydratedSHA = pc.Status.Active.HydratedSha
-					ps.Status.Environments[i].Proposed.DrySha = pc.Status.Proposed.DrySha
-					ps.Status.Environments[i].Proposed.HydratedSHA = pc.Status.Proposed.HydratedSha
-
-					if len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
-						ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
-					}
-				}
-			}
-		} else {
-			if pc.Status.Active == nil || pc.Status.Proposed == nil {
-				break
-			}
-			ps.Status.Environments = append(ps.Status.Environments, func() promoterv1alpha1.EnvironmentStatus {
-				status := promoterv1alpha1.EnvironmentStatus{
-					Branch: environment.Branch,
-					Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-						DrySha:       pc.Status.Active.DrySha,
-						HydratedSHA:  pc.Status.Active.HydratedSha,
-						CommitStatus: "todo",
-					},
-					Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-						DrySha:       pc.Status.Proposed.DrySha,
-						HydratedSHA:  pc.Status.Proposed.HydratedSha,
-						CommitStatus: "todo",
-					},
-				}
-				return status
-			}())
+		err = r.calculateStatus(ctx, &ps, pc, environment)
+		if err != nil {
+			return ctrl.Result{}, err
 		}
 
 		err = r.Status().Update(ctx, &ps)
@@ -161,10 +125,11 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}).
+		Owns(&promoterv1alpha1.ProposedCommit{}).
 		Complete(r)
 }
 
-func (r *PromotionStrategyReconciler) createProposedCommit(ctx context.Context, ps promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ProposedCommit, error) {
+func (r *PromotionStrategyReconciler) createProposedCommit(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ProposedCommit, error) {
 	logger := log.FromContext(ctx)
 
 	pc := promoterv1alpha1.ProposedCommit{}
@@ -177,7 +142,7 @@ func (r *PromotionStrategyReconciler) createProposedCommit(ctx context.Context, 
 			// The code below sets the ownership for the Release Object
 			kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
 			gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-			controllerRef := metav1.NewControllerRef(&ps, gvk)
+			controllerRef := metav1.NewControllerRef(ps, gvk)
 
 			pc = promoterv1alpha1.ProposedCommit{
 				ObjectMeta: metav1.ObjectMeta{
@@ -208,4 +173,48 @@ func (r *PromotionStrategyReconciler) createProposedCommit(ctx context.Context, 
 	}
 
 	return &pc, nil
+}
+
+func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, pc *promoterv1alpha1.ProposedCommit, environment promoterv1alpha1.Environment) error {
+	if slices.ContainsFunc(ps.Status.Environments, func(e promoterv1alpha1.EnvironmentStatus) bool {
+		return e.Branch == environment.Branch
+	}) {
+		for i, _ := range ps.Status.Environments {
+			if ps.Status.Environments[i].Branch == environment.Branch {
+				if pc.Status.Active == nil || pc.Status.Proposed == nil {
+					continue
+				}
+
+				ps.Status.Environments[i].Active.DrySha = pc.Status.Active.DrySha
+				ps.Status.Environments[i].Active.HydratedSHA = pc.Status.Active.HydratedSha
+				ps.Status.Environments[i].Proposed.DrySha = pc.Status.Proposed.DrySha
+				ps.Status.Environments[i].Proposed.HydratedSHA = pc.Status.Proposed.HydratedSha
+
+				if len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
+					ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
+				}
+			}
+		}
+	} else {
+		if pc.Status.Active != nil || pc.Status.Proposed != nil {
+			ps.Status.Environments = append(ps.Status.Environments, func() promoterv1alpha1.EnvironmentStatus {
+				status := promoterv1alpha1.EnvironmentStatus{
+					Branch: environment.Branch,
+					Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
+						DrySha:       pc.Status.Active.DrySha,
+						HydratedSHA:  pc.Status.Active.HydratedSha,
+						CommitStatus: "todo",
+					},
+					Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
+						DrySha:       pc.Status.Proposed.DrySha,
+						HydratedSHA:  pc.Status.Proposed.HydratedSha,
+						CommitStatus: "todo",
+					},
+				}
+				return status
+			}())
+		}
+	}
+
+	return nil
 }
