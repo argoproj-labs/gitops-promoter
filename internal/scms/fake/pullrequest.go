@@ -33,7 +33,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	return nil
 }
 
-func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullRequest) error {
+func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, error) {
 	pullRequest.Status.ID = "1"
-	return nil
+	return true, nil
 }

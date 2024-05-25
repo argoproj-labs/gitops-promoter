@@ -150,15 +150,15 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	return nil
 }
 
-func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullRequest) error {
+func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Finding Pull Request")
 
 	pullRequests, response, err := pr.client.PullRequests.List(ctx, pullRequest.Spec.RepositoryReference.Owner,
 		pullRequest.Spec.RepositoryReference.Name,
-		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: pullRequest.Spec.SourceBranch})
+		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: pullRequest.Spec.SourceBranch, State: "open"})
 	if err != nil {
-		return err
+		return false, err
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -169,8 +169,8 @@ func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullReque
 	if len(pullRequests) > 0 {
 		pullRequest.Status.ID = strconv.Itoa(*pullRequests[0].Number)
 		pullRequest.Status.State = v1alpha1.PullRequestState(*pullRequests[0].State)
-		return nil
+		return true, nil
 	}
 
-	return nil
+	return false, nil
 }
