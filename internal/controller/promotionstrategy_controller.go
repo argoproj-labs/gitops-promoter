@@ -108,6 +108,34 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 
 		// If CommitStatus is healthy then merge the PR
+		for i, statusEnvironment := range ps.Status.Environments {
+			if statusEnvironment.Branch == environment.Branch {
+				if i == 0 {
+					//Promote the first environment, by merging the PR
+				}
+				if len(ps.Status.Environments) > 0 && i > 0 && ps.Status.Environments[i-1].Active.CommitStatus == "success" {
+					prl := promoterv1alpha1.PullRequestList{}
+					err := r.List(ctx, &prl, &client.ListOptions{
+						LabelSelector: labels.SelectorFromSet(map[string]string{
+							"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(ps.Name, 63),
+							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
+							"promoter.argoproj.io/environment":        utils.KubeSafeName(environment.Branch, 63),
+						}),
+					})
+					if err != nil {
+						return ctrl.Result{}, err
+					}
+
+					if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen {
+						prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
+						err = r.Update(ctx, &prl.Items[0])
+						if err != nil {
+							return ctrl.Result{}, err
+						}
+					}
+				}
+			}
+		}
 
 		err = r.Status().Update(ctx, &ps)
 		if err != nil {
@@ -215,12 +243,12 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 					Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
 						DrySha:       pc.Status.Active.DrySha,
 						HydratedSHA:  pc.Status.Active.HydratedSha,
-						CommitStatus: "todo",
+						CommitStatus: "pending",
 					},
 					Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
 						DrySha:       pc.Status.Proposed.DrySha,
 						HydratedSHA:  pc.Status.Proposed.HydratedSha,
-						CommitStatus: "todo",
+						CommitStatus: "pending",
 					},
 				}
 				return status
@@ -244,10 +272,37 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			return err
 		}
 
-		if len(csList.Items) > 0 {
-			for i, _ := range ps.Status.Environments {
-				if ps.Status.Environments[i].Branch == environment.Branch {
+		for i, _ := range ps.Status.Environments {
+			if ps.Status.Environments[i].Branch == environment.Branch {
+				if len(csList.Items) > 0 {
 					ps.Status.Environments[i].Active.CommitStatus = string(csList.Items[0].Spec.State)
+				} else {
+					ps.Status.Environments[i].Active.CommitStatus = "unknown"
+				}
+			}
+		}
+	}
+
+	for _, status := range ps.Spec.ProposedCommitStatuses {
+		var csList promoterv1alpha1.CommitStatusList
+		err := r.List(ctx, &csList, &client.ListOptions{
+			LabelSelector: labels.SelectorFromSet(map[string]string{
+				"promoter.argoproj.io/commit-status": status.Key,
+			}),
+			FieldSelector: fields.SelectorFromSet(map[string]string{
+				".spec.sha": pc.Status.Proposed.HydratedSha,
+			}),
+		})
+		if err != nil {
+			return err
+		}
+
+		for i, _ := range ps.Status.Environments {
+			if ps.Status.Environments[i].Branch == environment.Branch {
+				if len(csList.Items) > 0 {
+					ps.Status.Environments[i].Proposed.CommitStatus = string(csList.Items[0].Spec.State)
+				} else {
+					ps.Status.Environments[i].Proposed.CommitStatus = "unknown"
 				}
 			}
 		}
