@@ -19,11 +19,12 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
 	"reflect"
 	"slices"
 	"time"
+
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 
 	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
 	"github.com/zachaller/promoter/internal/utils"
@@ -219,16 +220,16 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 	if slices.ContainsFunc(ps.Status.Environments, func(e promoterv1alpha1.EnvironmentStatus) bool {
 		return e.Branch == environment.Branch
 	}) {
-		for i, _ := range ps.Status.Environments {
+		for i := range ps.Status.Environments {
 			if ps.Status.Environments[i].Branch == environment.Branch {
-				if pc.Status.Active == nil || pc.Status.Proposed == nil {
-					continue
-				}
+				//if pc.Status.Active == nil || pc.Status.Proposed == nil {
+				//	continue
+				//}
 
-				ps.Status.Environments[i].Active.DrySha = pc.Status.Active.DrySha
-				ps.Status.Environments[i].Active.HydratedSHA = pc.Status.Active.HydratedSha
-				ps.Status.Environments[i].Proposed.DrySha = pc.Status.Proposed.DrySha
-				ps.Status.Environments[i].Proposed.HydratedSHA = pc.Status.Proposed.HydratedSha
+				ps.Status.Environments[i].Active.DrySha = pc.Status.Active.Dry.Sha
+				ps.Status.Environments[i].Active.HydratedSHA = pc.Status.Active.Hydrated.Sha
+				ps.Status.Environments[i].Proposed.DrySha = pc.Status.Proposed.Dry.Sha
+				ps.Status.Environments[i].Proposed.HydratedSHA = pc.Status.Proposed.Hydrated.Sha
 
 				if len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
 					ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
@@ -236,24 +237,24 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			}
 		}
 	} else {
-		if pc.Status.Active != nil || pc.Status.Proposed != nil {
-			ps.Status.Environments = append(ps.Status.Environments, func() promoterv1alpha1.EnvironmentStatus {
-				status := promoterv1alpha1.EnvironmentStatus{
-					Branch: environment.Branch,
-					Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-						DrySha:       pc.Status.Active.DrySha,
-						HydratedSHA:  pc.Status.Active.HydratedSha,
-						CommitStatus: "pending",
-					},
-					Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-						DrySha:       pc.Status.Proposed.DrySha,
-						HydratedSHA:  pc.Status.Proposed.HydratedSha,
-						CommitStatus: "pending",
-					},
-				}
-				return status
-			}())
-		}
+		//if pc.Status.Active != nil || pc.Status.Proposed != nil {
+		ps.Status.Environments = append(ps.Status.Environments, func() promoterv1alpha1.EnvironmentStatus {
+			status := promoterv1alpha1.EnvironmentStatus{
+				Branch: environment.Branch,
+				Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
+					DrySha:       pc.Status.Active.Dry.Sha,
+					HydratedSHA:  pc.Status.Active.Hydrated.Sha,
+					CommitStatus: "pending",
+				},
+				Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
+					DrySha:       pc.Status.Proposed.Dry.Sha,
+					HydratedSHA:  pc.Status.Proposed.Hydrated.Sha,
+					CommitStatus: "pending",
+				},
+			}
+			return status
+		}())
+		//}
 	}
 
 	//Bumble up CommitStatus to PromotionStrategy Status
@@ -265,14 +266,14 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 				"promoter.argoproj.io/commit-status": status.Key,
 			}),
 			FieldSelector: fields.SelectorFromSet(map[string]string{
-				".spec.sha": pc.Status.Active.HydratedSha,
+				".spec.sha": pc.Status.Active.Hydrated.Sha,
 			}),
 		})
 		if err != nil {
 			return err
 		}
 
-		for i, _ := range ps.Status.Environments {
+		for i := range ps.Status.Environments {
 			if ps.Status.Environments[i].Branch == environment.Branch {
 				if len(csList.Items) > 0 {
 					ps.Status.Environments[i].Active.CommitStatus = string(csList.Items[0].Spec.State)
@@ -290,14 +291,14 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 				"promoter.argoproj.io/commit-status": status.Key,
 			}),
 			FieldSelector: fields.SelectorFromSet(map[string]string{
-				".spec.sha": pc.Status.Proposed.HydratedSha,
+				".spec.sha": pc.Status.Proposed.Hydrated.Sha,
 			}),
 		})
 		if err != nil {
 			return err
 		}
 
-		for i, _ := range ps.Status.Environments {
+		for i := range ps.Status.Environments {
 			if ps.Status.Environments[i].Branch == environment.Branch {
 				if len(csList.Items) > 0 {
 					ps.Status.Environments[i].Proposed.CommitStatus = string(csList.Items[0].Spec.State)

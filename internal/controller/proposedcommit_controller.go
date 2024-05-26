@@ -101,26 +101,28 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	logger.Info("Branch SHAs", "dryBranchShas", dryBranchShas, "hydratedBranchShas", hydratedBranchShas)
 
 	for branch := range hydratedBranchShas {
-		if pc.Status.Active == nil {
-			pc.Status.Active = &promoterv1alpha1.ProposedCommitBranchState{}
-		}
-
-		if pc.Status.Proposed == nil {
-			pc.Status.Proposed = &promoterv1alpha1.ProposedCommitBranchState{}
-		}
-
 		if branch == pc.Spec.ActiveBranch {
-			pc.Status.Active.HydratedSha = hydratedBranchShas[branch]
-			pc.Status.Active.DrySha = dryBranchShas[branch]
+			pc.Status.Active.Hydrated.Sha = hydratedBranchShas[branch]
+			commitTime, _ := gitOperations.GetShaTime(ctx, hydratedBranchShas[branch])
+			pc.Status.Active.Hydrated.CommitTime = commitTime
+
+			pc.Status.Active.Dry.Sha = dryBranchShas[branch]
+			commitTime, _ = gitOperations.GetShaTime(ctx, dryBranchShas[branch])
+			pc.Status.Active.Dry.CommitTime = commitTime
 		}
 		if branch == pc.Spec.ProposedBranch {
-			pc.Status.Proposed.HydratedSha = hydratedBranchShas[branch]
-			pc.Status.Proposed.DrySha = dryBranchShas[branch]
+			pc.Status.Proposed.Hydrated.Sha = hydratedBranchShas[branch]
+			commitTime, _ := gitOperations.GetShaTime(ctx, hydratedBranchShas[branch])
+			pc.Status.Proposed.Hydrated.CommitTime = commitTime
+
+			pc.Status.Proposed.Dry.Sha = dryBranchShas[branch]
+			commitTime, _ = gitOperations.GetShaTime(ctx, dryBranchShas[branch])
+			pc.Status.Proposed.Dry.CommitTime = commitTime
 		}
 	}
 
-	if pc.Status.Proposed.DrySha != pc.Status.Active.DrySha {
-		logger.Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.DrySha, "activeDrySha", pc.Status.Active.DrySha)
+	if pc.Status.Proposed.Dry.Sha != pc.Status.Active.Dry.Sha {
+		logger.Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
 		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
 		prName = utils.KubeSafeName(prName, 250)
 
@@ -153,7 +155,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 						Title:               fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch),
 						TargetBranch:        pc.Spec.ActiveBranch,
 						SourceBranch:        pc.Spec.ProposedBranch,
-						Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.DrySha, pc.Status.Proposed.DrySha),
+						Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha),
 						State:               "open",
 					},
 				}
@@ -171,7 +173,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				Title:               fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch),
 				TargetBranch:        pc.Spec.ActiveBranch,
 				SourceBranch:        pc.Spec.ProposedBranch,
-				Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.DrySha, pc.Status.Proposed.DrySha),
+				Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha),
 				State:               "open",
 			}
 			err = r.Update(ctx, &pr)

@@ -86,10 +86,22 @@ spec:
             properties:
               active:
                 properties:
-                  drySha:
-                    type: string
-                  hydratedSha:
-                    type: string
+                  dry:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                  hydrated:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
                 type: object
               commitStatuses:
                 items:
@@ -110,10 +122,22 @@ spec:
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
                   Important: Run "make" to regenerate code after modifying this file
                 properties:
-                  drySha:
-                    type: string
-                  hydratedSha:
-                    type: string
+                  dry:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                  hydrated:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
                 type: object
             type: object
         type: object

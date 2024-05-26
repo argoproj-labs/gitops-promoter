@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/relvacode/iso8601"
 	"github.com/zachaller/promoter/api/v1alpha1"
 	"github.com/zachaller/promoter/internal/scms"
 	"github.com/zachaller/promoter/internal/utils"
@@ -130,6 +131,27 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (d
 	}
 
 	return dryBranchShas, hydratedBranchShas, nil
+}
+
+func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {
+	logger := log.FromContext(ctx)
+	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) == "" {
+		return v1.Time{}, fmt.Errorf("no repo path found")
+	}
+
+	_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "show", "-s", "--format=%cI", sha)
+	if err != nil {
+		logger.Error(err, "could not git show", "gitError", stderr)
+		return v1.Time{}, err
+	}
+	logger.Info("Got sha time", "sha", sha, "time", stdout)
+
+	cTime, err := iso8601.ParseString(strings.TrimSpace(stdout))
+	if err != nil {
+		return v1.Time{}, err
+	}
+
+	return v1.Time{Time: cTime}, nil
 }
 
 func (g *GitOperations) runCmd(ctx context.Context, directory string, name string, args ...string) (*exec.Cmd, string, string, error) {
