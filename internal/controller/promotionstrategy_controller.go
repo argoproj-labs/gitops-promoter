@@ -269,7 +269,8 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 	}
 
 	//Bumble up CommitStatus to PromotionStrategy Status
-	for _, status := range ps.Spec.ActiveCommitStatuses {
+	activeCommitStatusList := append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)
+	for _, status := range activeCommitStatusList {
 		var csList promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &csList, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
@@ -301,8 +302,8 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 		}
 	}
 
-	//statusStatesProposed := []string{}
-	for _, status := range ps.Spec.ProposedCommitStatuses {
+	proposedCommitStatusList := append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)
+	for _, status := range proposedCommitStatusList {
 		var csList promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &csList, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
