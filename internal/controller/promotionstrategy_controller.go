@@ -111,11 +111,16 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		// If CommitStatus is healthy then merge the PR
 		for i, statusEnvironment := range ps.Status.Environments {
 			if statusEnvironment.Branch == environment.Branch {
-				if i == 0 {
-					//Promote the first environment, by merging the PR
-				}
 
-				if len(ps.Status.Environments) > 0 && i > 0 && ps.Status.Environments[i-1].Active.CommitStatus == "success" && ps.Status.Environments[i-1].Active.Dry.CommitTime.After(ps.Status.Environments[i].Active.Dry.CommitTime.Time) {
+				activeChecksPassed := len(ps.Status.Environments) > 0 && i > 0 &&
+					ps.Status.Environments[i-1].Active.CommitStatus == "success" &&
+					ps.Status.Environments[i-1].Active.Dry.CommitTime.After(ps.Status.Environments[i].Active.Dry.CommitTime.Time)
+				//if i == 0 {
+				//	//Promote the first environment, by merging the PR
+				//	activeChecksPassed = true
+				//}
+
+				if activeChecksPassed {
 					prl := promoterv1alpha1.PullRequestList{}
 					err := r.List(ctx, &prl, &client.ListOptions{
 						LabelSelector: labels.SelectorFromSet(map[string]string{
@@ -245,28 +250,25 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			}
 		}
 	} else {
-		//if pc.Status.Active != nil || pc.Status.Proposed != nil {
 		ps.Status.Environments = append(ps.Status.Environments, func() promoterv1alpha1.EnvironmentStatus {
 			status := promoterv1alpha1.EnvironmentStatus{
 				Branch: environment.Branch,
 				Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
 					Dry:          promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Dry.Sha, CommitTime: pc.Status.Active.Dry.CommitTime},
 					Hydrated:     promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Hydrated.Sha, CommitTime: pc.Status.Active.Hydrated.CommitTime},
-					CommitStatus: "pending",
+					CommitStatus: "unknown",
 				},
 				Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
 					Dry:          promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Dry.Sha, CommitTime: pc.Status.Proposed.Dry.CommitTime},
 					Hydrated:     promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Hydrated.Sha, CommitTime: pc.Status.Proposed.Hydrated.CommitTime},
-					CommitStatus: "pending",
+					CommitStatus: "unknown",
 				},
 			}
 			return status
 		}())
-		//}
 	}
 
 	//Bumble up CommitStatus to PromotionStrategy Status
-
 	for _, status := range ps.Spec.ActiveCommitStatuses {
 		var csList promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &csList, &client.ListOptions{
@@ -283,15 +285,23 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 
 		for i := range ps.Status.Environments {
 			if ps.Status.Environments[i].Branch == environment.Branch {
-				if len(csList.Items) > 0 {
-					ps.Status.Environments[i].Active.CommitStatus = string(csList.Items[0].Spec.State)
-				} else {
+				if len(csList.Items) == 1 {
+					//ps.Status.Environments[i].Active.CommitStatus = string(csList.Items[0].Spec.State)
+					ps.Status.Environments[i].Active.CommitStatus = "success"
+					if string(csList.Items[0].Spec.State) != "success" {
+						ps.Status.Environments[i].Active.CommitStatus = string(csList.Items[0].Spec.State)
+						break
+					}
+				} else if len(csList.Items) > 1 {
+					ps.Status.Environments[i].Active.CommitStatus = "to-many-matching-sha"
+				} else if len(csList.Items) == 0 {
 					ps.Status.Environments[i].Active.CommitStatus = "unknown"
 				}
 			}
 		}
 	}
 
+	//statusStatesProposed := []string{}
 	for _, status := range ps.Spec.ProposedCommitStatuses {
 		var csList promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &csList, &client.ListOptions{
@@ -309,8 +319,16 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 		for i := range ps.Status.Environments {
 			if ps.Status.Environments[i].Branch == environment.Branch {
 				if len(csList.Items) > 0 {
-					ps.Status.Environments[i].Proposed.CommitStatus = string(csList.Items[0].Spec.State)
-				} else {
+					//ps.Status.Environments[i].Proposed.CommitStatus = string(csList.Items[0].Spec.State)
+					ps.Status.Environments[i].Proposed.CommitStatus = "success"
+					if string(csList.Items[0].Spec.State) != "success" {
+						ps.Status.Environments[i].Proposed.CommitStatus = string(csList.Items[0].Spec.State)
+						break
+					}
+					//statusStatesProposed = append(statusStatesProposed, string(csList.Items[0].Spec.State))
+				} else if len(csList.Items) > 1 {
+					ps.Status.Environments[i].Active.CommitStatus = "to-many-matching-sha"
+				} else if len(csList.Items) == 0 {
 					ps.Status.Environments[i].Proposed.CommitStatus = "unknown"
 				}
 			}

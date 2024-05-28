@@ -14,8 +14,9 @@ spec:
   dryBranch: main
   activeCommitStatuses:
     - key: healthy
+    - key: healthy-load
   proposedCommitStatuses:
-    - key: healthy
+    - key: healthy-lint
   environments:
     - branch: environment/development
       autoMerge: true
