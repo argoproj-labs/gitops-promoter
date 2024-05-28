@@ -114,7 +114,8 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				if i == 0 {
 					//Promote the first environment, by merging the PR
 				}
-				if len(ps.Status.Environments) > 0 && i > 0 && ps.Status.Environments[i-1].Active.CommitStatus == "success" {
+
+				if len(ps.Status.Environments) > 0 && i > 0 && ps.Status.Environments[i-1].Active.CommitStatus == "success" && ps.Status.Environments[i-1].Active.Dry.CommitTime.After(ps.Status.Environments[i].Active.Dry.CommitTime.Time) {
 					prl := promoterv1alpha1.PullRequestList{}
 					err := r.List(ctx, &prl, &client.ListOptions{
 						LabelSelector: labels.SelectorFromSet(map[string]string{
@@ -226,10 +227,17 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 				//	continue
 				//}
 
-				ps.Status.Environments[i].Active.DrySha = pc.Status.Active.Dry.Sha
-				ps.Status.Environments[i].Active.HydratedSHA = pc.Status.Active.Hydrated.Sha
-				ps.Status.Environments[i].Proposed.DrySha = pc.Status.Proposed.Dry.Sha
-				ps.Status.Environments[i].Proposed.HydratedSHA = pc.Status.Proposed.Hydrated.Sha
+				ps.Status.Environments[i].Active.Dry.Sha = pc.Status.Active.Dry.Sha
+				ps.Status.Environments[i].Active.Dry.CommitTime = pc.Status.Active.Dry.CommitTime
+
+				ps.Status.Environments[i].Active.Hydrated.Sha = pc.Status.Active.Hydrated.Sha
+				ps.Status.Environments[i].Active.Hydrated.CommitTime = pc.Status.Active.Hydrated.CommitTime
+
+				ps.Status.Environments[i].Proposed.Dry.Sha = pc.Status.Proposed.Dry.Sha
+				ps.Status.Environments[i].Proposed.Dry.CommitTime = pc.Status.Proposed.Dry.CommitTime
+
+				ps.Status.Environments[i].Proposed.Hydrated.Sha = pc.Status.Proposed.Hydrated.Sha
+				ps.Status.Environments[i].Proposed.Hydrated.CommitTime = pc.Status.Proposed.Hydrated.CommitTime
 
 				if len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
 					ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
@@ -242,13 +250,13 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			status := promoterv1alpha1.EnvironmentStatus{
 				Branch: environment.Branch,
 				Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					DrySha:       pc.Status.Active.Dry.Sha,
-					HydratedSHA:  pc.Status.Active.Hydrated.Sha,
+					Dry:          promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Dry.Sha, CommitTime: pc.Status.Active.Dry.CommitTime},
+					Hydrated:     promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Hydrated.Sha, CommitTime: pc.Status.Active.Hydrated.CommitTime},
 					CommitStatus: "pending",
 				},
 				Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					DrySha:       pc.Status.Proposed.Dry.Sha,
-					HydratedSHA:  pc.Status.Proposed.Hydrated.Sha,
+					Dry:          promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Dry.Sha, CommitTime: pc.Status.Proposed.Dry.CommitTime},
+					Hydrated:     promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Hydrated.Sha, CommitTime: pc.Status.Proposed.Hydrated.CommitTime},
 					CommitStatus: "pending",
 				},
 			}

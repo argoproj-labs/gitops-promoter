@@ -191,7 +191,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	return ctrl.Result{
 		Requeue:      true,
-		RequeueAfter: 1 * time.Minute,
+		RequeueAfter: 30 * time.Second,
 	}, nil
 }
 

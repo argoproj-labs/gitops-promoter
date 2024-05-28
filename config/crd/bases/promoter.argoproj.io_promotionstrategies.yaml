@@ -124,14 +124,26 @@ spec:
                       properties:
                         commitStatus:
                           type: string
-                        drySha:
-                          type: string
-                        hydratedSha:
-                          type: string
+                        dry:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
+                        hydrated:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
                       required:
                       - commitStatus
-                      - drySha
-                      - hydratedSha
+                      - dry
+                      - hydrated
                       type: object
                     branch:
                       type: string
@@ -152,14 +164,26 @@ spec:
                       properties:
                         commitStatus:
                           type: string
-                        drySha:
-                          type: string
-                        hydratedSha:
-                          type: string
+                        dry:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
+                        hydrated:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
                       required:
                       - commitStatus
-                      - drySha
-                      - hydratedSha
+                      - dry
+                      - hydrated
                       type: object
                   required:
                   - active

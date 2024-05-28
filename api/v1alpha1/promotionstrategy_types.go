@@ -78,9 +78,9 @@ type HealthyDryShas struct {
 }
 
 type PromotionStrategyBranchStateStatus struct {
-	DrySha       string `json:"drySha"`
-	HydratedSHA  string `json:"hydratedSha"`
-	CommitStatus string `json:"commitStatus"`
+	Dry          ProposedCommitShaState `json:"dry"`
+	Hydrated     ProposedCommitShaState `json:"hydrated"`
+	CommitStatus string                 `json:"commitStatus"`
 }
 
 //+kubebuilder:object:root=true
