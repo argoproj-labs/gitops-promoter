@@ -85,42 +85,48 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			return ctrl.Result{}, err
 		}
 
-		if environment.AutoMerge {
-			logger.Info("AutoMerge is enabled", "namespace", ps.Namespace, "name", ps.Name, "branch", environment.Branch)
-			prl := promoterv1alpha1.PullRequestList{}
-			err := r.List(ctx, &prl, &client.ListOptions{
-				LabelSelector: labels.SelectorFromSet(map[string]string{
-					"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(ps.Name, 63),
-					"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
-					"promoter.argoproj.io/environment":        utils.KubeSafeName(environment.Branch, 63),
-				}),
-			})
-			if err != nil {
-				return ctrl.Result{}, err
-			}
+		//if environment.AutoMerge {
+		//	logger.Info("AutoMerge is enabled", "namespace", ps.Namespace, "name", ps.Name, "branch", environment.Branch)
+		//	prl := promoterv1alpha1.PullRequestList{}
+		//	err := r.List(ctx, &prl, &client.ListOptions{
+		//		LabelSelector: labels.SelectorFromSet(map[string]string{
+		//			"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(ps.Name, 63),
+		//			"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
+		//			"promoter.argoproj.io/environment":        utils.KubeSafeName(environment.Branch, 63),
+		//		}),
+		//	})
+		//	if err != nil {
+		//		return ctrl.Result{}, err
+		//	}
+		//
+		//	if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen {
+		//		prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
+		//		err = r.Update(ctx, &prl.Items[0])
+		//		if err != nil {
+		//			return ctrl.Result{}, err
+		//		}
+		//	}
+		//}
 
-			if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen {
-				prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
-				err = r.Update(ctx, &prl.Items[0])
-				if err != nil {
-					return ctrl.Result{}, err
-				}
-			}
-		}
-
-		// If CommitStatus is healthy then merge the PR
-		for i, statusEnvironment := range ps.Status.Environments {
+		environments := utils.GetEnvironmentsFromStatusInOrder(ps)
+		for i, statusEnvironment := range environments {
 			if statusEnvironment.Branch == environment.Branch {
+
+				index, nextEnvironment := utils.GetNextEnvironment(ps, environment.Branch)
+				if index > 0 {
+					if len(ps.Status.Environments) > 1 && i < len(ps.Status.Environments)-1 {
+						err = r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), pc.Status.Active.Hydrated.Sha, nextEnvironment.Proposed.Hydrated.Sha, environment.Branch)
+						if err != nil {
+							return ctrl.Result{}, err
+						}
+					}
+				}
 
 				activeChecksPassed := len(ps.Status.Environments) > 0 && i > 0 &&
 					ps.Status.Environments[i-1].Active.CommitStatus == "success" &&
 					ps.Status.Environments[i-1].Active.Dry.CommitTime.After(ps.Status.Environments[i].Active.Dry.CommitTime.Time)
-				//if i == 0 {
-				//	//Promote the first environment, by merging the PR
-				//	activeChecksPassed = true
-				//}
 
-				if activeChecksPassed {
+				if activeChecksPassed || environment.AutoMerge {
 					prl := promoterv1alpha1.PullRequestList{}
 					err := r.List(ctx, &prl, &client.ListOptions{
 						LabelSelector: labels.SelectorFromSet(map[string]string{
@@ -284,18 +290,25 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			return err
 		}
 
+		csListSlice := []promoterv1alpha1.CommitStatus{}
+		for _, item := range csList.Items {
+			if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
+				csListSlice = append(csListSlice, item)
+			}
+		}
+
 		for i := range ps.Status.Environments {
 			if ps.Status.Environments[i].Branch == environment.Branch {
-				if len(csList.Items) == 1 {
+				if len(csListSlice) == 1 {
 					//ps.Status.Environments[i].Active.CommitStatus = string(csList.Items[0].Spec.State)
 					ps.Status.Environments[i].Active.CommitStatus = "success"
-					if string(csList.Items[0].Spec.State) != "success" {
+					if string(csListSlice[0].Spec.State) != "success" {
 						ps.Status.Environments[i].Active.CommitStatus = string(csList.Items[0].Spec.State)
 						break
 					}
-				} else if len(csList.Items) > 1 {
+				} else if len(csListSlice) > 1 {
 					ps.Status.Environments[i].Active.CommitStatus = "to-many-matching-sha"
-				} else if len(csList.Items) == 0 {
+				} else if len(csListSlice) == 0 {
 					ps.Status.Environments[i].Active.CommitStatus = "unknown"
 				}
 			}
@@ -317,22 +330,147 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			return err
 		}
 
+		csListSlice := []promoterv1alpha1.CommitStatus{}
+		for _, item := range csList.Items {
+			if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
+				csListSlice = append(csListSlice, item)
+			}
+		}
+
 		for i := range ps.Status.Environments {
 			if ps.Status.Environments[i].Branch == environment.Branch {
-				if len(csList.Items) > 0 {
+				if len(csListSlice) > 0 {
 					//ps.Status.Environments[i].Proposed.CommitStatus = string(csList.Items[0].Spec.State)
 					ps.Status.Environments[i].Proposed.CommitStatus = "success"
-					if string(csList.Items[0].Spec.State) != "success" {
+					if string(csListSlice[0].Spec.State) != "success" {
 						ps.Status.Environments[i].Proposed.CommitStatus = string(csList.Items[0].Spec.State)
 						break
 					}
 					//statusStatesProposed = append(statusStatesProposed, string(csList.Items[0].Spec.State))
-				} else if len(csList.Items) > 1 {
+				} else if len(csListSlice) > 1 {
 					ps.Status.Environments[i].Active.CommitStatus = "to-many-matching-sha"
-				} else if len(csList.Items) == 0 {
+				} else if len(csListSlice) == 0 {
 					ps.Status.Environments[i].Proposed.CommitStatus = "unknown"
 				}
 			}
+		}
+	}
+
+	return nil
+}
+
+func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, csSelector []promoterv1alpha1.CommitStatusSelector, activeHydratedSha string, nextProposedHydratedSha string, branch string) error {
+	for _, value := range csSelector {
+		var commitStatuses promoterv1alpha1.CommitStatusList
+		err := r.List(ctx, &commitStatuses, &client.ListOptions{
+			LabelSelector: labels.SelectorFromSet(map[string]string{
+				"promoter.argoproj.io/commit-status": value.Key,
+			}),
+			FieldSelector: fields.SelectorFromSet(map[string]string{
+				".spec.sha": activeHydratedSha,
+			}),
+		})
+		if err != nil {
+			return err
+		}
+
+		for _, commitStatus := range commitStatuses.Items {
+			if commitStatus.Labels["promoter.argoproj.io/commit-status-copy"] == "true" {
+				continue
+			}
+
+			cs := promoterv1alpha1.CommitStatus{}
+			err := r.Get(ctx, client.ObjectKey{Namespace: commitStatus.Namespace, Name: "proposed-" + commitStatus.Name}, &cs)
+			if err != nil {
+				//utils.KubeSafeName(branch, 63)
+				if errors.IsNotFound(err) {
+					status := &promoterv1alpha1.CommitStatus{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:        "proposed-" + commitStatus.Name,
+							Annotations: commitStatus.Annotations,
+							Labels:      commitStatus.Labels,
+							Namespace:   commitStatus.Namespace,
+						},
+						Spec: promoterv1alpha1.CommitStatusSpec{
+							RepositoryReference: commitStatus.Spec.RepositoryReference,
+							Sha:                 nextProposedHydratedSha,
+							Name:                branch + " - " + commitStatus.Spec.Name,
+							Description:         commitStatus.Spec.Description,
+							State:               commitStatus.Spec.State,
+							Url:                 commitStatus.Spec.Url,
+						},
+					}
+					if status.Labels == nil {
+						status.Labels = make(map[string]string)
+					}
+					status.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
+					err := r.Create(context.Background(), status)
+					if err != nil {
+						return err
+					}
+					return nil
+				}
+				if errors.IsNotFound(err) {
+					//Delete copy
+				}
+			}
+			commitStatus.Spec.DeepCopyInto(&cs.Spec)
+			cs.Spec.Sha = nextProposedHydratedSha
+			cs.Spec.Name = branch + " - " + commitStatus.Spec.Name
+			err = r.Update(ctx, &cs)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (r *PromotionStrategyReconciler) copyCommitStatusToNext(ctx context.Context, commitStatuses promoterv1alpha1.CommitStatusList, sha string) error {
+	for _, commitStatus := range commitStatuses.Items {
+		if commitStatus.Labels["promoter.argoproj.io/commit-status-copy"] == "true" {
+			continue
+		}
+
+		cs := promoterv1alpha1.CommitStatus{}
+		err := r.Get(ctx, client.ObjectKey{Namespace: commitStatus.Namespace, Name: "proposed-" + commitStatus.Name}, &cs)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				status := &promoterv1alpha1.CommitStatus{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:        "proposed-" + commitStatus.Name,
+						Annotations: commitStatus.Annotations,
+						Labels:      commitStatus.Labels,
+						Namespace:   commitStatus.Namespace,
+					},
+					Spec: promoterv1alpha1.CommitStatusSpec{
+						RepositoryReference: commitStatus.Spec.RepositoryReference,
+						Sha:                 sha,
+						Name:                commitStatus.Spec.Name,
+						Description:         commitStatus.Spec.Description,
+						State:               commitStatus.Spec.State,
+						Url:                 commitStatus.Spec.Url,
+					},
+				}
+				if status.Labels == nil {
+					status.Labels = make(map[string]string)
+				}
+				status.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
+				err := r.Create(context.Background(), status)
+				if err != nil {
+					return err
+				}
+				return nil
+			}
+			if errors.IsNotFound(err) {
+				//Delete copy
+			}
+		}
+		commitStatus.Spec.DeepCopyInto(&cs.Spec)
+		err = r.Update(ctx, &cs)
+		if err != nil {
+			return err
 		}
 	}
 
