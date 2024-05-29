@@ -102,7 +102,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 				activeChecksPassed := len(ps.Status.Environments) > 0 && i > 0 &&
 					ps.Status.Environments[i-1].Active.CommitStatus.State == "success" &&
-					(ps.Status.Environments[i].Active.CommitStatus.Sha != "unknown" && ps.Status.Environments[i].Active.CommitStatus.Sha != "to-many-matching-sha") &&
+					//(ps.Status.Environments[i-1].Active.CommitStatus.Sha != "unknown" && ps.Status.Environments[i-1].Active.CommitStatus.Sha != "to-many-matching-sha") &&
 					ps.Status.Environments[i-1].Active.Dry.CommitTime.After(ps.Status.Environments[i].Active.Dry.CommitTime.Time)
 
 				if activeChecksPassed || environment.AutoMerge || len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)) == 0 {
@@ -290,7 +290,6 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 					ps.Status.Environments[i].Active.CommitStatus.Sha = csList.Items[0].Spec.Sha
 					if string(csListSlice[0].Spec.State) != "success" {
 						ps.Status.Environments[i].Active.CommitStatus.State = string(csList.Items[0].Spec.State)
-						break
 					}
 				} else if len(csListSlice) > 1 {
 					ps.Status.Environments[i].Active.CommitStatus.State = "to-many-matching-sha"
@@ -299,6 +298,14 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 					ps.Status.Environments[i].Active.CommitStatus.State = "unknown"
 					ps.Status.Environments[i].Active.CommitStatus.Sha = "unknown"
 				}
+			}
+		}
+	}
+	if len(activeCommitStatusList) == 0 {
+		for i := range ps.Status.Environments {
+			if ps.Status.Environments[i].Branch == environment.Branch {
+				ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
+				ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
 			}
 		}
 	}
@@ -333,9 +340,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 					ps.Status.Environments[i].Proposed.CommitStatus.Sha = csList.Items[0].Spec.Sha
 					if string(csListSlice[0].Spec.State) != "success" {
 						ps.Status.Environments[i].Proposed.CommitStatus.State = string(csList.Items[0].Spec.State)
-						break
 					}
-					//statusStatesProposed = append(statusStatesProposed, string(csList.Items[0].Spec.State))
 				} else if len(csListSlice) > 1 {
 					ps.Status.Environments[i].Active.CommitStatus.State = "to-many-matching-sha"
 					ps.Status.Environments[i].Active.CommitStatus.Sha = "to-many-matching-sha"
@@ -345,6 +350,15 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 				}
 			}
 		}
+	}
+	if len(proposedCommitStatusList) == 0 {
+		for i := range ps.Status.Environments {
+			if ps.Status.Environments[i].Branch == environment.Branch {
+				ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
+				ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Proposed.Hydrated.Sha
+			}
+		}
+
 	}
 
 	return nil
@@ -373,7 +387,6 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			cs := promoterv1alpha1.CommitStatus{}
 			err := r.Get(ctx, client.ObjectKey{Namespace: commitStatus.Namespace, Name: "proposed-" + commitStatus.Name}, &cs)
 			if err != nil {
-				//utils.KubeSafeName(branch, 63)
 				if errors.IsNotFound(err) {
 					status := &promoterv1alpha1.CommitStatus{
 						ObjectMeta: metav1.ObjectMeta{

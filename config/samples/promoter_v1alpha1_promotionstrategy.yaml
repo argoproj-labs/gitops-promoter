@@ -12,9 +12,9 @@ spec:
     scmProviderRef:
       name: scmprovider-sample
   dryBranch: main
-#  activeCommitStatuses:
-#    - key: healthy
-#    - key: healthy-load
+  activeCommitStatuses:
+    - key: healthy
+    - key: healthy-load
 #  proposedCommitStatuses:
 #    - key: healthy-lint
   environments:
