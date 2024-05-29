@@ -112,10 +112,11 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		for i, statusEnvironment := range environments {
 			if statusEnvironment.Branch == environment.Branch {
 
-				index, nextEnvironment := utils.GetNextEnvironment(ps, environment.Branch)
+				//index, nextEnvironment := utils.GetNextEnvironment(ps, environment.Branch)
+				index, previousEnvironment := utils.GetPreviousEnvironment(ps, environment.Branch)
 				if index > 0 {
-					if len(ps.Status.Environments) > 1 && i < len(ps.Status.Environments)-1 {
-						err = r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), pc.Status.Active.Hydrated.Sha, nextEnvironment.Proposed.Hydrated.Sha, environment.Branch)
+					if i > 0 && len(ps.Status.Environments) > 1 {
+						err = r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), previousEnvironment.Active.Hydrated.Sha, pc.Status.Proposed.Hydrated.Sha, previousEnvironment.Branch) //pc.Status.Active.Hydrated.Sha
 						if err != nil {
 							return ctrl.Result{}, err
 						}
@@ -359,7 +360,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 	return nil
 }
 
-func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, csSelector []promoterv1alpha1.CommitStatusSelector, currentActiveHydratedSha string, nextProposedHydratedSha string, branch string) error {
+func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, csSelector []promoterv1alpha1.CommitStatusSelector, copyFromActiveHydratedSha string, copyToProposedHydratedSha string, branch string) error {
 	for _, value := range csSelector {
 		var commitStatuses promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &commitStatuses, &client.ListOptions{
@@ -367,7 +368,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 				"promoter.argoproj.io/commit-status": value.Key,
 			}),
 			FieldSelector: fields.SelectorFromSet(map[string]string{
-				".spec.sha": currentActiveHydratedSha,
+				".spec.sha": copyFromActiveHydratedSha,
 			}),
 		})
 		if err != nil {
@@ -393,30 +394,36 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 						},
 						Spec: promoterv1alpha1.CommitStatusSpec{
 							RepositoryReference: commitStatus.Spec.RepositoryReference,
-							Sha:                 nextProposedHydratedSha,
+							Sha:                 copyToProposedHydratedSha,
 							Name:                branch + " - " + commitStatus.Spec.Name,
 							Description:         commitStatus.Spec.Description,
 							State:               commitStatus.Spec.State,
-							Url:                 commitStatus.Spec.Url,
+							Url:                 "https://github.com/zachaller/promoter-testing/commit/" + copyFromActiveHydratedSha,
 						},
 					}
 					if status.Labels == nil {
 						status.Labels = make(map[string]string)
 					}
 					status.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
+					status.Labels["promoter.argoproj.io/commit-status-copy-from"] = commitStatus.Spec.Name
+					status.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = copyFromActiveHydratedSha
+					status.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeName(branch, 63)
 					err := r.Create(context.Background(), status)
 					if err != nil {
 						return err
 					}
 					return nil
 				}
-				if errors.IsNotFound(err) {
-					//Delete copy
-				}
 			}
 			commitStatus.Spec.DeepCopyInto(&cs.Spec)
-			cs.Spec.Sha = nextProposedHydratedSha
+
+			cs.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
+			cs.Labels["promoter.argoproj.io/commit-status-copy-from"] = commitStatus.Spec.Name
+			cs.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = copyFromActiveHydratedSha
+			cs.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeName(branch, 63)
+			cs.Spec.Sha = copyToProposedHydratedSha
 			cs.Spec.Name = branch + " - " + commitStatus.Spec.Name
+			cs.Spec.Url = "https://github.com/zachaller/promoter-testing/commit/" + copyFromActiveHydratedSha
 			err = r.Update(ctx, &cs)
 			if err != nil {
 				return err
