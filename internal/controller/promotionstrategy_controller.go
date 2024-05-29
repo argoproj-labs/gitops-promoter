@@ -359,7 +359,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 	return nil
 }
 
-func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, csSelector []promoterv1alpha1.CommitStatusSelector, activeHydratedSha string, nextProposedHydratedSha string, branch string) error {
+func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, csSelector []promoterv1alpha1.CommitStatusSelector, currentActiveHydratedSha string, nextProposedHydratedSha string, branch string) error {
 	for _, value := range csSelector {
 		var commitStatuses promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &commitStatuses, &client.ListOptions{
@@ -367,7 +367,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 				"promoter.argoproj.io/commit-status": value.Key,
 			}),
 			FieldSelector: fields.SelectorFromSet(map[string]string{
-				".spec.sha": activeHydratedSha,
+				".spec.sha": currentActiveHydratedSha,
 			}),
 		})
 		if err != nil {
