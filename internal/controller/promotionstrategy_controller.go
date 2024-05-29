@@ -85,29 +85,6 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			return ctrl.Result{}, err
 		}
 
-		//if environment.AutoMerge {
-		//	logger.Info("AutoMerge is enabled", "namespace", ps.Namespace, "name", ps.Name, "branch", environment.Branch)
-		//	prl := promoterv1alpha1.PullRequestList{}
-		//	err := r.List(ctx, &prl, &client.ListOptions{
-		//		LabelSelector: labels.SelectorFromSet(map[string]string{
-		//			"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(ps.Name, 63),
-		//			"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
-		//			"promoter.argoproj.io/environment":        utils.KubeSafeName(environment.Branch, 63),
-		//		}),
-		//	})
-		//	if err != nil {
-		//		return ctrl.Result{}, err
-		//	}
-		//
-		//	if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen {
-		//		prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
-		//		err = r.Update(ctx, &prl.Items[0])
-		//		if err != nil {
-		//			return ctrl.Result{}, err
-		//		}
-		//	}
-		//}
-
 		environments := utils.GetEnvironmentsFromStatusInOrder(ps)
 		for i, statusEnvironment := range environments {
 			if statusEnvironment.Branch == environment.Branch {
@@ -124,7 +101,8 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				}
 
 				activeChecksPassed := len(ps.Status.Environments) > 0 && i > 0 &&
-					ps.Status.Environments[i-1].Active.CommitStatus == "success" &&
+					ps.Status.Environments[i-1].Active.CommitStatus.State == "success" &&
+					(ps.Status.Environments[i].Active.CommitStatus.Sha != "unknown" && ps.Status.Environments[i].Active.CommitStatus.Sha != "to-many-matching-sha") &&
 					ps.Status.Environments[i-1].Active.Dry.CommitTime.After(ps.Status.Environments[i].Active.Dry.CommitTime.Time)
 
 				if activeChecksPassed || environment.AutoMerge {
@@ -261,14 +239,20 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			status := promoterv1alpha1.EnvironmentStatus{
 				Branch: environment.Branch,
 				Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					Dry:          promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Dry.Sha, CommitTime: pc.Status.Active.Dry.CommitTime},
-					Hydrated:     promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Hydrated.Sha, CommitTime: pc.Status.Active.Hydrated.CommitTime},
-					CommitStatus: "unknown",
+					Dry:      promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Dry.Sha, CommitTime: pc.Status.Active.Dry.CommitTime},
+					Hydrated: promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Hydrated.Sha, CommitTime: pc.Status.Active.Hydrated.CommitTime},
+					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
+						State: "unknown",
+						Sha:   "unknown",
+					},
 				},
 				Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					Dry:          promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Dry.Sha, CommitTime: pc.Status.Proposed.Dry.CommitTime},
-					Hydrated:     promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Hydrated.Sha, CommitTime: pc.Status.Proposed.Hydrated.CommitTime},
-					CommitStatus: "unknown",
+					Dry:      promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Dry.Sha, CommitTime: pc.Status.Proposed.Dry.CommitTime},
+					Hydrated: promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Hydrated.Sha, CommitTime: pc.Status.Proposed.Hydrated.CommitTime},
+					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
+						State: "unknown",
+						Sha:   "unknown",
+					},
 				},
 			}
 			return status
@@ -302,15 +286,18 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			if ps.Status.Environments[i].Branch == environment.Branch {
 				if len(csListSlice) == 1 {
 					//ps.Status.Environments[i].Active.CommitStatus = string(csList.Items[0].Spec.State)
-					ps.Status.Environments[i].Active.CommitStatus = "success"
+					ps.Status.Environments[i].Active.CommitStatus.State = "success"
+					ps.Status.Environments[i].Active.CommitStatus.Sha = csList.Items[0].Spec.Sha
 					if string(csListSlice[0].Spec.State) != "success" {
-						ps.Status.Environments[i].Active.CommitStatus = string(csList.Items[0].Spec.State)
+						ps.Status.Environments[i].Active.CommitStatus.State = string(csList.Items[0].Spec.State)
 						break
 					}
 				} else if len(csListSlice) > 1 {
-					ps.Status.Environments[i].Active.CommitStatus = "to-many-matching-sha"
+					ps.Status.Environments[i].Active.CommitStatus.State = "to-many-matching-sha"
+					ps.Status.Environments[i].Active.CommitStatus.Sha = "to-many-matching-sha"
 				} else if len(csListSlice) == 0 {
-					ps.Status.Environments[i].Active.CommitStatus = "unknown"
+					ps.Status.Environments[i].Active.CommitStatus.State = "unknown"
+					ps.Status.Environments[i].Active.CommitStatus.Sha = "unknown"
 				}
 			}
 		}
@@ -342,16 +329,19 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			if ps.Status.Environments[i].Branch == environment.Branch {
 				if len(csListSlice) > 0 {
 					//ps.Status.Environments[i].Proposed.CommitStatus = string(csList.Items[0].Spec.State)
-					ps.Status.Environments[i].Proposed.CommitStatus = "success"
+					ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
+					ps.Status.Environments[i].Proposed.CommitStatus.Sha = csList.Items[0].Spec.Sha
 					if string(csListSlice[0].Spec.State) != "success" {
-						ps.Status.Environments[i].Proposed.CommitStatus = string(csList.Items[0].Spec.State)
+						ps.Status.Environments[i].Proposed.CommitStatus.State = string(csList.Items[0].Spec.State)
 						break
 					}
 					//statusStatesProposed = append(statusStatesProposed, string(csList.Items[0].Spec.State))
 				} else if len(csListSlice) > 1 {
-					ps.Status.Environments[i].Active.CommitStatus = "to-many-matching-sha"
+					ps.Status.Environments[i].Active.CommitStatus.State = "to-many-matching-sha"
+					ps.Status.Environments[i].Active.CommitStatus.Sha = "to-many-matching-sha"
 				} else if len(csListSlice) == 0 {
-					ps.Status.Environments[i].Proposed.CommitStatus = "unknown"
+					ps.Status.Environments[i].Proposed.CommitStatus.State = "unknown"
+					ps.Status.Environments[i].Proposed.CommitStatus.Sha = "unknown"
 				}
 			}
 		}
@@ -428,56 +418,6 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			if err != nil {
 				return err
 			}
-		}
-	}
-
-	return nil
-}
-
-func (r *PromotionStrategyReconciler) copyCommitStatusToNext(ctx context.Context, commitStatuses promoterv1alpha1.CommitStatusList, sha string) error {
-	for _, commitStatus := range commitStatuses.Items {
-		if commitStatus.Labels["promoter.argoproj.io/commit-status-copy"] == "true" {
-			continue
-		}
-
-		cs := promoterv1alpha1.CommitStatus{}
-		err := r.Get(ctx, client.ObjectKey{Namespace: commitStatus.Namespace, Name: "proposed-" + commitStatus.Name}, &cs)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				status := &promoterv1alpha1.CommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:        "proposed-" + commitStatus.Name,
-						Annotations: commitStatus.Annotations,
-						Labels:      commitStatus.Labels,
-						Namespace:   commitStatus.Namespace,
-					},
-					Spec: promoterv1alpha1.CommitStatusSpec{
-						RepositoryReference: commitStatus.Spec.RepositoryReference,
-						Sha:                 sha,
-						Name:                commitStatus.Spec.Name,
-						Description:         commitStatus.Spec.Description,
-						State:               commitStatus.Spec.State,
-						Url:                 commitStatus.Spec.Url,
-					},
-				}
-				if status.Labels == nil {
-					status.Labels = make(map[string]string)
-				}
-				status.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
-				err := r.Create(context.Background(), status)
-				if err != nil {
-					return err
-				}
-				return nil
-			}
-			if errors.IsNotFound(err) {
-				//Delete copy
-			}
-		}
-		commitStatus.Spec.DeepCopyInto(&cs.Spec)
-		err = r.Update(ctx, &cs)
-		if err != nil {
-			return err
 		}
 	}
 

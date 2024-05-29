@@ -14,7 +14,14 @@ spec:
     singular: promotionstrategy
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.active.dry.sha
+      name: Active Dry Sha
+      type: string
+    - jsonPath: .status.proposed.dry.sha
+      name: Proposed Dry Sha
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: PromotionStrategy is the Schema for the promotionstrategies API
@@ -123,7 +130,15 @@ spec:
                     active:
                       properties:
                         commitStatus:
-                          type: string
+                          properties:
+                            sha:
+                              type: string
+                            state:
+                              type: string
+                          required:
+                          - sha
+                          - state
+                          type: object
                         dry:
                           properties:
                             commitTime:
@@ -163,7 +178,15 @@ spec:
                     proposed:
                       properties:
                         commitStatus:
-                          type: string
+                          properties:
+                            sha:
+                              type: string
+                            state:
+                              type: string
+                          required:
+                          - sha
+                          - state
+                          type: object
                         dry:
                           properties:
                             commitTime:
