@@ -152,7 +152,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 
 func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Finding Pull Request")
+	logger.V(5).Info("Finding Pull Request")
 
 	pullRequests, response, err := pr.client.PullRequests.List(ctx, pullRequest.Spec.RepositoryReference.Owner,
 		pullRequest.Spec.RepositoryReference.Name,

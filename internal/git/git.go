@@ -59,7 +59,7 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		logger.Info("Created directory", "directory", path)
+		logger.V(5).Info("Created directory", "directory", path)
 
 		_, stdout, stderr, err := g.runCmd(ctx, path, "git", "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.repoRef), path)
 		if err != nil {
@@ -67,7 +67,7 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 			return err
 		}
 		g.pathLookup.Set(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext, path)
-		logger.Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef))
+		logger.V(5).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef))
 
 	}
 
@@ -89,14 +89,14 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (d
 			logger.Error(err, "could not git checkout", "gitError", stderr)
 			return nil, nil, err
 		}
-		logger.Info("Checked out branch", "branch", branch)
+		logger.V(5).Info("Checked out branch", "branch", branch)
 
 		_, _, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "pull", "--progress")
 		if err != nil {
 			logger.Error(err, "could not git pull", "gitError", stderr)
 			return nil, nil, err
 		}
-		logger.Info("Pulled branch", "branch", branch)
+		logger.V(5).Info("Pulled branch", "branch", branch)
 
 		_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "rev-parse", branch)
 		if err != nil {
@@ -104,7 +104,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (d
 			return nil, nil, err
 		}
 		hydratedBranchShas[branch] = strings.TrimSpace(stdout)
-		logger.Info("Got hydrated branch sha", "branch", branch, "sha", hydratedBranchShas[branch])
+		logger.V(5).Info("Got hydrated branch sha", "branch", branch, "sha", hydratedBranchShas[branch])
 
 		metadataFile := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) + "/hydrator.metadata"
 		if _, err := os.Stat(metadataFile); err != nil {
@@ -127,7 +127,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (d
 			return nil, nil, err
 		}
 		dryBranchShas[branch] = hydratorFile.DrySHA
-		logger.Info("Got dry branch sha", "branch", branch, "sha", dryBranchShas[branch])
+		logger.V(5).Info("Got dry branch sha", "branch", branch, "sha", dryBranchShas[branch])
 	}
 
 	return dryBranchShas, hydratedBranchShas, nil

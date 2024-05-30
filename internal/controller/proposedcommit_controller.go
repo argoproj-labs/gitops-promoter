@@ -122,7 +122,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if pc.Status.Proposed.Dry.Sha != pc.Status.Active.Dry.Sha {
-		logger.Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
+		logger.V(5).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
 		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
 		prName = utils.KubeSafeName(prName, 250)
 
@@ -163,7 +163,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				if err != nil {
 					return ctrl.Result{}, err
 				}
-				logger.Info("Created pull request")
+				logger.V(5).Info("Created pull request")
 			} else {
 				return ctrl.Result{}, err
 			}
@@ -180,7 +180,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			if err != nil {
 				return ctrl.Result{}, err
 			}
-			logger.Info("Updated pull request resource")
+			logger.V(5).Info("Updated pull request resource")
 		}
 	}
 
@@ -208,10 +208,10 @@ func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmPr
 	logger := log.FromContext(ctx)
 	switch {
 	case scmProvider.Spec.Fake != nil:
-		logger.Info("Creating fake git authentication provider")
+		logger.V(5).Info("Creating fake git authentication provider")
 		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
 	case scmProvider.Spec.GitHub != nil:
-		logger.Info("Creating GitHub git authentication provider")
+		logger.V(5).Info("Creating GitHub git authentication provider")
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
 	default:
 		return nil, nil
