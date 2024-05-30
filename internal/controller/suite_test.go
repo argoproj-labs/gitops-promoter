@@ -204,11 +204,11 @@ func setupInitialTestGitRepo(owner string, name string) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func addPendingCommit(gitPath string, drySha string) {
+func addPendingCommit(gitPath string, drySha string, repoOwner string, repoName string) {
 	//gitPath, err := os.MkdirTemp("", "*")
 	//Expect(err).NotTo(HaveOccurred())
 
-	err := runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", "test", "test"), ".")
+	err := runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", repoOwner, repoName), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")

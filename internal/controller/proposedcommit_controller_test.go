@@ -47,7 +47,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind ProposedCommit")
 
-			setupInitialTestGitRepo("test", "test")
+			setupInitialTestGitRepo("test-pc", "test-pc")
 
 			err := k8sClient.Get(ctx, typeNamespacedName, proposedcommit)
 			if err != nil && errors.IsNotFound(err) {
@@ -58,8 +58,8 @@ var _ = Describe("ProposedCommit Controller", func() {
 					},
 					Spec: promoterv1alpha1.ProposedCommitSpec{
 						RepositoryReference: &promoterv1alpha1.Repository{
-							Owner: "test",
-							Name:  "test",
+							Owner: "test-pc",
+							Name:  "test-pc",
 							ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
 								Name:      resourceName,
 								Namespace: "default",
@@ -114,7 +114,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
-			deleteRepo("test", "test")
+			deleteRepo("test-pc", "test-pc")
 		})
 
 		It("should successfully reconcile the resource - with no git change", func() {
@@ -134,7 +134,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 
-			addPendingCommit(gitPath, "5468b78dfef356739559abf1f883cd713794fd97")
+			addPendingCommit(gitPath, "5468b78dfef356739559abf1f883cd713794fd97", "test-pc", "test-pc")
 
 			By("Reconciling the created resource")
 			controllerReconciler := &ProposedCommitReconciler{

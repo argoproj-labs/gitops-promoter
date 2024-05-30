@@ -46,7 +46,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind PromotionStrategy")
 
-			setupInitialTestGitRepo("test", "test")
+			setupInitialTestGitRepo("test-ps", "test-ps")
 
 			err := k8sClient.Get(ctx, typeNamespacedName, promotionstrategy)
 			if err != nil && errors.IsNotFound(err) {
@@ -58,8 +58,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Spec: promoterv1alpha1.PromotionStrategySpec{
 						DryBanch: "main",
 						RepositoryReference: &promoterv1alpha1.Repository{
-							Owner: "test",
-							Name:  "test",
+							Owner: "test-ps",
+							Name:  "test-ps",
 							ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
 								Name:      resourceName,
 								Namespace: "default",
@@ -117,6 +117,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+
+			deleteRepo("test-ps", "test-ps")
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")

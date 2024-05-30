@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"github.com/zachaller/promoter/internal/scms/fake"
 
 	"github.com/zachaller/promoter/internal/scms"
 	"github.com/zachaller/promoter/internal/scms/github"
@@ -106,10 +107,8 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 	switch {
 	case scmProvider.Spec.GitHub != nil:
 		return github.NewGithubCommitStatusProvider(*secret)
-		//return scms.NewScmPullRequestProvider(scms.GitHub, *secret), nil
-	//case scmProvider.Spec.Fake != nil:
-	//	return fake.NewFakePullRequestProvider(), nil
-	//return scms.NewScmPullRequestProvider(scms.Fake, *secret), nil
+	case scmProvider.Spec.Fake != nil:
+		return fake.NewFakeCommitStatusProvider(*secret)
 	default:
 		return nil, nil
 	}
