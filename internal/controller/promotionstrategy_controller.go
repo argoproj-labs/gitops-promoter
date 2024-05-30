@@ -105,7 +105,10 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 					//(ps.Status.Environments[i-1].Active.CommitStatus.Sha != "unknown" && ps.Status.Environments[i-1].Active.CommitStatus.Sha != "to-many-matching-sha") &&
 					ps.Status.Environments[i-1].Active.Dry.CommitTime.After(ps.Status.Environments[i].Active.Dry.CommitTime.Time)
 
-				if activeChecksPassed || environment.AutoMerge || len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)) == 0 {
+				proposedChecksPassed := len(ps.Status.Environments) > 0 &&
+					ps.Status.Environments[i].Proposed.CommitStatus.State == "success"
+
+				if (activeChecksPassed && proposedChecksPassed) || environment.AutoMerge {
 					prl := promoterv1alpha1.PullRequestList{}
 					err := r.List(ctx, &prl, &client.ListOptions{
 						LabelSelector: labels.SelectorFromSet(map[string]string{
