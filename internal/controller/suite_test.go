@@ -184,6 +184,24 @@ func setupInitialTestGitRepo(owner string, name string) {
 	Expect(err).NotTo(HaveOccurred())
 	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())
+
+	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/staging")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/staging")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/staging-next")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/staging-next")
+	Expect(err).NotTo(HaveOccurred())
+
+	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/production")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/production")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/production-next")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/production-next")
+	Expect(err).NotTo(HaveOccurred())
 }
 
 func addPendingCommit(gitPath string, drySha string) {

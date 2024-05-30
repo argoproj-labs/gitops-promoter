@@ -67,7 +67,6 @@ var _ = Describe("ProposedCommit Controller", func() {
 						},
 						ProposedBranch: "environment/development-next",
 						ActiveBranch:   "environment/development",
-						CommitStatuses: nil,
 					},
 					// TODO(user): Specify other spec details if needed.
 				}

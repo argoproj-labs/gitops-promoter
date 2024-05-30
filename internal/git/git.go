@@ -144,7 +144,7 @@ func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, er
 		logger.Error(err, "could not git show", "gitError", stderr)
 		return v1.Time{}, err
 	}
-	logger.Info("Got sha time", "sha", sha, "time", stdout)
+	logger.V(5).Info("Got sha time", "sha", sha, "time", stdout)
 
 	cTime, err := iso8601.ParseString(strings.TrimSpace(stdout))
 	if err != nil {

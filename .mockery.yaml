@@ -1,6 +1,6 @@
 with-expecter: true
 packages:
-  github.com/argoproj/promoter/internal/scms:
+  github.com/zachaller/promoter/internal/scms:
     # place your package-specific config here
     config:
     interfaces:
