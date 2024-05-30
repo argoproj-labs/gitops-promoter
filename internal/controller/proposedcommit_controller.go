@@ -145,7 +145,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 						Namespace:       pc.Namespace,
 						OwnerReferences: []metav1.OwnerReference{*controllerRef},
 						Labels: map[string]string{
-							"promoter.argoproj.io/promotion-strategy": pc.Labels["promoter.argoproj.io/promotion-strategy"],
+							"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(pc.Labels["promoter.argoproj.io/promotion-strategy"], 63),
 							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
 							"promoter.argoproj.io/environment":        utils.KubeSafeName(pc.Spec.ActiveBranch, 63),
 						},
