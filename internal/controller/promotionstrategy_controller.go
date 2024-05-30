@@ -118,7 +118,23 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 						return ctrl.Result{}, err
 					}
 
+					if len(prl.Items) > 0 {
+						if len(ps.Status.Environments) > 0 && i > 0 {
+							logger.Info("Active Checks Passed", "branch", environment.Branch,
+								"autoMerge", environment.AutoMerge,
+								"previousEnvironmentState", ps.Status.Environments[i-1].Active.CommitStatus.State,
+								"previousEnvironmentSha", ps.Status.Environments[i-1].Active.CommitStatus.Sha,
+								"previousEnvironmentCommitTime", ps.Status.Environments[i-1].Active.Dry.CommitTime,
+								"currentEnvironmentCommitTime", ps.Status.Environments[i].Active.Dry.CommitTime)
+						} else {
+							logger.Info("Active Checks Passed", "branch", environment.Branch,
+								"autoMerge", environment.AutoMerge,
+								"numberOfActiveCommitStatuses", len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)))
+						}
+					}
+
 					if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen {
+						logger.Info("Merging Pull Request", "namespace", prl.Items[0].Namespace, "name", prl.Items[0].Name)
 						prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
 						err = r.Update(ctx, &prl.Items[0])
 						if err != nil {
