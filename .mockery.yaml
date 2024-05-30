@@ -8,6 +8,15 @@ packages:
       PullRequestProvider:
         # Modify package-level config for this specific interface (if applicable)
         config:
+          dir: "internal/scms/mock"
+          outpkg: "mock"
       CommitStatusProvider:
         # Modify package-level config for this specific interface (if applicable)
         config:
+          dir: "internal/scms/mock"
+          outpkg: "mock"
+      GitOperationsProvider:
+        # Modify package-level config for this specific interface (if applicable)
+        config:
+          dir: "internal/scms/mock"
+          outpkg: "mock"
