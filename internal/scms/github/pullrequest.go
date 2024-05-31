@@ -50,13 +50,13 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.Info("github response status",
+	logger.V(5).Info("github response status",
 		"status", response.Status)
 
 	pullRequest.Status.State = v1alpha1.PullRequestClosed
 	pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
 	pullRequest.Status.PRCreationTime = metav1.Now()
-
+	com
 	return nil
 }
 
@@ -82,7 +82,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.Info("github response status",
+	logger.V(5).Info("github response status",
 		"status", response.Status)
 
 	pullRequest.Status.State = v1alpha1.PullRequestClosed
@@ -113,7 +113,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.Info("github response status",
+	logger.V(5).Info("github response status",
 		"status", response.Status)
 
 	pullRequest.Status.State = v1alpha1.PullRequestClosed
@@ -147,7 +147,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.Info("github response status",
+	logger.V(5).Info("github response status",
 		"status", response.Status)
 
 	pullRequest.Status.State = v1alpha1.PullRequestMerged
@@ -169,7 +169,7 @@ func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullReque
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.Info("github response status",
+	logger.V(5).Info("github response status",
 		"status", response.Status)
 	if len(pullRequests) > 0 {
 		pullRequest.Status.ID = strconv.Itoa(*pullRequests[0].Number)
