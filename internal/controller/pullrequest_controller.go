@@ -79,16 +79,18 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+
+	err = r.handleFinalizer(ctx, &pr, pullRequestProvider)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	if !found && pr.Status.State != "" {
 		err := r.Delete(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-	}
-
-	err = r.handleFinalizer(ctx, &pr, pullRequestProvider)
-	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, nil
 	}
 
 	hash, err := pr.Hash()
@@ -106,13 +108,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-
-		err = r.Status().Update(ctx, &pr)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-
-		return ctrl.Result{}, nil
 	}
 
 	if pr.Spec.State == promoterv1alpha1.PullRequestMerged && pr.Status.State != promoterv1alpha1.PullRequestMerged {
@@ -130,7 +125,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-
 		return ctrl.Result{}, nil
 	}
 
@@ -145,6 +139,10 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
+		err = r.Delete(ctx, &pr)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -153,12 +151,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		err = r.Status().Update(ctx, &pr)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+	}
 
-		return ctrl.Result{}, nil
+	err = r.Status().Update(ctx, &pr)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	logger.Info("no known states found")

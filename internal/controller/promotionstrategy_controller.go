@@ -122,7 +122,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 						return ctrl.Result{}, err
 					}
 
-					if len(prl.Items) > 0 {
+					if len(prl.Items) > 0 && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
 						if len(ps.Status.Environments) > 0 && i > 0 {
 							logger.Info("Active Checks Passed", "branch", environment.Branch,
 								"autoMerge", environment.AutoMerge,
@@ -150,7 +150,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 						if err != nil {
 							return ctrl.Result{}, err
 						}
-					} else if len(prl.Items) > 0 {
+					} else if len(prl.Items) > 0 && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
 						logger.Info("Pull request not ready to merge yet", "namespace", prl.Items[0].Namespace, "name", prl.Items[0].Name)
 					}
 				}
