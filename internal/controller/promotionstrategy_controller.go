@@ -293,7 +293,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 		var csList promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &csList, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
-				"promoter.argoproj.io/commit-status": status.Key,
+				"promoter.argoproj.io/commit-status": utils.KubeSafeName(status.Key, 63),
 			}),
 			FieldSelector: fields.SelectorFromSet(map[string]string{
 				".spec.sha": pc.Status.Active.Hydrated.Sha,
@@ -343,7 +343,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 		var csList promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &csList, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
-				"promoter.argoproj.io/commit-status": status.Key,
+				"promoter.argoproj.io/commit-status": utils.KubeSafeName(status.Key, 63),
 			}),
 			FieldSelector: fields.SelectorFromSet(map[string]string{
 				".spec.sha": pc.Status.Proposed.Hydrated.Sha,

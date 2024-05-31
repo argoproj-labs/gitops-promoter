@@ -56,6 +56,7 @@ type Environment struct {
 }
 
 type CommitStatusSelector struct {
+	// +kubebuilder:validation:Pattern:=(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
 	Key string `json:"key"`
 }
 
