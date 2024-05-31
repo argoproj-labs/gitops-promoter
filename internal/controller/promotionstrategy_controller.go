@@ -136,7 +136,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 						}
 					}
 
-					if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen {
+					if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
 						logger.Info("Merging Pull Request", "namespace", prl.Items[0].Namespace, "name", prl.Items[0].Name)
 						prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
 						err = r.Update(ctx, &prl.Items[0])

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/util/retry"
 
 	"github.com/zachaller/promoter/internal/scms"
 	"github.com/zachaller/promoter/internal/scms/fake"
@@ -197,7 +198,15 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 		// to registering our finalizer.
 		if !controllerutil.ContainsFinalizer(pr, finalizerName) {
 			controllerutil.AddFinalizer(pr, finalizerName)
-			if err := r.Update(ctx, pr); err != nil {
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr)
+				if err != nil {
+					return err
+				}
+				controllerutil.AddFinalizer(pr, finalizerName)
+				return r.Update(ctx, pr)
+			})
+			if err != nil {
 				return err
 			}
 		}

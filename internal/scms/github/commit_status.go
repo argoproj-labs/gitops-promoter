@@ -46,7 +46,8 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Reset)
+		"reset", response.Rate.Reset,
+		"url", response.Request.URL)
 	logger.Info("github response status",
 		"status", response.Status)
 
