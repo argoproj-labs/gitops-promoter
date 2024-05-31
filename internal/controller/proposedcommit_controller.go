@@ -180,7 +180,6 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				prUpdated.Spec.TargetBranch = pc.Spec.ActiveBranch
 				prUpdated.Spec.SourceBranch = pc.Spec.ProposedBranch
 				prUpdated.Spec.Description = fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha)
-				prUpdated.Spec.State = "open"
 				return r.Update(ctx, &prUpdated)
 			})
 			if err != nil {
