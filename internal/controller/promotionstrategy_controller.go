@@ -439,7 +439,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 					status.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeName(commitStatus.Spec.Name, 63)
 					status.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeName(copyFromActiveHydratedSha, 63)
 					status.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeName(branch, 63)
-					err := r.Create(context.Background(), status)
+					err := r.Create(ctx, status)
 					if err != nil {
 						return err
 					}
