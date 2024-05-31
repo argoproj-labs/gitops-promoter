@@ -56,7 +56,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	pullRequest.Status.State = v1alpha1.PullRequestClosed
 	pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
 	pullRequest.Status.PRCreationTime = metav1.Now()
-	com
+
 	return nil
 }
 
