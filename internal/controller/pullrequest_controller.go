@@ -88,6 +88,9 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if !found && pr.Status.State != "" {
 		err := r.Delete(ctx, &pr)
 		if err != nil {
+			if errors.IsNotFound(err) {
+				return ctrl.Result{}, nil
+			}
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
