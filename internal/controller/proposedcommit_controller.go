@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/util/retry"
 	"reflect"
 	"time"
 
@@ -168,15 +169,20 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				return ctrl.Result{}, err
 			}
 		} else {
-			pr.Spec = promoterv1alpha1.PullRequestSpec{
-				RepositoryReference: pc.Spec.RepositoryReference,
-				Title:               fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch),
-				TargetBranch:        pc.Spec.ActiveBranch,
-				SourceBranch:        pc.Spec.ProposedBranch,
-				Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha),
-				State:               "open",
-			}
-			err = r.Update(ctx, &pr)
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				prUpdated := promoterv1alpha1.PullRequest{}
+				err := r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Name}, &prUpdated)
+				if err != nil {
+					return err
+				}
+				prUpdated.Spec.RepositoryReference = pc.Spec.RepositoryReference
+				prUpdated.Spec.Title = fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch)
+				prUpdated.Spec.TargetBranch = pc.Spec.ActiveBranch
+				prUpdated.Spec.SourceBranch = pc.Spec.ProposedBranch
+				prUpdated.Spec.Description = fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha)
+				prUpdated.Spec.State = "open"
+				return r.Update(ctx, &prUpdated)
+			})
 			if err != nil {
 				return ctrl.Result{}, err
 			}

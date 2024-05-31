@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/util/retry"
 	"reflect"
 	"slices"
 	"time"
@@ -137,12 +138,20 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 					}
 
 					if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
-						logger.Info("Merging Pull Request", "namespace", prl.Items[0].Namespace, "name", prl.Items[0].Name)
 						prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
-						err = r.Update(ctx, &prl.Items[0])
+						err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+							err := r.Get(ctx, client.ObjectKey{Namespace: prl.Items[0].Namespace, Name: prl.Items[0].Name}, &prl.Items[0], &client.GetOptions{})
+							if err != nil {
+								return err
+							}
+							prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
+							return r.Update(ctx, &prl.Items[0])
+						})
 						if err != nil {
 							return ctrl.Result{}, err
 						}
+					} else if len(prl.Items) > 0 {
+						logger.Info("Pull request not ready to merge yet", "namespace", prl.Items[0].Namespace, "name", prl.Items[0].Name)
 					}
 				}
 			}

@@ -116,14 +116,17 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if pr.Spec.State == promoterv1alpha1.PullRequestMerged && pr.Status.State != promoterv1alpha1.PullRequestMerged {
-		logger.Info("Merging Pull Request")
-
 		err := r.mergePullRequest(ctx, &pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
 		err = r.Status().Update(ctx, &pr)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		err = r.Delete(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -286,12 +289,12 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Merging Pull Request")
 
 	if pullRequestProvider == nil {
 		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in mergePullRequest")
 	}
 
+	logger.Info("Merging Pull Request", "namespace", pr.Namespace, "name", pr.Name)
 	err := pullRequestProvider.Merge(ctx, "", pr)
 	if err != nil {
 		return err
@@ -310,7 +313,6 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Closing Pull Request")
 
 	if pullRequestProvider == nil {
 		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in closePullRequest")
@@ -320,6 +322,7 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 		return nil
 	}
 
+	logger.Info("Closing Pull Request")
 	err := pullRequestProvider.Close(ctx, pr)
 	if err != nil {
 		return err
