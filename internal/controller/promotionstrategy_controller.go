@@ -429,7 +429,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 							Name:                branch + " - " + commitStatus.Spec.Name,
 							Description:         commitStatus.Spec.Description,
 							State:               commitStatus.Spec.State,
-							Url:                 "https://github.com/zachaller/promoter-testing/commit/" + copyFromActiveHydratedSha,
+							Url:                 "https://github.com/" + cs.Spec.RepositoryReference.Owner + "/" + cs.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha,
 						},
 					}
 					if status.Labels == nil {
@@ -454,7 +454,8 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			cs.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeName(branch, 63)
 			cs.Spec.Sha = copyToProposedHydratedSha
 			cs.Spec.Name = branch + " - " + commitStatus.Spec.Name
-			cs.Spec.Url = "https://github.com/zachaller/promoter-testing/commit/" + copyFromActiveHydratedSha
+
+			cs.Spec.Url = "https://github.com/" + cs.Spec.RepositoryReference.Owner + "/" + cs.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha
 			err = r.Update(ctx, &cs)
 			if err != nil {
 				return err
