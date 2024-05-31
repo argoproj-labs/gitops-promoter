@@ -48,7 +48,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Remaining)
+		"reset", response.Rate.Reset)
 	logger.Info("github response status",
 		"status", response.Status)
 
@@ -79,7 +79,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Remaining)
+		"reset", response.Rate.Reset)
 	logger.Info("github response status",
 		"status", response.Status)
 
@@ -109,7 +109,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Remaining)
+		"reset", response.Rate.Reset)
 	logger.Info("github response status",
 		"status", response.Status)
 
@@ -142,7 +142,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Remaining)
+		"reset", response.Rate.Reset)
 	logger.Info("github response status",
 		"status", response.Status)
 
@@ -163,7 +163,7 @@ func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullReque
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Remaining)
+		"reset", response.Rate.Reset)
 	logger.Info("github response status",
 		"status", response.Status)
 	if len(pullRequests) > 0 {
