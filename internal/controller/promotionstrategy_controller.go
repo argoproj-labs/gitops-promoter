@@ -397,7 +397,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 		var commitStatuses promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &commitStatuses, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
-				"promoter.argoproj.io/commit-status": value.Key,
+				"promoter.argoproj.io/commit-status": utils.KubeSafeName(value.Key, 63),
 			}),
 			FieldSelector: fields.SelectorFromSet(map[string]string{
 				".spec.sha": copyFromActiveHydratedSha,
@@ -436,8 +436,8 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 						status.Labels = make(map[string]string)
 					}
 					status.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
-					status.Labels["promoter.argoproj.io/commit-status-copy-from"] = commitStatus.Spec.Name
-					status.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = copyFromActiveHydratedSha
+					status.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeName(commitStatus.Spec.Name, 63)
+					status.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeName(copyFromActiveHydratedSha, 63)
 					status.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeName(branch, 63)
 					err := r.Create(context.Background(), status)
 					if err != nil {
@@ -449,8 +449,8 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			commitStatus.Spec.DeepCopyInto(&cs.Spec)
 
 			cs.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from"] = commitStatus.Spec.Name
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = copyFromActiveHydratedSha
+			cs.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeName(commitStatus.Spec.Name, 63)
+			cs.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeName(copyFromActiveHydratedSha, 63)
 			cs.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeName(branch, 63)
 			cs.Spec.Sha = copyToProposedHydratedSha
 			cs.Spec.Name = branch + " - " + commitStatus.Spec.Name
