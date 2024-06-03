@@ -48,11 +48,19 @@ type Environment struct {
 	// +kubebuilder:validation:Required
 	Branch string `json:"branch"`
 	// +kubebuilder:validation:Optional
-	AutoMerge bool `json:"autoMerge"`
+	// +kubebuilder:default:=true
+	AutoMerge *bool `json:"autoMerge,omitempty"`
 	// +kubebuilder:validation:Optional
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 	// +kubebuilder:validation:Optional
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+}
+
+func (e *Environment) GetAutoMerge() bool {
+	if e.AutoMerge == nil {
+		return true
+	}
+	return *e.AutoMerge
 }
 
 type CommitStatusSelector struct {
