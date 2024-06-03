@@ -94,9 +94,12 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				index, previousEnvironment := utils.GetPreviousEnvironment(ps, environment.Branch)
 				if index > 0 {
 					if i > 0 && len(ps.Status.Environments) > 1 {
-						err = r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), previousEnvironment.Active.Hydrated.Sha, pc.Status.Proposed.Hydrated.Sha, previousEnvironment.Branch) //pc.Status.Active.Hydrated.Sha
-						if err != nil {
-							return ctrl.Result{}, err
+						// If the previous environment's running commit is the same as the current proposed commit, copy the commit statuses.
+						if previousEnvironment.Active.Dry.Sha == pc.Status.Proposed.Dry.Sha {
+							err = r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), previousEnvironment.Active.Hydrated.Sha, pc.Status.Proposed.Hydrated.Sha, previousEnvironment.Branch) //pc.Status.Active.Hydrated.Sha
+							if err != nil {
+								return ctrl.Result{}, err
+							}
 						}
 					}
 				}
@@ -109,7 +112,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				proposedChecksPassed := len(ps.Status.Environments) > 0 &&
 					ps.Status.Environments[i].Proposed.CommitStatus.State == "success"
 
-				if (activeChecksPassed && proposedChecksPassed) || environment.AutoMerge {
+				if (i == 0 || (activeChecksPassed && proposedChecksPassed)) && environment.GetAutoMerge() {
 					prl := promoterv1alpha1.PullRequestList{}
 					err := r.List(ctx, &prl, &client.ListOptions{
 						LabelSelector: labels.SelectorFromSet(map[string]string{
@@ -429,7 +432,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 							Name:                branch + " - " + commitStatus.Spec.Name,
 							Description:         commitStatus.Spec.Description,
 							State:               commitStatus.Spec.State,
-							Url:                 "https://github.com/" + cs.Spec.RepositoryReference.Owner + "/" + cs.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha,
+							Url:                 "https://github.com/" + commitStatus.Spec.RepositoryReference.Owner + "/" + commitStatus.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha,
 						},
 					}
 					if status.Labels == nil {
