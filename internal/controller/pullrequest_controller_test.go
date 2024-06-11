@@ -127,7 +127,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 			k8sClient.Delete(ctx, resource, controllerClient.GracePeriodSeconds(0))
 		})
-		It("should successfully reconcile the resource", func() {
+		It("should successfully reconcile the resource when updating then merging", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &PullRequestReconciler{
 				Client: k8sClient,
