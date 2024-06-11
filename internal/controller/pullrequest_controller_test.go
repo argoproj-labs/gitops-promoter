@@ -179,11 +179,18 @@ var _ = Describe("PullRequest Controller", func() {
 			}, &pr)).To(Succeed())
 			Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestMerged))
 
-			// Cleanup the PR resource, due to the merge
+			// Reconcile Deleting of the resource
 			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, controllerClient.ObjectKey{
+				Namespace: "default",
+				Name:      resourceName,
+			}, &pr)
+			Expect(err).To(Not(Succeed()))
+			Expect(errors.IsNotFound(err)).To(BeTrue())
 
 		})
 		It("should successfully reconcile the resource when closing", func() {
