@@ -146,6 +146,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
+
 		})
 	})
 })

@@ -154,7 +154,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	return nil
 }
 
-func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, error) {
 	logger := log.FromContext(ctx)
 	logger.V(5).Info("Finding Pull Request")
 

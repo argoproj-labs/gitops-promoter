@@ -86,8 +86,8 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			return ctrl.Result{}, err
 		}
 
-		environments := utils.GetEnvironmentsFromStatusInOrder(ps)
-		for i, statusEnvironment := range environments {
+		environmentsFromStatus := utils.GetEnvironmentsFromStatusInOrder(ps)
+		for i, statusEnvironment := range environmentsFromStatus {
 			if statusEnvironment.Branch == environment.Branch {
 
 				//index, nextEnvironment := utils.GetNextEnvironment(ps, environment.Branch)

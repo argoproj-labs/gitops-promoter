@@ -121,12 +121,12 @@ func (_c *MockPullRequestProvider_Create_Call) RunAndReturn(run func(context.Con
 	return _c
 }
 
-// Find provides a mock function with given fields: ctx, pullRequest
-func (_m *MockPullRequestProvider) Find(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, error) {
+// FindOpen provides a mock function with given fields: ctx, pullRequest
+func (_m *MockPullRequestProvider) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, error) {
 	ret := _m.Called(ctx, pullRequest)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Find")
+		panic("no return value specified for FindOpen")
 	}
 
 	var r0 bool
@@ -149,31 +149,31 @@ func (_m *MockPullRequestProvider) Find(ctx context.Context, pullRequest *v1alph
 	return r0, r1
 }
 
-// MockPullRequestProvider_Find_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Find'
-type MockPullRequestProvider_Find_Call struct {
+// MockPullRequestProvider_FindOpen_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FindOpen'
+type MockPullRequestProvider_FindOpen_Call struct {
 	*mock.Call
 }
 
-// Find is a helper method to define mock.On call
+// FindOpen is a helper method to define mock.On call
 //   - ctx context.Context
 //   - pullRequest *v1alpha1.PullRequest
-func (_e *MockPullRequestProvider_Expecter) Find(ctx interface{}, pullRequest interface{}) *MockPullRequestProvider_Find_Call {
-	return &MockPullRequestProvider_Find_Call{Call: _e.mock.On("Find", ctx, pullRequest)}
+func (_e *MockPullRequestProvider_Expecter) FindOpen(ctx interface{}, pullRequest interface{}) *MockPullRequestProvider_FindOpen_Call {
+	return &MockPullRequestProvider_FindOpen_Call{Call: _e.mock.On("FindOpen", ctx, pullRequest)}
 }
 
-func (_c *MockPullRequestProvider_Find_Call) Run(run func(ctx context.Context, pullRequest *v1alpha1.PullRequest)) *MockPullRequestProvider_Find_Call {
+func (_c *MockPullRequestProvider_FindOpen_Call) Run(run func(ctx context.Context, pullRequest *v1alpha1.PullRequest)) *MockPullRequestProvider_FindOpen_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(*v1alpha1.PullRequest))
 	})
 	return _c
 }
 
-func (_c *MockPullRequestProvider_Find_Call) Return(_a0 bool, _a1 error) *MockPullRequestProvider_Find_Call {
+func (_c *MockPullRequestProvider_FindOpen_Call) Return(_a0 bool, _a1 error) *MockPullRequestProvider_FindOpen_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockPullRequestProvider_Find_Call) RunAndReturn(run func(context.Context, *v1alpha1.PullRequest) (bool, error)) *MockPullRequestProvider_Find_Call {
+func (_c *MockPullRequestProvider_FindOpen_Call) RunAndReturn(run func(context.Context, *v1alpha1.PullRequest) (bool, error)) *MockPullRequestProvider_FindOpen_Call {
 	_c.Call.Return(run)
 	return _c
 }
