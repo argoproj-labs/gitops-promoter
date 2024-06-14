@@ -18,12 +18,12 @@ func NewFakePullRequestProvider() *PullRequest {
 	return &PullRequest{}
 }
 
-func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (string, error) {
+func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (id string, err error) {
 	pullRequest.Spec.Title = title
 	pullRequest.Spec.SourceBranch = head
 	pullRequest.Spec.TargetBranch = base
 	pullRequest.Spec.Description = description
-	err := pr.savePointer(ctx, pullRequest)
+	err = pr.savePointer(ctx, pullRequest)
 	if err != nil {
 		return "", err
 	}
