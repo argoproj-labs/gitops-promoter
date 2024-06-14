@@ -5,8 +5,6 @@ import (
 	"strconv"
 
 	"github.com/zachaller/promoter/internal/scms"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -31,7 +29,7 @@ func NewGithubPullRequestProvider(secret v1.Secret) (*PullRequest, error) {
 	}, nil
 }
 
-func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) error {
+func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 
 	newPR := &github.NewPullRequest{
@@ -43,7 +41,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	githubPullRequest, response, err := pr.client.PullRequests.Create(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, newPR)
 	if err != nil {
-		return err
+		return "", err
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -53,11 +51,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	logger.V(5).Info("github response status",
 		"status", response.Status)
 
-	pullRequest.Status.State = v1alpha1.PullRequestClosed
-	pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
-	pullRequest.Status.PRCreationTime = metav1.Now()
-
-	return nil
+	return strconv.Itoa(*githubPullRequest.Number), nil
 }
 
 func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest *v1alpha1.PullRequest) error {
@@ -73,7 +67,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 		return err
 	}
 
-	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
+	_, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
 	if err != nil {
 		return err
 	}
@@ -85,8 +79,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 	logger.V(5).Info("github response status",
 		"status", response.Status)
 
-	pullRequest.Status.State = v1alpha1.PullRequestClosed
-	pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
+	//pullRequest.Status.State = v1alpha1.PullRequestClosed
+	//pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
 
 	return nil
 
@@ -104,7 +98,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 		return err
 	}
 
-	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
+	_, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
 	if err != nil {
 		return err
 	}
@@ -116,8 +110,8 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 	logger.V(5).Info("github response status",
 		"status", response.Status)
 
-	pullRequest.Status.State = v1alpha1.PullRequestClosed
-	pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
+	//pullRequest.Status.State = v1alpha1.PullRequestClosed
+	//pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
 	return nil
 }
 

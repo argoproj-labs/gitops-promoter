@@ -19,20 +19,19 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/client-go/util/retry"
-
+	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
 	"github.com/zachaller/promoter/internal/scms"
 	"github.com/zachaller/promoter/internal/scms/fake"
 	"github.com/zachaller/promoter/internal/scms/github"
 	"github.com/zachaller/promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
 )
 
 // PullRequestReconciler reconciles a PullRequest object
@@ -243,7 +242,7 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in createPullRequest")
 	}
 
-	err := pullRequestProvider.Create(
+	id, err := pullRequestProvider.Create(
 		ctx,
 		pr.Spec.Title,
 		pr.Spec.SourceBranch,
@@ -261,6 +260,8 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 
 	pr.Status.SpecHash = updatedHash
 	pr.Status.State = promoterv1alpha1.PullRequestOpen
+	pr.Status.PRCreationTime = metav1.Now()
+	pr.Status.ID = id
 	return nil
 }
 
