@@ -9,7 +9,7 @@ import (
 )
 
 var pullRequests map[string]*v1alpha1.PullRequest
-var mutex sync.RWMutex
+var mutexPR sync.RWMutex
 
 type PullRequest struct {
 }
@@ -45,8 +45,8 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 }
 
 func (pr *PullRequest) savePointer(ctx context.Context, pullRequest *v1alpha1.PullRequest) error {
-	mutex.Lock()
-	defer mutex.Unlock()
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
 	if pullRequests == nil {
 		pullRequests = make(map[string]*v1alpha1.PullRequest)
 	}
@@ -58,8 +58,8 @@ func (pr *PullRequest) savePointer(ctx context.Context, pullRequest *v1alpha1.Pu
 }
 
 func (pr *PullRequest) findOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) bool {
-	mutex.RLock()
-	defer mutex.RUnlock()
+	mutexPR.RLock()
+	defer mutexPR.RUnlock()
 	if _, ok := pullRequests[pr.getMapKey(pullRequest)]; ok {
 		if pullRequests[pr.getMapKey(pullRequest)].Status.State == "open" {
 			return true
