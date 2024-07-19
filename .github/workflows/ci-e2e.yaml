@@ -30,6 +30,7 @@ jobs:
           cluster_name: kind
           version: v0.23.0
           node_image: kindest/node:v${{ matrix.kubernetes-minor-version }}
+          kubectl_version: v${{ matrix.kubernetes-minor-version }}
       - name: Checkout Repo
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # pin@v4
       - name: Get dependencies
