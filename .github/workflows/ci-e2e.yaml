@@ -33,9 +33,5 @@ jobs:
           kubectl_version: v${{ matrix.kubernetes-minor-version }}
       - name: Checkout Repo
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # pin@v4
-      - name: Get dependencies
-        run: go mod download
-      - name: Build
-        run: make
       - name: Run E2E-Tests
         run: make test-e2e
