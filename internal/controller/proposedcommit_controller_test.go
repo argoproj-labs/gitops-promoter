@@ -148,5 +148,23 @@ var _ = Describe("ProposedCommit Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 		})
+		It("should successfully reconcile the resource - with an update to the pull request", func() {
+			By("Adding a pending commit")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+
+			addPendingCommit(gitPath, "5468b78dfef356739559abf1f883cd713794fd97", "test-pc", "test-pc")
+
+			By("Reconciling the created resource")
+			controllerReconciler := &ProposedCommitReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+		})
 	})
 })
