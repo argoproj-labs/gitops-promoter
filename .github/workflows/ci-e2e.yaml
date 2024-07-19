@@ -28,7 +28,7 @@ jobs:
         uses: helm/kind-action@v1
         with:
           k8s-version: v${{ matrix.kubernetes-minor-version }}
-          name: kind-${{ matrix.kubernetes-minor-version }}
+          name: kind
           version: v0.23.0
           config: |
             kind: Cluster
