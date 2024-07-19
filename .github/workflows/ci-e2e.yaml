@@ -30,6 +30,14 @@ jobs:
           k8s-version: v${{ matrix.kubernetes-minor-version }}
           name: kind-${{ matrix.kubernetes-minor-version }}
           version: v0.23.0
+          config: |
+            kind: Cluster
+            apiVersion: kind.x-k8s.io/v1alpha4
+            nodes:
+            - role: control-plane
+              image: kindest/node:v${{ matrix.kubernetes-minor-version }}
+            - role: worker
+              image: kindest/node:v${{ matrix.kubernetes-minor-version }}
       - name: Checkout Repo
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # pin@v4
       - name: Get dependencies
