@@ -1,0 +1,25 @@
+site_name: GitOps Promoter - A GitOps First Environment Promotion Tool
+repo_url: https://github.com/argoproj-labs/gitops-promoter
+site_url: https://argo-gitops-promoter.readthedocs.io/
+theme:
+  font:
+    text: Work Sans
+  logo: assets/logo.png
+  name: material
+  palette:
+    - primary: teal
+      scheme: default
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+nav:
+  - Overview: index.md
+  - Installation: installation.md
+  - Concepts: concepts.md
+  - Architecture: architecture.md
+  - Getting Started:
+      - Basic Usage: getting-started.md
