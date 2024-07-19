@@ -12,8 +12,8 @@ require (
 	github.com/relvacode/iso8601 v1.4.0
 	github.com/sosedoff/gitkit v0.4.0
 	github.com/stretchr/testify v1.8.4
-	k8s.io/api v0.30.1
-	k8s.io/apimachinery v0.30.1
+	k8s.io/api v0.30.3
+	k8s.io/apimachinery v0.30.3
 	k8s.io/client-go v0.30.1
 	sigs.k8s.io/controller-runtime v0.18.4
 )
