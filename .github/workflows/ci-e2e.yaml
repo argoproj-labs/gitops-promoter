@@ -6,7 +6,7 @@ on:
     branches: [ main ]
 jobs:
   ci:
-    name: Continuous Integration
+    name: E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
