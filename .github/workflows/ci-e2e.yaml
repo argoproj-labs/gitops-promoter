@@ -1,0 +1,27 @@
+name: test-e2e
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  ci:
+    name: Continuous Integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # pin@v5
+        with:
+          go-version: "1.22"
+          # see https://github.com/actions/setup-go?tab=readme-ov-file#caching-dependency-files-and-build-outputs
+          cache-dependency-path: |
+            go.sum
+      - name: Checkout Repo
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # pin@v4
+      - name: Get dependencies
+        run: go mod download
+      - name: Build
+        run: make
+      - name: Run E2E-Tests
+        run: make test-e2e
