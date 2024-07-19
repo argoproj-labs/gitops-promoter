@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/zachaller/promoter/test/utils"
+	"github.com/argoproj-labs/gitops-promoter/test/utils"
 )
 
 const namespace = "promoter-system"

@@ -3,7 +3,7 @@ package scms
 import (
 	"context"
 
-	"github.com/zachaller/promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 type PullRequestProvider interface {

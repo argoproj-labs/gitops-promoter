@@ -4,9 +4,9 @@ import (
 	"context"
 	"strconv"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/google/go-github/v61/github"
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
-	"github.com/zachaller/promoter/internal/scms"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )

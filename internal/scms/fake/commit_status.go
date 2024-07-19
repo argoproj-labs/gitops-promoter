@@ -3,8 +3,8 @@ package fake
 import (
 	"context"
 	"fmt"
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
-	"github.com/zachaller/promoter/internal/scms"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	v1 "k8s.io/api/core/v1"
 	"sync"
 )
