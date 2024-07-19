@@ -24,15 +24,9 @@ jobs:
           # see https://github.com/actions/setup-go?tab=readme-ov-file#caching-dependency-files-and-build-outputs
           cache-dependency-path: |
             go.sum
-      - name: Setup k3s
-        env:
-          INSTALL_K3S_CHANNEL: v${{ matrix.kubernetes-minor-version }}
-        run: |
-          curl -sfL https://get.k3s.io | sh -
-          sudo mkdir ~/.kube
-          sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-          sudo chmod 755 ~/.kube/config
-          kubectl version
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@v1
+        version: v0.23.0
       - name: Checkout Repo
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # pin@v4
       - name: Get dependencies
