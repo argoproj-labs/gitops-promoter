@@ -14,7 +14,14 @@ spec:
     singular: commitstatus
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.sha
+      name: Sha
+      type: string
+    - jsonPath: .status.state
+      name: State
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: CommitStatus is the Schema for the commitstatuses API

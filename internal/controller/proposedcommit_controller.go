@@ -19,17 +19,18 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/util/retry"
 	"reflect"
 	"time"
 
-	"github.com/zachaller/promoter/internal/git"
-	"github.com/zachaller/promoter/internal/scms/fake"
-	"github.com/zachaller/promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/zachaller/promoter/internal/scms"
-	"github.com/zachaller/promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 // ProposedCommitReconciler reconciles a ProposedCommit object
@@ -101,26 +102,28 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	logger.Info("Branch SHAs", "dryBranchShas", dryBranchShas, "hydratedBranchShas", hydratedBranchShas)
 
 	for branch := range hydratedBranchShas {
-		if pc.Status.Active == nil {
-			pc.Status.Active = &promoterv1alpha1.ProposedCommitBranchState{}
-		}
-
-		if pc.Status.Proposed == nil {
-			pc.Status.Proposed = &promoterv1alpha1.ProposedCommitBranchState{}
-		}
-
 		if branch == pc.Spec.ActiveBranch {
-			pc.Status.Active.HydratedSha = hydratedBranchShas[branch]
-			pc.Status.Active.DrySha = dryBranchShas[branch]
+			pc.Status.Active.Hydrated.Sha = hydratedBranchShas[branch]
+			commitTime, _ := gitOperations.GetShaTime(ctx, hydratedBranchShas[branch])
+			pc.Status.Active.Hydrated.CommitTime = commitTime
+
+			pc.Status.Active.Dry.Sha = dryBranchShas[branch]
+			commitTime, _ = gitOperations.GetShaTime(ctx, dryBranchShas[branch])
+			pc.Status.Active.Dry.CommitTime = commitTime
 		}
 		if branch == pc.Spec.ProposedBranch {
-			pc.Status.Proposed.HydratedSha = hydratedBranchShas[branch]
-			pc.Status.Proposed.DrySha = dryBranchShas[branch]
+			pc.Status.Proposed.Hydrated.Sha = hydratedBranchShas[branch]
+			commitTime, _ := gitOperations.GetShaTime(ctx, hydratedBranchShas[branch])
+			pc.Status.Proposed.Hydrated.CommitTime = commitTime
+
+			pc.Status.Proposed.Dry.Sha = dryBranchShas[branch]
+			commitTime, _ = gitOperations.GetShaTime(ctx, dryBranchShas[branch])
+			pc.Status.Proposed.Dry.CommitTime = commitTime
 		}
 	}
 
-	if pc.Status.Proposed.DrySha != pc.Status.Active.DrySha {
-		logger.Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.DrySha, "activeDrySha", pc.Status.Active.DrySha)
+	if pc.Status.Proposed.Dry.Sha != pc.Status.Active.Dry.Sha {
+		logger.V(5).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
 		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
 		prName = utils.KubeSafeName(prName, 250)
 
@@ -143,7 +146,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 						Namespace:       pc.Namespace,
 						OwnerReferences: []metav1.OwnerReference{*controllerRef},
 						Labels: map[string]string{
-							"promoter.argoproj.io/promotion-strategy": pc.Labels["promoter.argoproj.io/promotion-strategy"],
+							"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(pc.Labels["promoter.argoproj.io/promotion-strategy"], 63),
 							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
 							"promoter.argoproj.io/environment":        utils.KubeSafeName(pc.Spec.ActiveBranch, 63),
 						},
@@ -153,7 +156,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 						Title:               fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch),
 						TargetBranch:        pc.Spec.ActiveBranch,
 						SourceBranch:        pc.Spec.ProposedBranch,
-						Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.DrySha, pc.Status.Proposed.DrySha),
+						Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha),
 						State:               "open",
 					},
 				}
@@ -161,24 +164,28 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				if err != nil {
 					return ctrl.Result{}, err
 				}
-				logger.Info("Created pull request")
+				logger.V(5).Info("Created pull request")
 			} else {
 				return ctrl.Result{}, err
 			}
 		} else {
-			pr.Spec = promoterv1alpha1.PullRequestSpec{
-				RepositoryReference: pc.Spec.RepositoryReference,
-				Title:               fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch),
-				TargetBranch:        pc.Spec.ActiveBranch,
-				SourceBranch:        pc.Spec.ProposedBranch,
-				Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.DrySha, pc.Status.Proposed.DrySha),
-				State:               "open",
-			}
-			err = r.Update(ctx, &pr)
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				prUpdated := promoterv1alpha1.PullRequest{}
+				err := r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Name}, &prUpdated)
+				if err != nil {
+					return err
+				}
+				prUpdated.Spec.RepositoryReference = pc.Spec.RepositoryReference
+				prUpdated.Spec.Title = fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch)
+				prUpdated.Spec.TargetBranch = pc.Spec.ActiveBranch
+				prUpdated.Spec.SourceBranch = pc.Spec.ProposedBranch
+				prUpdated.Spec.Description = fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha)
+				return r.Update(ctx, &prUpdated)
+			})
 			if err != nil {
 				return ctrl.Result{}, err
 			}
-			logger.Info("Updated pull request")
+			logger.V(5).Info("Updated pull request resource")
 		}
 	}
 
@@ -189,7 +196,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	return ctrl.Result{
 		Requeue:      true,
-		RequeueAfter: 1 * time.Minute,
+		RequeueAfter: 30 * time.Second,
 	}, nil
 }
 
@@ -197,6 +204,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ProposedCommit{}).
+		//Owns(&promoterv1alpha1.PullRequest{}).
 		//Watches(&promoterv1alpha1.ProposedCommit{}, handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(), &promoterv1alpha1.ProposedCommit{}, handler.OnlyControllerOwner())).
 		Complete(r)
 }
@@ -205,10 +213,10 @@ func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmPr
 	logger := log.FromContext(ctx)
 	switch {
 	case scmProvider.Spec.Fake != nil:
-		logger.Info("Creating fake git authentication provider")
+		logger.V(5).Info("Creating fake git authentication provider")
 		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
 	case scmProvider.Spec.GitHub != nil:
-		logger.Info("Creating GitHub git authentication provider")
+		logger.V(5).Info("Creating GitHub git authentication provider")
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
 	default:
 		return nil, nil

@@ -4,15 +4,16 @@ metadata:
   labels:
     app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
+    promoter.argoproj.io/commit-status: healthy
   name: commitstatus-sample
 spec:
-    sha: c920bd7e99ea399f30fe12a69a73e71899795d4d
+    sha: 68522faaf5591f98c7a89dd74069e79195e4d6c6
     repository:
       owner: zachaller
       name: promoter-testing
       scmProviderRef:
           name: scmprovider-sample
-    state: success
-    name: ci/circleci
+    state: pending
+    name: health
     description: "The build succeeded!"
     url: "https://google.com"

@@ -60,8 +60,13 @@ type CommitStatusProposedCommitStatus struct {
 }
 
 type ProposedCommitBranchState struct {
-	DrySha      string `json:"drySha,omitempty"`
-	HydratedSha string `json:"hydratedSha,omitempty"`
+	Dry      ProposedCommitShaState `json:"dry,omitempty"`
+	Hydrated ProposedCommitShaState `json:"hydrated,omitempty"`
+}
+
+type ProposedCommitShaState struct {
+	Sha        string      `json:"sha,omitempty"`
+	CommitTime metav1.Time `json:"commitTime,omitempty"`
 }
 
 func (b *ProposedCommitBranchState) DryShaShort() string {
@@ -69,25 +74,27 @@ func (b *ProposedCommitBranchState) DryShaShort() string {
 		return ""
 	}
 
-	if len(b.DrySha) < 7 {
-		return b.DrySha
+	if len(b.Dry.Sha) < 7 {
+		return b.Dry.Sha
 	}
 
-	return b.DrySha[:7]
+	return b.Dry.Sha[:7]
 }
 
 // ProposedCommitStatus defines the observed state of ProposedCommit
 type ProposedCommitStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Proposed       *ProposedCommitBranchState         `json:"proposed,omitempty"`
-	Active         *ProposedCommitBranchState         `json:"active,omitempty"`
+	Proposed       ProposedCommitBranchState          `json:"proposed,omitempty"`
+	Active         ProposedCommitBranchState          `json:"active,omitempty"`
 	CommitStatuses []CommitStatusProposedCommitStatus `json:"commitStatuses,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
+// +kubebuilder:printcolumn:name="Active Dry Sha",type=string,JSONPath=`.status.active.dry.sha`
+// +kubebuilder:printcolumn:name="Proposed Dry Sha",type=string,JSONPath=`.status.proposed.dry.sha`
 // ProposedCommit is the Schema for the proposedcommits API
 type ProposedCommit struct {
 	metav1.TypeMeta   `json:",inline"`

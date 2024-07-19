@@ -19,19 +19,19 @@ package controller
 import (
 	"context"
 	"fmt"
-
-	"github.com/zachaller/promoter/internal/scms"
-	"github.com/zachaller/promoter/internal/scms/fake"
-	"github.com/zachaller/promoter/internal/scms/github"
-	"github.com/zachaller/promoter/internal/utils"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
 )
 
 // PullRequestReconciler reconciles a PullRequest object
@@ -74,7 +74,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	err = pullRequestProvider.Find(ctx, &pr)
+	found, err := pullRequestProvider.FindOpen(ctx, &pr)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -84,13 +84,24 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	if !found && pr.Status.State != "" {
+		err := r.Delete(ctx, &pr)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				return ctrl.Result{}, nil
+			}
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
 	hash, err := pr.Hash()
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	if pr.Status.State != "" && pr.Spec.State == pr.Status.State && pr.Status.SpecHash == hash {
-		logger.Info("Reconcile not needed")
+		logger.V(5).Info("Reconcile not needed")
 		return ctrl.Result{}, nil
 	}
 
@@ -99,18 +110,9 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-
-		err = r.Status().Update(ctx, &pr)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-
-		return ctrl.Result{}, nil
 	}
 
 	if pr.Spec.State == promoterv1alpha1.PullRequestMerged && pr.Status.State != promoterv1alpha1.PullRequestMerged {
-		logger.Info("Merging Pull Request")
-
 		err := r.mergePullRequest(ctx, &pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
@@ -121,6 +123,10 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
+		err = r.Delete(ctx, &pr)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -135,6 +141,10 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
+		err = r.Delete(ctx, &pr)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -143,12 +153,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		err = r.Status().Update(ctx, &pr)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+	}
 
-		return ctrl.Result{}, nil
+	err = r.Status().Update(ctx, &pr)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	logger.Info("no known states found")
@@ -191,7 +200,15 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 		// to registering our finalizer.
 		if !controllerutil.ContainsFinalizer(pr, finalizerName) {
 			controllerutil.AddFinalizer(pr, finalizerName)
-			if err := r.Update(ctx, pr); err != nil {
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr)
+				if err != nil {
+					return err
+				}
+				controllerutil.AddFinalizer(pr, finalizerName)
+				return r.Update(ctx, pr)
+			})
+			if err != nil {
 				return err
 			}
 		}
@@ -225,7 +242,7 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in createPullRequest")
 	}
 
-	err := pullRequestProvider.Create(
+	id, err := pullRequestProvider.Create(
 		ctx,
 		pr.Spec.Title,
 		pr.Spec.SourceBranch,
@@ -243,6 +260,8 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 
 	pr.Status.SpecHash = updatedHash
 	pr.Status.State = promoterv1alpha1.PullRequestOpen
+	pr.Status.PRCreationTime = metav1.Now()
+	pr.Status.ID = id
 	return nil
 }
 
@@ -271,12 +290,12 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Merging Pull Request")
 
 	if pullRequestProvider == nil {
 		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in mergePullRequest")
 	}
 
+	logger.Info("Merging Pull Request", "namespace", pr.Namespace, "name", pr.Name)
 	err := pullRequestProvider.Merge(ctx, "", pr)
 	if err != nil {
 		return err
@@ -295,7 +314,6 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Closing Pull Request")
 
 	if pullRequestProvider == nil {
 		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in closePullRequest")
@@ -305,6 +323,7 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 		return nil
 	}
 
+	logger.Info("Closing Pull Request")
 	err := pullRequestProvider.Close(ctx, pr)
 	if err != nil {
 		return err

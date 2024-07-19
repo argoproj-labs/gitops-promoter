@@ -39,7 +39,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -184,13 +184,31 @@ func setupInitialTestGitRepo(owner string, name string) {
 	Expect(err).NotTo(HaveOccurred())
 	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())
+
+	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/staging")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/staging")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/staging-next")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/staging-next")
+	Expect(err).NotTo(HaveOccurred())
+
+	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/production")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/production")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/production-next")
+	Expect(err).NotTo(HaveOccurred())
+	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/production-next")
+	Expect(err).NotTo(HaveOccurred())
 }
 
-func addPendingCommit(gitPath string, drySha string) {
+func addPendingCommit(gitPath string, drySha string, repoOwner string, repoName string) {
 	//gitPath, err := os.MkdirTemp("", "*")
 	//Expect(err).NotTo(HaveOccurred())
 
-	err := runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", "test", "test"), ".")
+	err := runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", repoOwner, repoName), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")

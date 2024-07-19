@@ -14,7 +14,14 @@ spec:
     singular: promotionstrategy
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.active.dry.sha
+      name: Active Dry Sha
+      type: string
+    - jsonPath: .status.proposed.dry.sha
+      name: Proposed Dry Sha
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: PromotionStrategy is the Schema for the promotionstrategies API
@@ -43,6 +50,7 @@ spec:
                 items:
                   properties:
                     key:
+                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
                       type: string
                   required:
                   - key
@@ -57,12 +65,14 @@ spec:
                       items:
                         properties:
                           key:
+                            pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
                             type: string
                         required:
                         - key
                         type: object
                       type: array
                     autoMerge:
+                      default: true
                       type: boolean
                     branch:
                       type: string
@@ -70,6 +80,7 @@ spec:
                       items:
                         properties:
                           key:
+                            pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
                             type: string
                         required:
                         - key
@@ -84,6 +95,7 @@ spec:
                 items:
                   properties:
                     key:
+                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
                       type: string
                   required:
                   - key
@@ -123,15 +135,35 @@ spec:
                     active:
                       properties:
                         commitStatus:
-                          type: string
-                        drySha:
-                          type: string
-                        hydratedSha:
-                          type: string
+                          properties:
+                            sha:
+                              type: string
+                            state:
+                              type: string
+                          required:
+                          - sha
+                          - state
+                          type: object
+                        dry:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
+                        hydrated:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
                       required:
                       - commitStatus
-                      - drySha
-                      - hydratedSha
+                      - dry
+                      - hydrated
                       type: object
                     branch:
                       type: string
@@ -151,20 +183,39 @@ spec:
                     proposed:
                       properties:
                         commitStatus:
-                          type: string
-                        drySha:
-                          type: string
-                        hydratedSha:
-                          type: string
+                          properties:
+                            sha:
+                              type: string
+                            state:
+                              type: string
+                          required:
+                          - sha
+                          - state
+                          type: object
+                        dry:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
+                        hydrated:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
                       required:
                       - commitStatus
-                      - drySha
-                      - hydratedSha
+                      - dry
+                      - hydrated
                       type: object
                   required:
                   - active
                   - branch
-                  - lastHealthyDryShas
                   - proposed
                   type: object
                 type: array

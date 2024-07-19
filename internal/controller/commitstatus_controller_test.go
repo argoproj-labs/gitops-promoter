@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	v1 "k8s.io/api/core/v1"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -27,7 +28,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 var _ = Describe("CommitStatus Controller", func() {
@@ -57,14 +58,36 @@ var _ = Describe("CommitStatus Controller", func() {
 							Owner: "test",
 							Name:  "test",
 							ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-								Name:      "test",
-								Namespace: "test",
+								Name:      resourceName,
+								Namespace: "default",
 							},
 						},
 					},
 					// TODO(user): Specify other spec details if needed.
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+
+				Expect(k8sClient.Create(ctx, &promoterv1alpha1.ScmProvider{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      resourceName,
+						Namespace: "default",
+					},
+					Spec: promoterv1alpha1.ScmProviderSpec{
+						SecretRef: &v1.LocalObjectReference{Name: resourceName},
+						Fake:      &promoterv1alpha1.Fake{},
+					},
+					Status: promoterv1alpha1.ScmProviderStatus{},
+				})).To(Succeed())
+
+				Expect(k8sClient.Create(ctx, &v1.Secret{
+					TypeMeta: metav1.TypeMeta{},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      resourceName,
+						Namespace: "default",
+					},
+					Data: nil,
+				})).To(Succeed())
 			}
 		})
 

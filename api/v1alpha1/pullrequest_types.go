@@ -73,6 +73,8 @@ type PullRequestStatus struct {
 //+kubebuilder:subresource:status
 
 // PullRequest is the Schema for the pullrequests API
+// +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.id`
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
 type PullRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

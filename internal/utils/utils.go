@@ -4,7 +4,7 @@ import (
 	"context"
 	"regexp"
 
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -88,4 +88,40 @@ func KubeSafeName(name string, charLimit int) string {
 	m1 := regexp.MustCompile("[^a-zA-Z0-9]+")
 	name = m1.ReplaceAllString(name, "-")
 	return name
+}
+
+func GetEnvironmentsFromStatusInOrder(promotionStrategy promoterv1alpha1.PromotionStrategy) []promoterv1alpha1.EnvironmentStatus {
+	environments := []promoterv1alpha1.EnvironmentStatus{}
+	for _, specEnvironment := range promotionStrategy.Spec.Environments {
+		for _, statusEvents := range promotionStrategy.Status.Environments {
+			if specEnvironment.Branch == statusEvents.Branch {
+				environments = append(environments, statusEvents)
+			}
+		}
+	}
+	return environments
+}
+
+func GetNextEnvironment(promotionStrategy promoterv1alpha1.PromotionStrategy, currentBranch string) (int, *promoterv1alpha1.EnvironmentStatus) {
+	environments := GetEnvironmentsFromStatusInOrder(promotionStrategy)
+	for i, environment := range environments {
+		if environment.Branch == currentBranch {
+			if i+1 < len(environments) {
+				return i + 1, &environments[i+1]
+			}
+		}
+	}
+	return -1, nil
+}
+
+func GetPreviousEnvironment(promotionStrategy promoterv1alpha1.PromotionStrategy, currentBranch string) (int, *promoterv1alpha1.EnvironmentStatus) {
+	environments := GetEnvironmentsFromStatusInOrder(promotionStrategy)
+	for i, environment := range environments {
+		if environment.Branch == currentBranch {
+			if i-1 >= 0 && len(environments) > 0 {
+				return i + 1, &environments[i-1]
+			}
+		}
+	}
+	return -1, nil
 }

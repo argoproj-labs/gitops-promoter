@@ -21,7 +21,7 @@ import (
 	"flag"
 	"os"
 
-	"github.com/zachaller/promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -36,8 +36,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
-	"github.com/zachaller/promoter/internal/controller"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 

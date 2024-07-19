@@ -18,17 +18,18 @@ package controller
 
 import (
 	"context"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 
-	"github.com/zachaller/promoter/internal/scms"
-	"github.com/zachaller/promoter/internal/scms/github"
-	"github.com/zachaller/promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 // CommitStatusReconciler reconciles a CommitStatus object
@@ -65,8 +66,8 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	if cs.Status.Sha == cs.Spec.Sha && cs.Generation == cs.Status.ObservedGeneration {
-		logger.Info("Reconcile not needed", "namespace", req.Namespace, "name", req.Name)
+	if cs.Generation == cs.Status.ObservedGeneration {
+		logger.V(5).Info("Reconcile not needed", "namespace", req.Namespace, "name", req.Name)
 		return ctrl.Result{}, nil
 	}
 
@@ -106,10 +107,8 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 	switch {
 	case scmProvider.Spec.GitHub != nil:
 		return github.NewGithubCommitStatusProvider(*secret)
-		//return scms.NewScmPullRequestProvider(scms.GitHub, *secret), nil
-	//case scmProvider.Spec.Fake != nil:
-	//	return fake.NewFakePullRequestProvider(), nil
-	//return scms.NewScmPullRequestProvider(scms.Fake, *secret), nil
+	case scmProvider.Spec.Fake != nil:
+		return fake.NewFakeCommitStatusProvider(*secret)
 	default:
 		return nil, nil
 	}

@@ -18,9 +18,9 @@ package controller
 
 import (
 	"context"
-
 	v1 "k8s.io/api/core/v1"
 	controllerClient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,7 +30,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 var _ = Describe("PullRequest Controller", func() {
@@ -44,7 +44,6 @@ var _ = Describe("PullRequest Controller", func() {
 			Namespace: "default", // TODO(user):Modify as needed
 		}
 		pullrequest := &promoterv1alpha1.PullRequest{}
-
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind PullRequest")
 			err := k8sClient.Get(ctx, typeNamespacedName, pullrequest)
@@ -73,27 +72,35 @@ var _ = Describe("PullRequest Controller", func() {
 					Status: promoterv1alpha1.PullRequestStatus{},
 				}
 
-				Expect(k8sClient.Create(ctx, &promoterv1alpha1.ScmProvider{
-					TypeMeta: metav1.TypeMeta{},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.ScmProviderSpec{
-						SecretRef: &v1.LocalObjectReference{Name: resourceName},
-						Fake:      &promoterv1alpha1.Fake{},
-					},
-					Status: promoterv1alpha1.ScmProviderStatus{},
-				})).To(Succeed())
+				scmProvider := promoterv1alpha1.ScmProvider{}
+				err := k8sClient.Get(ctx, typeNamespacedName, &scmProvider)
+				if err != nil && errors.IsNotFound(err) {
+					Expect(k8sClient.Create(ctx, &promoterv1alpha1.ScmProvider{
+						TypeMeta: metav1.TypeMeta{},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      resourceName,
+							Namespace: "default",
+						},
+						Spec: promoterv1alpha1.ScmProviderSpec{
+							SecretRef: &v1.LocalObjectReference{Name: resourceName},
+							Fake:      &promoterv1alpha1.Fake{},
+						},
+						Status: promoterv1alpha1.ScmProviderStatus{},
+					})).To(Succeed())
+				}
 
-				Expect(k8sClient.Create(ctx, &v1.Secret{
-					TypeMeta: metav1.TypeMeta{},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Data: nil,
-				})).To(Succeed())
+				secret := v1.Secret{}
+				err = k8sClient.Get(ctx, typeNamespacedName, &secret)
+				if err != nil && errors.IsNotFound(err) {
+					Expect(k8sClient.Create(ctx, &v1.Secret{
+						TypeMeta: metav1.TypeMeta{},
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      resourceName,
+							Namespace: "default",
+						},
+						Data: nil,
+					})).To(Succeed())
+				}
 
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
@@ -101,14 +108,26 @@ var _ = Describe("PullRequest Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &promoterv1alpha1.PullRequest{}
+			resource := &promoterv1alpha1.PullRequest{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      resourceName,
+					Namespace: "default",
+				},
+			}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
+			if errors.IsNotFound(err) {
+				return
+			}
 
-			By("Cleanup the specific resource instance PullRequest")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			By("Cleanup the specific resource instance PullRequest, by resetting the state to open")
+			resource.Spec.State = "open"
+			resource.Status.State = promoterv1alpha1.PullRequestOpen
+
+			controllerutil.RemoveFinalizer(resource, "pullrequest.promoter.argoporoj.io/finalizer")
+			Expect(k8sClient.Update(ctx, resource)).To(Succeed())
+			k8sClient.Delete(ctx, resource, controllerClient.GracePeriodSeconds(0))
 		})
-		It("should successfully reconcile the resource", func() {
+		It("should successfully reconcile the resource when updating then merging", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &PullRequestReconciler{
 				Client: k8sClient,
@@ -145,21 +164,6 @@ var _ = Describe("PullRequest Controller", func() {
 			}, &pr)).To(Succeed())
 			Expect(pr.Spec.Title).To(Equal("Updated Title"))
 
-			By("Reconciling closing of the PullRequest")
-			pr.Spec.State = "closed"
-			Expect(k8sClient.Update(ctx, &pr)).To(Succeed())
-
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			Expect(k8sClient.Get(ctx, controllerClient.ObjectKey{
-				Namespace: "default",
-				Name:      resourceName,
-			}, &pr)).To(Succeed())
-			Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestClosed))
-
 			By("Reconciling merging of the PullRequest")
 			pr.Spec.State = "merged"
 			Expect(k8sClient.Update(ctx, &pr)).To(Succeed())
@@ -175,6 +179,71 @@ var _ = Describe("PullRequest Controller", func() {
 			}, &pr)).To(Succeed())
 			Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestMerged))
 
+			// Reconcile Deleting of the resource
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, controllerClient.ObjectKey{
+				Namespace: "default",
+				Name:      resourceName,
+			}, &pr)
+			Expect(err).To(Not(Succeed()))
+			Expect(errors.IsNotFound(err)).To(BeTrue())
+
+		})
+		It("should successfully reconcile the resource when closing", func() {
+			By("Reconciling the created resource")
+			controllerReconciler := &PullRequestReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			var pr promoterv1alpha1.PullRequest
+			Expect(k8sClient.Get(ctx, controllerClient.ObjectKey{
+				Namespace: "default",
+				Name:      resourceName,
+			}, &pr)).To(Succeed())
+
+			By("Reconciling closing of the PullRequest")
+			pr.Spec.State = "closed"
+			Expect(k8sClient.Update(ctx, &pr)).To(Succeed())
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(k8sClient.Get(ctx, controllerClient.ObjectKey{
+				Namespace: "default",
+				Name:      resourceName,
+			}, &pr)).To(Succeed())
+			Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestClosed))
+
+			// Reconcile Deleting of the resource
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
+				NamespacedName: typeNamespacedName,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Get(ctx, controllerClient.ObjectKey{
+				Namespace: "default",
+				Name:      resourceName,
+			}, &pr)
+			Expect(err).To(Not(Succeed()))
+			Expect(errors.IsNotFound(err)).To(BeTrue())
 		})
 	})
 })

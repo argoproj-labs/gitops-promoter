@@ -48,14 +48,23 @@ type Environment struct {
 	// +kubebuilder:validation:Required
 	Branch string `json:"branch"`
 	// +kubebuilder:validation:Optional
-	AutoMerge bool `json:"autoMerge"`
+	// +kubebuilder:default:=true
+	AutoMerge *bool `json:"autoMerge,omitempty"`
 	// +kubebuilder:validation:Optional
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 	// +kubebuilder:validation:Optional
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
+func (e *Environment) GetAutoMerge() bool {
+	if e.AutoMerge == nil {
+		return true
+	}
+	return *e.AutoMerge
+}
+
 type CommitStatusSelector struct {
+	// +kubebuilder:validation:Pattern:=(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
 	Key string `json:"key"`
 }
 
@@ -65,10 +74,11 @@ type PromotionStrategyStatus struct {
 }
 
 type EnvironmentStatus struct {
-	Branch             string                             `json:"branch"`
-	Active             PromotionStrategyBranchStateStatus `json:"active"`
-	Proposed           PromotionStrategyBranchStateStatus `json:"proposed"`
-	LastHealthyDryShas []HealthyDryShas                   `json:"lastHealthyDryShas"`
+	Branch   string                             `json:"branch"`
+	Active   PromotionStrategyBranchStateStatus `json:"active"`
+	Proposed PromotionStrategyBranchStateStatus `json:"proposed"`
+	// +kubebuilder:validation:Optional
+	LastHealthyDryShas []HealthyDryShas `json:"lastHealthyDryShas"`
 }
 
 type HealthyDryShas struct {
@@ -77,14 +87,21 @@ type HealthyDryShas struct {
 }
 
 type PromotionStrategyBranchStateStatus struct {
-	DrySha       string `json:"drySha"`
-	HydratedSHA  string `json:"hydratedSha"`
-	CommitStatus string `json:"commitStatus"`
+	Dry          ProposedCommitShaState        `json:"dry"`
+	Hydrated     ProposedCommitShaState        `json:"hydrated"`
+	CommitStatus PromotionStrategyCommitStatus `json:"commitStatus"`
+}
+
+type PromotionStrategyCommitStatus struct {
+	Sha   string `json:"sha"`
+	State string `json:"state"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
+// +kubebuilder:printcolumn:name="Active Dry Sha",type=string,JSONPath=`.status.active.dry.sha`
+// +kubebuilder:printcolumn:name="Proposed Dry Sha",type=string,JSONPath=`.status.proposed.dry.sha`
 // PromotionStrategy is the Schema for the promotionstrategies API
 type PromotionStrategy struct {
 	metav1.TypeMeta   `json:",inline"`

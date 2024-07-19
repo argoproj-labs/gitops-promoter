@@ -4,9 +4,9 @@ import (
 	"context"
 	"strconv"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/google/go-github/v61/github"
-	promoterv1alpha1 "github.com/zachaller/promoter/api/v1alpha1"
-	"github.com/zachaller/promoter/internal/scms"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -46,8 +46,9 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Remaining)
-	logger.Info("github response status",
+		"reset", response.Rate.Reset,
+		"url", response.Request.URL)
+	logger.V(5).Info("github response status",
 		"status", response.Status)
 
 	commitStatus.Status.Id = strconv.FormatInt(*repoStatus.ID, 10)

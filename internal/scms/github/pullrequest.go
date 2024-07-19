@@ -4,14 +4,12 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/zachaller/promoter/internal/scms"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/google/go-github/v61/github"
-	"github.com/zachaller/promoter/api/v1alpha1"
 )
 
 type PullRequest struct {
@@ -31,7 +29,7 @@ func NewGithubPullRequestProvider(secret v1.Secret) (*PullRequest, error) {
 	}, nil
 }
 
-func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) error {
+func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 
 	newPR := &github.NewPullRequest{
@@ -43,20 +41,17 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	githubPullRequest, response, err := pr.client.PullRequests.Create(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, newPR)
 	if err != nil {
-		return err
+		return "", err
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Remaining)
-	logger.Info("github response status",
+		"reset", response.Rate.Reset,
+		"url", response.Request.URL)
+	logger.V(5).Info("github response status",
 		"status", response.Status)
 
-	pullRequest.Status.State = v1alpha1.PullRequestClosed
-	pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
-	pullRequest.Status.PRCreationTime = metav1.Now()
-
-	return nil
+	return strconv.Itoa(*githubPullRequest.Number), nil
 }
 
 func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest *v1alpha1.PullRequest) error {
@@ -72,19 +67,20 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 		return err
 	}
 
-	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
+	_, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
 	if err != nil {
 		return err
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Remaining)
-	logger.Info("github response status",
+		"reset", response.Rate.Reset,
+		"url", response.Request.URL)
+	logger.V(5).Info("github response status",
 		"status", response.Status)
 
-	pullRequest.Status.State = v1alpha1.PullRequestClosed
-	pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
+	//pullRequest.Status.State = v1alpha1.PullRequestClosed
+	//pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
 
 	return nil
 
@@ -102,19 +98,20 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 		return err
 	}
 
-	githubPullRequest, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
+	_, response, err := pr.client.PullRequests.Edit(context.Background(), pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, prNumber, newPR)
 	if err != nil {
 		return err
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Remaining)
-	logger.Info("github response status",
+		"reset", response.Rate.Reset,
+		"url", response.Request.URL)
+	logger.V(5).Info("github response status",
 		"status", response.Status)
 
-	pullRequest.Status.State = v1alpha1.PullRequestClosed
-	pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
+	//pullRequest.Status.State = v1alpha1.PullRequestClosed
+	//pullRequest.Status.ID = strconv.Itoa(*githubPullRequest.Number)
 	return nil
 }
 
@@ -142,35 +139,37 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Remaining)
-	logger.Info("github response status",
+		"reset", response.Rate.Reset,
+		"url", response.Request.URL)
+	logger.V(5).Info("github response status",
 		"status", response.Status)
 
 	pullRequest.Status.State = v1alpha1.PullRequestMerged
 	return nil
 }
 
-func (pr *PullRequest) Find(ctx context.Context, pullRequest *v1alpha1.PullRequest) error {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Finding Pull Request")
+	logger.V(5).Info("Finding Pull Request")
 
 	pullRequests, response, err := pr.client.PullRequests.List(ctx, pullRequest.Spec.RepositoryReference.Owner,
 		pullRequest.Spec.RepositoryReference.Name,
-		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: pullRequest.Spec.SourceBranch})
+		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: pullRequest.Spec.SourceBranch, State: "open"})
 	if err != nil {
-		return err
+		return false, err
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
 		"remaining", response.Rate.Remaining,
-		"reset", response.Rate.Remaining)
-	logger.Info("github response status",
+		"reset", response.Rate.Reset,
+		"url", response.Request.URL)
+	logger.V(5).Info("github response status",
 		"status", response.Status)
 	if len(pullRequests) > 0 {
 		pullRequest.Status.ID = strconv.Itoa(*pullRequests[0].Number)
 		pullRequest.Status.State = v1alpha1.PullRequestState(*pullRequests[0].State)
-		return nil
+		return true, nil
 	}
 
-	return nil
+	return false, nil
 }

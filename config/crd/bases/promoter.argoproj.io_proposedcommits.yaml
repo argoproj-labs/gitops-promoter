@@ -14,7 +14,14 @@ spec:
     singular: proposedcommit
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.active.dry.sha
+      name: Active Dry Sha
+      type: string
+    - jsonPath: .status.proposed.dry.sha
+      name: Proposed Dry Sha
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ProposedCommit is the Schema for the proposedcommits API
@@ -86,10 +93,22 @@ spec:
             properties:
               active:
                 properties:
-                  drySha:
-                    type: string
-                  hydratedSha:
-                    type: string
+                  dry:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                  hydrated:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
                 type: object
               commitStatuses:
                 items:
@@ -110,10 +129,22 @@ spec:
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
                   Important: Run "make" to regenerate code after modifying this file
                 properties:
-                  drySha:
-                    type: string
-                  hydratedSha:
-                    type: string
+                  dry:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                  hydrated:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
                 type: object
             type: object
         type: object
