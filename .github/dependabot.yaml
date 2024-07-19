@@ -4,6 +4,12 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+    groups:
+      k8s-deps:
+        patterns:
+          - "k8s.io/api" # a single dependency name
+          - "k8s.io/apimachinery"
+          - "k8s.io/client-go"
 
   - package-ecosystem: "github-actions"
     directory: "/"
