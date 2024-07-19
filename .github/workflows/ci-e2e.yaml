@@ -12,6 +12,7 @@ jobs:
         kubernetes-minor-version:
           - 1.28
           - 1.29
+          - 1.30
     name: E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
