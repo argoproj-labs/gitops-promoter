@@ -4,6 +4,9 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   ci:
     name: Continuous Integration
@@ -11,7 +14,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Set up Go
-        uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7 # pin@v5
+        uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32 # pin@v5
         with:
           go-version: "1.22"
           # see https://github.com/actions/setup-go?tab=readme-ov-file#caching-dependency-files-and-build-outputs
@@ -25,3 +28,15 @@ jobs:
         run: make
       - name: Run Unit-Tests
         run: make test
+      - name: Generate code coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage
+          path: cover.out
+      - name: Upload code coverage information to codecov.io
+        uses: codecov/codecov-action@v4.5.0
+        with:
+          file: cover.out
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
