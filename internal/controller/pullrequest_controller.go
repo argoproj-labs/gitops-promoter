@@ -199,7 +199,6 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 		// then lets add the finalizer and update the object. This is equivalent
 		// to registering our finalizer.
 		if !controllerutil.ContainsFinalizer(pr, finalizerName) {
-			controllerutil.AddFinalizer(pr, finalizerName)
 			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 				err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr)
 				if err != nil {
