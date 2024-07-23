@@ -79,9 +79,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	err = r.handleFinalizer(ctx, &pr, pullRequestProvider)
+	deleted, err := r.handleFinalizer(ctx, &pr, pullRequestProvider)
 	if err != nil {
 		return ctrl.Result{}, err
+	}
+	if deleted {
+		return ctrl.Result{}, nil
 	}
 
 	if !found && pr.Status.State != "" {
@@ -189,7 +192,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	}
 }
 
-func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
+func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (bool, error) {
 	// name of our custom finalizer
 	finalizerName := "pullrequest.promoter.argoporoj.io/finalizer"
 
@@ -208,7 +211,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 				return r.Update(ctx, pr)
 			})
 			if err != nil {
-				return err
+				return false, err
 			}
 		}
 	} else {
@@ -219,18 +222,19 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 			if err != nil {
 				// if fail to delete the external dependency here, return with error
 				// so that it can be retried.
-				return err
+				return false, err
 			}
 
 			// remove our finalizer from the list and update it.
 			controllerutil.RemoveFinalizer(pr, finalizerName)
 			if err := r.Update(ctx, pr); err != nil {
-				return err
+				return true, err
 			}
+			return true, nil
 		}
 	}
 
-	return nil
+	return false, nil
 }
 
 func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
