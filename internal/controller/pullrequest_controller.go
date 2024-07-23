@@ -74,11 +74,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	found, err := pullRequestProvider.FindOpen(ctx, &pr)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
 	deleted, err := r.handleFinalizer(ctx, &pr, pullRequestProvider)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -86,6 +81,19 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if deleted {
 		return ctrl.Result{}, nil
 	}
+
+	found, err := pullRequestProvider.FindOpen(ctx, &pr)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	//deleted, err := r.handleFinalizer(ctx, &pr, pullRequestProvider)
+	//if err != nil {
+	//	return ctrl.Result{}, err
+	//}
+	//if deleted {
+	//	return ctrl.Result{}, nil
+	//}
 
 	if !found && pr.Status.State != "" {
 		err := r.Delete(ctx, &pr)
