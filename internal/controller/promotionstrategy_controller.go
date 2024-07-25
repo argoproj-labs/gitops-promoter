@@ -59,7 +59,7 @@ type PromotionStrategyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(5).Info("Reconciling PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
+	logger.V(4).Info("Reconciling PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
 
 	var ps promoterv1alpha1.PromotionStrategy
 	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})

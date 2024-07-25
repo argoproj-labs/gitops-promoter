@@ -48,7 +48,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(5).Info("github response status",
+	logger.V(4).Info("github response status",
 		"status", response.Status)
 
 	commitStatus.Status.Id = strconv.FormatInt(*repoStatus.ID, 10)

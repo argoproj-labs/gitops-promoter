@@ -48,7 +48,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(5).Info("github response status",
+	logger.V(4).Info("github response status",
 		"status", response.Status)
 
 	return strconv.Itoa(*githubPullRequest.Number), nil
@@ -76,7 +76,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(5).Info("github response status",
+	logger.V(4).Info("github response status",
 		"status", response.Status)
 
 	//pullRequest.Status.State = v1alpha1.PullRequestClosed
@@ -107,7 +107,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(5).Info("github response status",
+	logger.V(4).Info("github response status",
 		"status", response.Status)
 
 	//pullRequest.Status.State = v1alpha1.PullRequestClosed
@@ -141,7 +141,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(5).Info("github response status",
+	logger.V(4).Info("github response status",
 		"status", response.Status)
 
 	pullRequest.Status.State = v1alpha1.PullRequestMerged
@@ -150,7 +150,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, error) {
 	logger := log.FromContext(ctx)
-	logger.V(5).Info("Finding Pull Request")
+	logger.V(4).Info("Finding Pull Request")
 
 	pullRequests, response, err := pr.client.PullRequests.List(ctx, pullRequest.Spec.RepositoryReference.Owner,
 		pullRequest.Spec.RepositoryReference.Name,
@@ -163,7 +163,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(5).Info("github response status",
+	logger.V(4).Info("github response status",
 		"status", response.Status)
 	if len(pullRequests) > 0 {
 		pullRequest.Status.ID = strconv.Itoa(*pullRequests[0].Number)
