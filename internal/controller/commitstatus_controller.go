@@ -67,7 +67,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if cs.Generation == cs.Status.ObservedGeneration {
-		logger.V(5).Info("Reconcile not needed", "namespace", req.Namespace, "name", req.Name)
+		logger.V(4).Info("Reconcile not needed", "namespace", req.Namespace, "name", req.Name)
 		return ctrl.Result{}, nil
 	}
 
