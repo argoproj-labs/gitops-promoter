@@ -18,21 +18,22 @@ package controller
 
 import (
 	"context"
-	"os"
-
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/types"
+	"os"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("ProposedCommit Controller", func() {
+
+	var scmProvider *promoterv1alpha1.ScmProvider
+	var scmSecret *v1.Secret
+	var proposedCommit *promoterv1alpha1.ProposedCommit
+
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource-pc"
 
@@ -42,129 +43,177 @@ var _ = Describe("ProposedCommit Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		proposedcommit := &promoterv1alpha1.ProposedCommit{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind ProposedCommit")
 
 			setupInitialTestGitRepo("test-pc", "test-pc")
 
-			err := k8sClient.Get(ctx, typeNamespacedName, proposedcommit)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &promoterv1alpha1.ProposedCommit{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.ProposedCommitSpec{
-						RepositoryReference: &promoterv1alpha1.Repository{
-							Owner: "test-pc",
-							Name:  "test-pc",
-							ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-								Name:      resourceName,
-								Namespace: "default",
-							},
+			scmSecret = &v1.Secret{
+				TypeMeta: metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      typeNamespacedName.Name,
+					Namespace: typeNamespacedName.Namespace,
+				},
+				Data: nil,
+			}
+
+			scmProvider = &promoterv1alpha1.ScmProvider{
+				TypeMeta: metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      typeNamespacedName.Name,
+					Namespace: typeNamespacedName.Namespace,
+				},
+				Spec: promoterv1alpha1.ScmProviderSpec{
+					SecretRef: &v1.LocalObjectReference{Name: typeNamespacedName.Name},
+					Fake:      &promoterv1alpha1.Fake{},
+				},
+				Status: promoterv1alpha1.ScmProviderStatus{},
+			}
+
+			proposedCommit = &promoterv1alpha1.ProposedCommit{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      typeNamespacedName.Name,
+					Namespace: typeNamespacedName.Namespace,
+				},
+				Spec: promoterv1alpha1.ProposedCommitSpec{
+					RepositoryReference: &promoterv1alpha1.Repository{
+						Owner: "test-pc",
+						Name:  "test-pc",
+						ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
+							Name:      resourceName,
+							Namespace: "default",
 						},
-						ProposedBranch: "environment/development-next",
-						ActiveBranch:   "environment/development",
 					},
-					// TODO(user): Specify other spec details if needed.
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-
-				Expect(k8sClient.Create(ctx, &promoterv1alpha1.ScmProvider{
-					TypeMeta: metav1.TypeMeta{},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.ScmProviderSpec{
-						SecretRef: &v1.LocalObjectReference{Name: resourceName},
-						Fake:      &promoterv1alpha1.Fake{},
-					},
-					Status: promoterv1alpha1.ScmProviderStatus{},
-				})).To(Succeed())
-
-				Expect(k8sClient.Create(ctx, &v1.Secret{
-					TypeMeta: metav1.TypeMeta{},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Data: nil,
-				})).To(Succeed())
+				},
 			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &promoterv1alpha1.ProposedCommit{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
+			//TODO(user): Cleanup logic after each test, like removing the resource instance.
+			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(proposedCommit), proposedCommit)
 			Expect(err).NotTo(HaveOccurred())
 
-			scmProvider := &promoterv1alpha1.ScmProvider{}
 			err = k8sClient.Get(ctx, typeNamespacedName, scmProvider)
 			Expect(err).NotTo(HaveOccurred())
 
-			secret := &v1.Secret{}
-			err = k8sClient.Get(ctx, typeNamespacedName, secret)
+			err = k8sClient.Get(ctx, typeNamespacedName, scmSecret)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Cleanup the specific resource instance ProposedCommit")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, proposedCommit)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, secret)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 			deleteRepo("test-pc", "test-pc")
 		})
 
-		It("should successfully reconcile the resource - with no git change", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &ProposedCommitReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
-
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-		})
 		It("should successfully reconcile the resource - with a pending commit", func() {
-			By("Adding a pending commit")
+			proposedCommit.Spec.ProposedBranch = "environment/development-next"
+			proposedCommit.Spec.ActiveBranch = "environment/development"
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, proposedCommit)).To(Succeed())
+
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 
-			addPendingCommit(gitPath, "5468b78dfef356739559abf1f883cd713794fd97", "test-pc", "test-pc")
-
-			By("Reconciling the created resource")
-			controllerReconciler := &ProposedCommitReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
-
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-		})
-		It("should successfully reconcile the resource - with an update to the pull request", func() {
 			By("Adding a pending commit")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-
 			addPendingCommit(gitPath, "5468b78dfef356739559abf1f883cd713794fd97", "test-pc", "test-pc")
 
 			By("Reconciling the created resource")
-			controllerReconciler := &ProposedCommitReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
 
-			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
+			var proposedCommit promoterv1alpha1.ProposedCommit
+			err = k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
 			Expect(err).NotTo(HaveOccurred())
+
+			// Update label to force reconcile
+			proposedCommit.Labels = map[string]string{"test": "test"}
+			err = k8sClient.Update(ctx, &proposedCommit)
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func() map[string]string {
+				k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
+				return map[string]string{
+					"activeDrySha":   proposedCommit.Status.Active.Dry.Sha,
+					"proposedDrySha": proposedCommit.Status.Proposed.Dry.Sha,
+				}
+			}, "5s").Should(Equal(map[string]string{
+				"activeDrySha":   "5468b78dfef356739559abf1f883cd713794fd96",
+				"proposedDrySha": "5468b78dfef356739559abf1f883cd713794fd97",
+			}))
+			Eventually(func() map[string]string {
+				k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
+				return map[string]string{
+					"activeHydratedSha":   proposedCommit.Status.Active.Hydrated.Sha,
+					"proposedHydratedSha": proposedCommit.Status.Proposed.Hydrated.Sha,
+				}
+			}, "5s").Should(Not(Equal(map[string]string{
+				"activeHydratedSha":   "",
+				"proposedHydratedSha": "",
+			})))
+
+			var pr promoterv1alpha1.PullRequest
+			Eventually(func() map[string]string {
+				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
+					Name:      "test-pc-test-pc-environment-development-next-environment-development",
+					Namespace: "default",
+				}
+				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
+				if err != nil {
+					return map[string]string{
+						"prName": "",
+						"error":  err.Error(),
+					}
+				}
+				return map[string]string{
+					"prName":  pr.Name,
+					"prTitle": pr.Spec.Title,
+					"state":   string(pr.Status.State),
+					"error":   "",
+				}
+			}, "5s").Should(Equal(map[string]string{
+				"prName":  "test-pc-test-pc-environment-development-next-environment-development",
+				"prTitle": "Promote 5468b78 to `environment/development`",
+				"state":   "open",
+				"error":   "",
+			}))
+
+			By("Adding another pending commit")
+			addPendingCommit(gitPath, "7568fd8dfef356739559abf1f883cd713794fd3a", "test-pc", "test-pc")
+
+			By("Reconciling the resource")
+
+			// Update label to force reconcile
+			proposedCommit.Labels = map[string]string{"test": "test-new-pr-title"}
+			err = k8sClient.Update(ctx, &proposedCommit)
+			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func() map[string]string {
+				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
+					Name:      "test-pc-test-pc-environment-development-next-environment-development",
+					Namespace: "default",
+				}
+				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
+				if err != nil {
+					return map[string]string{
+						"prName": "",
+						"error":  err.Error(),
+					}
+				}
+				return map[string]string{
+					"prName":  pr.Name,
+					"prTitle": pr.Spec.Title,
+					"state":   string(pr.Status.State),
+					"error":   "",
+				}
+			}, "5s").Should(Equal(map[string]string{
+				"prName":  "test-pc-test-pc-environment-development-next-environment-development",
+				"prTitle": "Promote 7568fd8 to `environment/development`",
+				"state":   "open",
+				"error":   "",
+			}))
+
 		})
 	})
 })

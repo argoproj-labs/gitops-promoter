@@ -18,7 +18,9 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"log"
 	"net/http"
 	"os"
@@ -26,7 +28,10 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"strings"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -51,11 +56,18 @@ var k8sClient client.Client
 var testEnv *envtest.Environment
 var gitServer *http.Server
 var gitStoragePath string
+var cancel context.CancelFunc
+var ctx context.Context
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "Controller Suite")
+	c, _ := GinkgoConfiguration()
+	//c.FocusFiles = []string{
+	//	"proposedcommit_controller_test.go",
+	//	"pullrequest_controller_test.go",
+	//}
+	RunSpecs(t, "Controller Suite", c)
 }
 
 var _ = BeforeSuite(func() {
@@ -73,8 +85,9 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
-		ErrorIfCRDPathMissing: true,
+		CRDDirectoryPaths:       []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		ErrorIfCRDPathMissing:   true,
+		ControlPlaneStopTimeout: 1 * time.Minute,
 
 		// The BinaryAssetsDirectory is only required if you want to run the tests directly
 		// without call the makefile target test. If not informed it will look for the
@@ -100,10 +113,61 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	ctx, cancel = context.WithCancel(context.Background())
+	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme: scheme.Scheme,
+	})
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&CommitStatusReconciler{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&PromotionStrategyReconciler{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	pathLookup := utils.NewPathLookup()
+	err = (&ProposedCommitReconciler{
+		Client:     k8sManager.GetClient(),
+		Scheme:     k8sManager.GetScheme(),
+		PathLookup: pathLookup,
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&PullRequestReconciler{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&RevertCommitReconciler{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&ScmProviderReconciler{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	go func() {
+		defer GinkgoRecover()
+		err = k8sManager.Start(ctx)
+		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
+	}()
+
 })
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
+	cancel()
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 
@@ -256,7 +320,10 @@ func runGitCmd(directory string, name string, args ...string) error {
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return err
+		if strings.Contains(stderrBuf.String(), "already exists and is not an empty directory") {
+			return nil
+		}
+		return fmt.Errorf("failed to run git command: %s", stderrBuf.String())
 	}
 
 	return nil
