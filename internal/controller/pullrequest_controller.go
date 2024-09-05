@@ -112,7 +112,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if pr.Status.State != "" && pr.Spec.State == pr.Status.State && pr.Status.SpecHash == hash {
-		logger.V(5).Info("Reconcile not needed")
+		logger.V(4).Info("Reconcile not needed")
 		return ctrl.Result{}, nil
 	}
 

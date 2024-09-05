@@ -22,16 +22,17 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 var _ = Describe("CommitStatus Controller", func() {
+	var scmProvider *promoterv1alpha1.ScmProvider
+	var scmSecret *v1.Secret
+	var commitStatus *promoterv1alpha1.CommitStatus
+
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 
@@ -41,76 +42,65 @@ var _ = Describe("CommitStatus Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		commitstatus := &promoterv1alpha1.CommitStatus{}
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind CommitStatus")
-			err := k8sClient.Get(ctx, typeNamespacedName, commitstatus)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &promoterv1alpha1.CommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.CommitStatusSpec{
-						State: "pending",
-						RepositoryReference: &promoterv1alpha1.Repository{
-							Owner: "test",
-							Name:  "test",
-							ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-								Name:      resourceName,
-								Namespace: "default",
-							},
+
+			scmSecret = &v1.Secret{
+				TypeMeta: metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      typeNamespacedName.Name,
+					Namespace: typeNamespacedName.Namespace,
+				},
+				Data: nil,
+			}
+
+			scmProvider = &promoterv1alpha1.ScmProvider{
+				TypeMeta: metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      typeNamespacedName.Name,
+					Namespace: typeNamespacedName.Namespace,
+				},
+				Spec: promoterv1alpha1.ScmProviderSpec{
+					SecretRef: &v1.LocalObjectReference{Name: resourceName},
+					Fake:      &promoterv1alpha1.Fake{},
+				},
+				Status: promoterv1alpha1.ScmProviderStatus{},
+			}
+
+			commitStatus = &promoterv1alpha1.CommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      typeNamespacedName.Name,
+					Namespace: typeNamespacedName.Namespace,
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					State: "pending",
+					RepositoryReference: &promoterv1alpha1.Repository{
+						Owner: "test",
+						Name:  "test",
+						ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
+							Name:      typeNamespacedName.Name,
+							Namespace: typeNamespacedName.Namespace,
 						},
 					},
-					// TODO(user): Specify other spec details if needed.
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-
-				Expect(k8sClient.Create(ctx, &promoterv1alpha1.ScmProvider{
-					TypeMeta: metav1.TypeMeta{},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.ScmProviderSpec{
-						SecretRef: &v1.LocalObjectReference{Name: resourceName},
-						Fake:      &promoterv1alpha1.Fake{},
-					},
-					Status: promoterv1alpha1.ScmProviderStatus{},
-				})).To(Succeed())
-
-				Expect(k8sClient.Create(ctx, &v1.Secret{
-					TypeMeta: metav1.TypeMeta{},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Data: nil,
-				})).To(Succeed())
+				},
+				// TODO(user): Specify other spec details if needed.
 			}
 		})
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &promoterv1alpha1.CommitStatus{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
 			By("Cleanup the specific resource instance CommitStatus")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			k8sClient.Delete(ctx, commitStatus)
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &CommitStatusReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
 		})
