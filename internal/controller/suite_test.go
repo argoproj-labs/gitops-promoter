@@ -66,7 +66,7 @@ func TestControllers(t *testing.T) {
 	c.FocusFiles = []string{
 		//"proposedcommit_controller_test.go",
 		//"pullrequest_controller_test.go",
-		"promotionstrategy_controller_test.go",
+		//"promotionstrategy_controller_test.go",
 	}
 	RunSpecs(t, "Controller Suite", c)
 }
@@ -298,17 +298,23 @@ func addPendingCommit(gitPath string, drySha string, repoOwner string, repoName 
 	_, err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())
 
+	sha, err := runGitCmd(gitPath, "git", "rev-parse", "main")
 	f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
-	_, err = f.WriteString(fmt.Sprintf("{\"drySHA\": \"%s\"}", drySha))
+	str := fmt.Sprintf("{\"drySHA\": \"%s\"}", strings.TrimSpace(sha))
+	_, err = f.WriteString(str)
 	Expect(err).NotTo(HaveOccurred())
 	err = f.Close()
 	Expect(err).NotTo(HaveOccurred())
-
 	_, err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "git", "commit", "-m", "bump dry sha")
+	_, err = runGitCmd(gitPath, "git", "commit", "-m", "added pending commit with dry sha")
 	Expect(err).NotTo(HaveOccurred())
+
+	//_, err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
+	//Expect(err).NotTo(HaveOccurred())
+	//_, err = runGitCmd(gitPath, "git", "commit", "-m", "bump dry sha")
+	//Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())
 }
@@ -335,7 +341,8 @@ func runGitCmd(directory string, name string, args ...string) (string, error) {
 	}
 
 	if err := cmd.Wait(); err != nil {
-		if strings.Contains(stderrBuf.String(), "already exists and is not an empty directory") {
+		if strings.Contains(stderrBuf.String(), "already exists and is not an empty directory") ||
+			strings.Contains(stdoutBuf.String(), "nothing to commit, working tree clean") {
 			return "", nil
 		}
 		return "", fmt.Errorf("failed to run git command: %s", stderrBuf.String())
