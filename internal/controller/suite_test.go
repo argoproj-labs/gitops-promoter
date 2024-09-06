@@ -63,10 +63,11 @@ func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	c, _ := GinkgoConfiguration()
-	//c.FocusFiles = []string{
-	//	"proposedcommit_controller_test.go",
-	//	"pullrequest_controller_test.go",
-	//}
+	c.FocusFiles = []string{
+		//"proposedcommit_controller_test.go",
+		//"pullrequest_controller_test.go",
+		"promotionstrategy_controller_test.go",
+	}
 	RunSpecs(t, "Controller Suite", c)
 }
 
@@ -218,53 +219,67 @@ func setupInitialTestGitRepo(owner string, name string) {
 	//GinkgoWriter.TeeTo(os.Stdout)
 	//GinkgoWriter.Println(gitPath)
 
-	err = runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", owner, name), ".")
+	_, err = runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", owner, name), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
-	_, err = f.WriteString("{\"drySHA\": \"5468b78dfef356739559abf1f883cd713794fd96\"}")
+	_, err = f.WriteString("{\"drySHA\": \"n/a\"}")
 	Expect(err).NotTo(HaveOccurred())
 	err = f.Close()
 	Expect(err).NotTo(HaveOccurred())
 
-	err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
+	_, err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
 	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "config", "user.email", "testemail@test.com")
-	Expect(err).NotTo(HaveOccurred())
-
-	err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
-	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "commit", "-m", "init commit")
-	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "push")
+	_, err = runGitCmd(gitPath, "git", "config", "user.email", "testemail@test.com")
 	Expect(err).NotTo(HaveOccurred())
 
-	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development")
+	_, err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
 	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development")
-	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
-	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
+	_, err = runGitCmd(gitPath, "git", "commit", "-m", "init commit")
 	Expect(err).NotTo(HaveOccurred())
 
-	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/staging")
+	sha, err := runGitCmd(gitPath, "git", "rev-parse", "main")
+	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/staging")
+	str := fmt.Sprintf("{\"drySHA\": \"%s\"}", strings.TrimSpace(sha))
+	_, err = f.WriteString(str)
 	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/staging-next")
+	err = f.Close()
 	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/staging-next")
+	_, err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "commit", "-m", "second commit with dry sha")
 	Expect(err).NotTo(HaveOccurred())
 
-	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/production")
+	_, err = runGitCmd(gitPath, "git", "push")
 	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/production")
+
+	_, err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development")
 	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/production-next")
+	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development")
 	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/production-next")
+	_, err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/staging")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/staging")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/staging-next")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/staging-next")
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/production")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/production")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/production-next")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/production-next")
 	Expect(err).NotTo(HaveOccurred())
 }
 
@@ -272,15 +287,15 @@ func addPendingCommit(gitPath string, drySha string, repoOwner string, repoName 
 	//gitPath, err := os.MkdirTemp("", "*")
 	//Expect(err).NotTo(HaveOccurred())
 
-	err := runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", repoOwner, repoName), ".")
+	_, err := runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", repoOwner, repoName), ".")
 	Expect(err).NotTo(HaveOccurred())
 
-	err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
+	_, err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
 	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "config", "user.email", "testemail@test.com")
+	_, err = runGitCmd(gitPath, "git", "config", "user.email", "testemail@test.com")
 	Expect(err).NotTo(HaveOccurred())
 
-	err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
+	_, err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())
 
 	f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
@@ -290,11 +305,11 @@ func addPendingCommit(gitPath string, drySha string, repoOwner string, repoName 
 	err = f.Close()
 	Expect(err).NotTo(HaveOccurred())
 
-	err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
+	_, err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
 	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "commit", "-m", "bump dry sha")
+	_, err = runGitCmd(gitPath, "git", "commit", "-m", "bump dry sha")
 	Expect(err).NotTo(HaveOccurred())
-	err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
+	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())
 }
 
@@ -303,7 +318,7 @@ func deleteRepo(owner, name string) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func runGitCmd(directory string, name string, args ...string) error {
+func runGitCmd(directory string, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
@@ -316,15 +331,15 @@ func runGitCmd(directory string, name string, args ...string) error {
 	}
 
 	if err := cmd.Start(); err != nil {
-		return err
+		return "", err
 	}
 
 	if err := cmd.Wait(); err != nil {
 		if strings.Contains(stderrBuf.String(), "already exists and is not an empty directory") {
-			return nil
+			return "", nil
 		}
-		return fmt.Errorf("failed to run git command: %s", stderrBuf.String())
+		return "", fmt.Errorf("failed to run git command: %s", stderrBuf.String())
 	}
 
-	return nil
+	return stdoutBuf.String(), nil
 }
