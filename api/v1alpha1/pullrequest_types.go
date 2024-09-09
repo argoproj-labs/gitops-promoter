@@ -17,11 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"crypto/sha1"
-	"fmt"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/json"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -59,12 +55,13 @@ type PullRequestStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// ObservedGeneration the generation observed by the controller
+	ObservedGeneration int64 `json:"observedGeneration"`
+
 	// ID the id of the pull request
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
 	State PullRequestState `json:"state,omitempty"`
-	// SpecHash used to track if we need to update, should maybe use observedGeneration pattern
-	SpecHash string `json:"specHash,omitempty"`
 	// PRCreationTime the time the PR was created
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
 }
@@ -103,12 +100,3 @@ const (
 	PullRequestOpen   PullRequestState = "open"
 	PullRequestMerged PullRequestState = "merged"
 )
-
-func (pr PullRequest) Hash() (string, error) {
-	jsonSpec, err := json.Marshal(pr.Spec)
-	if err != nil {
-		return "", err
-	}
-	sum := sha1.Sum(jsonSpec)
-	return fmt.Sprintf("%x", sum), nil
-}
