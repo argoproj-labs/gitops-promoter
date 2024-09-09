@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -109,7 +110,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			addPendingCommit(gitPath, "5468b78dfef356739559abf1f883cd713794fd97", "test-pc", "test-pc")
+			fullSha, shortSha := addPendingCommit(gitPath, "test-pc", "test-pc")
 
 			By("Reconciling the created resource")
 
@@ -117,28 +118,23 @@ var _ = Describe("ProposedCommit Controller", func() {
 			err = k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
 			Expect(err).NotTo(HaveOccurred())
 
-			// Update label to force reconcile
-			proposedCommit.Labels = map[string]string{"test": "test"}
-			err = k8sClient.Update(ctx, &proposedCommit)
-			Expect(err).NotTo(HaveOccurred())
-
-			//Eventually(func() map[string]string {
-			//	k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
-			//	return map[string]string{
-			//		"activeDrySha":   proposedCommit.Status.Active.Dry.Sha,
-			//		"proposedDrySha": proposedCommit.Status.Proposed.Dry.Sha,
-			//	}
-			//}, "5s").Should(Equal(map[string]string{
-			//	"activeDrySha":   "5468b78dfef356739559abf1f883cd713794fd96",
-			//	"proposedDrySha": "5468b78dfef356739559abf1f883cd713794fd97",
-			//}))
+			Eventually(func() map[string]string {
+				k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
+				return map[string]string{
+					//"activeDrySha":   proposedCommit.Status.Active.Dry.Sha,
+					"proposedDrySha": proposedCommit.Status.Proposed.Dry.Sha,
+				}
+			}, "5s").Should(Equal(map[string]string{
+				//"activeDrySha":   "5468b78dfef356739559abf1f883cd713794fd96",
+				"proposedDrySha": fullSha,
+			}))
 			Eventually(func() map[string]string {
 				k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
 				return map[string]string{
 					"activeHydratedSha":   proposedCommit.Status.Active.Hydrated.Sha,
 					"proposedHydratedSha": proposedCommit.Status.Proposed.Hydrated.Sha,
 				}
-			}, "5s").Should(Not(Equal(map[string]string{
+			}, "10s").Should(Not(Equal(map[string]string{
 				"activeHydratedSha":   "",
 				"proposedHydratedSha": "",
 			})))
@@ -157,27 +153,20 @@ var _ = Describe("ProposedCommit Controller", func() {
 					}
 				}
 				return map[string]string{
-					"prName": pr.Name,
-					//"prTitle": pr.Spec.Title,
-					"state": string(pr.Status.State),
-					"error": "",
+					"prName":  pr.Name,
+					"prTitle": pr.Spec.Title,
+					"state":   string(pr.Status.State),
+					"error":   "",
 				}
-			}, "5s").Should(Equal(map[string]string{
-				"prName": "test-pc-test-pc-environment-development-next-environment-development",
-				//"prTitle": "Promote 5468b78 to `environment/development`",
-				"state": "open",
-				"error": "",
+			}, "10s").Should(Equal(map[string]string{
+				"prName":  "test-pc-test-pc-environment-development-next-environment-development",
+				"prTitle": fmt.Sprintf("Promote %s to `environment/development`", shortSha),
+				"state":   "open",
+				"error":   "",
 			}))
 
 			By("Adding another pending commit")
-			addPendingCommit(gitPath, "7568fd8dfef356739559abf1f883cd713794fd3a", "test-pc", "test-pc")
-
-			By("Reconciling the resource")
-
-			// Update label to force reconcile
-			proposedCommit.Labels = map[string]string{"test": "test-new-pr-title"}
-			err = k8sClient.Update(ctx, &proposedCommit)
-			Expect(err).NotTo(HaveOccurred())
+			_, shortSha = addPendingCommit(gitPath, "test-pc", "test-pc")
 
 			Eventually(func() map[string]string {
 				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
@@ -192,16 +181,16 @@ var _ = Describe("ProposedCommit Controller", func() {
 					}
 				}
 				return map[string]string{
-					"prName": pr.Name,
-					//"prTitle": pr.Spec.Title,
-					"state": string(pr.Status.State),
-					"error": "",
+					"prName":  pr.Name,
+					"prTitle": pr.Spec.Title,
+					"state":   string(pr.Status.State),
+					"error":   "",
 				}
-			}, "5s").Should(Equal(map[string]string{
-				"prName": "test-pc-test-pc-environment-development-next-environment-development",
-				//"prTitle": "Promote 7568fd8 to `environment/development`",
-				"state": "open",
-				"error": "",
+			}, "10s").Should(Equal(map[string]string{
+				"prName":  "test-pc-test-pc-environment-development-next-environment-development",
+				"prTitle": fmt.Sprintf("Promote %s to `environment/development`", shortSha),
+				"state":   "open",
+				"error":   "",
 			}))
 
 		})

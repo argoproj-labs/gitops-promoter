@@ -186,8 +186,8 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, name strin
 	}
 
 	if err := cmd.Wait(); err != nil {
-		exitErr := err.(*exec.ExitError)
-		return nil, "", exitErr.String(), err
+		//exitErr := err.(*exec.ExitError)
+		return nil, "", stderrBuf.String(), err
 	}
 
 	return cmd, stdoutBuf.String(), stderrBuf.String(), nil

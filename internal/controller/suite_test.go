@@ -283,7 +283,7 @@ func setupInitialTestGitRepo(owner string, name string) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func addPendingCommit(gitPath string, drySha string, repoOwner string, repoName string) {
+func addPendingCommit(gitPath string, repoOwner string, repoName string) (string, string) {
 	//gitPath, err := os.MkdirTemp("", "*")
 	//Expect(err).NotTo(HaveOccurred())
 
@@ -295,13 +295,30 @@ func addPendingCommit(gitPath string, drySha string, repoOwner string, repoName 
 	_, err = runGitCmd(gitPath, "git", "config", "user.email", "testemail@test.com")
 	Expect(err).NotTo(HaveOccurred())
 
+	f, err := os.Create(path.Join(gitPath, "manifests-fake.timestamp"))
+	Expect(err).NotTo(HaveOccurred())
+	str := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339))
+	_, err = f.WriteString(str)
+	Expect(err).NotTo(HaveOccurred())
+	err = f.Close()
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "add", "manifests-fake.timestamp")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "commit", "-m", "added fake manifests commit with timestamp")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "main")
+	Expect(err).NotTo(HaveOccurred())
+
 	_, err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())
 
 	sha, err := runGitCmd(gitPath, "git", "rev-parse", "main")
-	f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
+	sha = strings.TrimSpace(sha)
+	shortSha, err := runGitCmd(gitPath, "git", "rev-parse", "--short=7", "main")
+	shortSha = strings.TrimSpace(shortSha)
+	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
-	str := fmt.Sprintf("{\"drySHA\": \"%s\"}", strings.TrimSpace(sha))
+	str = fmt.Sprintf("{\"drySHA\": \"%s\"}", sha)
 	_, err = f.WriteString(str)
 	Expect(err).NotTo(HaveOccurred())
 	err = f.Close()
@@ -311,12 +328,10 @@ func addPendingCommit(gitPath string, drySha string, repoOwner string, repoName 
 	_, err = runGitCmd(gitPath, "git", "commit", "-m", "added pending commit with dry sha")
 	Expect(err).NotTo(HaveOccurred())
 
-	//_, err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
-	//Expect(err).NotTo(HaveOccurred())
-	//_, err = runGitCmd(gitPath, "git", "commit", "-m", "bump dry sha")
-	//Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())
+
+	return sha, shortSha
 }
 
 func deleteRepo(owner, name string) {
