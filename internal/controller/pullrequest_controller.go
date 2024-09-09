@@ -87,14 +87,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	//deleted, err := r.handleFinalizer(ctx, &pr, pullRequestProvider)
-	//if err != nil {
-	//	return ctrl.Result{}, err
-	//}
-	//if deleted {
-	//	return ctrl.Result{}, nil
-	//}
-
 	if !found && pr.Status.State != "" {
 		err := r.Delete(ctx, &pr)
 		if err != nil {
@@ -106,12 +98,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	hash, err := pr.Hash()
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	if pr.Status.State != "" && pr.Spec.State == pr.Status.State && pr.Status.SpecHash == hash {
+	if pr.Status.State != "" && pr.Spec.State == pr.Status.State && pr.Status.ObservedGeneration == pr.Generation {
 		logger.V(4).Info("Reconcile not needed")
 		return ctrl.Result{}, nil
 	}
@@ -159,13 +146,14 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	if pr.Status.SpecHash != hash {
+	if pr.Status.ObservedGeneration != pr.Generation {
 		err := r.updatePullRequest(ctx, pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
+	pr.Status.ObservedGeneration = pr.Generation
 	err = r.Status().Update(ctx, &pr)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -264,12 +252,6 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 		return err
 	}
 
-	updatedHash, err := pr.Hash()
-	if err != nil {
-		return err
-	}
-
-	pr.Status.SpecHash = updatedHash
 	pr.Status.State = promoterv1alpha1.PullRequestOpen
 	pr.Status.PRCreationTime = metav1.Now()
 	pr.Status.ID = id
@@ -289,13 +271,6 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 		return err
 	}
 
-	updatedHash, err := pr.Hash()
-	if err != nil {
-		return err
-	}
-
-	pr.Status.SpecHash = updatedHash
-
 	return nil
 }
 
@@ -312,12 +287,6 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 		return err
 	}
 
-	updatedHash, err := pr.Hash()
-	if err != nil {
-		return err
-	}
-
-	pr.Status.SpecHash = updatedHash
 	pr.Status.State = promoterv1alpha1.PullRequestMerged
 
 	return nil
@@ -340,12 +309,6 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 		return err
 	}
 
-	updatedHash, err := pr.Hash()
-	if err != nil {
-		return err
-	}
-
-	pr.Status.SpecHash = updatedHash
 	pr.Status.State = promoterv1alpha1.PullRequestClosed
 	return nil
 }

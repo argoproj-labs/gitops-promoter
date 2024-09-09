@@ -104,7 +104,6 @@ var _ = Describe("PullRequest Controller", func() {
 			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				g.Expect(pullRequest.Status.SpecHash).To(Equal("e38edf1eb9ba75fe755968551d9845ba64bc8e24"))
 			})
 
 			By("Reconciling updating of the PullRequest")
@@ -135,7 +134,6 @@ var _ = Describe("PullRequest Controller", func() {
 			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				g.Expect(pullRequest.Status.SpecHash).To(Equal("e38edf1eb9ba75fe755968551d9845ba64bc8e24"))
 			})
 
 			By("Reconciling closing of the PullRequest")
