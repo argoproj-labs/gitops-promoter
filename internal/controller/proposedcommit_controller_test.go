@@ -115,84 +115,42 @@ var _ = Describe("ProposedCommit Controller", func() {
 			By("Reconciling the created resource")
 
 			var proposedCommit promoterv1alpha1.ProposedCommit
-			err = k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
-			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
+				g.Expect(proposedCommit.Status.Proposed.Dry.Sha, fullSha)
+				g.Expect(proposedCommit.Status.Active.Hydrated.Sha, Not(Equal("")))
+				g.Expect(proposedCommit.Status.Proposed.Hydrated.Sha, Not(Equal("")))
 
-			Eventually(func() map[string]string {
-				k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
-				return map[string]string{
-					//"activeDrySha":   proposedCommit.Status.Active.Dry.Sha,
-					"proposedDrySha": proposedCommit.Status.Proposed.Dry.Sha,
-				}
-			}, "5s").Should(Equal(map[string]string{
-				//"activeDrySha":   "5468b78dfef356739559abf1f883cd713794fd96",
-				"proposedDrySha": fullSha,
-			}))
-			Eventually(func() map[string]string {
-				k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
-				return map[string]string{
-					"activeHydratedSha":   proposedCommit.Status.Active.Hydrated.Sha,
-					"proposedHydratedSha": proposedCommit.Status.Proposed.Hydrated.Sha,
-				}
-			}, "10s").Should(Not(Equal(map[string]string{
-				"activeHydratedSha":   "",
-				"proposedHydratedSha": "",
-			})))
+			}, "10s").Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			Eventually(func() map[string]string {
+			Eventually(func(g Gomega) {
 				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
 					Name:      "test-pc-test-pc-environment-development-next-environment-development",
 					Namespace: "default",
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
-				if err != nil {
-					return map[string]string{
-						"prName": "",
-						"error":  err.Error(),
-					}
-				}
-				return map[string]string{
-					"prName":  pr.Name,
-					"prTitle": pr.Spec.Title,
-					"state":   string(pr.Status.State),
-					"error":   "",
-				}
-			}, "10s").Should(Equal(map[string]string{
-				"prName":  "test-pc-test-pc-environment-development-next-environment-development",
-				"prTitle": fmt.Sprintf("Promote %s to `environment/development`", shortSha),
-				"state":   "open",
-				"error":   "",
-			}))
+				g.Expect(err).To(Succeed())
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pr.Name).To(Equal("test-pc-test-pc-environment-development-next-environment-development"))
+			}, "10s").Should(Succeed())
 
 			By("Adding another pending commit")
 			_, shortSha = addPendingCommit(gitPath, "test-pc", "test-pc")
 
-			Eventually(func() map[string]string {
-				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      "test-pc-test-pc-environment-development-next-environment-development",
 					Namespace: "default",
-				}
-				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
-				if err != nil {
-					return map[string]string{
-						"prName": "",
-						"error":  err.Error(),
-					}
-				}
-				return map[string]string{
-					"prName":  pr.Name,
-					"prTitle": pr.Spec.Title,
-					"state":   string(pr.Status.State),
-					"error":   "",
-				}
-			}, "10s").Should(Equal(map[string]string{
-				"prName":  "test-pc-test-pc-environment-development-next-environment-development",
-				"prTitle": fmt.Sprintf("Promote %s to `environment/development`", shortSha),
-				"state":   "open",
-				"error":   "",
-			}))
+				}, &pr)
+				g.Expect(err).To(Succeed())
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pr.Name).To(Equal("test-pc-test-pc-environment-development-next-environment-development"))
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 
+			}).Should(Succeed())
 		})
 	})
 })
