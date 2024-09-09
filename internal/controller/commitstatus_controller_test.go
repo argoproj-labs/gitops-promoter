@@ -34,7 +34,7 @@ var _ = Describe("CommitStatus Controller", func() {
 	var commitStatus *promoterv1alpha1.CommitStatus
 
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
+		const resourceName = "test-resource-commit-status"
 
 		ctx := context.Background()
 

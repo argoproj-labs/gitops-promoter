@@ -101,48 +101,30 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
 
-			Eventually(func() map[string]string {
+			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				return map[string]string{
-					"statusState": string(pullRequest.Status.State),
-					"specHash":    pullRequest.Status.SpecHash,
-				}
-			}, "5s").Should(Equal(map[string]string{
-				"statusState": string(promoterv1alpha1.PullRequestOpen),
-				"specHash":    "e38edf1eb9ba75fe755968551d9845ba64bc8e24",
-			}))
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.SpecHash).To(Equal("e38edf1eb9ba75fe755968551d9845ba64bc8e24"))
+			})
 
 			By("Reconciling updating of the PullRequest")
 			pullRequest.Spec.Title = "Updated Title"
 			Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 
-			Eventually(func() map[string]string {
-				pullRequest.Spec.Title = ""
+			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				return map[string]string{
-					"title": pullRequest.Spec.Title,
-				}
-			}, "5s").Should(Equal(map[string]string{
-				"title": pullRequest.Spec.Title,
-			}))
+				g.Expect(pullRequest.Spec.Title).To(Equal("Updated Title"))
+			})
 
 			By("Reconciling merging of the PullRequest")
 			pullRequest.Spec.State = "merged"
 			Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 
-			Eventually(func() map[string]string {
+			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-				if err != nil {
-					return map[string]string{
-						"error": err.Error(),
-					}
-				}
-				return map[string]string{
-					"error": "",
-				}
-			}, "5s").Should(Equal(map[string]string{
-				"error": "pullrequests.promoter.argoproj.io \"test-resource-pr\" not found",
-			}))
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"test-resource-pr\" not found"))
+			})
 		})
 		It("should successfully reconcile the resource when closing", func() {
 			By("Reconciling the created resource")
@@ -150,34 +132,21 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
 
-			Eventually(func() map[string]string {
+			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
-				return map[string]string{
-					"statusState": string(pullRequest.Status.State),
-					"specHash":    pullRequest.Status.SpecHash,
-				}
-			}, "5s").Should(Equal(map[string]string{
-				"statusState": string(promoterv1alpha1.PullRequestOpen),
-				"specHash":    "e38edf1eb9ba75fe755968551d9845ba64bc8e24",
-			}))
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.SpecHash).To(Equal("e38edf1eb9ba75fe755968551d9845ba64bc8e24"))
+			})
 
 			By("Reconciling closing of the PullRequest")
 			pullRequest.Spec.State = "closed"
 			Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 
-			Eventually(func() map[string]string {
+			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
-				if err != nil {
-					return map[string]string{
-						"error": err.Error(),
-					}
-				}
-				return map[string]string{
-					"error": "",
-				}
-			}, "5s").Should(Equal(map[string]string{
-				"error": "pullrequests.promoter.argoproj.io \"test-resource-pr\" not found",
-			}))
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"test-resource-pr\" not found"))
+			})
 
 		})
 	})

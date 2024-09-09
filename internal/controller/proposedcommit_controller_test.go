@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -25,7 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"os"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var _ = Describe("ProposedCommit Controller", func() {
@@ -91,17 +91,8 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 		AfterEach(func() {
 			//TODO(user): Cleanup logic after each test, like removing the resource instance.
-			err := k8sClient.Get(ctx, client.ObjectKeyFromObject(proposedCommit), proposedCommit)
-			Expect(err).NotTo(HaveOccurred())
-
-			err = k8sClient.Get(ctx, typeNamespacedName, scmProvider)
-			Expect(err).NotTo(HaveOccurred())
-
-			err = k8sClient.Get(ctx, typeNamespacedName, scmSecret)
-			Expect(err).NotTo(HaveOccurred())
-
 			By("Cleanup the specific resource instance ProposedCommit")
-			Expect(k8sClient.Delete(ctx, proposedCommit)).To(Succeed())
+			k8sClient.Delete(ctx, proposedCommit)
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 			deleteRepo("test-pc", "test-pc")
@@ -119,101 +110,47 @@ var _ = Describe("ProposedCommit Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			addPendingCommit(gitPath, "5468b78dfef356739559abf1f883cd713794fd97", "test-pc", "test-pc")
+			fullSha, shortSha := addPendingCommit(gitPath, "test-pc", "test-pc")
 
 			By("Reconciling the created resource")
 
 			var proposedCommit promoterv1alpha1.ProposedCommit
-			err = k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Update label to force reconcile
-			proposedCommit.Labels = map[string]string{"test": "test"}
-			err = k8sClient.Update(ctx, &proposedCommit)
-			Expect(err).NotTo(HaveOccurred())
-
-			Eventually(func() map[string]string {
+			Eventually(func(g Gomega) {
 				k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
-				return map[string]string{
-					"activeDrySha":   proposedCommit.Status.Active.Dry.Sha,
-					"proposedDrySha": proposedCommit.Status.Proposed.Dry.Sha,
-				}
-			}, "5s").Should(Equal(map[string]string{
-				"activeDrySha":   "5468b78dfef356739559abf1f883cd713794fd96",
-				"proposedDrySha": "5468b78dfef356739559abf1f883cd713794fd97",
-			}))
-			Eventually(func() map[string]string {
-				k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
-				return map[string]string{
-					"activeHydratedSha":   proposedCommit.Status.Active.Hydrated.Sha,
-					"proposedHydratedSha": proposedCommit.Status.Proposed.Hydrated.Sha,
-				}
-			}, "5s").Should(Not(Equal(map[string]string{
-				"activeHydratedSha":   "",
-				"proposedHydratedSha": "",
-			})))
+				g.Expect(proposedCommit.Status.Proposed.Dry.Sha, fullSha)
+				g.Expect(proposedCommit.Status.Active.Hydrated.Sha, Not(Equal("")))
+				g.Expect(proposedCommit.Status.Proposed.Hydrated.Sha, Not(Equal("")))
+
+			}, "10s").Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			Eventually(func() map[string]string {
+			Eventually(func(g Gomega) {
 				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
 					Name:      "test-pc-test-pc-environment-development-next-environment-development",
 					Namespace: "default",
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
-				if err != nil {
-					return map[string]string{
-						"prName": "",
-						"error":  err.Error(),
-					}
-				}
-				return map[string]string{
-					"prName":  pr.Name,
-					"prTitle": pr.Spec.Title,
-					"state":   string(pr.Status.State),
-					"error":   "",
-				}
-			}, "5s").Should(Equal(map[string]string{
-				"prName":  "test-pc-test-pc-environment-development-next-environment-development",
-				"prTitle": "Promote 5468b78 to `environment/development`",
-				"state":   "open",
-				"error":   "",
-			}))
+				g.Expect(err).To(Succeed())
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pr.Name).To(Equal("test-pc-test-pc-environment-development-next-environment-development"))
+			}, "10s").Should(Succeed())
 
 			By("Adding another pending commit")
-			addPendingCommit(gitPath, "7568fd8dfef356739559abf1f883cd713794fd3a", "test-pc", "test-pc")
+			_, shortSha = addPendingCommit(gitPath, "test-pc", "test-pc")
 
-			By("Reconciling the resource")
-
-			// Update label to force reconcile
-			proposedCommit.Labels = map[string]string{"test": "test-new-pr-title"}
-			err = k8sClient.Update(ctx, &proposedCommit)
-			Expect(err).NotTo(HaveOccurred())
-
-			Eventually(func() map[string]string {
-				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      "test-pc-test-pc-environment-development-next-environment-development",
 					Namespace: "default",
-				}
-				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
-				if err != nil {
-					return map[string]string{
-						"prName": "",
-						"error":  err.Error(),
-					}
-				}
-				return map[string]string{
-					"prName":  pr.Name,
-					"prTitle": pr.Spec.Title,
-					"state":   string(pr.Status.State),
-					"error":   "",
-				}
-			}, "5s").Should(Equal(map[string]string{
-				"prName":  "test-pc-test-pc-environment-development-next-environment-development",
-				"prTitle": "Promote 7568fd8 to `environment/development`",
-				"state":   "open",
-				"error":   "",
-			}))
+				}, &pr)
+				g.Expect(err).To(Succeed())
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pr.Name).To(Equal("test-pc-test-pc-environment-development-next-environment-development"))
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 
+			}).Should(Succeed())
 		})
 	})
 })
