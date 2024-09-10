@@ -169,12 +169,14 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
+
 	cancel()
-	err := testEnv.Stop()
-	Expect(err).NotTo(HaveOccurred())
 
 	// TODO: why dose shutting down break tests
 	//_ = gitServer.Shutdown(context.Background())
+
+	err := testEnv.Stop()
+	Expect(err).NotTo(HaveOccurred())
 
 	err = os.RemoveAll(gitStoragePath)
 	Expect(err).NotTo(HaveOccurred())
