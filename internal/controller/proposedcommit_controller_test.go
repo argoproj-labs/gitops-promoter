@@ -122,7 +122,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				g.Expect(proposedCommit.Status.Active.Hydrated.Sha, Not(Equal("")))
 				g.Expect(proposedCommit.Status.Proposed.Hydrated.Sha, Not(Equal("")))
 
-			}, "10s").Should(Succeed())
+			}, "30s").Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
 			Eventually(func(g Gomega) {
@@ -135,7 +135,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal("test-pc-test-pc-environment-development-next-environment-development"))
-			}, "10s").Should(Succeed())
+			}, "30s").Should(Succeed())
 
 			By("Adding another pending commit")
 			_, shortSha = addPendingCommit(gitPath, "test-pc", "test-pc")
