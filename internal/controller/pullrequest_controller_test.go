@@ -116,8 +116,11 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			By("Reconciling merging of the PullRequest")
-			pullRequest.Spec.State = "merged"
-			Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			Eventually(func(g Gomega) {
+				k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				pullRequest.Spec.State = "merged"
+				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			}).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
@@ -137,8 +140,11 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			By("Reconciling closing of the PullRequest")
-			pullRequest.Spec.State = "closed"
-			Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			Eventually(func(g Gomega) {
+				k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				pullRequest.Spec.State = "closed"
+				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			}).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
