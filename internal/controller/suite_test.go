@@ -173,8 +173,7 @@ var _ = AfterSuite(func() {
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 
-	// TODO: why dose shutting down break tests
-	//_ = gitServer.Shutdown(context.Background())
+	_ = gitServer.Shutdown(context.Background())
 
 	err = os.RemoveAll(gitStoragePath)
 	Expect(err).NotTo(HaveOccurred())
@@ -199,12 +198,10 @@ func startGitServer(gitStoragePath string) *http.Server {
 
 	server := &http.Server{Addr: ":5000", Handler: service}
 
-	//http.Handle("/", service)
-
 	go func() {
 		// Start HTTP server
 		if err := server.ListenAndServe(); err != nil {
-			log.Fatal(err)
+			fmt.Println(err)
 		}
 	}()
 
@@ -240,7 +237,7 @@ func setupInitialTestGitRepo(owner string, name string) {
 	_, err = runGitCmd(gitPath, "git", "commit", "-m", "init commit")
 	Expect(err).NotTo(HaveOccurred())
 
-	sha, err := runGitCmd(gitPath, "git", "rev-parse", "main")
+	sha, err := runGitCmd(gitPath, "git", "rev-parse", "master")
 	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
 	str := fmt.Sprintf("{\"drySHA\": \"%s\"}", strings.TrimSpace(sha))
@@ -307,15 +304,15 @@ func addPendingCommit(gitPath string, repoOwner string, repoName string) (string
 	Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "git", "commit", "-m", "added fake manifests commit with timestamp")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "main")
+	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "master")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())
 
-	sha, err := runGitCmd(gitPath, "git", "rev-parse", "main")
+	sha, err := runGitCmd(gitPath, "git", "rev-parse", "master")
 	sha = strings.TrimSpace(sha)
-	shortSha, err := runGitCmd(gitPath, "git", "rev-parse", "--short=7", "main")
+	shortSha, err := runGitCmd(gitPath, "git", "rev-parse", "--short=7", "master")
 	shortSha = strings.TrimSpace(shortSha)
 	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
