@@ -29,9 +29,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // PullRequestReconciler reconciles a PullRequest object
@@ -166,7 +168,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 // SetupWithManager sets up the controller with the Manager.
 func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.PullRequest{}).
+		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }
 
@@ -179,10 +181,8 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	switch {
 	case scmProvider.Spec.GitHub != nil:
 		return github.NewGithubPullRequestProvider(*secret)
-		//return scms.NewScmPullRequestProvider(scms.GitHub, *secret), nil
 	case scmProvider.Spec.Fake != nil:
 		return fake.NewFakePullRequestProvider(), nil
-		//return scms.NewScmPullRequestProvider(scms.Fake, *secret), nil
 	default:
 		return nil, nil
 	}
