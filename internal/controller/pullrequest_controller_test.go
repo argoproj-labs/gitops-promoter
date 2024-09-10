@@ -107,8 +107,11 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			By("Reconciling updating of the PullRequest")
-			pullRequest.Spec.Title = "Updated Title"
-			Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			Eventually(func(g Gomega) {
+				k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				pullRequest.Spec.Title = "Updated Title"
+				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			})
 
 			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())

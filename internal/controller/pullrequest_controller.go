@@ -69,6 +69,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// No change to PR nothing to do, exit reconciliation
+	if pr.Status.ObservedGeneration == pr.Generation {
+		return ctrl.Result{}, nil
+	}
+
 	pullRequestProvider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
 		return ctrl.Result{}, err
