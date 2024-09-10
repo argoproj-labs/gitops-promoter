@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"

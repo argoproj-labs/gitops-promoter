@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
@@ -67,11 +68,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 		logger.Error(err, "failed to get PullRequest", "namespace", req.Namespace, "name", req.Name)
 		return ctrl.Result{}, err
-	}
-
-	// No change to PR nothing to do, exit reconciliation
-	if pr.Status.ObservedGeneration == pr.Generation {
-		return ctrl.Result{}, nil
 	}
 
 	pullRequestProvider, err := r.getPullRequestProvider(ctx, pr)
@@ -156,7 +152,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	pr.Status.ObservedGeneration = pr.Generation
 	err = r.Status().Update(ctx, &pr)
 	if err != nil {
 		return ctrl.Result{}, err
