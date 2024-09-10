@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
@@ -49,6 +50,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 			By("creating the custom resource for the Kind ProposedCommit")
 
 			setupInitialTestGitRepo("test-pc", "test-pc")
+			time.Sleep(5 * time.Second)
 
 			scmSecret = &v1.Secret{
 				TypeMeta: metav1.TypeMeta{},

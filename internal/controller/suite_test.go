@@ -306,8 +306,8 @@ func addPendingCommit(gitPath string, repoOwner string, repoName string) (string
 	Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "git", "commit", "-m", "added fake manifests commit with timestamp")
 	Expect(err).NotTo(HaveOccurred())
-	//_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "main")
-	//Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "main")
+	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(gitPath, "git", "checkout", "-B", "environment/development-next")
 	Expect(err).NotTo(HaveOccurred())
