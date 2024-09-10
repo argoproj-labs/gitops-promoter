@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"log"
 	"net/http"
 	"os"
@@ -28,10 +27,12 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	ctrl "sigs.k8s.io/controller-runtime"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

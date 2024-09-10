@@ -19,9 +19,10 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/client-go/util/retry"
 	"reflect"
 	"time"
+
+	"k8s.io/client-go/util/retry"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"

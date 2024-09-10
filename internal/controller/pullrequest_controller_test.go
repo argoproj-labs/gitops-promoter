@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -107,8 +108,11 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			By("Reconciling updating of the PullRequest")
-			pullRequest.Spec.Title = "Updated Title"
-			Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			Eventually(func(g Gomega) {
+				k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				pullRequest.Spec.Title = "Updated Title"
+				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			})
 
 			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
@@ -116,8 +120,11 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			By("Reconciling merging of the PullRequest")
-			pullRequest.Spec.State = "merged"
-			Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			Eventually(func(g Gomega) {
+				k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				pullRequest.Spec.State = "merged"
+				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			}).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
@@ -137,8 +144,11 @@ var _ = Describe("PullRequest Controller", func() {
 			})
 
 			By("Reconciling closing of the PullRequest")
-			pullRequest.Spec.State = "closed"
-			Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			Eventually(func(g Gomega) {
+				k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				pullRequest.Spec.State = "closed"
+				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			}).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)

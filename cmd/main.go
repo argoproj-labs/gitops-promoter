@@ -19,8 +19,9 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"go.uber.org/zap/zapcore"
 	"os"
+
+	"go.uber.org/zap/zapcore"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 

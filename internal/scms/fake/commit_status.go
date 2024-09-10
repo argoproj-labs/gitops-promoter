@@ -3,10 +3,11 @@ package fake
 import (
 	"context"
 	"fmt"
+	"sync"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	v1 "k8s.io/api/core/v1"
-	"sync"
 )
 
 var commitStatuses map[string]*promoterv1alpha1.CommitStatus
@@ -22,16 +23,16 @@ func NewFakeCommitStatusProvider(secret v1.Secret) (*CommitStatus, error) {
 }
 
 func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
-	err := cs.savePointer(ctx, commitStatus)
+	err := cs.savePointer(commitStatus)
 	if err != nil {
 		return nil, err
 	}
 	return commitStatus, nil
 }
 
-func (cs *CommitStatus) savePointer(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) error {
-	mutexPR.Lock()
-	defer mutexPR.Unlock()
+func (cs *CommitStatus) savePointer(commitStatus *promoterv1alpha1.CommitStatus) error {
+	mutexCS.Lock()
+	defer mutexCS.Unlock()
 	if commitStatuses == nil {
 		commitStatuses = make(map[string]*promoterv1alpha1.CommitStatus)
 	}

@@ -29,9 +29,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 // PullRequestReconciler reconciles a PullRequest object
@@ -87,6 +89,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// We can't find an open PR on the provider, and we have had a status state before, we should now delete it because
+	// it no longer exists on provider.
 	if !found && pr.Status.State != "" {
 		err := r.Delete(ctx, &pr)
 		if err != nil {
@@ -98,11 +102,13 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
+	// If we have a status state, and the status state is the same as the spec state, and the observed generation is the same as the generation, we don't need to reconcile.
 	if pr.Status.State != "" && pr.Spec.State == pr.Status.State && pr.Status.ObservedGeneration == pr.Generation {
 		logger.V(4).Info("Reconcile not needed")
 		return ctrl.Result{}, nil
 	}
 
+	// We want the PR to be open, but it's not open on the provider, we should create it.
 	if pr.Spec.State == promoterv1alpha1.PullRequestOpen && pr.Status.State != promoterv1alpha1.PullRequestOpen {
 		err := r.createPullRequest(ctx, &pr, pullRequestProvider)
 		if err != nil {
@@ -110,39 +116,33 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	// We want to merge the PR, but it's not merged on the provider, we should merge it on the provicer and delete on k8s.
 	if pr.Spec.State == promoterv1alpha1.PullRequestMerged && pr.Status.State != promoterv1alpha1.PullRequestMerged {
 		err := r.mergePullRequest(ctx, &pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
-		err = r.Status().Update(ctx, &pr)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-
 		err = r.Delete(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		// We deleted the resource so we return the reconcile as done
 		return ctrl.Result{}, nil
 	}
 
+	// We want to close the PR, but it's not closed on the provider based on status, we should close it on provider and delete it from k8s.
 	if pr.Spec.State == promoterv1alpha1.PullRequestClosed && pr.Status.State != promoterv1alpha1.PullRequestClosed {
 		err := r.closePullRequest(ctx, &pr, pullRequestProvider)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 
-		err = r.Status().Update(ctx, &pr)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-
 		err = r.Delete(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		// We deleted the resource so we return the reconcile as done
 		return ctrl.Result{}, nil
 	}
 
@@ -153,7 +153,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	pr.Status.ObservedGeneration = pr.Generation
 	err = r.Status().Update(ctx, &pr)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -166,7 +165,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 // SetupWithManager sets up the controller with the Manager.
 func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.PullRequest{}).
+		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }
 
