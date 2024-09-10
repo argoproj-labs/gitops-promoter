@@ -82,8 +82,7 @@ var _ = BeforeSuite(func() {
 		panic("could not make temp dir for repo server")
 	}
 	gitServer = startGitServer(gitStoragePath)
-
-	//setupInitialTestGitRepo("test", "test")
+	gitServer.ErrorLog = log.New(GinkgoWriter, "git server: ", log.LstdFlags)
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
@@ -172,11 +171,11 @@ var _ = AfterSuite(func() {
 
 	cancel()
 
-	// TODO: why dose shutting down break tests
-	//_ = gitServer.Shutdown(context.Background())
-
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
+
+	// TODO: why dose shutting down break tests
+	_ = gitServer.Shutdown(context.Background())
 
 	err = os.RemoveAll(gitStoragePath)
 	Expect(err).NotTo(HaveOccurred())
@@ -201,12 +200,10 @@ func startGitServer(gitStoragePath string) *http.Server {
 
 	server := &http.Server{Addr: ":5000", Handler: service}
 
-	//http.Handle("/", service)
-
 	go func() {
 		// Start HTTP server
 		if err := server.ListenAndServe(); err != nil {
-			log.Fatal(err)
+			log.Println(err)
 		}
 	}()
 
@@ -219,8 +216,8 @@ func setupInitialTestGitRepo(owner string, name string) {
 		panic("could not make temp dir for repo server")
 	}
 
-	//GinkgoWriter.TeeTo(os.Stdout)
-	//GinkgoWriter.Println(gitPath)
+	GinkgoWriter.TeeTo(os.Stdout)
+	GinkgoWriter.Println(gitPath)
 
 	_, err = runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", owner, name), ".")
 	Expect(err).NotTo(HaveOccurred())
