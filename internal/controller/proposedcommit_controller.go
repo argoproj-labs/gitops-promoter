@@ -96,29 +96,29 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	dryBranchShas, hydratedBranchShas, err := gitOperations.GetBranchShas(ctx, []string{pc.Spec.ActiveBranch, pc.Spec.ProposedBranch})
+	branchShas, err := gitOperations.GetBranchShas(ctx, []string{pc.Spec.ActiveBranch, pc.Spec.ProposedBranch})
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	logger.Info("Branch SHAs", "dryBranchShas", dryBranchShas, "hydratedBranchShas", hydratedBranchShas)
+	logger.Info("Branch SHAs", "branchShas", branchShas)
 
-	for branch := range hydratedBranchShas {
+	for branch, shas := range branchShas {
 		if branch == pc.Spec.ActiveBranch {
-			pc.Status.Active.Hydrated.Sha = hydratedBranchShas[branch]
-			commitTime, _ := gitOperations.GetShaTime(ctx, hydratedBranchShas[branch])
+			pc.Status.Active.Hydrated.Sha = shas.Hydrated
+			commitTime, _ := gitOperations.GetShaTime(ctx, shas.Hydrated)
 			pc.Status.Active.Hydrated.CommitTime = commitTime
 
-			pc.Status.Active.Dry.Sha = dryBranchShas[branch]
-			commitTime, _ = gitOperations.GetShaTime(ctx, dryBranchShas[branch])
+			pc.Status.Active.Dry.Sha = shas.Dry
+			commitTime, _ = gitOperations.GetShaTime(ctx, shas.Dry)
 			pc.Status.Active.Dry.CommitTime = commitTime
 		}
 		if branch == pc.Spec.ProposedBranch {
-			pc.Status.Proposed.Hydrated.Sha = hydratedBranchShas[branch]
-			commitTime, _ := gitOperations.GetShaTime(ctx, hydratedBranchShas[branch])
+			pc.Status.Proposed.Hydrated.Sha = shas.Hydrated
+			commitTime, _ := gitOperations.GetShaTime(ctx, shas.Hydrated)
 			pc.Status.Proposed.Hydrated.CommitTime = commitTime
 
-			pc.Status.Proposed.Dry.Sha = dryBranchShas[branch]
-			commitTime, _ = gitOperations.GetShaTime(ctx, dryBranchShas[branch])
+			pc.Status.Proposed.Dry.Sha = shas.Dry
+			commitTime, _ = gitOperations.GetShaTime(ctx, shas.Dry)
 			pc.Status.Proposed.Dry.CommitTime = commitTime
 		}
 	}
@@ -205,8 +205,6 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ProposedCommit{}).
-		//Owns(&promoterv1alpha1.PullRequest{}).
-		//Watches(&promoterv1alpha1.ProposedCommit{}, handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(), &promoterv1alpha1.ProposedCommit{}, handler.OnlyControllerOwner())).
 		Complete(r)
 }
 
