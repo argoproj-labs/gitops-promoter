@@ -52,6 +52,7 @@ func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.Git
 	return &gitOperations, nil
 }
 
+// CloneRepo clones the repository to a temporary directory if needed does nothing if the repo is already cloned.
 func (g *GitOperations) CloneRepo(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) == "" {
@@ -74,14 +75,18 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 	return nil
 }
 
-func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (dry map[string]string, hydrated map[string]string, err error) {
+type BranchShas struct {
+	Dry      string
+	Hydrated string
+}
+
+func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (map[string]*BranchShas, error) {
 	logger := log.FromContext(ctx)
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) == "" {
-		return nil, nil, fmt.Errorf("no repo path found")
+		return nil, fmt.Errorf("no repo path found")
 	}
 
-	hydratedBranchShas := make(map[string]string)
-	dryBranchShas := make(map[string]string)
+	shaMap := make(map[string]*BranchShas)
 
 	for _, branch := range branches {
 		p := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef) + g.pathContext)
@@ -89,25 +94,30 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (d
 		_, _, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
 		if err != nil {
 			logger.Error(err, "could not git checkout", "gitError", stderr)
-			return nil, nil, err
+			return nil, err
 		}
 		logger.V(4).Info("Checked out branch", "branch", branch)
 
 		_, _, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "pull", "--progress")
 		if err != nil {
 			logger.Error(err, "could not git pull", "gitError", stderr)
-			return nil, nil, err
+			return nil, err
 		}
 		logger.V(4).Info("Pulled branch", "branch", branch)
 
 		_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "rev-parse", branch)
 		if err != nil {
 			logger.Error(err, "could not get branch shas", "gitError", stderr)
-			return nil, nil, err
+			return nil, err
 		}
-		hydratedBranchShas[branch] = strings.TrimSpace(stdout)
-		logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", hydratedBranchShas[branch])
 
+		if _, ok := shaMap[branch]; !ok {
+			shaMap[branch] = &BranchShas{}
+		}
+		shaMap[branch].Hydrated = strings.TrimSpace(stdout)
+		logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", shaMap[branch].Hydrated)
+
+		//TODO: safe path join
 		metadataFile := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) + "/hydrator.metadata"
 		if _, err := os.Stat(metadataFile); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -117,22 +127,22 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (d
 		}
 		jsonFile, err := os.Open(metadataFile)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		byteValue, err := io.ReadAll(jsonFile)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		var hydratorFile HydratorMetadataFile
 		err = json.Unmarshal(byteValue, &hydratorFile)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		dryBranchShas[branch] = hydratorFile.DrySHA
-		logger.V(4).Info("Got dry branch sha", "branch", branch, "sha", dryBranchShas[branch])
+		shaMap[branch].Dry = hydratorFile.DrySHA
+		logger.V(4).Info("Got dry branch sha", "branch", branch, "sha", shaMap[branch].Dry)
 	}
 
-	return dryBranchShas, hydratedBranchShas, nil
+	return shaMap, nil
 }
 
 func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {

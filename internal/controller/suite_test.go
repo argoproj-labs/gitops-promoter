@@ -83,8 +83,6 @@ var _ = BeforeSuite(func() {
 	}
 	gitServer = startGitServer(gitStoragePath)
 
-	//setupInitialTestGitRepo("test", "test")
-
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:       []string{filepath.Join("..", "..", "config", "crd", "bases")},
