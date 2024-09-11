@@ -124,6 +124,8 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if pc.Status.Proposed.Dry.Sha != pc.Status.Active.Dry.Sha {
+		// If the proposed dry sha is different from the active dry sha, create a pull request
+
 		logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
 		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
 		prName = utils.KubeSafeName(prName, 250)
@@ -136,7 +138,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if err != nil {
 			if errors.IsNotFound(err) {
 
-				// The code below sets the ownership for the Release Object
+				// The code below sets the ownership for the PullRequest Object
 				kind := reflect.TypeOf(promoterv1alpha1.ProposedCommit{}).Name()
 				gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 				controllerRef := metav1.NewControllerRef(&pc, gvk)
@@ -170,6 +172,8 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				return ctrl.Result{}, err
 			}
 		} else {
+			// Pull request already exists, update it.
+
 			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 				prUpdated := promoterv1alpha1.PullRequest{}
 				err := r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Name}, &prUpdated)
