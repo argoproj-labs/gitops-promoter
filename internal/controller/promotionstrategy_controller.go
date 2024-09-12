@@ -76,7 +76,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var createProposedCommitErr []error
 	for _, environment := range ps.Spec.Environments {
-		pc, err := r.createProposedCommit(ctx, &ps, environment)
+		pc, err := r.createOrGetProposedCommit(ctx, &ps, environment)
 		if err != nil {
 			logger.Error(err, "failed to create ProposedCommit", "namespace", ps.Namespace, "name", ps.Name)
 			createProposedCommitErr = append(createProposedCommitErr, err)
@@ -193,7 +193,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *PromotionStrategyReconciler) createProposedCommit(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ProposedCommit, error) {
+func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ProposedCommit, error) {
 	logger := log.FromContext(ctx)
 
 	pc := promoterv1alpha1.ProposedCommit{}
@@ -397,6 +397,8 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 }
 
 func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, csSelector []promoterv1alpha1.CommitStatusSelector, copyFromActiveHydratedSha string, copyToProposedHydratedSha string, branch string) error {
+	logger := log.FromContext(ctx)
+
 	for _, value := range csSelector {
 		var commitStatuses promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &commitStatuses, &client.ListOptions{
@@ -417,12 +419,13 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			}
 
 			cs := promoterv1alpha1.CommitStatus{}
-			err := r.Get(ctx, client.ObjectKey{Namespace: commitStatus.Namespace, Name: "proposed-" + commitStatus.Name}, &cs)
-			if err != nil {
-				if errors.IsNotFound(err) {
+			proposedCSObjectKey := client.ObjectKey{Namespace: commitStatus.Namespace, Name: "proposed-" + commitStatus.Name}
+			errGet := r.Get(ctx, proposedCSObjectKey, &cs)
+			if errGet != nil {
+				if errors.IsNotFound(errGet) {
 					status := &promoterv1alpha1.CommitStatus{
 						ObjectMeta: metav1.ObjectMeta{
-							Name:        "proposed-" + commitStatus.Name,
+							Name:        proposedCSObjectKey.Name,
 							Annotations: commitStatus.Annotations,
 							Labels:      commitStatus.Labels,
 							Namespace:   commitStatus.Namespace,
@@ -448,6 +451,9 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 						return err
 					}
 					return nil
+				} else {
+					logger.Error(errGet, "failed to get CommitStatus", "namespace", proposedCSObjectKey.Namespace, "name", proposedCSObjectKey.Name)
+					return errGet
 				}
 			}
 			commitStatus.Spec.DeepCopyInto(&cs.Spec)
