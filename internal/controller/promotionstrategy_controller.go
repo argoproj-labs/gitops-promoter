@@ -23,7 +23,6 @@ import (
 	"reflect"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"slices"
 	"time"
 
 	"k8s.io/client-go/util/retry"
@@ -87,7 +86,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		proposedCommitMap[environment.Branch] = pc
 	}
 
-	err = r.calculateStatusV2(ctx, &ps, proposedCommitMap)
+	err = r.calculateStatus(ctx, &ps, proposedCommitMap)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -254,7 +253,7 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 	return &pc, nil
 }
 
-func (r *PromotionStrategyReconciler) calculateStatusV2(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ProposedCommit) error {
+func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ProposedCommit) error {
 	for _, environment := range ps.Spec.Environments {
 		pc, ok := pcMap[environment.Branch]
 		if !ok {
@@ -372,163 +371,6 @@ func (r *PromotionStrategyReconciler) calculateStatusV2(ctx context.Context, ps 
 		}
 
 	}
-	return nil
-}
-
-func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, pc *promoterv1alpha1.ProposedCommit, environment promoterv1alpha1.Environment) error {
-	if slices.ContainsFunc(ps.Status.Environments, func(e promoterv1alpha1.EnvironmentStatus) bool {
-		return e.Branch == environment.Branch
-	}) {
-		for i := range ps.Status.Environments {
-			if ps.Status.Environments[i].Branch == environment.Branch {
-				//if pc.Status.Active == nil || pc.Status.Proposed == nil {
-				//	continue
-				//}
-
-				ps.Status.Environments[i].Active.Dry.Sha = pc.Status.Active.Dry.Sha
-				ps.Status.Environments[i].Active.Dry.CommitTime = pc.Status.Active.Dry.CommitTime
-
-				ps.Status.Environments[i].Active.Hydrated.Sha = pc.Status.Active.Hydrated.Sha
-				ps.Status.Environments[i].Active.Hydrated.CommitTime = pc.Status.Active.Hydrated.CommitTime
-
-				ps.Status.Environments[i].Proposed.Dry.Sha = pc.Status.Proposed.Dry.Sha
-				ps.Status.Environments[i].Proposed.Dry.CommitTime = pc.Status.Proposed.Dry.CommitTime
-
-				ps.Status.Environments[i].Proposed.Hydrated.Sha = pc.Status.Proposed.Hydrated.Sha
-				ps.Status.Environments[i].Proposed.Hydrated.CommitTime = pc.Status.Proposed.Hydrated.CommitTime
-
-				if len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
-					ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
-				}
-			}
-		}
-	} else {
-		ps.Status.Environments = append(ps.Status.Environments, func() promoterv1alpha1.EnvironmentStatus {
-			status := promoterv1alpha1.EnvironmentStatus{
-				Branch: environment.Branch,
-				Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					Dry:      promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Dry.Sha, CommitTime: pc.Status.Active.Dry.CommitTime},
-					Hydrated: promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Hydrated.Sha, CommitTime: pc.Status.Active.Hydrated.CommitTime},
-					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
-						State: "unknown",
-						Sha:   "unknown",
-					},
-				},
-				Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					Dry:      promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Dry.Sha, CommitTime: pc.Status.Proposed.Dry.CommitTime},
-					Hydrated: promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Hydrated.Sha, CommitTime: pc.Status.Proposed.Hydrated.CommitTime},
-					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
-						State: "unknown",
-						Sha:   "unknown",
-					},
-				},
-			}
-			return status
-		}())
-	}
-
-	//Bumble up CommitStatus to PromotionStrategy Status
-	activeCommitStatusList := append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)
-	for _, status := range activeCommitStatusList {
-		var csList promoterv1alpha1.CommitStatusList
-		err := r.List(ctx, &csList, &client.ListOptions{
-			LabelSelector: labels.SelectorFromSet(map[string]string{
-				"promoter.argoproj.io/commit-status": utils.KubeSafeName(status.Key, 63),
-			}),
-			FieldSelector: fields.SelectorFromSet(map[string]string{
-				".spec.sha": pc.Status.Active.Hydrated.Sha,
-			}),
-		})
-		if err != nil {
-			return err
-		}
-
-		csListSlice := []promoterv1alpha1.CommitStatus{}
-		for _, item := range csList.Items {
-			if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
-				csListSlice = append(csListSlice, item)
-			}
-		}
-
-		for i := range ps.Status.Environments {
-			if ps.Status.Environments[i].Branch == environment.Branch {
-				if len(csListSlice) == 1 {
-					//ps.Status.Environments[i].Active.CommitStatus = string(csList.Items[0].Spec.State)
-					ps.Status.Environments[i].Active.CommitStatus.State = "success"
-					ps.Status.Environments[i].Active.CommitStatus.Sha = csList.Items[0].Spec.Sha
-					if string(csListSlice[0].Spec.State) != "success" {
-						ps.Status.Environments[i].Active.CommitStatus.State = string(csList.Items[0].Spec.State)
-					}
-				} else if len(csListSlice) > 1 {
-					ps.Status.Environments[i].Active.CommitStatus.State = "to-many-matching-sha"
-					ps.Status.Environments[i].Active.CommitStatus.Sha = "to-many-matching-sha"
-				} else if len(csListSlice) == 0 {
-					ps.Status.Environments[i].Active.CommitStatus.State = "unknown"
-					ps.Status.Environments[i].Active.CommitStatus.Sha = "unknown"
-				}
-			}
-		}
-	}
-	if len(activeCommitStatusList) == 0 {
-		for i := range ps.Status.Environments {
-			if ps.Status.Environments[i].Branch == environment.Branch {
-				ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
-				ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
-			}
-		}
-	}
-
-	proposedCommitStatusList := append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)
-	for _, status := range proposedCommitStatusList {
-		var csList promoterv1alpha1.CommitStatusList
-		err := r.List(ctx, &csList, &client.ListOptions{
-			LabelSelector: labels.SelectorFromSet(map[string]string{
-				"promoter.argoproj.io/commit-status": utils.KubeSafeName(status.Key, 63),
-			}),
-			FieldSelector: fields.SelectorFromSet(map[string]string{
-				".spec.sha": pc.Status.Proposed.Hydrated.Sha,
-			}),
-		})
-		if err != nil {
-			return err
-		}
-
-		csListSlice := []promoterv1alpha1.CommitStatus{}
-		for _, item := range csList.Items {
-			if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
-				csListSlice = append(csListSlice, item)
-			}
-		}
-
-		for i := range ps.Status.Environments {
-			if ps.Status.Environments[i].Branch == environment.Branch {
-				if len(csListSlice) > 0 {
-					//ps.Status.Environments[i].Proposed.CommitStatus = string(csList.Items[0].Spec.State)
-					ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
-					ps.Status.Environments[i].Proposed.CommitStatus.Sha = csList.Items[0].Spec.Sha
-					if string(csListSlice[0].Spec.State) != "success" {
-						ps.Status.Environments[i].Proposed.CommitStatus.State = string(csList.Items[0].Spec.State)
-					}
-				} else if len(csListSlice) > 1 {
-					ps.Status.Environments[i].Proposed.CommitStatus.State = "to-many-matching-sha"
-					ps.Status.Environments[i].Proposed.CommitStatus.Sha = "to-many-matching-sha"
-				} else if len(csListSlice) == 0 {
-					ps.Status.Environments[i].Proposed.CommitStatus.State = "unknown"
-					ps.Status.Environments[i].Proposed.CommitStatus.Sha = "unknown"
-				}
-			}
-		}
-	}
-	if len(proposedCommitStatusList) == 0 {
-		for i := range ps.Status.Environments {
-			if ps.Status.Environments[i].Branch == environment.Branch {
-				ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
-				ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Proposed.Hydrated.Sha
-			}
-		}
-
-	}
-
 	return nil
 }
 
