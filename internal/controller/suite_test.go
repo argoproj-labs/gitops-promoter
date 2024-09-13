@@ -67,8 +67,11 @@ func TestControllers(t *testing.T) {
 	c.FocusFiles = []string{
 		//"proposedcommit_controller_test.go",
 		//"pullrequest_controller_test.go",
-		//"promotionstrategy_controller_test.go",
+		"promotionstrategy_controller_test.go",
 	}
+
+	GinkgoWriter.TeeTo(os.Stdout)
+
 	RunSpecs(t, "Controller Suite", c)
 }
 
@@ -211,9 +214,6 @@ func setupInitialTestGitRepo(owner string, name string) {
 	if err != nil {
 		panic("could not make temp dir for repo server")
 	}
-
-	//GinkgoWriter.TeeTo(os.Stdout)
-	//GinkgoWriter.Println(gitPath)
 
 	_, err = runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", owner, name), ".")
 	Expect(err).NotTo(HaveOccurred())

@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"regexp"
+	"slices"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
@@ -114,7 +115,7 @@ func GetNextEnvironment(promotionStrategy promoterv1alpha1.PromotionStrategy, cu
 	return -1, nil
 }
 
-func GetPreviousEnvironment(promotionStrategy promoterv1alpha1.PromotionStrategy, currentBranch string) (int, *promoterv1alpha1.EnvironmentStatus) {
+func GetPreviousEnvironmentStatusByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy, currentBranch string) (int, *promoterv1alpha1.EnvironmentStatus) {
 	environments := GetEnvironmentsFromStatusInOrder(promotionStrategy)
 	for i, environment := range environments {
 		if environment.Branch == currentBranch {
@@ -124,4 +125,36 @@ func GetPreviousEnvironment(promotionStrategy promoterv1alpha1.PromotionStrategy
 		}
 	}
 	return -1, nil
+}
+
+func GetEnvironmentStatusByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy, branch string) (int, *promoterv1alpha1.EnvironmentStatus) {
+	environments := GetEnvironmentsFromStatusInOrder(promotionStrategy)
+	for i, environment := range environments {
+		if environment.Branch == branch {
+			return i, &environment
+		}
+	}
+	return -1, nil
+}
+
+func GetEnvironmentByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy, branch string) (int, *promoterv1alpha1.Environment) {
+	for i, environment := range promotionStrategy.Spec.Environments {
+		if environment.Branch == branch {
+			return i, &environment
+		}
+	}
+	return -1, nil
+}
+
+func UpsertEnvironmentStatus(slice []promoterv1alpha1.EnvironmentStatus, i promoterv1alpha1.EnvironmentStatus) []promoterv1alpha1.EnvironmentStatus {
+	if len(slice) == 0 {
+		slice = append(slice, i)
+		return slice
+	}
+	for index, ele := range slice {
+		if ele.Branch == i.Branch {
+			return slices.Replace(slice, index, index+1, i)
+		}
+	}
+	return append(slice, i)
 }
