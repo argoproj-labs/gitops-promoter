@@ -142,14 +142,14 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			}
 
 			if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
-				prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
 				err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-					err := r.Get(ctx, client.ObjectKey{Namespace: prl.Items[0].Namespace, Name: prl.Items[0].Name}, &prl.Items[0], &client.GetOptions{})
+					var pr promoterv1alpha1.PullRequest
+					err := r.Get(ctx, client.ObjectKey{Namespace: prl.Items[0].Namespace, Name: prl.Items[0].Name}, &pr, &client.GetOptions{})
 					if err != nil {
 						return err
 					}
-					prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
-					return r.Update(ctx, &prl.Items[0])
+					pr.Spec.State = promoterv1alpha1.PullRequestMerged
+					return r.Update(ctx, &pr)
 				})
 				if err != nil {
 					return ctrl.Result{}, err
@@ -287,7 +287,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 
 		i, _ := utils.GetEnvironmentStatusByBranch(*ps, environment.Branch)
 
-		if i >= len(ps.Status.Environments) && len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
+		if i != -1 && i < len(ps.Status.Environments) && len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
 			ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
 		}
 
@@ -329,8 +329,8 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 
 		//&& (ps.Status.Environments[i].Active.CommitStatus.State != "no-commit-status-found" || ps.Status.Environments[i].Active.CommitStatus.State != "to-many-matching-sha")
 		if len(allActiveCSList) == 0 && i >= 0 {
-			ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
-			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
+			ps.Status.Environments[i].Active.CommitStatus.State = "success"
+			ps.Status.Environments[i].Active.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
 		} else {
 			// Loop through allActiveCSList and bubble up success if all are successful
 			ps.Status.Environments[i].Active.CommitStatus.State = "success"
@@ -451,7 +451,6 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 					if err != nil {
 						return err
 					}
-					return nil
 				} else {
 					logger.Error(errGet, "failed to get CommitStatus", "namespace", proposedCSObjectKey.Namespace, "name", proposedCSObjectKey.Name)
 					return errGet
