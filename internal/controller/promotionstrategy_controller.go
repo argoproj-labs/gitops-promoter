@@ -19,13 +19,12 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/util/retry"
 	"reflect"
 	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-
-	"k8s.io/client-go/util/retry"
 
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -113,8 +112,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha &&
 			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
-		proposedChecksPassed := environmentStatus != nil &&
-			environmentStatus.Proposed.CommitStatus.State == "success"
+		proposedChecksPassed := environmentStatus.Proposed.CommitStatus.State == "success"
 
 		if (environmentIndex == 0 || (activeChecksPassed && proposedChecksPassed)) && environment.GetAutoMerge() {
 			// We are either in the first environment or all checks have passed and the environment is set to auto merge.
@@ -131,37 +129,45 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				return ctrl.Result{}, err
 			}
 
-			if len(prl.Items) > 0 && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
-				if previousEnvironmentStatus != nil {
-					logger.Info("Active checks passed", "branch", environment.Branch,
-						"autoMerge", environment.AutoMerge,
-						"previousEnvironmentState", previousEnvironmentStatus.Active.CommitStatus.State,
-						"previousEnvironmentSha", previousEnvironmentStatus.Active.CommitStatus.Sha,
-						"previousEnvironmentCommitTime", previousEnvironmentStatus.Active.Dry.CommitTime,
-						"currentEnvironmentCommitTime", environmentStatus.Active.Dry.CommitTime)
-				} else {
-					// There is no previous environment to log information about.
-					logger.Info("Active checks passed without previous environment", "branch", environment.Branch,
-						"autoMerge", environment.AutoMerge,
-						"numberOfActiveCommitStatuses", len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)))
-				}
+			if len(prl.Items) > 1 {
+				return ctrl.Result{}, fmt.Errorf("More than one PullRequest found for ProposedCommit %s and Environment %s", proposedCommitMap[environment.Branch].Name, environment.Branch)
 			}
 
-			if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
-				err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-					var pr promoterv1alpha1.PullRequest
-					err := r.Get(ctx, client.ObjectKey{Namespace: prl.Items[0].Namespace, Name: prl.Items[0].Name}, &pr, &client.GetOptions{})
-					if err != nil {
-						return err
+			if len(prl.Items) == 1 {
+				// We found 1 pull request process it.
+				pullRequest := prl.Items[0]
+				if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+					if previousEnvironmentStatus != nil {
+						logger.Info("Active checks passed", "branch", environment.Branch,
+							"autoMerge", environment.AutoMerge,
+							"previousEnvironmentState", previousEnvironmentStatus.Active.CommitStatus.State,
+							"previousEnvironmentSha", previousEnvironmentStatus.Active.CommitStatus.Sha,
+							"previousEnvironmentCommitTime", previousEnvironmentStatus.Active.Dry.CommitTime,
+							"currentEnvironmentCommitTime", environmentStatus.Active.Dry.CommitTime)
+					} else {
+						// There is no previous environment to log information about.
+						logger.Info("Active checks passed without previous environment", "branch", environment.Branch,
+							"autoMerge", environment.AutoMerge,
+							"numberOfActiveCommitStatuses", len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)))
 					}
-					pr.Spec.State = promoterv1alpha1.PullRequestMerged
-					return r.Update(ctx, &pr)
-				})
-				if err != nil {
-					return ctrl.Result{}, err
 				}
-			} else if len(prl.Items) > 0 && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
-				logger.Info("Pull request not ready to merge yet", "namespace", prl.Items[0].Namespace, "name", prl.Items[0].Name)
+
+				if pullRequest.Spec.State == promoterv1alpha1.PullRequestOpen && pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+					err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+						var pr promoterv1alpha1.PullRequest
+						err := r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
+						if err != nil {
+							return err
+						}
+						pr.Spec.State = promoterv1alpha1.PullRequestMerged
+						return r.Update(ctx, &pr)
+					})
+					if err != nil {
+						return ctrl.Result{}, err
+					}
+				} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+					logger.Info("Pull request not ready to merge yet", "namespace", pullRequest.Namespace, "name", pullRequest.Name)
+				}
 			}
 		}
 
