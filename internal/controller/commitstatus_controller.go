@@ -69,11 +69,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	if cs.Generation == cs.Status.ObservedGeneration {
-		logger.V(4).Info("Reconcile not needed", "namespace", req.Namespace, "name", req.Name)
-		return ctrl.Result{}, nil
-	}
-
 	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -84,8 +79,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	//TODO: remove ObservedGeneration from status use kubebuilders predicate to check if status has changed
-	commitStatus.Status.ObservedGeneration = commitStatus.Generation
 	err = r.Status().Update(ctx, commitStatus)
 	if err != nil {
 		return ctrl.Result{}, err
