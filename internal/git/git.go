@@ -90,7 +90,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (m
 
 	for _, branch := range branches {
 		p := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef) + g.pathContext)
-		logger.V(1).Info("git path", "path", p)
+		logger.V(4).Info("git path", "path", p)
 		_, _, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
 		if err != nil {
 			logger.Error(err, "could not git checkout", "gitError", stderr)
