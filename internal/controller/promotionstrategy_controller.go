@@ -93,10 +93,14 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	for _, environment := range ps.Spec.Environments {
 		_, previousEnvironmentStatus := utils.GetPreviousEnvironmentStatusByBranch(ps, environment.Branch)
 		environmentIndex, environmentStatus := utils.GetEnvironmentStatusByBranch(ps, environment.Branch)
+		if environmentStatus == nil {
+			return ctrl.Result{}, fmt.Errorf("EnvironmentStatus not found for branch %s", environment.Branch)
+		}
 
 		if previousEnvironmentStatus != nil {
-			// If the previous environment's running commit is the same as the current proposed commit, copy the commit statuses.
+			// There is no previous environment to compare to, so we can't copy the commit statuses.
 			if previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha {
+				// If the previous environment's running commit is the same as the current proposed commit, copy the commit statuses.
 				err = r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), previousEnvironmentStatus.Active.Hydrated.Sha, proposedCommitMap[environment.Branch].Status.Proposed.Hydrated.Sha, previousEnvironmentStatus.Branch) //pc.Status.Active.Hydrated.Sha
 				if err != nil {
 					return ctrl.Result{}, err
@@ -113,7 +117,9 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			environmentStatus.Proposed.CommitStatus.State == "success"
 
 		if (environmentIndex == 0 || (activeChecksPassed && proposedChecksPassed)) && environment.GetAutoMerge() {
+			// We are either in the first environment or all checks have passed and the environment is set to auto merge.
 			prl := promoterv1alpha1.PullRequestList{}
+			// Find the PRs that match the proposed commit and the environment. There should only be one.
 			err := r.List(ctx, &prl, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, ps.Name),
@@ -134,6 +140,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 						"previousEnvironmentCommitTime", previousEnvironmentStatus.Active.Dry.CommitTime,
 						"currentEnvironmentCommitTime", environmentStatus.Active.Dry.CommitTime)
 				} else {
+					// There is no previous environment to log information about.
 					logger.Info("Active checks passed without previous environment", "branch", environment.Branch,
 						"autoMerge", environment.AutoMerge,
 						"numberOfActiveCommitStatuses", len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)))
@@ -191,7 +198,6 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 	logger := log.FromContext(ctx)
 
 	pc := promoterv1alpha1.ProposedCommit{}
-	//TODO: should add a hash of the ps.Name and environment.Branch to the name
 	pcName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", ps.Name, environment.Branch))
 	err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
 	if err != nil {
