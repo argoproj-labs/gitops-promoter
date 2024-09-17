@@ -124,17 +124,17 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
 
 				k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeName(fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch), 250),
+					Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch), 250),
 					Namespace: typeNamespacedName.Namespace,
 				}, &proposedCommitDev)
 
 				k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeName(fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch), 250),
+					Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch), 250),
 					Namespace: typeNamespacedName.Namespace,
 				}, &proposedCommitStaging)
 
 				k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeName(fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch), 250),
+					Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch), 250),
 					Namespace: typeNamespacedName.Namespace,
 				}, &proposedCommitProd)
 

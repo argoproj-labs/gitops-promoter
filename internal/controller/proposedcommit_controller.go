@@ -128,7 +128,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 		logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
 		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
-		prName = utils.KubeSafeName(prName, 250)
+		prName = utils.KubeSafeUniqueName(ctx, prName)
 
 		var pr promoterv1alpha1.PullRequest
 		err = r.Get(ctx, client.ObjectKey{
@@ -149,9 +149,9 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 						Namespace:       pc.Namespace,
 						OwnerReferences: []metav1.OwnerReference{*controllerRef},
 						Labels: map[string]string{
-							"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(pc.Labels["promoter.argoproj.io/promotion-strategy"], 63),
-							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
-							"promoter.argoproj.io/environment":        utils.KubeSafeName(pc.Spec.ActiveBranch, 63),
+							"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, pc.Labels["promoter.argoproj.io/promotion-strategy"]),
+							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, pc.Name),
+							"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, pc.Spec.ActiveBranch),
 						},
 					},
 					Spec: promoterv1alpha1.PullRequestSpec{

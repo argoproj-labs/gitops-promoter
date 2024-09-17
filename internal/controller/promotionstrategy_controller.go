@@ -92,23 +92,23 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	for _, environment := range ps.Spec.Environments {
-		_, previousEnvironment := utils.GetPreviousEnvironmentStatusByBranch(ps, environment.Branch)
+		_, previousEnvironmentStatus := utils.GetPreviousEnvironmentStatusByBranch(ps, environment.Branch)
 		environmentIndex, environmentStatus := utils.GetEnvironmentStatusByBranch(ps, environment.Branch)
 
-		if previousEnvironment != nil {
+		if previousEnvironmentStatus != nil {
 			// If the previous environment's running commit is the same as the current proposed commit, copy the commit statuses.
-			if previousEnvironment.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha {
-				err = r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), previousEnvironment.Active.Hydrated.Sha, proposedCommitMap[environment.Branch].Status.Proposed.Hydrated.Sha, previousEnvironment.Branch) //pc.Status.Active.Hydrated.Sha
+			if previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha {
+				err = r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), previousEnvironmentStatus.Active.Hydrated.Sha, proposedCommitMap[environment.Branch].Status.Proposed.Hydrated.Sha, previousEnvironmentStatus.Branch) //pc.Status.Active.Hydrated.Sha
 				if err != nil {
 					return ctrl.Result{}, err
 				}
 			}
 		}
 
-		activeChecksPassed := previousEnvironment != nil &&
-			previousEnvironment.Active.CommitStatus.State == "success" &&
-			//(ps.Status.Environments[i-1].Active.CommitStatus.Sha != "unknown" && ps.Status.Environments[i-1].Active.CommitStatus.Sha != "to-many-matching-sha") &&
-			previousEnvironment.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
+		activeChecksPassed := previousEnvironmentStatus != nil &&
+			previousEnvironmentStatus.Active.CommitStatus.State == "success" &&
+			previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha &&
+			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
 		proposedChecksPassed := environmentStatus != nil &&
 			environmentStatus.Proposed.CommitStatus.State == "success"
@@ -117,9 +117,9 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			prl := promoterv1alpha1.PullRequestList{}
 			err := r.List(ctx, &prl, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(ps.Name, 63),
-					"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(proposedCommitMap[environment.Branch].Name, 63),
-					"promoter.argoproj.io/environment":        utils.KubeSafeName(environment.Branch, 63),
+					"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, ps.Name),
+					"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, proposedCommitMap[environment.Branch].Name),
+					"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, environment.Branch),
 				}),
 			})
 			if err != nil {
@@ -127,15 +127,15 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			}
 
 			if len(prl.Items) > 0 && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
-				if previousEnvironment != nil {
-					logger.Info("Active Checks Passed", "branch", environment.Branch,
+				if previousEnvironmentStatus != nil {
+					logger.Info("Active checks passed", "branch", environment.Branch,
 						"autoMerge", environment.AutoMerge,
-						"previousEnvironmentState", previousEnvironment.Active.CommitStatus.State,
-						"previousEnvironmentSha", previousEnvironment.Active.CommitStatus.Sha,
-						"previousEnvironmentCommitTime", previousEnvironment.Active.Dry.CommitTime,
+						"previousEnvironmentState", previousEnvironmentStatus.Active.CommitStatus.State,
+						"previousEnvironmentSha", previousEnvironmentStatus.Active.CommitStatus.Sha,
+						"previousEnvironmentCommitTime", previousEnvironmentStatus.Active.Dry.CommitTime,
 						"currentEnvironmentCommitTime", environmentStatus.Active.Dry.CommitTime)
 				} else {
-					logger.Info("Active Checks Passed", "branch", environment.Branch,
+					logger.Info("Active checks passed without previous environment", "branch", environment.Branch,
 						"autoMerge", environment.AutoMerge,
 						"numberOfActiveCommitStatuses", len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)))
 				}
@@ -192,11 +192,12 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 	logger := log.FromContext(ctx)
 
 	pc := promoterv1alpha1.ProposedCommit{}
-	pcName := utils.KubeSafeName(fmt.Sprintf("%s-%s", ps.Name, environment.Branch), 250)
+	//TODO: should add a hash of the ps.Name and environment.Branch to the name
+	pcName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", ps.Name, environment.Branch))
 	err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("ProposedCommit not found creating", "namespace", ps.Namespace, "name", pcName)
+			logger.Info("ProposedCommit not found, creating", "namespace", ps.Namespace, "name", pcName)
 
 			// The code below sets the ownership for the Release Object
 			kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
@@ -209,9 +210,9 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 					Namespace:       ps.Namespace,
 					OwnerReferences: []metav1.OwnerReference{*controllerRef},
 					Labels: map[string]string{
-						"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(ps.Name, 63),
-						"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
-						"promoter.argoproj.io/environment":        utils.KubeSafeName(environment.Branch, 63),
+						"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, ps.Name),
+						"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, pcName),
+						"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, environment.Branch),
 					},
 				},
 				Spec: promoterv1alpha1.ProposedCommitSpec{
@@ -292,11 +293,12 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 
 		//Bubble up active CommitStatus to PromotionStrategy Status
 		activeCommitStatusList := append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)
+		allActiveCSList := []promoterv1alpha1.CommitStatus{}
 		for _, status := range activeCommitStatusList {
 			var csList promoterv1alpha1.CommitStatusList
 			err := r.List(ctx, &csList, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					"promoter.argoproj.io/commit-status": utils.KubeSafeName(status.Key, 63),
+					"promoter.argoproj.io/commit-status": utils.KubeSafeUniqueName(ctx, status.Key),
 				}),
 				FieldSelector: fields.SelectorFromSet(map[string]string{
 					".spec.sha": pc.Status.Active.Hydrated.Sha,
@@ -314,29 +316,43 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			}
 
 			if len(csListSlice) == 1 {
-				ps.Status.Environments[i].Active.CommitStatus.State = string(csList.Items[0].Spec.State)
-				ps.Status.Environments[i].Active.CommitStatus.Sha = csList.Items[0].Spec.Sha
+				allActiveCSList = append(allActiveCSList, csListSlice[0])
+				//ps.Status.Environments[i].Active.CommitStatus.State = string(csList.Items[0].Spec.State)
+				//ps.Status.Environments[i].Active.CommitStatus.Sha = csList.Items[0].Spec.Sha
 			} else if len(csListSlice) > 1 {
 				ps.Status.Environments[i].Active.CommitStatus.State = "to-many-matching-sha"
 				ps.Status.Environments[i].Active.CommitStatus.Sha = "to-many-matching-sha"
 			} else if len(csListSlice) == 0 {
-				ps.Status.Environments[i].Active.CommitStatus.State = "unknown"
-				ps.Status.Environments[i].Active.CommitStatus.Sha = "unknown"
+				ps.Status.Environments[i].Active.CommitStatus.State = "no-commit-status-found"
+				ps.Status.Environments[i].Active.CommitStatus.Sha = "no-commit-status-found"
 			}
 
 		}
-		if len(activeCommitStatusList) == 0 && i >= 0 {
+
+		//&& (ps.Status.Environments[i].Active.CommitStatus.State != "no-commit-status-found" || ps.Status.Environments[i].Active.CommitStatus.State != "to-many-matching-sha")
+		if len(allActiveCSList) == 0 && i >= 0 {
 			ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
 			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
+		} else {
+			// Loop through allActiveCSList and bubble up success if all are successful
+			ps.Status.Environments[i].Active.CommitStatus.State = "success"
+			for _, cs := range allActiveCSList {
+				if cs.Status.State != "success" {
+					ps.Status.Environments[i].Active.CommitStatus.State = string(cs.Spec.State)
+					ps.Status.Environments[i].Active.CommitStatus.Sha = cs.Spec.Sha
+					break
+				}
+			}
 		}
 
 		//Bubble up proposed CommitStatus to PromotionStrategy Status
 		proposedCommitStatusList := append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)
+		allProposdedCSList := []promoterv1alpha1.CommitStatus{}
 		for _, status := range proposedCommitStatusList {
 			var csList promoterv1alpha1.CommitStatusList
 			err := r.List(ctx, &csList, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					"promoter.argoproj.io/commit-status": utils.KubeSafeName(status.Key, 63),
+					"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, status.Key),
 				}),
 				FieldSelector: fields.SelectorFromSet(map[string]string{
 					".spec.sha": pc.Status.Proposed.Hydrated.Sha,
@@ -354,20 +370,31 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			}
 
 			if len(csListSlice) == 1 {
-				ps.Status.Environments[i].Proposed.CommitStatus.State = string(csList.Items[0].Spec.State)
-				ps.Status.Environments[i].Proposed.CommitStatus.Sha = csList.Items[0].Spec.Sha
+				allProposdedCSList = append(allProposdedCSList, csListSlice[0])
+				//ps.Status.Environments[i].Proposed.CommitStatus.State = string(csList.Items[0].Spec.State)
+				//ps.Status.Environments[i].Proposed.CommitStatus.Sha = csList.Items[0].Spec.Sha
 			} else if len(csListSlice) > 1 {
 				ps.Status.Environments[i].Proposed.CommitStatus.State = "to-many-matching-sha"
 				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "to-many-matching-sha"
 			} else if len(csListSlice) == 0 {
-				ps.Status.Environments[i].Proposed.CommitStatus.State = "unknown"
-				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "unknown"
+				ps.Status.Environments[i].Proposed.CommitStatus.State = "no-commit-status-found"
+				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "no-commit-status-found"
 			}
 
 		}
-		if len(activeCommitStatusList) == 0 && i >= 0 {
+		if len(allProposdedCSList) == 0 && i >= 0 {
 			ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
 			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
+		} else {
+			// Loop through allActiveCSList and bubble up success if all are successful
+			ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
+			for _, cs := range allActiveCSList {
+				if cs.Status.State != "success" {
+					ps.Status.Environments[i].Proposed.CommitStatus.State = string(cs.Spec.State)
+					ps.Status.Environments[i].Proposed.CommitStatus.Sha = cs.Spec.Sha
+					break
+				}
+			}
 		}
 
 	}
@@ -381,7 +408,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 		var commitStatuses promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &commitStatuses, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
-				"promoter.argoproj.io/commit-status": utils.KubeSafeName(value.Key, 63),
+				"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, value.Key),
 			}),
 			FieldSelector: fields.SelectorFromSet(map[string]string{
 				".spec.sha": copyFromActiveHydratedSha,
@@ -421,9 +448,9 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 						status.Labels = make(map[string]string)
 					}
 					status.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
-					status.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeName(commitStatus.Spec.Name, 63)
-					status.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeName(copyFromActiveHydratedSha, 63)
-					status.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeName(branch, 63)
+					status.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
+					status.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
+					status.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
 					err := r.Create(ctx, status)
 					if err != nil {
 						return err
@@ -437,9 +464,9 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			commitStatus.Spec.DeepCopyInto(&cs.Spec)
 
 			cs.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeName(commitStatus.Spec.Name, 63)
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeName(copyFromActiveHydratedSha, 63)
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeName(branch, 63)
+			cs.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
+			cs.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
+			cs.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
 			cs.Spec.Sha = copyToProposedHydratedSha
 			cs.Spec.Name = branch + " - " + commitStatus.Spec.Name
 

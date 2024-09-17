@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 
@@ -82,6 +84,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	//TODO: remove ObservedGeneration from status use kubebuilders predicate to check if status has changed
 	commitStatus.Status.ObservedGeneration = commitStatus.Generation
 	err = r.Status().Update(ctx, commitStatus)
 	if err != nil {
@@ -94,7 +97,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 // SetupWithManager sets up the controller with the Manager.
 func (r *CommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.CommitStatus{}).
+		For(&promoterv1alpha1.CommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }
 
