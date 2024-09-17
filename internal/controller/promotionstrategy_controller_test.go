@@ -101,7 +101,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 
 			By("Cleanup the specific resource instance PromotionStrategy")
-			k8sClient.Delete(ctx, promotionStrategy)
+			_ = k8sClient.Delete(ctx, promotionStrategy)
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 
@@ -121,19 +121,19 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			proposedCommitProd := promoterv1alpha1.ProposedCommit{}
 			// Check that ProposedCommit are created
 			Eventually(func(g Gomega) {
-				k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				_ = k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
 
-				k8sClient.Get(ctx, types.NamespacedName{
+				_ = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
 					Namespace: typeNamespacedName.Namespace,
 				}, &proposedCommitDev)
 
-				k8sClient.Get(ctx, types.NamespacedName{
+				_ = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
 					Namespace: typeNamespacedName.Namespace,
 				}, &proposedCommitStaging)
 
-				k8sClient.Get(ctx, types.NamespacedName{
+				_ = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
 					Namespace: typeNamespacedName.Namespace,
 				}, &proposedCommitProd)
@@ -142,13 +142,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(len(promotionStrategy.Status.Environments)).To(Equal(3))
 				}
 				g.Expect(len(promotionStrategy.Status.Environments)).To(Equal(3))
-				g.Expect(string(promotionStrategy.Status.Environments[0].Active.CommitStatus.State)).To(Equal("unknown"))
-				g.Expect(string(promotionStrategy.Status.Environments[1].Active.CommitStatus.State)).To(Equal("unknown"))
-				g.Expect(string(promotionStrategy.Status.Environments[2].Active.CommitStatus.State)).To(Equal("unknown"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.State).To(Equal("unknown"))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.CommitStatus.State).To(Equal("unknown"))
+				g.Expect(promotionStrategy.Status.Environments[2].Active.CommitStatus.State).To(Equal("unknown"))
 
-				g.Expect(string(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.State)).To(Equal("success"))
-				g.Expect(string(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.State)).To(Equal("success"))
-				g.Expect(string(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.State)).To(Equal("success"))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.State).To(Equal("success"))
+				g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.State).To(Equal("success"))
+				g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.State).To(Equal("success"))
 
 				g.Expect(proposedCommitDev.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
 				g.Expect(proposedCommitDev.Status.Active.Dry.Sha).To(Not(BeEmpty()))

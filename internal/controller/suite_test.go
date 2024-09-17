@@ -236,6 +236,7 @@ func setupInitialTestGitRepo(owner string, name string) {
 	Expect(err).NotTo(HaveOccurred())
 
 	sha, err := runGitCmd(gitPath, "git", "rev-parse", "master")
+	Expect(err).NotTo(HaveOccurred())
 	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
 	str := fmt.Sprintf("{\"drySHA\": \"%s\"}", strings.TrimSpace(sha))
@@ -309,8 +310,10 @@ func addPendingCommit(gitPath string, repoOwner string, repoName string) (string
 	Expect(err).NotTo(HaveOccurred())
 
 	sha, err := runGitCmd(gitPath, "git", "rev-parse", "master")
+	Expect(err).NotTo(HaveOccurred())
 	sha = strings.TrimSpace(sha)
 	shortSha, err := runGitCmd(gitPath, "git", "rev-parse", "--short=7", "master")
+	Expect(err).NotTo(HaveOccurred())
 	shortSha = strings.TrimSpace(shortSha)
 	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())

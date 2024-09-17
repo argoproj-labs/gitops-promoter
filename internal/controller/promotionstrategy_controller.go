@@ -19,11 +19,12 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/util/rand"
 	"reflect"
+	"time"
+
+	"k8s.io/apimachinery/pkg/util/rand"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"time"
 
 	"k8s.io/client-go/util/retry"
 
@@ -43,8 +44,7 @@ import (
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
-	Scheme  *runtime.Scheme
-	indexer client.FieldIndexer
+	Scheme *runtime.Scheme
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
@@ -317,8 +317,6 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 
 			if len(csListSlice) == 1 {
 				allActiveCSList = append(allActiveCSList, csListSlice[0])
-				//ps.Status.Environments[i].Active.CommitStatus.State = string(csList.Items[0].Spec.State)
-				//ps.Status.Environments[i].Active.CommitStatus.Sha = csList.Items[0].Spec.Sha
 			} else if len(csListSlice) > 1 {
 				ps.Status.Environments[i].Active.CommitStatus.State = "to-many-matching-sha"
 				ps.Status.Environments[i].Active.CommitStatus.Sha = "to-many-matching-sha"
@@ -371,8 +369,6 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 
 			if len(csListSlice) == 1 {
 				allProposdedCSList = append(allProposdedCSList, csListSlice[0])
-				//ps.Status.Environments[i].Proposed.CommitStatus.State = string(csList.Items[0].Spec.State)
-				//ps.Status.Environments[i].Proposed.CommitStatus.Sha = csList.Items[0].Spec.Sha
 			} else if len(csListSlice) > 1 {
 				ps.Status.Environments[i].Proposed.CommitStatus.State = "to-many-matching-sha"
 				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "to-many-matching-sha"

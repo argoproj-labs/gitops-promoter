@@ -82,7 +82,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	gitAuthProvider, err := r.getGitAuthProvider(ctx, scmProvider, secret, pc)
+	gitAuthProvider, err := r.getGitAuthProvider(ctx, scmProvider, secret)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -212,7 +212,7 @@ func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret, pc promoterv1alpha1.ProposedCommit) (scms.GitOperationsProvider, error) {
+func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
 	logger := log.FromContext(ctx)
 	switch {
 	case scmProvider.Spec.Fake != nil:

@@ -23,14 +23,11 @@ func NewFakeCommitStatusProvider(secret v1.Secret) (*CommitStatus, error) {
 }
 
 func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
-	err := cs.savePointer(commitStatus)
-	if err != nil {
-		return nil, err
-	}
+	cs.savePointer(commitStatus)
 	return commitStatus, nil
 }
 
-func (cs *CommitStatus) savePointer(commitStatus *promoterv1alpha1.CommitStatus) error {
+func (cs *CommitStatus) savePointer(commitStatus *promoterv1alpha1.CommitStatus) {
 	mutexCS.Lock()
 	defer mutexCS.Unlock()
 	if commitStatuses == nil {
@@ -40,7 +37,6 @@ func (cs *CommitStatus) savePointer(commitStatus *promoterv1alpha1.CommitStatus)
 		commitStatus.Status.Id = fmt.Sprintf("%d", len(commitStatuses)+1)
 		commitStatuses[cs.getMapKey(commitStatus)] = commitStatus
 	}
-	return nil
 }
 
 func (cs *CommitStatus) getMapKey(commitStatus *promoterv1alpha1.CommitStatus) string {

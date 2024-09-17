@@ -19,8 +19,9 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"os"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
@@ -94,7 +95,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 		AfterEach(func() {
 			//TODO(user): Cleanup logic after each test, like removing the resource instance.
 			By("Cleanup the specific resource instance ProposedCommit")
-			k8sClient.Delete(ctx, proposedCommit)
+			_ = k8sClient.Delete(ctx, proposedCommit)
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 			deleteRepo("test-pc", "test-pc")
@@ -118,7 +119,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 			var proposedCommit promoterv1alpha1.ProposedCommit
 			Eventually(func(g Gomega) {
-				k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
+				_ = k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
 				g.Expect(proposedCommit.Status.Proposed.Dry.Sha, fullSha)
 				g.Expect(proposedCommit.Status.Active.Hydrated.Sha, Not(Equal("")))
 				g.Expect(proposedCommit.Status.Proposed.Hydrated.Sha, Not(Equal("")))

@@ -92,7 +92,7 @@ var _ = Describe("PullRequest Controller", func() {
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			By("Cleanup the specific resource instance ProposedCommit")
-			k8sClient.Delete(ctx, pullRequest)
+			_ = k8sClient.Delete(ctx, pullRequest)
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 		})
@@ -109,7 +109,7 @@ var _ = Describe("PullRequest Controller", func() {
 
 			By("Reconciling updating of the PullRequest")
 			Eventually(func(g Gomega) {
-				k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				pullRequest.Spec.Title = "Updated Title"
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 			})
@@ -121,7 +121,7 @@ var _ = Describe("PullRequest Controller", func() {
 
 			By("Reconciling merging of the PullRequest")
 			Eventually(func(g Gomega) {
-				k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				pullRequest.Spec.State = "merged"
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 			}).Should(Succeed())
@@ -145,7 +145,7 @@ var _ = Describe("PullRequest Controller", func() {
 
 			By("Reconciling closing of the PullRequest")
 			Eventually(func(g Gomega) {
-				k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				pullRequest.Spec.State = "closed"
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 			}).Should(Succeed())
