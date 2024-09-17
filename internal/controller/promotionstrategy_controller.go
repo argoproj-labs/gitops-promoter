@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/rand"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -230,25 +229,6 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 			logger.Error(err, "failed to get ProposedCommit", "namespace", ps.Namespace, "name", pcName)
 			return &pc, err
 		}
-	}
-
-	// Check that status has been updated if not retry in a loop until it is updated
-	for {
-		err = r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				// Might not be found yet due to informer cache delay
-				continue
-			}
-			return &pc, err
-		}
-		if pc.Status.Active.Dry.Sha != "" && pc.Status.Active.Hydrated.Sha != "" && pc.Status.Proposed.Dry.Sha != "" && pc.Status.Proposed.Hydrated.Sha != "" {
-			break
-		}
-		// Add some sleep jitter to not spam Get requests while waiting for ProposedCommit controller to reconcile.
-		sleepTime := time.Duration(rand.Intn(1000)) * time.Millisecond
-		time.Sleep(sleepTime)
-		logger.V(0).Info("ProposedCommit status not updated yet, retrying", "namespace", ps.Namespace, "name", pcName, "sleepTime", sleepTime)
 	}
 
 	return &pc, nil
