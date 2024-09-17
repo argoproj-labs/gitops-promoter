@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"os"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -127,14 +128,14 @@ var _ = Describe("ProposedCommit Controller", func() {
 			var pr promoterv1alpha1.PullRequest
 			Eventually(func(g Gomega) {
 				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
-					Name:      "test-pc-test-pc-environment-development-next-environment-development",
+					Name:      utils.KubeSafeUniqueName(ctx, "test-pc-test-pc-environment-development-next-environment-development"),
 					Namespace: "default",
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 				g.Expect(err).To(Succeed())
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				g.Expect(pr.Name).To(Equal("test-pc-test-pc-environment-development-next-environment-development"))
+				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, "test-pc-test-pc-environment-development-next-environment-development")))
 			}, "10s").Should(Succeed())
 
 			By("Adding another pending commit")
@@ -142,13 +143,13 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      "test-pc-test-pc-environment-development-next-environment-development",
+					Name:      utils.KubeSafeUniqueName(ctx, "test-pc-test-pc-environment-development-next-environment-development"),
 					Namespace: "default",
 				}, &pr)
 				g.Expect(err).To(Succeed())
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				g.Expect(pr.Name).To(Equal("test-pc-test-pc-environment-development-next-environment-development"))
+				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, "test-pc-test-pc-environment-development-next-environment-development")))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 
 			}).Should(Succeed())
