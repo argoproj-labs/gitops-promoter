@@ -298,7 +298,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			var csList promoterv1alpha1.CommitStatusList
 			err := r.List(ctx, &csList, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					"promoter.argoproj.io/commit-status": utils.KubeSafeUniqueName(ctx, status.Key),
+					"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, status.Key),
 				}),
 				FieldSelector: fields.SelectorFromSet(map[string]string{
 					".spec.sha": pc.Status.Active.Hydrated.Sha,
