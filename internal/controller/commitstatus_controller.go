@@ -19,6 +19,9 @@ package controller
 import (
 	"context"
 
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -67,11 +70,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	if cs.Generation == cs.Status.ObservedGeneration {
-		logger.V(4).Info("Reconcile not needed", "namespace", req.Namespace, "name", req.Name)
-		return ctrl.Result{}, nil
-	}
-
 	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -82,7 +80,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	commitStatus.Status.ObservedGeneration = commitStatus.Generation
 	err = r.Status().Update(ctx, commitStatus)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -94,7 +91,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 // SetupWithManager sets up the controller with the Manager.
 func (r *CommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.CommitStatus{}).
+		For(&promoterv1alpha1.CommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 }
 

@@ -2,7 +2,10 @@ package utils
 
 import (
 	"context"
+	"fmt"
+	"hash/fnv"
 	"regexp"
+	"slices"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
@@ -83,10 +86,45 @@ func TruncateString(str string, length int) string {
 	return truncated
 }
 
-func KubeSafeName(name string, charLimit int) string {
-	name = TruncateString(name, charLimit)
-	m1 := regexp.MustCompile("[^a-zA-Z0-9]+")
+// Truncate from front of string
+func TruncateStringFromBeginning(str string, length int) string {
+	if length <= 0 {
+		return ""
+	}
+	if len(str) <= length {
+		return str
+	}
+	return str[len(str)-length:]
+}
+
+var m1 = regexp.MustCompile("[^a-zA-Z0-9]+")
+
+// KubeSafeUniqueName Creates a safe name by replacing all non-alphanumeric characters with a hyphen and truncating to a max of 255 characters, then appending a hash of the name.
+func KubeSafeUniqueName(ctx context.Context, name string) string {
 	name = m1.ReplaceAllString(name, "-")
+
+	h := fnv.New32a()
+	_, err := h.Write([]byte(name))
+	if err != nil {
+		log.FromContext(ctx).Error(err, "Failed to write to hash")
+	}
+	hash := fmt.Sprintf("%x", h.Sum32())
+
+	name = TruncateString(name, 255-len(hash)-1)
+	return name + "-" + hash
+}
+
+// KubeSafeLabel Creates a safe label buy truncating from the beginning of 'name' to a max of 63 characters, if the name starts with a hyphen it will be removed.
+// We truncate from beginning so that we can keep the unique hash at the end of the name.
+func KubeSafeLabel(ctx context.Context, name string) string {
+	if name == "" {
+		return ""
+	}
+	name = m1.ReplaceAllString(name, "-")
+	name = TruncateStringFromBeginning(name, 63)
+	if name[0] == '-' {
+		name = name[1:]
+	}
 	return name
 }
 
@@ -102,19 +140,7 @@ func GetEnvironmentsFromStatusInOrder(promotionStrategy promoterv1alpha1.Promoti
 	return environments
 }
 
-func GetNextEnvironment(promotionStrategy promoterv1alpha1.PromotionStrategy, currentBranch string) (int, *promoterv1alpha1.EnvironmentStatus) {
-	environments := GetEnvironmentsFromStatusInOrder(promotionStrategy)
-	for i, environment := range environments {
-		if environment.Branch == currentBranch {
-			if i+1 < len(environments) {
-				return i + 1, &environments[i+1]
-			}
-		}
-	}
-	return -1, nil
-}
-
-func GetPreviousEnvironment(promotionStrategy promoterv1alpha1.PromotionStrategy, currentBranch string) (int, *promoterv1alpha1.EnvironmentStatus) {
+func GetPreviousEnvironmentStatusByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy, currentBranch string) (int, *promoterv1alpha1.EnvironmentStatus) {
 	environments := GetEnvironmentsFromStatusInOrder(promotionStrategy)
 	for i, environment := range environments {
 		if environment.Branch == currentBranch {
@@ -124,4 +150,36 @@ func GetPreviousEnvironment(promotionStrategy promoterv1alpha1.PromotionStrategy
 		}
 	}
 	return -1, nil
+}
+
+func GetEnvironmentStatusByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy, branch string) (int, *promoterv1alpha1.EnvironmentStatus) {
+	environments := GetEnvironmentsFromStatusInOrder(promotionStrategy)
+	for i, environment := range environments {
+		if environment.Branch == branch {
+			return i, &environment
+		}
+	}
+	return -1, nil
+}
+
+func GetEnvironmentByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy, branch string) (int, *promoterv1alpha1.Environment) {
+	for i, environment := range promotionStrategy.Spec.Environments {
+		if environment.Branch == branch {
+			return i, &environment
+		}
+	}
+	return -1, nil
+}
+
+func UpsertEnvironmentStatus(slice []promoterv1alpha1.EnvironmentStatus, i promoterv1alpha1.EnvironmentStatus) []promoterv1alpha1.EnvironmentStatus {
+	if len(slice) == 0 {
+		slice = append(slice, i)
+		return slice
+	}
+	for index, ele := range slice {
+		if ele.Branch == i.Branch {
+			return slices.Replace(slice, index, index+1, i)
+		}
+	}
+	return append(slice, i)
 }

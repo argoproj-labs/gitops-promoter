@@ -82,7 +82,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	gitAuthProvider, err := r.getGitAuthProvider(ctx, scmProvider, secret, pc)
+	gitAuthProvider, err := r.getGitAuthProvider(ctx, scmProvider, secret)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -124,9 +124,11 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	if pc.Status.Proposed.Dry.Sha != pc.Status.Active.Dry.Sha {
+		// If the proposed dry sha is different from the active dry sha, create a pull request
+
 		logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
 		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
-		prName = utils.KubeSafeName(prName, 250)
+		prName = utils.KubeSafeUniqueName(ctx, prName)
 
 		var pr promoterv1alpha1.PullRequest
 		err = r.Get(ctx, client.ObjectKey{
@@ -136,7 +138,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if err != nil {
 			if errors.IsNotFound(err) {
 
-				// The code below sets the ownership for the Release Object
+				// The code below sets the ownership for the PullRequest Object
 				kind := reflect.TypeOf(promoterv1alpha1.ProposedCommit{}).Name()
 				gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 				controllerRef := metav1.NewControllerRef(&pc, gvk)
@@ -147,9 +149,9 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 						Namespace:       pc.Namespace,
 						OwnerReferences: []metav1.OwnerReference{*controllerRef},
 						Labels: map[string]string{
-							"promoter.argoproj.io/promotion-strategy": utils.KubeSafeName(pc.Labels["promoter.argoproj.io/promotion-strategy"], 63),
-							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeName(pc.Name, 63),
-							"promoter.argoproj.io/environment":        utils.KubeSafeName(pc.Spec.ActiveBranch, 63),
+							"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, pc.Labels["promoter.argoproj.io/promotion-strategy"]),
+							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, pc.Name),
+							"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, pc.Spec.ActiveBranch),
 						},
 					},
 					Spec: promoterv1alpha1.PullRequestSpec{
@@ -170,6 +172,8 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				return ctrl.Result{}, err
 			}
 		} else {
+			// Pull request already exists, update it.
+
 			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 				prUpdated := promoterv1alpha1.PullRequest{}
 				err := r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Name}, &prUpdated)
@@ -208,7 +212,7 @@ func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret, pc promoterv1alpha1.ProposedCommit) (scms.GitOperationsProvider, error) {
+func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
 	logger := log.FromContext(ctx)
 	switch {
 	case scmProvider.Spec.Fake != nil:

@@ -93,20 +93,16 @@ spec:
             description: CommitStatusStatus defines the observed state of CommitStatus
             properties:
               id:
-                type: string
-              observedGeneration:
                 description: |-
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
                   Important: Run "make" to regenerate code after modifying this file
-                format: int64
-                type: integer
+                type: string
               sha:
                 type: string
               state:
                 type: string
             required:
             - id
-            - observedGeneration
             - sha
             - state
             type: object

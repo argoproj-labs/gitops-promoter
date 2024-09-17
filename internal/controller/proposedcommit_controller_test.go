@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -93,7 +95,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 		AfterEach(func() {
 			//TODO(user): Cleanup logic after each test, like removing the resource instance.
 			By("Cleanup the specific resource instance ProposedCommit")
-			k8sClient.Delete(ctx, proposedCommit)
+			_ = k8sClient.Delete(ctx, proposedCommit)
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 			deleteRepo("test-pc", "test-pc")
@@ -117,7 +119,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 			var proposedCommit promoterv1alpha1.ProposedCommit
 			Eventually(func(g Gomega) {
-				k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
+				_ = k8sClient.Get(ctx, typeNamespacedName, &proposedCommit)
 				g.Expect(proposedCommit.Status.Proposed.Dry.Sha, fullSha)
 				g.Expect(proposedCommit.Status.Active.Hydrated.Sha, Not(Equal("")))
 				g.Expect(proposedCommit.Status.Proposed.Hydrated.Sha, Not(Equal("")))
@@ -127,14 +129,14 @@ var _ = Describe("ProposedCommit Controller", func() {
 			var pr promoterv1alpha1.PullRequest
 			Eventually(func(g Gomega) {
 				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
-					Name:      "test-pc-test-pc-environment-development-next-environment-development",
+					Name:      utils.KubeSafeUniqueName(ctx, "test-pc-test-pc-environment-development-next-environment-development"),
 					Namespace: "default",
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 				g.Expect(err).To(Succeed())
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				g.Expect(pr.Name).To(Equal("test-pc-test-pc-environment-development-next-environment-development"))
+				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, "test-pc-test-pc-environment-development-next-environment-development")))
 			}, "10s").Should(Succeed())
 
 			By("Adding another pending commit")
@@ -142,13 +144,13 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      "test-pc-test-pc-environment-development-next-environment-development",
+					Name:      utils.KubeSafeUniqueName(ctx, "test-pc-test-pc-environment-development-next-environment-development"),
 					Namespace: "default",
 				}, &pr)
 				g.Expect(err).To(Succeed())
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				g.Expect(pr.Name).To(Equal("test-pc-test-pc-environment-development-next-environment-development"))
+				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, "test-pc-test-pc-environment-development-next-environment-development")))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 
 			}).Should(Succeed())

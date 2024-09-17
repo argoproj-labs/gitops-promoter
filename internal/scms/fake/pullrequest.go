@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	"sigs.k8s.io/controller-runtime/pkg/log"
+
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
@@ -49,6 +51,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 }
 
 func (pr *PullRequest) savePointer(ctx context.Context, pullRequest *v1alpha1.PullRequest) error {
+	log.FromContext(ctx).Info("Saving pull request", "pullRequest", pullRequest)
 	mutexPR.Lock()
 	defer mutexPR.Unlock()
 	if pullRequests == nil {
@@ -62,6 +65,7 @@ func (pr *PullRequest) savePointer(ctx context.Context, pullRequest *v1alpha1.Pu
 }
 
 func (pr *PullRequest) findOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) bool {
+	log.FromContext(ctx).Info("Finding open pull request", "pullRequest", pullRequest)
 	mutexPR.RLock()
 	defer mutexPR.RUnlock()
 	if _, ok := pullRequests[pr.getMapKey(pullRequest)]; ok {

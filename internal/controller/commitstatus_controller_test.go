@@ -92,7 +92,7 @@ var _ = Describe("CommitStatus Controller", func() {
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			By("Cleanup the specific resource instance CommitStatus")
-			k8sClient.Delete(ctx, commitStatus)
+			_ = k8sClient.Delete(ctx, commitStatus)
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 		})

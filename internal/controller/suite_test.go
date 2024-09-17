@@ -65,10 +65,13 @@ func TestControllers(t *testing.T) {
 
 	c, _ := GinkgoConfiguration()
 	c.FocusFiles = []string{
-		//"proposedcommit_controller_test.go",
-		//"pullrequest_controller_test.go",
-		//"promotionstrategy_controller_test.go",
+		"proposedcommit_controller_test.go",
+		"pullrequest_controller_test.go",
+		"promotionstrategy_controller_test.go",
 	}
+
+	GinkgoWriter.TeeTo(os.Stdout)
+
 	RunSpecs(t, "Controller Suite", c)
 }
 
@@ -212,9 +215,6 @@ func setupInitialTestGitRepo(owner string, name string) {
 		panic("could not make temp dir for repo server")
 	}
 
-	//GinkgoWriter.TeeTo(os.Stdout)
-	//GinkgoWriter.Println(gitPath)
-
 	_, err = runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", owner, name), ".")
 	Expect(err).NotTo(HaveOccurred())
 
@@ -236,6 +236,7 @@ func setupInitialTestGitRepo(owner string, name string) {
 	Expect(err).NotTo(HaveOccurred())
 
 	sha, err := runGitCmd(gitPath, "git", "rev-parse", "master")
+	Expect(err).NotTo(HaveOccurred())
 	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
 	str := fmt.Sprintf("{\"drySHA\": \"%s\"}", strings.TrimSpace(sha))
@@ -309,8 +310,10 @@ func addPendingCommit(gitPath string, repoOwner string, repoName string) (string
 	Expect(err).NotTo(HaveOccurred())
 
 	sha, err := runGitCmd(gitPath, "git", "rev-parse", "master")
+	Expect(err).NotTo(HaveOccurred())
 	sha = strings.TrimSpace(sha)
 	shortSha, err := runGitCmd(gitPath, "git", "rev-parse", "--short=7", "master")
+	Expect(err).NotTo(HaveOccurred())
 	shortSha = strings.TrimSpace(shortSha)
 	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
