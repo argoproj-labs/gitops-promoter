@@ -60,7 +60,7 @@ type PromotionStrategyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(4).Info("Reconciling PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
+	logger.V(1).Info("Reconciling PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
 
 	var ps promoterv1alpha1.PromotionStrategy
 	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
@@ -310,20 +310,22 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			if len(csListSlice) == 1 {
 				allActiveCSList = append(allActiveCSList, csListSlice[0])
 			} else if len(csListSlice) > 1 {
+				// TODO: We should add error reporting and k8s eventing
 				ps.Status.Environments[i].Active.CommitStatus.State = "to-many-matching-sha"
 				ps.Status.Environments[i].Active.CommitStatus.Sha = "to-many-matching-sha"
 			} else if len(csListSlice) == 0 {
+				// TODO: We should add error reporting and k8s eventing
 				ps.Status.Environments[i].Active.CommitStatus.State = "no-commit-status-found"
 				ps.Status.Environments[i].Active.CommitStatus.Sha = "no-commit-status-found"
 			}
 
 		}
 
-		//&& (ps.Status.Environments[i].Active.CommitStatus.State != "no-commit-status-found" || ps.Status.Environments[i].Active.CommitStatus.State != "to-many-matching-sha")
-		if len(allActiveCSList) == 0 && i >= 0 {
+		if len(activeCommitStatusList) == 0 && i >= 0 {
+			// If there is no configured active CommitStatuses, we assume success
 			ps.Status.Environments[i].Active.CommitStatus.State = "success"
 			ps.Status.Environments[i].Active.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
-		} else {
+		} else if i >= 0 {
 			// Loop through allActiveCSList and bubble up success if all are successful
 			ps.Status.Environments[i].Active.CommitStatus.State = "success"
 			for _, cs := range allActiveCSList {
@@ -362,18 +364,21 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			if len(csListSlice) == 1 {
 				allProposdedCSList = append(allProposdedCSList, csListSlice[0])
 			} else if len(csListSlice) > 1 {
+				// TODO: We should add error reporting and k8s eventing
 				ps.Status.Environments[i].Proposed.CommitStatus.State = "to-many-matching-sha"
 				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "to-many-matching-sha"
 			} else if len(csListSlice) == 0 {
+				// TODO: We should add error reporting and k8s eventing
 				ps.Status.Environments[i].Proposed.CommitStatus.State = "no-commit-status-found"
 				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "no-commit-status-found"
 			}
 
 		}
-		if len(allProposdedCSList) == 0 && i >= 0 {
+		if len(proposedCommitStatusList) == 0 && i >= 0 {
+			// If there is no configured proposed CommitStatuses, we assume success
 			ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
 			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
-		} else {
+		} else if i >= 0 {
 			// Loop through allActiveCSList and bubble up success if all are successful
 			ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
 			for _, cs := range allActiveCSList {
