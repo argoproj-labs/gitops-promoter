@@ -72,7 +72,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	// We use observed generation pattern here to avoid provider API calls.
 	if cs.Status.ObservedGeneration == cs.Generation {
-		logger.Info("CommitStatus already processed", "namespace", req.Namespace, "name", req.Name)
+		logger.Info("No need to reconcile", "namespace", req.Namespace, "name", req.Name)
 		return ctrl.Result{}, nil
 	}
 
