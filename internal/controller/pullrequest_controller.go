@@ -154,6 +154,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	pr.Status.ObservedGeneration = pr.Generation
 	err = r.Status().Update(ctx, &pr)
 	if err != nil {
 		return ctrl.Result{}, err

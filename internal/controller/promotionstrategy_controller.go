@@ -19,14 +19,12 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/util/retry"
 	"reflect"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/rand"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-
-	"k8s.io/client-go/util/retry"
 
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -62,7 +60,7 @@ type PromotionStrategyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(4).Info("Reconciling PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
+	logger.V(1).Info("Reconciling PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
 
 	var ps promoterv1alpha1.PromotionStrategy
 	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
@@ -94,10 +92,14 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	for _, environment := range ps.Spec.Environments {
 		_, previousEnvironmentStatus := utils.GetPreviousEnvironmentStatusByBranch(ps, environment.Branch)
 		environmentIndex, environmentStatus := utils.GetEnvironmentStatusByBranch(ps, environment.Branch)
+		if environmentStatus == nil {
+			return ctrl.Result{}, fmt.Errorf("EnvironmentStatus not found for branch %s", environment.Branch)
+		}
 
 		if previousEnvironmentStatus != nil {
-			// If the previous environment's running commit is the same as the current proposed commit, copy the commit statuses.
+			// There is no previous environment to compare to, so we can't copy the commit statuses.
 			if previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha {
+				// If the previous environment's running commit is the same as the current proposed commit, copy the commit statuses.
 				err = r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), previousEnvironmentStatus.Active.Hydrated.Sha, proposedCommitMap[environment.Branch].Status.Proposed.Hydrated.Sha, previousEnvironmentStatus.Branch) //pc.Status.Active.Hydrated.Sha
 				if err != nil {
 					return ctrl.Result{}, err
@@ -110,11 +112,12 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha &&
 			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
-		proposedChecksPassed := environmentStatus != nil &&
-			environmentStatus.Proposed.CommitStatus.State == "success"
+		proposedChecksPassed := environmentStatus.Proposed.CommitStatus.State == "success"
 
 		if (environmentIndex == 0 || (activeChecksPassed && proposedChecksPassed)) && environment.GetAutoMerge() {
+			// We are either in the first environment or all checks have passed and the environment is set to auto merge.
 			prl := promoterv1alpha1.PullRequestList{}
+			// Find the PRs that match the proposed commit and the environment. There should only be one.
 			err := r.List(ctx, &prl, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
 					"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, ps.Name),
@@ -126,36 +129,45 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				return ctrl.Result{}, err
 			}
 
-			if len(prl.Items) > 0 && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
-				if previousEnvironmentStatus != nil {
-					logger.Info("Active checks passed", "branch", environment.Branch,
-						"autoMerge", environment.AutoMerge,
-						"previousEnvironmentState", previousEnvironmentStatus.Active.CommitStatus.State,
-						"previousEnvironmentSha", previousEnvironmentStatus.Active.CommitStatus.Sha,
-						"previousEnvironmentCommitTime", previousEnvironmentStatus.Active.Dry.CommitTime,
-						"currentEnvironmentCommitTime", environmentStatus.Active.Dry.CommitTime)
-				} else {
-					logger.Info("Active checks passed without previous environment", "branch", environment.Branch,
-						"autoMerge", environment.AutoMerge,
-						"numberOfActiveCommitStatuses", len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)))
-				}
+			if len(prl.Items) > 1 {
+				return ctrl.Result{}, fmt.Errorf("More than one PullRequest found for ProposedCommit %s and Environment %s", proposedCommitMap[environment.Branch].Name, environment.Branch)
 			}
 
-			if len(prl.Items) > 0 && prl.Items[0].Spec.State == promoterv1alpha1.PullRequestOpen && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
-				prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
-				err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-					err := r.Get(ctx, client.ObjectKey{Namespace: prl.Items[0].Namespace, Name: prl.Items[0].Name}, &prl.Items[0], &client.GetOptions{})
-					if err != nil {
-						return err
+			if len(prl.Items) == 1 {
+				// We found 1 pull request process it.
+				pullRequest := prl.Items[0]
+				if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+					if previousEnvironmentStatus != nil {
+						logger.Info("Active checks passed", "branch", environment.Branch,
+							"autoMerge", environment.AutoMerge,
+							"previousEnvironmentState", previousEnvironmentStatus.Active.CommitStatus.State,
+							"previousEnvironmentSha", previousEnvironmentStatus.Active.CommitStatus.Sha,
+							"previousEnvironmentCommitTime", previousEnvironmentStatus.Active.Dry.CommitTime,
+							"currentEnvironmentCommitTime", environmentStatus.Active.Dry.CommitTime)
+					} else {
+						// There is no previous environment to log information about.
+						logger.Info("Active checks passed without previous environment", "branch", environment.Branch,
+							"autoMerge", environment.AutoMerge,
+							"numberOfActiveCommitStatuses", len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)))
 					}
-					prl.Items[0].Spec.State = promoterv1alpha1.PullRequestMerged
-					return r.Update(ctx, &prl.Items[0])
-				})
-				if err != nil {
-					return ctrl.Result{}, err
 				}
-			} else if len(prl.Items) > 0 && prl.Items[0].Status.State == promoterv1alpha1.PullRequestOpen {
-				logger.Info("Pull request not ready to merge yet", "namespace", prl.Items[0].Namespace, "name", prl.Items[0].Name)
+
+				if pullRequest.Spec.State == promoterv1alpha1.PullRequestOpen && pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+					err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+						var pr promoterv1alpha1.PullRequest
+						err := r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
+						if err != nil {
+							return err
+						}
+						pr.Spec.State = promoterv1alpha1.PullRequestMerged
+						return r.Update(ctx, &pr)
+					})
+					if err != nil {
+						return ctrl.Result{}, err
+					}
+				} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+					logger.Info("Pull request not ready to merge yet", "namespace", pullRequest.Namespace, "name", pullRequest.Name)
+				}
 			}
 		}
 
@@ -192,7 +204,6 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 	logger := log.FromContext(ctx)
 
 	pc := promoterv1alpha1.ProposedCommit{}
-	//TODO: should add a hash of the ps.Name and environment.Branch to the name
 	pcName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", ps.Name, environment.Branch))
 	err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
 	if err != nil {
@@ -232,25 +243,6 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 		}
 	}
 
-	// Check that status has been updated if not retry in a loop until it is updated
-	for {
-		err = r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
-		if err != nil {
-			if errors.IsNotFound(err) {
-				// Might not be found yet due to informer cache delay
-				continue
-			}
-			return &pc, err
-		}
-		if pc.Status.Active.Dry.Sha != "" && pc.Status.Active.Hydrated.Sha != "" && pc.Status.Proposed.Dry.Sha != "" && pc.Status.Proposed.Hydrated.Sha != "" {
-			break
-		}
-		// Add some sleep jitter to not spam Get requests while waiting for ProposedCommit controller to reconcile.
-		sleepTime := time.Duration(rand.Intn(1000)) * time.Millisecond
-		time.Sleep(sleepTime)
-		logger.V(0).Info("ProposedCommit status not updated yet, retrying", "namespace", ps.Namespace, "name", pcName, "sleepTime", sleepTime)
-	}
-
 	return &pc, nil
 }
 
@@ -287,7 +279,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 
 		i, _ := utils.GetEnvironmentStatusByBranch(*ps, environment.Branch)
 
-		if i >= len(ps.Status.Environments) && len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
+		if i != -1 && i < len(ps.Status.Environments) && len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
 			ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
 		}
 
@@ -318,20 +310,22 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			if len(csListSlice) == 1 {
 				allActiveCSList = append(allActiveCSList, csListSlice[0])
 			} else if len(csListSlice) > 1 {
+				// TODO: We should add error reporting and k8s eventing
 				ps.Status.Environments[i].Active.CommitStatus.State = "to-many-matching-sha"
 				ps.Status.Environments[i].Active.CommitStatus.Sha = "to-many-matching-sha"
 			} else if len(csListSlice) == 0 {
+				// TODO: We should add error reporting and k8s eventing
 				ps.Status.Environments[i].Active.CommitStatus.State = "no-commit-status-found"
 				ps.Status.Environments[i].Active.CommitStatus.Sha = "no-commit-status-found"
 			}
 
 		}
 
-		//&& (ps.Status.Environments[i].Active.CommitStatus.State != "no-commit-status-found" || ps.Status.Environments[i].Active.CommitStatus.State != "to-many-matching-sha")
-		if len(allActiveCSList) == 0 && i >= 0 {
-			ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
-			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
-		} else {
+		if len(activeCommitStatusList) == 0 && i >= 0 {
+			// If there is no configured active CommitStatuses, we assume success
+			ps.Status.Environments[i].Active.CommitStatus.State = "success"
+			ps.Status.Environments[i].Active.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
+		} else if i >= 0 {
 			// Loop through allActiveCSList and bubble up success if all are successful
 			ps.Status.Environments[i].Active.CommitStatus.State = "success"
 			for _, cs := range allActiveCSList {
@@ -370,18 +364,21 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			if len(csListSlice) == 1 {
 				allProposdedCSList = append(allProposdedCSList, csListSlice[0])
 			} else if len(csListSlice) > 1 {
+				// TODO: We should add error reporting and k8s eventing
 				ps.Status.Environments[i].Proposed.CommitStatus.State = "to-many-matching-sha"
 				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "to-many-matching-sha"
 			} else if len(csListSlice) == 0 {
+				// TODO: We should add error reporting and k8s eventing
 				ps.Status.Environments[i].Proposed.CommitStatus.State = "no-commit-status-found"
 				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "no-commit-status-found"
 			}
 
 		}
-		if len(allProposdedCSList) == 0 && i >= 0 {
+		if len(proposedCommitStatusList) == 0 && i >= 0 {
+			// If there is no configured proposed CommitStatuses, we assume success
 			ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
 			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
-		} else {
+		} else if i >= 0 {
 			// Loop through allActiveCSList and bubble up success if all are successful
 			ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
 			for _, cs := range allActiveCSList {
@@ -451,7 +448,6 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 					if err != nil {
 						return err
 					}
-					return nil
 				} else {
 					logger.Error(errGet, "failed to get CommitStatus", "namespace", proposedCSObjectKey.Namespace, "name", proposedCSObjectKey.Name)
 					return errGet

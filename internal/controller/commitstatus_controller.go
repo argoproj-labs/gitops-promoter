@@ -70,6 +70,12 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	// We use observed generation pattern here to avoid provider API calls.
+	if cs.Status.ObservedGeneration == cs.Generation {
+		logger.Info("No need to reconcile", "namespace", req.Namespace, "name", req.Name)
+		return ctrl.Result{}, nil
+	}
+
 	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -80,6 +86,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	commitStatus.Status.ObservedGeneration = commitStatus.Generation
 	err = r.Status().Update(ctx, commitStatus)
 	if err != nil {
 		return ctrl.Result{}, err
