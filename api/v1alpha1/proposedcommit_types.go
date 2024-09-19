@@ -85,8 +85,9 @@ func (b *ProposedCommitBranchState) DryShaShort() string {
 type ProposedCommitStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Proposed       ProposedCommitBranchState          `json:"proposed,omitempty"`
-	Active         ProposedCommitBranchState          `json:"active,omitempty"`
+	Proposed ProposedCommitBranchState `json:"proposed,omitempty"`
+	Active   ProposedCommitBranchState `json:"active,omitempty"`
+	//TODO: Not currently used need to talk about this
 	CommitStatuses []CommitStatusProposedCommitStatus `json:"commitStatuses,omitempty"`
 }
 
