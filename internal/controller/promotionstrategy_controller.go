@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"reflect"
 	"time"
@@ -42,7 +43,8 @@ import (
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
@@ -108,11 +110,11 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 
 		activeChecksPassed := previousEnvironmentStatus != nil &&
-			previousEnvironmentStatus.Active.CommitStatus.State == "success" &&
+			previousEnvironmentStatus.Active.CommitStatus.State == string(promoterv1alpha1.CommitStatusSuccess) &&
 			previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha &&
 			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
-		proposedChecksPassed := environmentStatus.Proposed.CommitStatus.State == "success"
+		proposedChecksPassed := environmentStatus.Proposed.CommitStatus.State == string(promoterv1alpha1.CommitStatusSuccess)
 
 		if (environmentIndex == 0 || (activeChecksPassed && proposedChecksPassed)) && environment.GetAutoMerge() {
 			// We are either in the first environment or all checks have passed and the environment is set to auto merge.
@@ -165,6 +167,8 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 					if err != nil {
 						return ctrl.Result{}, err
 					}
+					r.Recorder.Event(&ps, "Normal", "PullRequestMerged", fmt.Sprintf("Pull Request %s merged", pullRequest.Name))
+					logger.V(4).Info("Merged pull request", "namespace", pullRequest.Namespace, "name", pullRequest.Name)
 				} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
 					logger.Info("Pull request not ready to merge yet", "namespace", pullRequest.Namespace, "name", pullRequest.Name)
 				}
@@ -310,26 +314,26 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			if len(csListSlice) == 1 {
 				allActiveCSList = append(allActiveCSList, csListSlice[0])
 			} else if len(csListSlice) > 1 {
-				// TODO: We should add error reporting and k8s eventing
 				ps.Status.Environments[i].Active.CommitStatus.State = "to-many-matching-sha"
 				ps.Status.Environments[i].Active.CommitStatus.Sha = "to-many-matching-sha"
+				r.Recorder.Event(ps, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
 			} else if len(csListSlice) == 0 {
-				// TODO: We should add error reporting and k8s eventing
 				ps.Status.Environments[i].Active.CommitStatus.State = "no-commit-status-found"
 				ps.Status.Environments[i].Active.CommitStatus.Sha = "no-commit-status-found"
+				r.Recorder.Event(ps, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 			}
 
 		}
 
 		if len(activeCommitStatusList) == 0 && i >= 0 {
 			// If there is no configured active CommitStatuses, we assume success
-			ps.Status.Environments[i].Active.CommitStatus.State = "success"
+			ps.Status.Environments[i].Active.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
 			ps.Status.Environments[i].Active.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
 		} else if i >= 0 {
 			// Loop through allActiveCSList and bubble up success if all are successful
-			ps.Status.Environments[i].Active.CommitStatus.State = "success"
+			ps.Status.Environments[i].Active.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
 			for _, cs := range allActiveCSList {
-				if cs.Status.State != "success" {
+				if cs.Status.State != promoterv1alpha1.CommitStatusSuccess {
 					ps.Status.Environments[i].Active.CommitStatus.State = string(cs.Spec.State)
 					ps.Status.Environments[i].Active.CommitStatus.Sha = cs.Spec.Sha
 					break
@@ -364,25 +368,26 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			if len(csListSlice) == 1 {
 				allProposdedCSList = append(allProposdedCSList, csListSlice[0])
 			} else if len(csListSlice) > 1 {
-				// TODO: We should add error reporting and k8s eventing
+				// TODO: decided how to bubble up errors
 				ps.Status.Environments[i].Proposed.CommitStatus.State = "to-many-matching-sha"
 				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "to-many-matching-sha"
+				r.Recorder.Event(ps, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the proposed commit status")
 			} else if len(csListSlice) == 0 {
-				// TODO: We should add error reporting and k8s eventing
 				ps.Status.Environments[i].Proposed.CommitStatus.State = "no-commit-status-found"
 				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "no-commit-status-found"
+				r.Recorder.Event(ps, "Warning", "NoCommitStatusFound", "No commit status found for the proposed commit")
 			}
 
 		}
 		if len(proposedCommitStatusList) == 0 && i >= 0 {
 			// If there is no configured proposed CommitStatuses, we assume success
-			ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
+			ps.Status.Environments[i].Proposed.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
 			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
 		} else if i >= 0 {
 			// Loop through allActiveCSList and bubble up success if all are successful
-			ps.Status.Environments[i].Proposed.CommitStatus.State = "success"
+			ps.Status.Environments[i].Proposed.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
 			for _, cs := range allActiveCSList {
-				if cs.Status.State != "success" {
+				if cs.Status.State != promoterv1alpha1.CommitStatusSuccess {
 					ps.Status.Environments[i].Proposed.CommitStatus.State = string(cs.Spec.State)
 					ps.Status.Environments[i].Proposed.CommitStatus.Sha = cs.Spec.Sha
 					break

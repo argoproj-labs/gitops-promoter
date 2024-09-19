@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/tools/record"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -40,8 +41,8 @@ import (
 // PullRequestReconciler reconciles a PullRequest object
 type PullRequestReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	//InformerFactory informers.SharedInformerFactory
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch;delete
