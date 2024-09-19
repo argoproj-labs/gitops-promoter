@@ -92,7 +92,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	err = r.tryToMergePullRequest(ctx, &ps, proposedCommitMap)
+	err = r.mergePullRequests(ctx, &ps, proposedCommitMap)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -407,7 +407,8 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 	return nil
 }
 
-func (r *PromotionStrategyReconciler) tryToMergePullRequest(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, proposedCommitMap map[string]*promoterv1alpha1.ProposedCommit) error {
+// mergePullRequests checks if any environment is ready to be merged and if so, merges the pull request. It does this by looking at any active and proposed commit statuses.
+func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, proposedCommitMap map[string]*promoterv1alpha1.ProposedCommit) error {
 
 	logger := log.FromContext(ctx)
 	// Go through each environment and copy any commit statuses from the previous environment if the previous environment's running dry commit is the same as the
