@@ -201,9 +201,11 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			return status
 		}())
 
-		i, _ := utils.GetEnvironmentStatusByBranch(*ps, environment.Branch)
+		i, environmentStatus := utils.GetEnvironmentStatusByBranch(*ps, environment.Branch)
 
-		if i != -1 && i < len(ps.Status.Environments) && len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
+		// TODO: actually implement keeping track of healthy dry sha's
+		// We only want to keep the last 10 healthy dry sha's
+		if environmentStatus != nil && i < len(ps.Status.Environments) && len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
 			ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
 		}
 
