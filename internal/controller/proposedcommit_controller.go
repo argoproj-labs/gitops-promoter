@@ -98,104 +98,14 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	branchShas, err := gitOperations.GetBranchShas(ctx, []string{pc.Spec.ActiveBranch, pc.Spec.ProposedBranch})
+	err = r.calculateStatus(ctx, &pc, gitOperations)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	logger.Info("Branch SHAs", "branchShas", branchShas)
 
-	for branch, shas := range branchShas {
-		if branch == pc.Spec.ActiveBranch {
-			pc.Status.Active.Hydrated.Sha = shas.Hydrated
-			commitTime, _ := gitOperations.GetShaTime(ctx, shas.Hydrated)
-			pc.Status.Active.Hydrated.CommitTime = commitTime
-
-			pc.Status.Active.Dry.Sha = shas.Dry
-			commitTime, _ = gitOperations.GetShaTime(ctx, shas.Dry)
-			pc.Status.Active.Dry.CommitTime = commitTime
-		}
-		if branch == pc.Spec.ProposedBranch {
-			pc.Status.Proposed.Hydrated.Sha = shas.Hydrated
-			commitTime, _ := gitOperations.GetShaTime(ctx, shas.Hydrated)
-			pc.Status.Proposed.Hydrated.CommitTime = commitTime
-
-			pc.Status.Proposed.Dry.Sha = shas.Dry
-			commitTime, _ = gitOperations.GetShaTime(ctx, shas.Dry)
-			pc.Status.Proposed.Dry.CommitTime = commitTime
-		}
-	}
-
-	if pc.Status.Proposed.Dry.Sha != pc.Status.Active.Dry.Sha {
-		// If the proposed dry sha is different from the active dry sha, create a pull request
-
-		logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
-		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
-		prName = utils.KubeSafeUniqueName(ctx, prName)
-
-		var pr promoterv1alpha1.PullRequest
-		err = r.Get(ctx, client.ObjectKey{
-			Namespace: pc.Namespace,
-			Name:      prName,
-		}, &pr)
-		if err != nil {
-			if errors.IsNotFound(err) {
-
-				// The code below sets the ownership for the PullRequest Object
-				kind := reflect.TypeOf(promoterv1alpha1.ProposedCommit{}).Name()
-				gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-				controllerRef := metav1.NewControllerRef(&pc, gvk)
-
-				pr = promoterv1alpha1.PullRequest{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:            prName,
-						Namespace:       pc.Namespace,
-						OwnerReferences: []metav1.OwnerReference{*controllerRef},
-						Labels: map[string]string{
-							"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, pc.Labels["promoter.argoproj.io/promotion-strategy"]),
-							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, pc.Name),
-							"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, pc.Spec.ActiveBranch),
-						},
-					},
-					Spec: promoterv1alpha1.PullRequestSpec{
-						RepositoryReference: pc.Spec.RepositoryReference,
-						Title:               fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch),
-						TargetBranch:        pc.Spec.ActiveBranch,
-						SourceBranch:        pc.Spec.ProposedBranch,
-						Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha),
-						State:               "open",
-					},
-				}
-				err = r.Create(ctx, &pr)
-				if err != nil {
-					return ctrl.Result{}, err
-				}
-				r.Recorder.Event(&pc, "Normal", "PullRequestCreated", fmt.Sprintf("Pull Request %s created", pr.Name))
-				logger.V(4).Info("Created pull request")
-			} else {
-				return ctrl.Result{}, err
-			}
-		} else {
-			// Pull request already exists, update it.
-
-			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-				prUpdated := promoterv1alpha1.PullRequest{}
-				err := r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Name}, &prUpdated)
-				if err != nil {
-					return err
-				}
-				prUpdated.Spec.RepositoryReference = pc.Spec.RepositoryReference
-				prUpdated.Spec.Title = fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch)
-				prUpdated.Spec.TargetBranch = pc.Spec.ActiveBranch
-				prUpdated.Spec.SourceBranch = pc.Spec.ProposedBranch
-				prUpdated.Spec.Description = fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha)
-				return r.Update(ctx, &prUpdated)
-			})
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-			r.Recorder.Event(&pc, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
-			logger.V(4).Info("Updated pull request resource")
-		}
+	err = r.creatOrUpdatePullRequest(ctx, &pc)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	err = r.Status().Update(ctx, &pc)
@@ -228,4 +138,115 @@ func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmPr
 	default:
 		return nil, nil
 	}
+}
+
+func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *promoterv1alpha1.ProposedCommit, gitOperations *git.GitOperations) error {
+	logger := log.FromContext(ctx)
+
+	branchShas, err := gitOperations.GetBranchShas(ctx, []string{pc.Spec.ActiveBranch, pc.Spec.ProposedBranch})
+	if err != nil {
+		return err
+	}
+	logger.Info("Branch SHAs", "branchShas", branchShas)
+
+	for branch, shas := range branchShas {
+		if branch == pc.Spec.ActiveBranch {
+			pc.Status.Active.Hydrated.Sha = shas.Hydrated
+			commitTime, _ := gitOperations.GetShaTime(ctx, shas.Hydrated)
+			pc.Status.Active.Hydrated.CommitTime = commitTime
+
+			pc.Status.Active.Dry.Sha = shas.Dry
+			commitTime, _ = gitOperations.GetShaTime(ctx, shas.Dry)
+			pc.Status.Active.Dry.CommitTime = commitTime
+		}
+		if branch == pc.Spec.ProposedBranch {
+			pc.Status.Proposed.Hydrated.Sha = shas.Hydrated
+			commitTime, _ := gitOperations.GetShaTime(ctx, shas.Hydrated)
+			pc.Status.Proposed.Hydrated.CommitTime = commitTime
+
+			pc.Status.Proposed.Dry.Sha = shas.Dry
+			commitTime, _ = gitOperations.GetShaTime(ctx, shas.Dry)
+			pc.Status.Proposed.Dry.CommitTime = commitTime
+		}
+	}
+
+	return nil
+}
+
+func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context, pc *promoterv1alpha1.ProposedCommit) error {
+	logger := log.FromContext(ctx)
+
+	if pc.Status.Proposed.Dry.Sha != pc.Status.Active.Dry.Sha {
+		// If the proposed dry sha is different from the active dry sha, create a pull request
+
+		logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
+		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
+		prName = utils.KubeSafeUniqueName(ctx, prName)
+
+		var pr promoterv1alpha1.PullRequest
+		err := r.Get(ctx, client.ObjectKey{
+			Namespace: pc.Namespace,
+			Name:      prName,
+		}, &pr)
+		if err != nil {
+			if errors.IsNotFound(err) {
+
+				// The code below sets the ownership for the PullRequest Object
+				kind := reflect.TypeOf(promoterv1alpha1.ProposedCommit{}).Name()
+				gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+				controllerRef := metav1.NewControllerRef(pc, gvk)
+
+				pr = promoterv1alpha1.PullRequest{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            prName,
+						Namespace:       pc.Namespace,
+						OwnerReferences: []metav1.OwnerReference{*controllerRef},
+						Labels: map[string]string{
+							"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, pc.Labels["promoter.argoproj.io/promotion-strategy"]),
+							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, pc.Name),
+							"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, pc.Spec.ActiveBranch),
+						},
+					},
+					Spec: promoterv1alpha1.PullRequestSpec{
+						RepositoryReference: pc.Spec.RepositoryReference,
+						Title:               fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch),
+						TargetBranch:        pc.Spec.ActiveBranch,
+						SourceBranch:        pc.Spec.ProposedBranch,
+						Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha),
+						State:               "open",
+					},
+				}
+				err = r.Create(ctx, &pr)
+				if err != nil {
+					return err
+				}
+				r.Recorder.Event(pc, "Normal", "PullRequestCreated", fmt.Sprintf("Pull Request %s created", pr.Name))
+				logger.V(4).Info("Created pull request")
+			} else {
+				return err
+			}
+		} else {
+			// Pull request already exists, update it.
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				prUpdated := promoterv1alpha1.PullRequest{}
+				err := r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Name}, &prUpdated)
+				if err != nil {
+					return err
+				}
+				prUpdated.Spec.RepositoryReference = pc.Spec.RepositoryReference
+				prUpdated.Spec.Title = fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch)
+				prUpdated.Spec.TargetBranch = pc.Spec.ActiveBranch
+				prUpdated.Spec.SourceBranch = pc.Spec.ProposedBranch
+				prUpdated.Spec.Description = fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha)
+				return r.Update(ctx, &prUpdated)
+			})
+			if err != nil {
+				return err
+			}
+			r.Recorder.Event(pc, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
+			logger.V(4).Info("Updated pull request resource")
+		}
+	}
+
+	return nil
 }
