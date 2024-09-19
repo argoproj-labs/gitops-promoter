@@ -40,6 +40,7 @@ type ProposedCommitSpec struct {
 	// +kubebuilder:validation:Required
 	ActiveBranch string `json:"activeBranch"`
 
+	//TODO: Not used talk about this
 	CommitStatuses []CommitStatusProposedCommitSpec `json:"commitStatuses,omitempty"`
 }
 
