@@ -142,13 +142,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(len(promotionStrategy.Status.Environments)).To(Equal(3))
 				}
 				g.Expect(len(promotionStrategy.Status.Environments)).To(Equal(3))
-				g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.State).To(Equal("success"))
-				g.Expect(promotionStrategy.Status.Environments[1].Active.CommitStatus.State).To(Equal("success"))
-				g.Expect(promotionStrategy.Status.Environments[2].Active.CommitStatus.State).To(Equal("success"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.State).To(Equal(string(promoterv1alpha1.CommitStatusSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.CommitStatus.State).To(Equal(string(promoterv1alpha1.CommitStatusSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[2].Active.CommitStatus.State).To(Equal(string(promoterv1alpha1.CommitStatusSuccess)))
 
-				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.State).To(Equal("success"))
-				g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.State).To(Equal("success"))
-				g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.State).To(Equal("success"))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.State).To(Equal(string(promoterv1alpha1.CommitStatusSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.State).To(Equal(string(promoterv1alpha1.CommitStatusSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.State).To(Equal(string(promoterv1alpha1.CommitStatusSuccess)))
 
 				g.Expect(proposedCommitDev.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
 				g.Expect(proposedCommitDev.Status.Active.Dry.Sha).To(Not(BeEmpty()))

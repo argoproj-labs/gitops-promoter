@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/tools/record"
 	"reflect"
 	"time"
 
@@ -47,6 +48,7 @@ type ProposedCommitReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	PathLookup utils.PathLookup
+	Recorder   record.EventRecorder
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=proposedcommits,verbs=get;list;watch;create;update;patch;delete
@@ -167,6 +169,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				if err != nil {
 					return ctrl.Result{}, err
 				}
+				r.Recorder.Event(&pc, "Normal", "PullRequestCreated", fmt.Sprintf("Pull Request %s created", pr.Name))
 				logger.V(4).Info("Created pull request")
 			} else {
 				return ctrl.Result{}, err
@@ -190,6 +193,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			if err != nil {
 				return ctrl.Result{}, err
 			}
+			r.Recorder.Event(&pc, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
 			logger.V(4).Info("Updated pull request resource")
 		}
 	}
