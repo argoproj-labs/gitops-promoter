@@ -122,7 +122,6 @@ var _ = Describe("ProposedCommit Controller", func() {
 			_ = k8sClient.Delete(ctx, proposedCommit)
 			_ = k8sClient.Delete(ctx, commitStatus)
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 			deleteRepo("test-pc", "test-pc")
 		})
@@ -181,21 +180,21 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 			}).Should(Succeed())
 		})
-		It("should successfully reconcile the resource - with a pending commit with commit status checks", func() {
-			proposedCommit.Spec.ProposedBranch = "environment/development-next"
-			proposedCommit.Spec.ActiveBranch = "environment/development"
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommit)).To(Succeed())
-
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Adding a pending commit")
-			fullSha, shortSha := addPendingCommit(gitPath, "test-pc", "test-pc")
-
-		})
+		//It("should successfully reconcile the resource - with a pending commit with commit status checks", func() {
+		//	proposedCommit.Spec.ProposedBranch = "environment/development-next"
+		//	proposedCommit.Spec.ActiveBranch = "environment/development"
+		//
+		//	Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		//	Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		//	Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+		//	Expect(k8sClient.Create(ctx, proposedCommit)).To(Succeed())
+		//
+		//	//gitPath, err := os.MkdirTemp("", "*")
+		//	//Expect(err).NotTo(HaveOccurred())
+		//	//
+		//	//By("Adding a pending commit")
+		//	//fullSha, shortSha := addPendingCommit(gitPath, "test-pc", "test-pc")
+		//
+		//})
 	})
 })
