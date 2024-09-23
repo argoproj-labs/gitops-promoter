@@ -45,19 +45,23 @@ type ProposedCommitSpec struct {
 }
 
 type CommitStatusProposedCommitSpec struct {
-	// Key staging hydrated branch
-	// +kubebuilder:validation:Required
-	Key string `json:"key"`
+	ActiveCommitStatuses   []CommitStatusSelector `json:"activeCommitStatuses"`
+	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
 type CommitStatusProposedCommitStatus struct {
+	ActiveCommitStatuses   []CommitStatusProposedCommitStatusState `json:"activeCommitStatuses"`
+	ProposedCommitStatuses []CommitStatusProposedCommitStatusState `json:"proposedCommitStatuses"`
+}
+
+type CommitStatusProposedCommitStatusState struct {
 	// Key staging hydrated branch
 	// +kubebuilder:validation:Required
 	Key string `json:"key"`
 
 	// Phase what phase is the status in
 	// +kubebuilder:validation:Required
-	Phase string `json:"phase"`
+	Status string `json:"status"`
 }
 
 type ProposedCommitBranchState struct {

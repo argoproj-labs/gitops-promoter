@@ -154,6 +154,7 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 					RepositoryReference: ps.Spec.RepositoryReference,
 					ProposedBranch:      fmt.Sprintf("%s-%s", environment.Branch, "next"),
 					ActiveBranch:        environment.Branch,
+					CommitStatuses:      nil,
 				},
 			}
 
@@ -296,7 +297,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			if len(csListSlice) == 1 {
 				allProposdedCSList = append(allProposdedCSList, csListSlice[0])
 			} else if len(csListSlice) > 1 {
-				// TODO: decided how to bubble up errors
+				// TODO: decided how to bubble up errors, conditions (https://maelvls.dev/kubernetes-conditions/)
 				ps.Status.Environments[i].Proposed.CommitStatus.State = "to-many-matching-sha"
 				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "to-many-matching-sha"
 				r.Recorder.Event(ps, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the proposed commit status")

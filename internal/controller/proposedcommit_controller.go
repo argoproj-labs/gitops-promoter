@@ -152,20 +152,32 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 	for branch, shas := range branchShas {
 		if branch == pc.Spec.ActiveBranch {
 			pc.Status.Active.Hydrated.Sha = shas.Hydrated
-			commitTime, _ := gitOperations.GetShaTime(ctx, shas.Hydrated)
+			commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
+			if err != nil {
+				return err
+			}
 			pc.Status.Active.Hydrated.CommitTime = commitTime
 
 			pc.Status.Active.Dry.Sha = shas.Dry
-			commitTime, _ = gitOperations.GetShaTime(ctx, shas.Dry)
+			commitTime, err = gitOperations.GetShaTime(ctx, shas.Dry)
+			if err != nil {
+				return err
+			}
 			pc.Status.Active.Dry.CommitTime = commitTime
 		}
 		if branch == pc.Spec.ProposedBranch {
 			pc.Status.Proposed.Hydrated.Sha = shas.Hydrated
-			commitTime, _ := gitOperations.GetShaTime(ctx, shas.Hydrated)
+			commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
+			if err != nil {
+				return err
+			}
 			pc.Status.Proposed.Hydrated.CommitTime = commitTime
 
 			pc.Status.Proposed.Dry.Sha = shas.Dry
-			commitTime, _ = gitOperations.GetShaTime(ctx, shas.Dry)
+			commitTime, err = gitOperations.GetShaTime(ctx, shas.Dry)
+			if err != nil {
+				return err
+			}
 			pc.Status.Proposed.Dry.CommitTime = commitTime
 		}
 	}
