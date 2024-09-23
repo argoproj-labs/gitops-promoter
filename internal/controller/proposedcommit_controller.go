@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/record"
 	"reflect"
 	"time"
@@ -151,6 +153,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 
 	for branch, shas := range branchShas {
 		if branch == pc.Spec.ActiveBranch {
+
 			pc.Status.Active.Hydrated.Sha = shas.Hydrated
 			commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
 			if err != nil {
@@ -164,7 +167,59 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				return err
 			}
 			pc.Status.Active.Dry.CommitTime = commitTime
+
+			allActiveCSList := []promoterv1alpha1.CommitStatus{}
+			activeCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusState{}
+			for _, status := range pc.Spec.ActiveCommitStatuses {
+				var csListActive promoterv1alpha1.CommitStatusList
+				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
+				err := r.List(ctx, &csListActive, &client.ListOptions{
+					LabelSelector: labels.SelectorFromSet(map[string]string{
+						"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, status.Key),
+					}),
+					FieldSelector: fields.SelectorFromSet(map[string]string{
+						".spec.sha": pc.Status.Active.Hydrated.Sha,
+					}),
+				})
+				if err != nil {
+					return err
+				}
+
+				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
+				csListSlice := []promoterv1alpha1.CommitStatus{}
+				for _, item := range csListActive.Items {
+					if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
+						csListSlice = append(csListSlice, item)
+					}
+				}
+
+				if len(csListSlice) == 1 {
+					allActiveCSList = append(allActiveCSList, csListSlice[0])
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: string(csListSlice[0].Status.State),
+					})
+				} else if len(csListSlice) > 1 {
+					//TODO: decided how to bubble up errors
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: "to-many-matching-sha",
+					})
+					r.Recorder.Event(pc, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
+				} else if len(csListSlice) == 0 {
+					//TODO: decided how to bubble up errors
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: "no-commit-status-found",
+					})
+					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
+				}
+
+			}
+			pc.Status.Active.CommitStatuses = activeCommitStatusesState
+
 		}
+
 		if branch == pc.Spec.ProposedBranch {
 			pc.Status.Proposed.Hydrated.Sha = shas.Hydrated
 			commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
@@ -179,6 +234,57 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				return err
 			}
 			pc.Status.Proposed.Dry.CommitTime = commitTime
+
+			allProposedCSList := []promoterv1alpha1.CommitStatus{}
+			proposedCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusState{}
+			for _, status := range pc.Spec.ProposedCommitStatuses {
+				var csListProposed promoterv1alpha1.CommitStatusList
+				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
+				err := r.List(ctx, &csListProposed, &client.ListOptions{
+					LabelSelector: labels.SelectorFromSet(map[string]string{
+						"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, status.Key),
+					}),
+					FieldSelector: fields.SelectorFromSet(map[string]string{
+						".spec.sha": pc.Status.Proposed.Hydrated.Sha,
+					}),
+				})
+				if err != nil {
+					return err
+				}
+
+				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
+				csListSlice := []promoterv1alpha1.CommitStatus{}
+				for _, item := range csListProposed.Items {
+					if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
+						csListSlice = append(csListSlice, item)
+					}
+				}
+
+				if len(csListSlice) == 1 {
+					allProposedCSList = append(allProposedCSList, csListSlice[0])
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: string(csListSlice[0].Status.State),
+					})
+				} else if len(csListSlice) > 1 {
+					//TODO: decided how to bubble up errors
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: "to-many-matching-sha",
+					})
+					r.Recorder.Event(pc, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
+				} else if len(csListSlice) == 0 {
+					//TODO: decided how to bubble up errors
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: "no-commit-status-found",
+					})
+					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
+				}
+
+			}
+			pc.Status.Proposed.CommitStatuses = proposedCommitStatusesState
+
 		}
 	}
 

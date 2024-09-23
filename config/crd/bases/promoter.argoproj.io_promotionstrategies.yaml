@@ -146,81 +146,19 @@ spec:
                           type: object
                         dry:
                           properties:
-                            activeCommitStatues:
-                              items:
-                                properties:
-                                  key:
-                                    description: Key staging hydrated branch
-                                    type: string
-                                  status:
-                                    description: Phase what phase is the status in
-                                    type: string
-                                required:
-                                - key
-                                - status
-                                type: object
-                              type: array
                             commitTime:
                               format: date-time
                               type: string
-                            proposedCommitStatuses:
-                              items:
-                                properties:
-                                  key:
-                                    description: Key staging hydrated branch
-                                    type: string
-                                  status:
-                                    description: Phase what phase is the status in
-                                    type: string
-                                required:
-                                - key
-                                - status
-                                type: object
-                              type: array
                             sha:
                               type: string
-                          required:
-                          - activeCommitStatues
-                          - proposedCommitStatuses
                           type: object
                         hydrated:
                           properties:
-                            activeCommitStatues:
-                              items:
-                                properties:
-                                  key:
-                                    description: Key staging hydrated branch
-                                    type: string
-                                  status:
-                                    description: Phase what phase is the status in
-                                    type: string
-                                required:
-                                - key
-                                - status
-                                type: object
-                              type: array
                             commitTime:
                               format: date-time
                               type: string
-                            proposedCommitStatuses:
-                              items:
-                                properties:
-                                  key:
-                                    description: Key staging hydrated branch
-                                    type: string
-                                  status:
-                                    description: Phase what phase is the status in
-                                    type: string
-                                required:
-                                - key
-                                - status
-                                type: object
-                              type: array
                             sha:
                               type: string
-                          required:
-                          - activeCommitStatues
-                          - proposedCommitStatuses
                           type: object
                       required:
                       - commitStatus
@@ -256,81 +194,19 @@ spec:
                           type: object
                         dry:
                           properties:
-                            activeCommitStatues:
-                              items:
-                                properties:
-                                  key:
-                                    description: Key staging hydrated branch
-                                    type: string
-                                  status:
-                                    description: Phase what phase is the status in
-                                    type: string
-                                required:
-                                - key
-                                - status
-                                type: object
-                              type: array
                             commitTime:
                               format: date-time
                               type: string
-                            proposedCommitStatuses:
-                              items:
-                                properties:
-                                  key:
-                                    description: Key staging hydrated branch
-                                    type: string
-                                  status:
-                                    description: Phase what phase is the status in
-                                    type: string
-                                required:
-                                - key
-                                - status
-                                type: object
-                              type: array
                             sha:
                               type: string
-                          required:
-                          - activeCommitStatues
-                          - proposedCommitStatuses
                           type: object
                         hydrated:
                           properties:
-                            activeCommitStatues:
-                              items:
-                                properties:
-                                  key:
-                                    description: Key staging hydrated branch
-                                    type: string
-                                  status:
-                                    description: Phase what phase is the status in
-                                    type: string
-                                required:
-                                - key
-                                - status
-                                type: object
-                              type: array
                             commitTime:
                               format: date-time
                               type: string
-                            proposedCommitStatuses:
-                              items:
-                                properties:
-                                  key:
-                                    description: Key staging hydrated branch
-                                    type: string
-                                  status:
-                                    description: Phase what phase is the status in
-                                    type: string
-                                required:
-                                - key
-                                - status
-                                type: object
-                              type: array
                             sha:
                               type: string
-                          required:
-                          - activeCommitStatues
-                          - proposedCommitStatuses
                           type: object
                       required:
                       - commitStatus

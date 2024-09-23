@@ -151,10 +151,11 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 					},
 				},
 				Spec: promoterv1alpha1.ProposedCommitSpec{
-					RepositoryReference: ps.Spec.RepositoryReference,
-					ProposedBranch:      fmt.Sprintf("%s-%s", environment.Branch, "next"),
-					ActiveBranch:        environment.Branch,
-					CommitStatuses:      nil,
+					RepositoryReference:    ps.Spec.RepositoryReference,
+					ProposedBranch:         fmt.Sprintf("%s-%s", environment.Branch, "next"),
+					ActiveBranch:           environment.Branch,
+					ActiveCommitStatuses:   append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...),
+					ProposedCommitStatuses: append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...),
 				},
 			}
 
@@ -172,6 +173,8 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 }
 
 func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ProposedCommit) error {
+	logger := log.FromContext(ctx)
+
 	for _, environment := range ps.Spec.Environments {
 		pc, ok := pcMap[environment.Branch]
 		if !ok {
@@ -182,16 +185,16 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			status := promoterv1alpha1.EnvironmentStatus{
 				Branch: environment.Branch,
 				Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					Dry:      promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Dry.Sha, CommitTime: pc.Status.Active.Dry.CommitTime},
-					Hydrated: promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Active.Hydrated.Sha, CommitTime: pc.Status.Active.Hydrated.CommitTime},
+					Dry:      promoterv1alpha1.CommitShaState{Sha: pc.Status.Active.Dry.Sha, CommitTime: pc.Status.Active.Dry.CommitTime},
+					Hydrated: promoterv1alpha1.CommitShaState{Sha: pc.Status.Active.Hydrated.Sha, CommitTime: pc.Status.Active.Hydrated.CommitTime},
 					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
 						State: "unknown",
 						Sha:   "unknown",
 					},
 				},
 				Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					Dry:      promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Dry.Sha, CommitTime: pc.Status.Proposed.Dry.CommitTime},
-					Hydrated: promoterv1alpha1.ProposedCommitShaState{Sha: pc.Status.Proposed.Hydrated.Sha, CommitTime: pc.Status.Proposed.Hydrated.CommitTime},
+					Dry:      promoterv1alpha1.CommitShaState{Sha: pc.Status.Proposed.Dry.Sha, CommitTime: pc.Status.Proposed.Dry.CommitTime},
+					Hydrated: promoterv1alpha1.CommitShaState{Sha: pc.Status.Proposed.Hydrated.Sha, CommitTime: pc.Status.Proposed.Hydrated.CommitTime},
 					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
 						State: "unknown",
 						Sha:   "unknown",
@@ -210,120 +213,41 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
 		}
 
-		//Bubble up active CommitStatus to PromotionStrategy Status
-		activeCommitStatusList := append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)
-		allActiveCSList := []promoterv1alpha1.CommitStatus{}
-		for _, status := range activeCommitStatusList {
-			var csList promoterv1alpha1.CommitStatusList
-			// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
-			err := r.List(ctx, &csList, &client.ListOptions{
-				LabelSelector: labels.SelectorFromSet(map[string]string{
-					"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, status.Key),
-				}),
-				FieldSelector: fields.SelectorFromSet(map[string]string{
-					".spec.sha": pc.Status.Active.Hydrated.Sha,
-				}),
-			})
-			if err != nil {
-				return err
-			}
-
-			// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
-			csListSlice := []promoterv1alpha1.CommitStatus{}
-			for _, item := range csList.Items {
-				if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
-					csListSlice = append(csListSlice, item)
-				}
-			}
-
-			if len(csListSlice) == 1 {
-				allActiveCSList = append(allActiveCSList, csListSlice[0])
-			} else if len(csListSlice) > 1 {
-				//TODO: decided how to bubble up errors
-				ps.Status.Environments[i].Active.CommitStatus.State = "to-many-matching-sha"
-				ps.Status.Environments[i].Active.CommitStatus.Sha = "to-many-matching-sha"
-				r.Recorder.Event(ps, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
-			} else if len(csListSlice) == 0 {
-				//TODO: decided how to bubble up errors
-				ps.Status.Environments[i].Active.CommitStatus.State = "no-commit-status-found"
-				ps.Status.Environments[i].Active.CommitStatus.Sha = "no-commit-status-found"
-				r.Recorder.Event(ps, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
-			}
-
-		}
-
-		if len(activeCommitStatusList) == 0 && i >= 0 {
-			// If there is no configured active CommitStatuses, we assume success
-			ps.Status.Environments[i].Active.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
-			ps.Status.Environments[i].Active.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
-		} else if i >= 0 {
-			// Loop through allActiveCSList and bubble up success if all are successful
-			ps.Status.Environments[i].Active.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
-			for _, cs := range allActiveCSList {
-				if cs.Status.State != promoterv1alpha1.CommitStatusSuccess {
-					ps.Status.Environments[i].Active.CommitStatus.State = string(cs.Spec.State)
-					ps.Status.Environments[i].Active.CommitStatus.Sha = cs.Spec.Sha
+		//TODO: get status from PC's
+		activeCommitStatusCounts := len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...))
+		if activeCommitStatusCounts > 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == activeCommitStatusCounts {
+			// We have configured active commits and our count of active commits from promotion strategy matches the count of active commit resource.
+			for _, status := range pcMap[environment.Branch].Status.Active.CommitStatuses {
+				ps.Status.Environments[i].Active.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
+				if status.Status != string(promoterv1alpha1.CommitStatusSuccess) {
+					ps.Status.Environments[i].Active.CommitStatus.State = status.Status
+					logger.Info("Active commit status not success", "branch", environment.Branch, "status", status.Status)
 					break
 				}
 			}
+		} else if activeCommitStatusCounts == 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == activeCommitStatusCounts {
+			ps.Status.Environments[i].Active.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
+		} else {
+			ps.Status.Environments[i].Active.CommitStatus.State = string(promoterv1alpha1.CommitStatusPending)
 		}
 
-		//Bubble up proposed CommitStatus to PromotionStrategy Status
-		proposedCommitStatusList := append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)
-		allProposdedCSList := []promoterv1alpha1.CommitStatus{}
-		for _, status := range proposedCommitStatusList {
-			var csList promoterv1alpha1.CommitStatusList
-			// Find all the commit status that match the configured proposed commit status name and the sha of the proposed hydrated commit
-			err := r.List(ctx, &csList, &client.ListOptions{
-				LabelSelector: labels.SelectorFromSet(map[string]string{
-					"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, status.Key),
-				}),
-				FieldSelector: fields.SelectorFromSet(map[string]string{
-					".spec.sha": pc.Status.Proposed.Hydrated.Sha,
-				}),
-			})
-			if err != nil {
-				return err
-			}
-
-			// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
-			csListSlice := []promoterv1alpha1.CommitStatus{}
-			for _, item := range csList.Items {
-				if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
-					csListSlice = append(csListSlice, item)
-				}
-			}
-
-			if len(csListSlice) == 1 {
-				allProposdedCSList = append(allProposdedCSList, csListSlice[0])
-			} else if len(csListSlice) > 1 {
-				// TODO: decided how to bubble up errors, conditions (https://maelvls.dev/kubernetes-conditions/)
-				ps.Status.Environments[i].Proposed.CommitStatus.State = "to-many-matching-sha"
-				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "to-many-matching-sha"
-				r.Recorder.Event(ps, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the proposed commit status")
-			} else if len(csListSlice) == 0 {
-				ps.Status.Environments[i].Proposed.CommitStatus.State = "no-commit-status-found"
-				ps.Status.Environments[i].Proposed.CommitStatus.Sha = "no-commit-status-found"
-				r.Recorder.Event(ps, "Warning", "NoCommitStatusFound", "No commit status found for the proposed commit")
-			}
-
-		}
-		if len(proposedCommitStatusList) == 0 && i >= 0 {
-			// If there is no configured proposed CommitStatuses, we assume success
-			ps.Status.Environments[i].Proposed.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
-			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pc.Status.Active.Hydrated.Sha
-		} else if i >= 0 {
-			// Loop through allActiveCSList and bubble up success if all are successful
-			ps.Status.Environments[i].Proposed.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
-			for _, cs := range allActiveCSList {
-				if cs.Status.State != promoterv1alpha1.CommitStatusSuccess {
-					ps.Status.Environments[i].Proposed.CommitStatus.State = string(cs.Spec.State)
-					ps.Status.Environments[i].Proposed.CommitStatus.Sha = cs.Spec.Sha
+		proposedCommitStatusCounts := len(append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...))
+		if proposedCommitStatusCounts > 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCounts {
+			// We have configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource.
+			for _, status := range pcMap[environment.Branch].Status.Proposed.CommitStatuses {
+				ps.Status.Environments[i].Proposed.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
+				if status.Status != string(promoterv1alpha1.CommitStatusSuccess) {
+					ps.Status.Environments[i].Proposed.CommitStatus.State = status.Status
+					logger.Info("Proposed commit status not success", "branch", environment.Branch, "status", status.Status)
 					break
 				}
 			}
+		} else if proposedCommitStatusCounts == 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCounts {
+			// We have no configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource.
+			ps.Status.Environments[i].Proposed.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
+		} else {
+			ps.Status.Environments[i].Proposed.CommitStatus.State = string(promoterv1alpha1.CommitStatusPending)
 		}
-
 	}
 	return nil
 }

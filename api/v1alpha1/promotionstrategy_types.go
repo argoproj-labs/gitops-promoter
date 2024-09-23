@@ -87,8 +87,8 @@ type HealthyDryShas struct {
 }
 
 type PromotionStrategyBranchStateStatus struct {
-	Dry          ProposedCommitShaState        `json:"dry"`
-	Hydrated     ProposedCommitShaState        `json:"hydrated"`
+	Dry          CommitShaState                `json:"dry"`
+	Hydrated     CommitShaState                `json:"hydrated"`
 	CommitStatus PromotionStrategyCommitStatus `json:"commitStatus"`
 }
 
