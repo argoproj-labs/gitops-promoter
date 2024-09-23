@@ -36,6 +36,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 	var scmProvider *promoterv1alpha1.ScmProvider
 	var scmSecret *v1.Secret
 	var proposedCommit *promoterv1alpha1.ProposedCommit
+	var commitStatus *promoterv1alpha1.CommitStatus
 
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource-pc"
@@ -74,6 +75,29 @@ var _ = Describe("ProposedCommit Controller", func() {
 				Status: promoterv1alpha1.ScmProviderStatus{},
 			}
 
+			commitStatus = &promoterv1alpha1.CommitStatus{
+				TypeMeta: metav1.TypeMeta{},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      typeNamespacedName.Name,
+					Namespace: typeNamespacedName.Namespace,
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					RepositoryReference: &promoterv1alpha1.Repository{
+						Owner: "test-pc",
+						Name:  "test-pc",
+						ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
+							Name:      resourceName,
+							Namespace: "default",
+						},
+					},
+					Sha:         "",
+					Name:        "",
+					Description: "",
+					State:       "",
+					Url:         "",
+				},
+			}
+
 			proposedCommit = &promoterv1alpha1.ProposedCommit{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      typeNamespacedName.Name,
@@ -96,12 +120,14 @@ var _ = Describe("ProposedCommit Controller", func() {
 			//TODO(user): Cleanup logic after each test, like removing the resource instance.
 			By("Cleanup the specific resource instance ProposedCommit")
 			_ = k8sClient.Delete(ctx, proposedCommit)
+			_ = k8sClient.Delete(ctx, commitStatus)
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 			deleteRepo("test-pc", "test-pc")
 		})
 
-		It("should successfully reconcile the resource - with a pending commit", func() {
+		It("should successfully reconcile the resource - with a pending commit and no commit status checks", func() {
 			proposedCommit.Spec.ProposedBranch = "environment/development-next"
 			proposedCommit.Spec.ActiveBranch = "environment/development"
 
@@ -154,6 +180,22 @@ var _ = Describe("ProposedCommit Controller", func() {
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 
 			}).Should(Succeed())
+		})
+		It("should successfully reconcile the resource - with a pending commit with commit status checks", func() {
+			proposedCommit.Spec.ProposedBranch = "environment/development-next"
+			proposedCommit.Spec.ActiveBranch = "environment/development"
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+			Expect(k8sClient.Create(ctx, proposedCommit)).To(Succeed())
+
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Adding a pending commit")
+			fullSha, shortSha := addPendingCommit(gitPath, "test-pc", "test-pc")
+
 		})
 	})
 })
