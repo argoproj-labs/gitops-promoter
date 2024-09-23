@@ -40,18 +40,11 @@ type ProposedCommitSpec struct {
 	// +kubebuilder:validation:Required
 	ActiveBranch string `json:"activeBranch"`
 
-	//TODO: Not used talk about this
-	CommitStatuses []CommitStatusProposedCommitSpec `json:"commitStatuses,omitempty"`
-}
+	// ActiveCommitStatuses what statuses are required for the active branch
+	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 
-type CommitStatusProposedCommitSpec struct {
-	ActiveCommitStatuses   []CommitStatusSelector `json:"activeCommitStatuses"`
+	// ProposedCommitStatuses what statuses are required for the proposed branch
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
-}
-
-type CommitStatusProposedCommitStatus struct {
-	ActiveCommitStatuses   []CommitStatusProposedCommitStatusState `json:"activeCommitStatuses"`
-	ProposedCommitStatuses []CommitStatusProposedCommitStatusState `json:"proposedCommitStatuses"`
 }
 
 type CommitStatusProposedCommitStatusState struct {
@@ -70,8 +63,10 @@ type ProposedCommitBranchState struct {
 }
 
 type ProposedCommitShaState struct {
-	Sha        string      `json:"sha,omitempty"`
-	CommitTime metav1.Time `json:"commitTime,omitempty"`
+	Sha                    string                                  `json:"sha,omitempty"`
+	CommitTime             metav1.Time                             `json:"commitTime,omitempty"`
+	ActiveCommitStatuses   []CommitStatusProposedCommitStatusState `json:"activeCommitStatues"`
+	ProposedCommitStatuses []CommitStatusProposedCommitStatusState `json:"proposedCommitStatuses"`
 }
 
 func (b *ProposedCommitBranchState) DryShaShort() string {
@@ -92,8 +87,10 @@ type ProposedCommitStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	Proposed ProposedCommitBranchState `json:"proposed,omitempty"`
 	Active   ProposedCommitBranchState `json:"active,omitempty"`
-	//TODO: Not currently used need to talk about this
-	CommitStatuses []CommitStatusProposedCommitStatus `json:"commitStatuses,omitempty"`
+
+	ActiveCommitStatuses []CommitStatusProposedCommitStatusState `json:"activeCommitStatues"`
+
+	ProposedCommitStatuses []CommitStatusProposedCommitStatusState `json:"proposedCommitStatuses"`
 }
 
 //+kubebuilder:object:root=true
