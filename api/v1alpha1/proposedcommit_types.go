@@ -44,7 +44,7 @@ type ProposedCommitSpec struct {
 	// +kubebuilder:validation:Optional
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 
-	// ProposedCommitStatuses what statuses are required for the proposed branch
+	// ProposedCommitStatuses lists the statuses to be monitored on the proposed branch
 	// +kubebuilder:validation:Optional
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
