@@ -61,32 +61,32 @@ var _ = Describe("PullRequest Controller", func() {
 			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-			})
+			}, EventuallyTimeout)
 
 			By("Reconciling updating of the PullRequest")
 			Eventually(func(g Gomega) {
 				_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				pullRequest.Spec.Title = "Updated Title"
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
-			})
+			}, EventuallyTimeout)
 
 			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Spec.Title).To(Equal("Updated Title"))
-			})
+			}, EventuallyTimeout)
 
 			By("Reconciling merging of the PullRequest")
 			Eventually(func(g Gomega) {
 				_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				pullRequest.Spec.State = "merged"
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
-			}).Should(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
-			})
+			}, EventuallyTimeout)
 		})
 		It("should successfully reconcile the resource when closing", func() {
 			By("Reconciling the created resource")
@@ -105,20 +105,20 @@ var _ = Describe("PullRequest Controller", func() {
 			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-			}, "120s").Should(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
 
 			By("Reconciling closing of the PullRequest")
 			Eventually(func(g Gomega) {
 				_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				pullRequest.Spec.State = "closed"
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
-			}, "120s").Should(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
-			}, "120s").Should(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
 
 		})
 	})

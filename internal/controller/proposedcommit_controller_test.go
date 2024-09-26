@@ -73,7 +73,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				g.Expect(proposedCommit.Status.Active.Hydrated.Sha, Not(Equal("")))
 				g.Expect(proposedCommit.Status.Proposed.Hydrated.Sha, Not(Equal("")))
 
-			}, "120s").Should(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
 			prName := fmt.Sprintf("%s-%s-%s-%s", proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.RepositoryReference.Name, proposedCommit.Spec.ProposedBranch, proposedCommit.Spec.ActiveBranch)
@@ -88,7 +88,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
-			}, "60s").Should(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
 
 			By("Adding another pending commit")
 			_, shortSha = makeChangeAndHydrateRepo(gitPath, proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.RepositoryReference.Name)
@@ -103,7 +103,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
 
-			}, "120s").Should(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
 		})
 
 		It("should successfully reconcile the resource - with a pending commit with commit status checks", func() {
@@ -155,7 +155,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				err = k8sClient.Update(ctx, commitStatus)
 				g.Expect(err).To(Succeed())
 
-			}, "120s").Should(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, proposedCommit)
@@ -168,7 +168,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				g.Expect(proposedCommit.Status.Active.Hydrated.Sha).To(Equal(sha))
 				g.Expect(proposedCommit.Status.Active.CommitStatuses[0].Key).To(Equal("health-check"))
 				g.Expect(proposedCommit.Status.Active.CommitStatuses[0].Status).To(Equal("success"))
-			}, "120s").Should(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
 
 		})
 	})

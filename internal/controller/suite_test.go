@@ -62,6 +62,8 @@ var gitStoragePath string
 var cancel context.CancelFunc
 var ctx context.Context
 
+const EventuallyTimeout = 120 * time.Second
+
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
