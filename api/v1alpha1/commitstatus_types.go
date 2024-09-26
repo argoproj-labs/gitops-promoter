@@ -91,7 +91,7 @@ func init() {
 type CommitStatusPhase string
 
 const (
-	CommitStatusFailure CommitStatusPhase = "failure"
-	CommitStatusSuccess CommitStatusPhase = "success"
-	CommitStatusPending CommitStatusPhase = "pending"
+	CommitPhaseFailure CommitStatusPhase = "failure"
+	CommitPhaseSuccess CommitStatusPhase = "success"
+	CommitPhasePending CommitStatusPhase = "pending"
 )

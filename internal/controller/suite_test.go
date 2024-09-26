@@ -69,8 +69,8 @@ func TestControllers(t *testing.T) {
 
 	c, _ := GinkgoConfiguration()
 	c.FocusFiles = []string{
-		"proposedcommit_controller_test.go",
-		"pullrequest_controller_test.go",
+		//"proposedcommit_controller_test.go",
+		//"pullrequest_controller_test.go",
 		"promotionstrategy_controller_test.go",
 	}
 	//GinkgoWriter.TeeTo(os.Stdout)

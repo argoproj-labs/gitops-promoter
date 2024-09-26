@@ -218,9 +218,9 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 		if activeCommitStatusCount > 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == activeCommitStatusCount {
 			// We have configured active commits and our count of active commits from promotion strategy matches the count of active commit resource.
 			for _, status := range pcMap[environment.Branch].Status.Active.CommitStatuses {
-				ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitStatusSuccess)
+				ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
 				ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
-				if status.Phase != string(promoterv1alpha1.CommitStatusSuccess) {
+				if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
 					ps.Status.Environments[i].Active.CommitStatus.Phase = status.Phase
 					ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
 					logger.Info("Active commit status not success", "branch", environment.Branch, "status", status.Phase)
@@ -229,11 +229,11 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			}
 		} else if activeCommitStatusCount == 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == 0 {
 			// We have no configured active commits and our count of active commits from promotion strategy matches the count of active commit resource, should be 0 each.
-			ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitStatusSuccess)
+			ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
 			ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
 			//logger.Info("No active commit statuses configured, assuming success", "branch", environment.Branch)
 		} else {
-			ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitStatusPending)
+			ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
 			logger.Info("Active commit status pending", "branch", environment.Branch)
 		}
 
@@ -241,9 +241,9 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 		if proposedCommitStatusCount > 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCount {
 			// We have configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource.
 			for _, status := range pcMap[environment.Branch].Status.Proposed.CommitStatuses {
-				ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitStatusSuccess)
+				ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
 				ps.Status.Environments[i].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
-				if status.Phase != string(promoterv1alpha1.CommitStatusSuccess) {
+				if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
 					ps.Status.Environments[i].Proposed.CommitStatus.Phase = status.Phase
 					ps.Status.Environments[i].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
 					logger.Info("Proposed commit status not success", "branch", environment.Branch, "status", status.Phase)
@@ -252,11 +252,11 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			}
 		} else if proposedCommitStatusCount == 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == 0 {
 			// We have no configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource, should be 0 each.
-			ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitStatusSuccess)
+			ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
 			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
 			//logger.Info("No proposed commit statuses configured, assuming success", "branch", environment.Branch)
 		} else {
-			ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitStatusPending)
+			ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
 			logger.Info("Proposed commit status pending", "branch", environment.Branch)
 		}
 	}
@@ -287,6 +287,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			}
 
 			cs := promoterv1alpha1.CommitStatus{}
+			//TODO: do we like this name proposed-<name>?
 			copiedCSName := utils.KubeSafeUniqueName(ctx, "proposed-"+commitStatus.Name)
 			proposedCSObjectKey := client.ObjectKey{Namespace: commitStatus.Namespace, Name: copiedCSName}
 			errGet := r.Get(ctx, proposedCSObjectKey, &cs)
@@ -374,11 +375,11 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 		}
 
 		activeChecksPassed := previousEnvironmentStatus != nil &&
-			previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitStatusSuccess) &&
+			previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
 			previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha &&
 			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
-		proposedChecksPassed := environmentStatus.Proposed.CommitStatus.Phase == string(promoterv1alpha1.CommitStatusSuccess)
+		proposedChecksPassed := environmentStatus.Proposed.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess)
 
 		if (environmentIndex == 0 || (activeChecksPassed && proposedChecksPassed)) && environment.GetAutoMerge() {
 			// We are either in the first environment or all checks have passed and the environment is set to auto merge.
