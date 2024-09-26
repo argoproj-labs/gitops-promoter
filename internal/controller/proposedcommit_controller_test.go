@@ -33,11 +33,6 @@ import (
 
 var _ = Describe("ProposedCommit Controller", func() {
 
-	//var scmProvider *promoterv1alpha1.ScmProvider
-	//var scmSecret *v1.Secret
-	//var proposedCommit *promoterv1alpha1.ProposedCommit
-	//var commitStatus *promoterv1alpha1.CommitStatus
-
 	Context("When reconciling a resource", func() {
 		ctx := context.Background()
 
