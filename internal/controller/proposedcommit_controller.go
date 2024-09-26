@@ -276,7 +276,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 						Key:    status.Key,
 						Status: "to-many-matching-sha",
 					})
-					r.Recorder.Event(pc, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
+					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the active commit status")
 				} else if len(csListSlice) == 0 {
 					//TODO: decided how to bubble up errors
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
