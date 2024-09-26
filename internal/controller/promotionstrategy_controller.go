@@ -326,6 +326,9 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			}
 			commitStatus.Spec.DeepCopyInto(&cs.Spec)
 
+			if cs.Labels == nil {
+				cs.Labels = make(map[string]string)
+			}
 			cs.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
 			cs.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
 			cs.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
