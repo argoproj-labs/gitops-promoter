@@ -216,7 +216,8 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 						Key:   status.Key,
 						Phase: "pending",
 					})
-					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
+					// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
+					//r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
 
 			}
@@ -283,7 +284,8 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 						Key:   status.Key,
 						Phase: "pending",
 					})
-					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
+					// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
+					//r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
 
 			}
