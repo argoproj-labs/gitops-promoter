@@ -237,8 +237,8 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			logger.Info("Active commit status pending", "branch", environment.Branch)
 		}
 
-		proposedCommitStatusCounts := len(append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...))
-		if proposedCommitStatusCounts > 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCounts {
+		proposedCommitStatusCount := len(append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...))
+		if proposedCommitStatusCount > 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCount {
 			// We have configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource.
 			for _, status := range pcMap[environment.Branch].Status.Proposed.CommitStatuses {
 				ps.Status.Environments[i].Proposed.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
@@ -250,7 +250,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 					break
 				}
 			}
-		} else if proposedCommitStatusCounts == 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCounts {
+		} else if proposedCommitStatusCount == 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCount {
 			// We have no configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource, should be 0 each.
 			ps.Status.Environments[i].Proposed.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
 			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
