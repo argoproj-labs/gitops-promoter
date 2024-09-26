@@ -227,7 +227,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 					break
 				}
 			}
-		} else if activeCommitStatusCount == 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == activeCommitStatusCount {
+		} else if activeCommitStatusCount == 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == 0 {
 			// We have no configured active commits and our count of active commits from promotion strategy matches the count of active commit resource, should be 0 each.
 			ps.Status.Environments[i].Active.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
 			ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
