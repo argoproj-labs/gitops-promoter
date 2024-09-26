@@ -62,10 +62,6 @@ var gitStoragePath string
 var cancel context.CancelFunc
 var ctx context.Context
 
-//func init() {
-//	flag.Parse()
-//}
-
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
