@@ -138,8 +138,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.RepositoryReference.Name)
-			fmt.Println("fullSha: ", fullSha, "shortSha: ", shortSha)
+			makeChangeAndHydrateRepo(gitPath, proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.RepositoryReference.Name)
 
 			Eventually(func(g Gomega) {
 
