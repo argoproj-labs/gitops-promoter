@@ -67,8 +67,15 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 			logger.Info("Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef), "stdout", stdout, "stderr", stderr)
 			return err
 		}
-		g.pathLookup.Set(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext, path)
+
+		_, stdout, stderr, err = g.runCmd(ctx, path, "git", "config", "pull.rebase", "false")
+		if err != nil {
+			logger.Error(err, "could set git config", "stdout", stdout, "stderr", stderr)
+			return err
+		}
 		logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef))
+
+		g.pathLookup.Set(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext, path)
 
 	}
 

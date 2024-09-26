@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,84 +30,25 @@ import (
 )
 
 var _ = Describe("PromotionStrategy Controller", func() {
-	var scmProvider *promoterv1alpha1.ScmProvider
-	var scmSecret *v1.Secret
-	var promotionStrategy *promoterv1alpha1.PromotionStrategy
 
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource-promotion-strategy"
-
 		ctx := context.Background()
 
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
-		}
-
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind PromotionStrategy")
-
-			setupInitialTestGitRepo("test-ps", "test-ps")
-
-			scmSecret = &v1.Secret{
-				TypeMeta: metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      typeNamespacedName.Name,
-					Namespace: typeNamespacedName.Namespace,
-				},
-				Data: nil,
-			}
-
-			scmProvider = &promoterv1alpha1.ScmProvider{
-				TypeMeta: metav1.TypeMeta{},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      typeNamespacedName.Name,
-					Namespace: typeNamespacedName.Namespace,
-				},
-				Spec: promoterv1alpha1.ScmProviderSpec{
-					SecretRef: &v1.LocalObjectReference{Name: resourceName},
-					Fake:      &promoterv1alpha1.Fake{},
-				},
-				Status: promoterv1alpha1.ScmProviderStatus{},
-			}
-
-			promotionStrategy = &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      typeNamespacedName.Name,
-					Namespace: typeNamespacedName.Namespace,
-				},
-				Spec: promoterv1alpha1.PromotionStrategySpec{
-					DryBanch: "main",
-					RepositoryReference: &promoterv1alpha1.Repository{
-						Owner: "test-ps",
-						Name:  "test-ps",
-						ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-							Name:      typeNamespacedName.Name,
-							Namespace: typeNamespacedName.Namespace,
-						},
-					},
-					Environments: []promoterv1alpha1.Environment{
-						{Branch: "environment/development"},
-						{Branch: "environment/staging"},
-						{Branch: "environment/production"},
-					},
-				},
-				// TODO(user): Specify other spec details if needed.
-			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-
-			By("Cleanup the specific resource instance PromotionStrategy")
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
-
-			deleteRepo("test-ps", "test-ps")
 		})
+
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
+
+			name, scmSecret, scmProvider, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default", // TODO(user):Modify as needed
+			}
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
@@ -191,3 +131,78 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 	})
 })
+
+func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) {
+	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
+	setupInitialTestGitRepoOnServer(name, name)
+
+	scmSecret := &v1.Secret{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Data: nil,
+	}
+
+	scmProvider := &promoterv1alpha1.ScmProvider{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: promoterv1alpha1.ScmProviderSpec{
+			SecretRef: &v1.LocalObjectReference{Name: name},
+			Fake:      &promoterv1alpha1.Fake{},
+		},
+		Status: promoterv1alpha1.ScmProviderStatus{},
+	}
+
+	commitStatus := &promoterv1alpha1.CommitStatus{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: promoterv1alpha1.CommitStatusSpec{
+			RepositoryReference: &promoterv1alpha1.Repository{
+				Owner: name,
+				Name:  name,
+				ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
+					Name:      name,
+					Namespace: namespace,
+				},
+			},
+			Sha:         "",
+			Name:        "",
+			Description: "",
+			State:       "pending",
+			Url:         "",
+		},
+	}
+
+	promotionStrategy := &promoterv1alpha1.PromotionStrategy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: promoterv1alpha1.PromotionStrategySpec{
+			DryBanch: "main",
+			RepositoryReference: &promoterv1alpha1.Repository{
+				Owner: name,
+				Name:  name,
+				ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
+					Name:      name,
+					Namespace: namespace,
+				},
+			},
+			Environments: []promoterv1alpha1.Environment{
+				{Branch: "environment/development"},
+				{Branch: "environment/staging"},
+				{Branch: "environment/production"},
+			},
+		},
+	}
+
+	return name, scmSecret, scmProvider, commitStatus, promotionStrategy
+}

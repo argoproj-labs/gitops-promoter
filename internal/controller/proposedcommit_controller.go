@@ -45,12 +45,17 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+type ProposedCommitReconcilerConfig struct {
+	RequeueDuration time.Duration
+}
+
 // ProposedCommitReconciler reconciles a ProposedCommit object
 type ProposedCommitReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	PathLookup utils.PathLookup
 	Recorder   record.EventRecorder
+	Config     ProposedCommitReconcilerConfig
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=proposedcommits,verbs=get;list;watch;create;update;patch;delete
@@ -117,7 +122,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	return ctrl.Result{
 		Requeue:      true,
-		RequeueAfter: 30 * time.Second,
+		RequeueAfter: r.Config.RequeueDuration,
 	}, nil
 }
 

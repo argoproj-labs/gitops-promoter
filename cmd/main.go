@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"time"
 
 	"go.uber.org/zap/zapcore"
 
@@ -162,6 +163,9 @@ func main() {
 		Scheme:     mgr.GetScheme(),
 		PathLookup: pathLookup,
 		Recorder:   mgr.GetEventRecorderFor("ProposedCommit"),
+		Config: controller.ProposedCommitReconcilerConfig{
+			RequeueDuration: 30 * time.Second,
+		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ProposedCommit")
 		os.Exit(1)
