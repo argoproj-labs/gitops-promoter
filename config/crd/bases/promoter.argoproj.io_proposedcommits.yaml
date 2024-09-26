@@ -49,11 +49,13 @@ spec:
               activeBranch:
                 description: ActiveBranch staging hydrated branch
                 type: string
-              commitStatuses:
+              activeCommitStatuses:
+                description: ActiveCommitStatuses lists the statuses to be monitored
+                  on the active branch
                 items:
                   properties:
                     key:
-                      description: Key staging hydrated branch
+                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
                       type: string
                   required:
                   - key
@@ -62,6 +64,18 @@ spec:
               proposedBranch:
                 description: ProposedBranch staging hydrated branch
                 type: string
+              proposedCommitStatuses:
+                description: ProposedCommitStatuses lists the statuses to be monitored
+                  on the proposed branch
+                items:
+                  properties:
+                    key:
+                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                      type: string
+                  required:
+                  - key
+                  type: object
+                type: array
               repository:
                 description: RepositoryReference what repository to open the PR on.
                 properties:
@@ -93,6 +107,20 @@ spec:
             properties:
               active:
                 properties:
+                  commitStatuses:
+                    items:
+                      properties:
+                        key:
+                          description: Key staging hydrated branch
+                          type: string
+                        status:
+                          description: Phase what phase is the status in
+                          type: string
+                      required:
+                      - key
+                      - status
+                      type: object
+                    type: array
                   dry:
                     properties:
                       commitTime:
@@ -110,25 +138,25 @@ spec:
                         type: string
                     type: object
                 type: object
-              commitStatuses:
-                items:
-                  properties:
-                    key:
-                      description: Key staging hydrated branch
-                      type: string
-                    phase:
-                      description: Phase what phase is the status in
-                      type: string
-                  required:
-                  - key
-                  - phase
-                  type: object
-                type: array
               proposed:
                 description: |-
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
                   Important: Run "make" to regenerate code after modifying this file
                 properties:
+                  commitStatuses:
+                    items:
+                      properties:
+                        key:
+                          description: Key staging hydrated branch
+                          type: string
+                        status:
+                          description: Phase what phase is the status in
+                          type: string
+                      required:
+                      - key
+                      - status
+                      type: object
+                    type: array
                   dry:
                     properties:
                       commitTime:

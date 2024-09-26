@@ -19,9 +19,12 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/client-go/tools/record"
 	"reflect"
 	"time"
+
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/tools/record"
 
 	"k8s.io/client-go/util/retry"
 
@@ -43,12 +46,17 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+type ProposedCommitReconcilerConfig struct {
+	RequeueDuration time.Duration
+}
+
 // ProposedCommitReconciler reconciles a ProposedCommit object
 type ProposedCommitReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	PathLookup utils.PathLookup
 	Recorder   record.EventRecorder
+	Config     ProposedCommitReconcilerConfig
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=proposedcommits,verbs=get;list;watch;create;update;patch;delete
@@ -98,32 +106,197 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	branchShas, err := gitOperations.GetBranchShas(ctx, []string{pc.Spec.ActiveBranch, pc.Spec.ProposedBranch})
+	err = r.calculateStatus(ctx, &pc, gitOperations)
 	if err != nil {
 		return ctrl.Result{}, err
+	}
+
+	err = r.creatOrUpdatePullRequest(ctx, &pc)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	err = r.Status().Update(ctx, &pc)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{
+		Requeue:      true,
+		RequeueAfter: r.Config.RequeueDuration,
+	}, nil
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&promoterv1alpha1.ProposedCommit{}).
+		Complete(r)
+}
+
+func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
+	logger := log.FromContext(ctx)
+	switch {
+	case scmProvider.Spec.Fake != nil:
+		logger.V(4).Info("Creating fake git authentication provider")
+		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
+	case scmProvider.Spec.GitHub != nil:
+		logger.V(4).Info("Creating GitHub git authentication provider")
+		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
+	default:
+		return nil, nil
+	}
+}
+
+func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *promoterv1alpha1.ProposedCommit, gitOperations *git.GitOperations) error {
+	logger := log.FromContext(ctx)
+
+	branchShas, err := gitOperations.GetBranchShas(ctx, []string{pc.Spec.ActiveBranch, pc.Spec.ProposedBranch})
+	if err != nil {
+		return err
 	}
 	logger.Info("Branch SHAs", "branchShas", branchShas)
 
 	for branch, shas := range branchShas {
 		if branch == pc.Spec.ActiveBranch {
+
 			pc.Status.Active.Hydrated.Sha = shas.Hydrated
-			commitTime, _ := gitOperations.GetShaTime(ctx, shas.Hydrated)
+			commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
+			if err != nil {
+				return err
+			}
 			pc.Status.Active.Hydrated.CommitTime = commitTime
 
 			pc.Status.Active.Dry.Sha = shas.Dry
-			commitTime, _ = gitOperations.GetShaTime(ctx, shas.Dry)
+			commitTime, err = gitOperations.GetShaTime(ctx, shas.Dry)
+			if err != nil {
+				return err
+			}
 			pc.Status.Active.Dry.CommitTime = commitTime
+
+			activeCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusState{}
+			for _, status := range pc.Spec.ActiveCommitStatuses {
+				var csListActive promoterv1alpha1.CommitStatusList
+				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
+				err := r.List(ctx, &csListActive, &client.ListOptions{
+					LabelSelector: labels.SelectorFromSet(map[string]string{
+						"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, status.Key),
+					}),
+					FieldSelector: fields.SelectorFromSet(map[string]string{
+						".spec.sha": pc.Status.Active.Hydrated.Sha,
+					}),
+				})
+				if err != nil {
+					return err
+				}
+
+				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
+				csListSlice := []promoterv1alpha1.CommitStatus{}
+				for _, item := range csListActive.Items {
+					if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
+						csListSlice = append(csListSlice, item)
+					}
+				}
+
+				if len(csListSlice) == 1 {
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: string(csListSlice[0].Status.State),
+					})
+				} else if len(csListSlice) > 1 {
+					//TODO: decided how to bubble up errors
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: "to-many-matching-sha",
+					})
+					r.Recorder.Event(pc, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
+				} else if len(csListSlice) == 0 {
+					//TODO: decided how to bubble up errors
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: "no-commit-status-found",
+					})
+					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
+				}
+
+			}
+			pc.Status.Active.CommitStatuses = activeCommitStatusesState
+
 		}
+
 		if branch == pc.Spec.ProposedBranch {
 			pc.Status.Proposed.Hydrated.Sha = shas.Hydrated
-			commitTime, _ := gitOperations.GetShaTime(ctx, shas.Hydrated)
+			commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
+			if err != nil {
+				return err
+			}
 			pc.Status.Proposed.Hydrated.CommitTime = commitTime
 
 			pc.Status.Proposed.Dry.Sha = shas.Dry
-			commitTime, _ = gitOperations.GetShaTime(ctx, shas.Dry)
+			commitTime, err = gitOperations.GetShaTime(ctx, shas.Dry)
+			if err != nil {
+				return err
+			}
 			pc.Status.Proposed.Dry.CommitTime = commitTime
+
+			allProposedCSList := []promoterv1alpha1.CommitStatus{}
+			proposedCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusState{}
+			for _, status := range pc.Spec.ProposedCommitStatuses {
+				var csListProposed promoterv1alpha1.CommitStatusList
+				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
+				err := r.List(ctx, &csListProposed, &client.ListOptions{
+					LabelSelector: labels.SelectorFromSet(map[string]string{
+						"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, status.Key),
+					}),
+					FieldSelector: fields.SelectorFromSet(map[string]string{
+						".spec.sha": pc.Status.Proposed.Hydrated.Sha,
+					}),
+				})
+				if err != nil {
+					return err
+				}
+
+				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
+				csListSlice := []promoterv1alpha1.CommitStatus{}
+				for _, item := range csListProposed.Items {
+					if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
+						csListSlice = append(csListSlice, item)
+					}
+				}
+
+				if len(csListSlice) == 1 {
+					allProposedCSList = append(allProposedCSList, csListSlice[0])
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: string(csListSlice[0].Status.State),
+					})
+				} else if len(csListSlice) > 1 {
+					//TODO: decided how to bubble up errors
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: "to-many-matching-sha",
+					})
+					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the active commit status")
+				} else if len(csListSlice) == 0 {
+					//TODO: decided how to bubble up errors
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
+						Key:    status.Key,
+						Status: "no-commit-status-found",
+					})
+					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
+				}
+
+			}
+			pc.Status.Proposed.CommitStatuses = proposedCommitStatusesState
+
 		}
 	}
+
+	return nil
+}
+
+func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context, pc *promoterv1alpha1.ProposedCommit) error {
+	logger := log.FromContext(ctx)
 
 	if pc.Status.Proposed.Dry.Sha != pc.Status.Active.Dry.Sha {
 		// If the proposed dry sha is different from the active dry sha, create a pull request
@@ -133,7 +306,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		prName = utils.KubeSafeUniqueName(ctx, prName)
 
 		var pr promoterv1alpha1.PullRequest
-		err = r.Get(ctx, client.ObjectKey{
+		err := r.Get(ctx, client.ObjectKey{
 			Namespace: pc.Namespace,
 			Name:      prName,
 		}, &pr)
@@ -143,7 +316,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				// The code below sets the ownership for the PullRequest Object
 				kind := reflect.TypeOf(promoterv1alpha1.ProposedCommit{}).Name()
 				gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-				controllerRef := metav1.NewControllerRef(&pc, gvk)
+				controllerRef := metav1.NewControllerRef(pc, gvk)
 
 				pr = promoterv1alpha1.PullRequest{
 					ObjectMeta: metav1.ObjectMeta{
@@ -167,16 +340,15 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				}
 				err = r.Create(ctx, &pr)
 				if err != nil {
-					return ctrl.Result{}, err
+					return err
 				}
-				r.Recorder.Event(&pc, "Normal", "PullRequestCreated", fmt.Sprintf("Pull Request %s created", pr.Name))
+				r.Recorder.Event(pc, "Normal", "PullRequestCreated", fmt.Sprintf("Pull Request %s created", pr.Name))
 				logger.V(4).Info("Created pull request")
 			} else {
-				return ctrl.Result{}, err
+				return err
 			}
 		} else {
 			// Pull request already exists, update it.
-
 			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 				prUpdated := promoterv1alpha1.PullRequest{}
 				err := r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Name}, &prUpdated)
@@ -191,41 +363,12 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				return r.Update(ctx, &prUpdated)
 			})
 			if err != nil {
-				return ctrl.Result{}, err
+				return err
 			}
-			r.Recorder.Event(&pc, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
+			r.Recorder.Event(pc, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
 			logger.V(4).Info("Updated pull request resource")
 		}
 	}
 
-	err = r.Status().Update(ctx, &pc)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{
-		Requeue:      true,
-		RequeueAfter: 30 * time.Second,
-	}, nil
-}
-
-// SetupWithManager sets up the controller with the Manager.
-func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.ProposedCommit{}).
-		Complete(r)
-}
-
-func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
-	logger := log.FromContext(ctx)
-	switch {
-	case scmProvider.Spec.Fake != nil:
-		logger.V(4).Info("Creating fake git authentication provider")
-		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
-	case scmProvider.Spec.GitHub != nil:
-		logger.V(4).Info("Creating GitHub git authentication provider")
-		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
-	default:
-		return nil, nil
-	}
+	return nil
 }

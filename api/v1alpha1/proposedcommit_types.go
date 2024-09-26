@@ -40,36 +40,38 @@ type ProposedCommitSpec struct {
 	// +kubebuilder:validation:Required
 	ActiveBranch string `json:"activeBranch"`
 
-	CommitStatuses []CommitStatusProposedCommitSpec `json:"commitStatuses,omitempty"`
+	// ActiveCommitStatuses lists the statuses to be monitored on the active branch
+	// +kubebuilder:validation:Optional
+	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+
+	// ProposedCommitStatuses lists the statuses to be monitored on the proposed branch
+	// +kubebuilder:validation:Optional
+	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
-type CommitStatusProposedCommitSpec struct {
-	// Key staging hydrated branch
-	// +kubebuilder:validation:Required
-	Key string `json:"key"`
-}
-
-type CommitStatusProposedCommitStatus struct {
+type ProposedCommitCommitStatusState struct {
 	// Key staging hydrated branch
 	// +kubebuilder:validation:Required
 	Key string `json:"key"`
 
 	// Phase what phase is the status in
 	// +kubebuilder:validation:Required
-	Phase string `json:"phase"`
+	Status string `json:"status"`
 }
 
-type ProposedCommitBranchState struct {
-	Dry      ProposedCommitShaState `json:"dry,omitempty"`
-	Hydrated ProposedCommitShaState `json:"hydrated,omitempty"`
+type CommitBranchState struct {
+	Dry      CommitShaState `json:"dry,omitempty"`
+	Hydrated CommitShaState `json:"hydrated,omitempty"`
+	// +kubebuilder:validation:Optional
+	CommitStatuses []ProposedCommitCommitStatusState `json:"commitStatuses,omitempty"`
 }
 
-type ProposedCommitShaState struct {
+type CommitShaState struct {
 	Sha        string      `json:"sha,omitempty"`
 	CommitTime metav1.Time `json:"commitTime,omitempty"`
 }
 
-func (b *ProposedCommitBranchState) DryShaShort() string {
+func (b *CommitBranchState) DryShaShort() string {
 	if b == nil {
 		return ""
 	}
@@ -85,9 +87,8 @@ func (b *ProposedCommitBranchState) DryShaShort() string {
 type ProposedCommitStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Proposed       ProposedCommitBranchState          `json:"proposed,omitempty"`
-	Active         ProposedCommitBranchState          `json:"active,omitempty"`
-	CommitStatuses []CommitStatusProposedCommitStatus `json:"commitStatuses,omitempty"`
+	Proposed CommitBranchState `json:"proposed,omitempty"`
+	Active   CommitBranchState `json:"active,omitempty"`
 }
 
 //+kubebuilder:object:root=true

@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"regexp"
 	"slices"
+	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
@@ -102,6 +103,7 @@ var m1 = regexp.MustCompile("[^a-zA-Z0-9]+")
 // KubeSafeUniqueName Creates a safe name by replacing all non-alphanumeric characters with a hyphen and truncating to a max of 255 characters, then appending a hash of the name.
 func KubeSafeUniqueName(ctx context.Context, name string) string {
 	name = m1.ReplaceAllString(name, "-")
+	name = strings.ToLower(name)
 
 	h := fnv.New32a()
 	_, err := h.Write([]byte(name))
@@ -110,8 +112,11 @@ func KubeSafeUniqueName(ctx context.Context, name string) string {
 	}
 	hash := fmt.Sprintf("%x", h.Sum32())
 
-	name = TruncateString(name, 255-len(hash)-1)
-	return name + "-" + hash
+	if name[len(name)-1] == '-' {
+		name = name[:len(name)-1]
+	}
+	name = name + "-" + hash
+	return TruncateString(name, 255-len(hash)-1)
 }
 
 // KubeSafeLabel Creates a safe label buy truncating from the beginning of 'name' to a max of 63 characters, if the name starts with a hyphen it will be removed.
