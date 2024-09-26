@@ -40,7 +40,7 @@ type ProposedCommitSpec struct {
 	// +kubebuilder:validation:Required
 	ActiveBranch string `json:"activeBranch"`
 
-	// ActiveCommitStatuses what statuses are required for the active branch
+	// ActiveCommitStatuses lists the statuses to be monitored on the active branch
 	// +kubebuilder:validation:Optional
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 
