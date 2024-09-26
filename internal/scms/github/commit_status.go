@@ -30,7 +30,7 @@ func NewGithubCommitStatusProvider(secret v1.Secret) (*CommitStatus, error) {
 
 func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Setting Commit Status")
+	logger.Info("Setting Commit Phase")
 
 	commitStatusS := &github.RepoStatus{
 		State:       github.String(string(commitStatus.Spec.Phase)),

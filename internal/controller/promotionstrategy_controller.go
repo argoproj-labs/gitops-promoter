@@ -220,10 +220,10 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			for _, status := range pcMap[environment.Branch].Status.Active.CommitStatuses {
 				ps.Status.Environments[i].Active.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
 				ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
-				if status.Status != string(promoterv1alpha1.CommitStatusSuccess) {
-					ps.Status.Environments[i].Active.CommitStatus.State = status.Status
+				if status.Phase != string(promoterv1alpha1.CommitStatusSuccess) {
+					ps.Status.Environments[i].Active.CommitStatus.State = status.Phase
 					ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
-					logger.Info("Active commit status not success", "branch", environment.Branch, "status", status.Status)
+					logger.Info("Active commit status not success", "branch", environment.Branch, "status", status.Phase)
 					break
 				}
 			}
@@ -243,10 +243,10 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			for _, status := range pcMap[environment.Branch].Status.Proposed.CommitStatuses {
 				ps.Status.Environments[i].Proposed.CommitStatus.State = string(promoterv1alpha1.CommitStatusSuccess)
 				ps.Status.Environments[i].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
-				if status.Status != string(promoterv1alpha1.CommitStatusSuccess) {
-					ps.Status.Environments[i].Proposed.CommitStatus.State = status.Status
+				if status.Phase != string(promoterv1alpha1.CommitStatusSuccess) {
+					ps.Status.Environments[i].Proposed.CommitStatus.State = status.Phase
 					ps.Status.Environments[i].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
-					logger.Info("Proposed commit status not success", "branch", environment.Branch, "status", status.Status)
+					logger.Info("Proposed commit status not success", "branch", environment.Branch, "status", status.Phase)
 					break
 				}
 			}

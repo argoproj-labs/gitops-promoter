@@ -166,7 +166,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 				g.Expect(proposedCommit.Status.Active.Hydrated.Sha).To(Equal(sha))
 				g.Expect(proposedCommit.Status.Active.CommitStatuses[0].Key).To(Equal("health-check"))
-				g.Expect(proposedCommit.Status.Active.CommitStatuses[0].Status).To(Equal("success"))
+				g.Expect(proposedCommit.Status.Active.CommitStatuses[0].Phase).To(Equal("success"))
 			}, EventuallyTimeout).Should(Succeed())
 
 		})
