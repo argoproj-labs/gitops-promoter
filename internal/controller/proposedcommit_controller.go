@@ -201,7 +201,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				if len(csListSlice) == 1 {
 					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
 						Key:    status.Key,
-						Status: string(csListSlice[0].Status.State),
+						Status: string(csListSlice[0].Status.Phase),
 					})
 				} else if len(csListSlice) > 1 {
 					//TODO: decided how to bubble up errors
@@ -268,7 +268,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 					allProposedCSList = append(allProposedCSList, csListSlice[0])
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
 						Key:    status.Key,
-						Status: string(csListSlice[0].Status.State),
+						Status: string(csListSlice[0].Status.Phase),
 					})
 				} else if len(csListSlice) > 1 {
 					//TODO: decided how to bubble up errors

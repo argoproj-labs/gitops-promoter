@@ -19,7 +19,7 @@ spec:
       name: Sha
       type: string
     - jsonPath: .status.state
-      name: State
+      name: Phase
       type: string
     name: v1alpha1
     schema:
@@ -50,6 +50,13 @@ spec:
                 type: string
               name:
                 type: string
+              phase:
+                default: pending
+                enum:
+                - pending
+                - success
+                - failure
+                type: string
               repository:
                 properties:
                   name:
@@ -72,21 +79,14 @@ spec:
                 type: object
               sha:
                 type: string
-              state:
-                default: pending
-                enum:
-                - pending
-                - success
-                - failure
-                type: string
               url:
                 type: string
             required:
             - description
             - name
+            - phase
             - repository
             - sha
-            - state
             - url
             type: object
           status:
@@ -100,15 +100,15 @@ spec:
                   Important: Run "make" to regenerate code after modifying this file
                 format: int64
                 type: integer
-              sha:
+              phase:
                 type: string
-              state:
+              sha:
                 type: string
             required:
             - id
             - observedGeneration
+            - phase
             - sha
-            - state
             type: object
         type: object
     served: true

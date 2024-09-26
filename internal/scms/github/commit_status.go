@@ -33,7 +33,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	logger.Info("Setting Commit Status")
 
 	commitStatusS := &github.RepoStatus{
-		State:       github.String(string(commitStatus.Spec.State)),
+		State:       github.String(string(commitStatus.Spec.Phase)),
 		TargetURL:   github.String(commitStatus.Spec.Url),
 		Description: github.String(commitStatus.Spec.Description),
 		Context:     github.String(commitStatus.Spec.Name),
@@ -52,7 +52,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 		"status", response.Status)
 
 	commitStatus.Status.Id = strconv.FormatInt(*repoStatus.ID, 10)
-	commitStatus.Status.State = promoterv1alpha1.CommitStatusState(*repoStatus.State)
+	commitStatus.Status.Phase = promoterv1alpha1.CommitStatusPhase(*repoStatus.State)
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
 	return commitStatus, nil
 }

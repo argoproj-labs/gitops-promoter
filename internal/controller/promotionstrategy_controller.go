@@ -304,7 +304,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 							Sha:                 copyToProposedHydratedSha,
 							Name:                branch + " - " + commitStatus.Spec.Name,
 							Description:         commitStatus.Spec.Description,
-							State:               commitStatus.Spec.State,
+							Phase:               commitStatus.Spec.Phase,
 							Url:                 "https://github.com/" + commitStatus.Spec.RepositoryReference.Owner + "/" + commitStatus.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha,
 						},
 					}

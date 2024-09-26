@@ -150,7 +150,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				sha = strings.TrimSpace(sha)
 
 				commitStatus.Spec.Sha = sha
-				commitStatus.Spec.State = "success"
+				commitStatus.Spec.Phase = "success"
 				err = k8sClient.Update(ctx, commitStatus)
 				g.Expect(err).To(Succeed())
 
@@ -217,7 +217,7 @@ func proposedCommitResources(ctx context.Context, name, namespace string) (strin
 			Sha:         "",
 			Name:        "",
 			Description: "",
-			State:       "pending",
+			Phase:       "pending",
 			Url:         "",
 		},
 	}

@@ -42,7 +42,7 @@ type CommitStatusSpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=pending
 	// +kubebuilder:validation:Enum:=pending;success;failure
-	State CommitStatusState `json:"state"` // pending, success, failure
+	Phase CommitStatusPhase `json:"phase"` // pending, success, failure
 	// (Github: error, failure, pending, success)
 	// (Gitlab: pending, running, success, failed, canceled)
 	// (Bitbucket: INPROGRESS, STOPPED, SUCCESSFUL, FAILED)
@@ -57,14 +57,14 @@ type CommitStatusStatus struct {
 	ObservedGeneration int64             `json:"observedGeneration"`
 	Id                 string            `json:"id"`
 	Sha                string            `json:"sha"`
-	State              CommitStatusState `json:"state"`
+	Phase              CommitStatusPhase `json:"phase"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
 // +kubebuilder:printcolumn:name="Sha",type=string,JSONPath=`.status.sha`
-// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.state`
 // CommitStatus is the Schema for the commitstatuses API
 type CommitStatus struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -87,10 +87,10 @@ func init() {
 	SchemeBuilder.Register(&CommitStatus{}, &CommitStatusList{})
 }
 
-type CommitStatusState string
+type CommitStatusPhase string
 
 const (
-	CommitStatusFailure CommitStatusState = "failure"
-	CommitStatusSuccess CommitStatusState = "success"
-	CommitStatusPending CommitStatusState = "pending"
+	CommitStatusFailure CommitStatusPhase = "failure"
+	CommitStatusSuccess CommitStatusPhase = "success"
+	CommitStatusPending CommitStatusPhase = "pending"
 )

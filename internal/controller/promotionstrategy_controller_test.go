@@ -177,7 +177,7 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 			Sha:         "",
 			Name:        "",
 			Description: "",
-			State:       "pending",
+			Phase:       "pending",
 			Url:         "",
 		},
 	}
