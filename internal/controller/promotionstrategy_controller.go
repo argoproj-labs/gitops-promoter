@@ -189,16 +189,16 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 					Dry:      promoterv1alpha1.CommitShaState{Sha: pc.Status.Active.Dry.Sha, CommitTime: pc.Status.Active.Dry.CommitTime},
 					Hydrated: promoterv1alpha1.CommitShaState{Sha: pc.Status.Active.Hydrated.Sha, CommitTime: pc.Status.Active.Hydrated.CommitTime},
 					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
-						Phase: "unknown",
-						Sha:   "unknown",
+						Phase: "pending",
+						Sha:   "pending",
 					},
 				},
 				Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
 					Dry:      promoterv1alpha1.CommitShaState{Sha: pc.Status.Proposed.Dry.Sha, CommitTime: pc.Status.Proposed.Dry.CommitTime},
 					Hydrated: promoterv1alpha1.CommitShaState{Sha: pc.Status.Proposed.Hydrated.Sha, CommitTime: pc.Status.Proposed.Hydrated.CommitTime},
 					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
-						Phase: "unknown",
-						Sha:   "unknown",
+						Phase: "pending",
+						Sha:   "pending",
 					},
 				},
 			}

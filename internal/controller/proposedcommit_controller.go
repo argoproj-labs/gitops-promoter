@@ -207,14 +207,14 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 					//TODO: decided how to bubble up errors
 					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
 						Key:   status.Key,
-						Phase: "to-many-matching-sha",
+						Phase: "pending",
 					})
 					r.Recorder.Event(pc, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
 				} else if len(csListSlice) == 0 {
 					//TODO: decided how to bubble up errors
 					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
 						Key:   status.Key,
-						Phase: "no-commit-status-found",
+						Phase: "pending",
 					})
 					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
@@ -274,14 +274,14 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 					//TODO: decided how to bubble up errors
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
 						Key:   status.Key,
-						Phase: "to-many-matching-sha",
+						Phase: "pending",
 					})
 					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the active commit status")
 				} else if len(csListSlice) == 0 {
 					//TODO: decided how to bubble up errors
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
 						Key:   status.Key,
-						Phase: "no-commit-status-found",
+						Phase: "pending",
 					})
 					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
