@@ -18,7 +18,7 @@ spec:
     - jsonPath: .status.sha
       name: Sha
       type: string
-    - jsonPath: .status.state
+    - jsonPath: .status.phase
       name: Phase
       type: string
     name: v1alpha1
