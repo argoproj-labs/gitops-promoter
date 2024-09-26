@@ -50,8 +50,8 @@ spec:
                 description: ActiveBranch staging hydrated branch
                 type: string
               activeCommitStatuses:
-                description: ActiveCommitStatuses what statuses are required for the
-                  active branch
+                description: ActiveCommitStatuses lists the statuses to be monitored
+                  on the active branch
                 items:
                   properties:
                     key:
@@ -65,8 +65,8 @@ spec:
                 description: ProposedBranch staging hydrated branch
                 type: string
               proposedCommitStatuses:
-                description: ProposedCommitStatuses what statuses are required for
-                  the proposed branch
+                description: ProposedCommitStatuses lists the statuses to be monitored
+                  on the proposed branch
                 items:
                   properties:
                     key:
