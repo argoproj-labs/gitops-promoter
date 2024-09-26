@@ -65,7 +65,7 @@ type CommitStatusStatus struct {
 //+kubebuilder:subresource:status
 
 // +kubebuilder:printcolumn:name="Sha",type=string,JSONPath=`.status.sha`
-// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.state`
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
 // CommitStatus is the Schema for the commitstatuses API
 type CommitStatus struct {
 	metav1.TypeMeta   `json:",inline"`
