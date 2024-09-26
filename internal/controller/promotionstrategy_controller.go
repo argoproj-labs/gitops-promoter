@@ -237,7 +237,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			logger.Info("Active commit status pending", "branch", environment.Branch)
 		}
 
-		proposedCommitStatusCount := len(append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...))
+		proposedCommitStatusCount := len(environment.ProposedCommitStatuses) + len(ps.Spec.ProposedCommitStatuses)
 		if proposedCommitStatusCount > 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCount {
 			// We have configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource.
 			for _, status := range pcMap[environment.Branch].Status.Proposed.CommitStatuses {
