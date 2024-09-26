@@ -49,21 +49,22 @@ type ProposedCommitSpec struct {
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
-type ProposedCommitCommitStatusState struct {
+type ProposedCommitCommitStatusPhase struct {
 	// Key staging hydrated branch
 	// +kubebuilder:validation:Required
 	Key string `json:"key"`
 
 	// Phase what phase is the status in
 	// +kubebuilder:validation:Required
-	Status string `json:"status"`
+	// +kubebuilder:validation:Enum:=pending;success;failure
+	Phase string `json:"phase"`
 }
 
 type CommitBranchState struct {
 	Dry      CommitShaState `json:"dry,omitempty"`
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
 	// +kubebuilder:validation:Optional
-	CommitStatuses []ProposedCommitCommitStatusState `json:"commitStatuses,omitempty"`
+	CommitStatuses []ProposedCommitCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 
 type CommitShaState struct {

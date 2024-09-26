@@ -136,13 +136,17 @@ spec:
                       properties:
                         commitStatus:
                           properties:
+                            phase:
+                              enum:
+                              - pending
+                              - success
+                              - failure
+                              type: string
                             sha:
                               type: string
-                            state:
-                              type: string
                           required:
+                          - phase
                           - sha
-                          - state
                           type: object
                         dry:
                           properties:
@@ -184,13 +188,17 @@ spec:
                       properties:
                         commitStatus:
                           properties:
+                            phase:
+                              enum:
+                              - pending
+                              - success
+                              - failure
+                              type: string
                             sha:
                               type: string
-                            state:
-                              type: string
                           required:
+                          - phase
                           - sha
-                          - state
                           type: object
                         dry:
                           properties:

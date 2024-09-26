@@ -113,12 +113,16 @@ spec:
                         key:
                           description: Key staging hydrated branch
                           type: string
-                        status:
+                        phase:
                           description: Phase what phase is the status in
+                          enum:
+                          - pending
+                          - success
+                          - failure
                           type: string
                       required:
                       - key
-                      - status
+                      - phase
                       type: object
                     type: array
                   dry:
@@ -149,12 +153,16 @@ spec:
                         key:
                           description: Key staging hydrated branch
                           type: string
-                        status:
+                        phase:
                           description: Phase what phase is the status in
+                          enum:
+                          - pending
+                          - success
+                          - failure
                           type: string
                       required:
                       - key
-                      - status
+                      - phase
                       type: object
                     type: array
                   dry:

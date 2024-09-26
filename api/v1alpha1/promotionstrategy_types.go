@@ -93,8 +93,9 @@ type PromotionStrategyBranchStateStatus struct {
 }
 
 type PromotionStrategyCommitStatus struct {
-	Sha   string `json:"sha"`
-	State string `json:"state"`
+	Sha string `json:"sha"`
+	// +kubebuilder:validation:Enum:=pending;success;failure
+	Phase string `json:"phase"`
 }
 
 //+kubebuilder:object:root=true

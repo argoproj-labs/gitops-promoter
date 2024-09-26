@@ -75,7 +75,7 @@ var _ = Describe("CommitStatus Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				},
 				Spec: promoterv1alpha1.CommitStatusSpec{
-					State: "pending",
+					Phase: "pending",
 					RepositoryReference: &promoterv1alpha1.Repository{
 						Owner: "test",
 						Name:  "test",

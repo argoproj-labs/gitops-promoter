@@ -174,7 +174,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 			}
 			pc.Status.Active.Dry.CommitTime = commitTime
 
-			activeCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusState{}
+			activeCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusPhase{}
 			for _, status := range pc.Spec.ActiveCommitStatuses {
 				var csListActive promoterv1alpha1.CommitStatusList
 				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
@@ -199,22 +199,22 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				}
 
 				if len(csListSlice) == 1 {
-					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
-						Key:    status.Key,
-						Status: string(csListSlice[0].Status.State),
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+						Key:   status.Key,
+						Phase: string(csListSlice[0].Status.Phase),
 					})
 				} else if len(csListSlice) > 1 {
 					//TODO: decided how to bubble up errors
-					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
-						Key:    status.Key,
-						Status: "to-many-matching-sha",
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+						Key:   status.Key,
+						Phase: "to-many-matching-sha",
 					})
 					r.Recorder.Event(pc, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
 				} else if len(csListSlice) == 0 {
 					//TODO: decided how to bubble up errors
-					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
-						Key:    status.Key,
-						Status: "no-commit-status-found",
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+						Key:   status.Key,
+						Phase: "no-commit-status-found",
 					})
 					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
@@ -240,7 +240,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 			pc.Status.Proposed.Dry.CommitTime = commitTime
 
 			allProposedCSList := []promoterv1alpha1.CommitStatus{}
-			proposedCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusState{}
+			proposedCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusPhase{}
 			for _, status := range pc.Spec.ProposedCommitStatuses {
 				var csListProposed promoterv1alpha1.CommitStatusList
 				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
@@ -266,22 +266,22 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 
 				if len(csListSlice) == 1 {
 					allProposedCSList = append(allProposedCSList, csListSlice[0])
-					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
-						Key:    status.Key,
-						Status: string(csListSlice[0].Status.State),
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+						Key:   status.Key,
+						Phase: string(csListSlice[0].Status.Phase),
 					})
 				} else if len(csListSlice) > 1 {
 					//TODO: decided how to bubble up errors
-					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
-						Key:    status.Key,
-						Status: "to-many-matching-sha",
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+						Key:   status.Key,
+						Phase: "to-many-matching-sha",
 					})
 					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the active commit status")
 				} else if len(csListSlice) == 0 {
 					//TODO: decided how to bubble up errors
-					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
-						Key:    status.Key,
-						Status: "no-commit-status-found",
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+						Key:   status.Key,
+						Phase: "no-commit-status-found",
 					})
 					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
