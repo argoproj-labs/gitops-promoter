@@ -94,7 +94,7 @@ type PromotionStrategyBranchStateStatus struct {
 
 type PromotionStrategyCommitStatus struct {
 	Sha   string `json:"sha"`
-	State string `json:"state"`
+	Phase string `json:"phase"`
 }
 
 //+kubebuilder:object:root=true

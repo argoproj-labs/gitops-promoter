@@ -54,10 +54,11 @@ type CommitStatusSpec struct {
 type CommitStatusStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	ObservedGeneration int64             `json:"observedGeneration"`
-	Id                 string            `json:"id"`
-	Sha                string            `json:"sha"`
-	Phase              CommitStatusPhase `json:"phase"`
+	ObservedGeneration int64  `json:"observedGeneration"`
+	Id                 string `json:"id"`
+	Sha                string `json:"sha"`
+	// +kubebuilder:validation:Enum:=pending;success;failure
+	Phase CommitStatusPhase `json:"phase"`
 }
 
 //+kubebuilder:object:root=true

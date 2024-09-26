@@ -136,13 +136,13 @@ spec:
                       properties:
                         commitStatus:
                           properties:
+                            phase:
+                              type: string
                             sha:
                               type: string
-                            state:
-                              type: string
                           required:
+                          - phase
                           - sha
-                          - state
                           type: object
                         dry:
                           properties:
@@ -184,13 +184,13 @@ spec:
                       properties:
                         commitStatus:
                           properties:
+                            phase:
+                              type: string
                             sha:
                               type: string
-                            state:
-                              type: string
                           required:
+                          - phase
                           - sha
-                          - state
                           type: object
                         dry:
                           properties:

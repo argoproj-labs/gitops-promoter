@@ -101,6 +101,10 @@ spec:
                 format: int64
                 type: integer
               phase:
+                enum:
+                - pending
+                - success
+                - failure
                 type: string
               sha:
                 type: string
