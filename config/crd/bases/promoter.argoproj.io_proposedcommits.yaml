@@ -115,6 +115,10 @@ spec:
                           type: string
                         phase:
                           description: Phase what phase is the status in
+                          enum:
+                          - pending
+                          - success
+                          - failure
                           type: string
                       required:
                       - key
@@ -151,6 +155,10 @@ spec:
                           type: string
                         phase:
                           description: Phase what phase is the status in
+                          enum:
+                          - pending
+                          - success
+                          - failure
                           type: string
                       required:
                       - key

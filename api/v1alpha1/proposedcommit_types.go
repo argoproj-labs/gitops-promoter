@@ -56,6 +56,7 @@ type ProposedCommitCommitStatusPhase struct {
 
 	// Phase what phase is the status in
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum:=pending;success;failure
 	Phase string `json:"phase"`
 }
 

@@ -137,6 +137,10 @@ spec:
                         commitStatus:
                           properties:
                             phase:
+                              enum:
+                              - pending
+                              - success
+                              - failure
                               type: string
                             sha:
                               type: string
@@ -185,6 +189,10 @@ spec:
                         commitStatus:
                           properties:
                             phase:
+                              enum:
+                              - pending
+                              - success
+                              - failure
                               type: string
                             sha:
                               type: string
