@@ -19,6 +19,9 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -26,8 +29,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"os"
-	"strings"
 )
 
 var _ = Describe("ProposedCommit Controller", func() {

@@ -19,10 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	"reflect"
 	"time"
+
+	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"

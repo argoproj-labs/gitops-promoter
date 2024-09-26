@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

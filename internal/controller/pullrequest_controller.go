@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+
 	"k8s.io/client-go/tools/record"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"

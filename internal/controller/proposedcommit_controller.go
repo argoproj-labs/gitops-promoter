@@ -19,11 +19,12 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"time"
+
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/record"
-	"reflect"
-	"time"
 
 	"k8s.io/client-go/util/retry"
 
@@ -173,7 +174,6 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 			}
 			pc.Status.Active.Dry.CommitTime = commitTime
 
-			allActiveCSList := []promoterv1alpha1.CommitStatus{}
 			activeCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusState{}
 			for _, status := range pc.Spec.ActiveCommitStatuses {
 				var csListActive promoterv1alpha1.CommitStatusList
@@ -199,7 +199,6 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				}
 
 				if len(csListSlice) == 1 {
-					allActiveCSList = append(allActiveCSList, csListSlice[0])
 					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusState{
 						Key:    status.Key,
 						Status: string(csListSlice[0].Status.State),
