@@ -214,7 +214,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
 		}
 
-		activeCommitStatusCount := len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...))
+		activeCommitStatusCount := len(environment.ActiveCommitStatuses) + len(ps.Spec.ActiveCommitStatuses)
 		if activeCommitStatusCount > 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == activeCommitStatusCount {
 			// We have configured active commits and our count of active commits from promotion strategy matches the count of active commit resource.
 			for _, status := range pcMap[environment.Branch].Status.Active.CommitStatuses {
