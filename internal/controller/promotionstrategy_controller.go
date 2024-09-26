@@ -231,7 +231,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			// We have no configured active commits and our count of active commits from promotion strategy matches the count of active commit resource, should be 0 each.
 			ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitStatusSuccess)
 			ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
-			logger.Info("No active commit statuses configured, assuming success", "branch", environment.Branch)
+			//logger.Info("No active commit statuses configured, assuming success", "branch", environment.Branch)
 		} else {
 			ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitStatusPending)
 			logger.Info("Active commit status pending", "branch", environment.Branch)
@@ -254,7 +254,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			// We have no configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource, should be 0 each.
 			ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitStatusSuccess)
 			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
-			logger.Info("No proposed commit statuses configured, assuming success", "branch", environment.Branch)
+			//logger.Info("No proposed commit statuses configured, assuming success", "branch", environment.Branch)
 		} else {
 			ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitStatusPending)
 			logger.Info("Proposed commit status pending", "branch", environment.Branch)
