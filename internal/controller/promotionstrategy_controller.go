@@ -181,6 +181,7 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 	pc.Spec.ActiveCommitStatuses = append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)
 	pc.Spec.ProposedCommitStatuses = append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)
 
+	//TODO: Update the ProposedCommit with the new values, we could add a hash status to the ProposedCommit to see if we need to update it.
 	err = r.Update(ctx, &pc)
 	if err != nil {
 		return nil, err
