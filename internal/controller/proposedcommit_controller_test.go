@@ -126,7 +126,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 			commitStatus.Spec.Name = "health-check"
 			commitStatus.Labels = map[string]string{
-				"promoter.argoproj.io/commit-status": "health-check",
+				promoterv1alpha1.CommitStatusLabel: "health-check",
 			}
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())

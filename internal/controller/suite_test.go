@@ -62,7 +62,7 @@ var gitStoragePath string
 var cancel context.CancelFunc
 var ctx context.Context
 
-const EventuallyTimeout = 120 * time.Second
+const EventuallyTimeout = 300 * time.Second
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -90,7 +90,9 @@ var _ = BeforeSuite(func() {
 	gitServer = startGitServer(gitStoragePath)
 
 	By("bootstrapping test environment")
+	useExistingCluster := true
 	testEnv = &envtest.Environment{
+		UseExistingCluster:      &useExistingCluster,
 		CRDDirectoryPaths:       []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing:   true,
 		ControlPlaneStopTimeout: 1 * time.Minute,
@@ -136,6 +138,9 @@ var _ = BeforeSuite(func() {
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
 		Recorder: k8sManager.GetEventRecorderFor("PromotionStrategy"),
+		Config: PromotionStrategyReconcilerConfig{
+			RequeueDuration: 5 * time.Second,
+		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

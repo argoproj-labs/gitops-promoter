@@ -41,11 +41,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+type PromotionStrategyReconcilerConfig struct {
+	RequeueDuration time.Duration
+}
+
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+	Config   PromotionStrategyReconcilerConfig
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
@@ -105,7 +110,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	return ctrl.Result{
 		Requeue:      true,
-		RequeueAfter: 10 * time.Second,
+		RequeueAfter: r.Config.RequeueDuration,
 	}, nil
 }
 
@@ -168,6 +173,17 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 			logger.Error(err, "failed to get ProposedCommit", "namespace", ps.Namespace, "name", pcName)
 			return &pc, err
 		}
+	}
+
+	pc.Spec.RepositoryReference = ps.Spec.RepositoryReference
+	pc.Spec.ProposedBranch = fmt.Sprintf("%s-%s", environment.Branch, "next")
+	pc.Spec.ActiveBranch = environment.Branch
+	pc.Spec.ActiveCommitStatuses = append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)
+	pc.Spec.ProposedCommitStatuses = append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)
+
+	err = r.Update(ctx, &pc)
+	if err != nil {
+		return nil, err
 	}
 
 	return &pc, nil
@@ -271,7 +287,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 		var commitStatuses promoterv1alpha1.CommitStatusList
 		err := r.List(ctx, &commitStatuses, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
-				"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, value.Key),
+				promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(ctx, value.Key),
 			}),
 			FieldSelector: fields.SelectorFromSet(map[string]string{
 				".spec.sha": copyFromActiveHydratedSha,
@@ -282,7 +298,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 		}
 
 		for _, commitStatus := range commitStatuses.Items {
-			if commitStatus.Labels["promoter.argoproj.io/commit-status-copy"] == "true" {
+			if commitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy] == "true" {
 				continue
 			}
 
@@ -312,7 +328,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 					if status.Labels == nil {
 						status.Labels = make(map[string]string)
 					}
-					status.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
+					status.Labels[promoterv1alpha1.CommitStatusLabelCopy] = "true"
 					status.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
 					status.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
 					status.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
@@ -330,7 +346,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			if cs.Labels == nil {
 				cs.Labels = make(map[string]string)
 			}
-			cs.Labels["promoter.argoproj.io/commit-status-copy"] = "true"
+			cs.Labels[promoterv1alpha1.CommitStatusLabelCopy] = "true"
 			cs.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
 			cs.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
 			cs.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
