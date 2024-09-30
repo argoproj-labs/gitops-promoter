@@ -123,10 +123,6 @@ func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest) string {
 	return fmt.Sprintf("%s/%s/%s/%s", pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
 }
 
-func (pr *PullRequest) getMapKeyWithoutID(pullRequest v1alpha1.PullRequest) string {
-	return fmt.Sprintf("%s/%s/%s/%s", pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
-}
-
 func (pr *PullRequest) runGitCmd(gitPath string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	var stdoutBuf bytes.Buffer
