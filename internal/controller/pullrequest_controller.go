@@ -95,6 +95,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// We can't find an open PR on the provider, and we have had a status state before, we should now delete it because
 	// it no longer exists on provider.
 	if !found && pr.Status.State != "" {
+		logger.Info("Deleting Pull Request, because no open PR found on provider")
 		err := r.Delete(ctx, &pr)
 		if err != nil {
 			if errors.IsNotFound(err) {
@@ -126,12 +127,16 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
-		err = r.Delete(ctx, &pr)
+		//err = r.Delete(ctx, &pr)
+		//if err != nil {
+		//	return ctrl.Result{}, err
+		//}
+		// We deleted the resource so we return the reconcile as done
+		err = r.Status().Update(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		// We deleted the resource so we return the reconcile as done
-		return ctrl.Result{}, nil
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// We want to close the PR, but it's not closed on the provider based on status, we should close it on provider and delete it from k8s.
@@ -141,12 +146,16 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
-		err = r.Delete(ctx, &pr)
+		//err = r.Delete(ctx, &pr)
+		//if err != nil {
+		//	return ctrl.Result{}, err
+		//}
+		err = r.Status().Update(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 		// We deleted the resource so we return the reconcile as done
-		return ctrl.Result{}, nil
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	if pr.Status.ObservedGeneration != pr.Generation {
@@ -268,6 +277,7 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 	}
 
 	err := pullRequestProvider.Update(ctx, pr.Spec.Title, pr.Spec.Description, &pr)
+	r.Recorder.Event(&pr, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
 	if err != nil {
 		return err
 	}

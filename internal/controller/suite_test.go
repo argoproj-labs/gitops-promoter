@@ -62,15 +62,15 @@ var gitStoragePath string
 var cancel context.CancelFunc
 var ctx context.Context
 
-const EventuallyTimeout = 300 * time.Second
+const EventuallyTimeout = 60 * time.Second
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	c, _ := GinkgoConfiguration()
 	c.FocusFiles = []string{
-		//"proposedcommit_controller_test.go",
-		//"pullrequest_controller_test.go",
+		"proposedcommit_controller_test.go",
+		"pullrequest_controller_test.go",
 		"promotionstrategy_controller_test.go",
 	}
 	//GinkgoWriter.TeeTo(os.Stdout)
@@ -273,12 +273,20 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 	_, err = runGitCmd(gitPath, "git", "push")
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{"environment/development", "environment/staging", "environment/production", "environment/development-next", "environment/staging-next", "environment/production-next"} {
+	//"environment/development-next", "environment/staging-next", "environment/production-next"
+	for _, environment := range []string{"environment/development", "environment/staging", "environment/production"} {
 		_, err = runGitCmd(gitPath, "git", "checkout", "--orphan", environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "git", "commit", "--allow-empty", "-m", "initial commit")
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(gitPath, "git", "checkout", "-b", environment+"-next")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "git", "commit", "--allow-empty", "-m", "initial commit")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
 	}
 }
