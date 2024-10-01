@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -42,7 +43,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 
-			name, scmSecret, scmProvider, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
+			name, scmSecret, scmProvider, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -216,7 +217,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			//Skip("Skipping test because of flakiness")
 			By("Reconciling the created resource")
-			name, scmSecret, scmProvider, commitStatus, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-commit-status", "default")
+			name, scmSecret, scmProvider, commitStatusDevelopment, commitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-commit-status", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -228,8 +229,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Key: "health-check",
 				},
 			}
-			commitStatus.Spec.Name = "health-check"
-			commitStatus.Labels = map[string]string{
+			commitStatusDevelopment.Spec.Name = "health-check"
+			commitStatusDevelopment.Labels = map[string]string{
+				promoterv1alpha1.CommitStatusLabel: "health-check",
+			}
+			commitStatusStaging.Spec.Name = "health-check"
+			commitStatusStaging.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "health-check",
 			}
 
@@ -240,7 +245,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+			Expect(k8sClient.Create(ctx, commitStatusDevelopment)).To(Succeed())
+			Expect(k8sClient.Create(ctx, commitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ProposedCommits
@@ -300,7 +306,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Setting the commit status to success for staging")
 			Eventually(func(g Gomega) {
 
-				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      commitStatusDevelopment.Name,
+					Namespace: commitStatusDevelopment.Namespace,
+				}, commitStatusDevelopment)
 				g.Expect(err).To(Succeed())
 
 				_, err = runGitCmd(gitPath, "fetch")
@@ -309,22 +318,22 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
-				commitStatus.Spec.Sha = sha
-				commitStatus.Spec.Phase = "success"
-				err = k8sClient.Update(ctx, commitStatus)
+				commitStatusDevelopment.Spec.Sha = sha
+				commitStatusDevelopment.Spec.Phase = "success"
+				err = k8sClient.Update(ctx, commitStatusDevelopment)
 				g.Expect(err).To(Succeed())
 
 				// We have copied over the commit status from the previous environment over to the current environment by setting the sha to the current
 				// proposed hydrated sha
 				copiedCommitStatus := &promoterv1alpha1.CommitStatus{}
 				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatus.Name),
-					Namespace: commitStatus.Namespace,
+					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatusDevelopment.Name),
+					Namespace: commitStatusDevelopment.Namespace,
 				}, copiedCommitStatus)
 				g.Expect(err).To(Succeed())
 				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy]).To(Equal("true"))
 				g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(proposedCommitStaging.Status.Proposed.Hydrated.Sha))
-				g.Expect(copiedCommitStatus.Spec.Name).To(Equal(proposedCommitDev.Spec.ActiveBranch + " - " + commitStatus.Spec.Name))
+				g.Expect(copiedCommitStatus.Spec.Name).To(Equal(proposedCommitDev.Spec.ActiveBranch + " - " + commitStatusDevelopment.Spec.Name))
 
 				// Staging PR is closed because we set commit status to success
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitStaging))
@@ -347,7 +356,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Setting the commit status to success for staging allowing production to merge")
 			Eventually(func(g Gomega) {
 
-				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      commitStatusStaging.Name,
+					Namespace: commitStatusStaging.Namespace,
+				}, commitStatusStaging)
 				g.Expect(err).To(Succeed())
 
 				_, err = runGitCmd(gitPath, "fetch")
@@ -356,22 +368,21 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
-				commitStatus.Spec.Sha = sha
-				commitStatus.Spec.Phase = "success"
-				err = k8sClient.Update(ctx, commitStatus)
+				commitStatusStaging.Spec.Sha = sha
+				commitStatusStaging.Spec.Phase = "success"
+				err = k8sClient.Update(ctx, commitStatusStaging)
 				g.Expect(err).To(Succeed())
-
 				// We have copied over the commit status from the previous environment over to the current environment by setting the sha to the current
 				// proposed hydrated sha
 				copiedCommitStatus := &promoterv1alpha1.CommitStatus{}
 				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatus.Name),
-					Namespace: commitStatus.Namespace,
+					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatusStaging.Name),
+					Namespace: commitStatusStaging.Namespace,
 				}, copiedCommitStatus)
 				g.Expect(err).To(Succeed())
 				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy]).To(Equal("true"))
 				g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(proposedCommitStaging.Status.Proposed.Hydrated.Sha))
-				g.Expect(copiedCommitStatus.Spec.Name).To(Equal(proposedCommitDev.Spec.ActiveBranch + " - " + commitStatus.Spec.Name))
+				g.Expect(copiedCommitStatus.Spec.Name).To(Equal(proposedCommitDev.Spec.ActiveBranch + " - " + commitStatusStaging.Spec.Name))
 
 				// Production PR is closed because we set commit status to success
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitProd))
@@ -388,7 +399,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 })
 
-func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) {
+func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 	setupInitialTestGitRepoOnServer(name, name)
 
@@ -414,10 +425,33 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 		Status: promoterv1alpha1.ScmProviderStatus{},
 	}
 
-	commitStatus := &promoterv1alpha1.CommitStatus{
+	commitStatusDevelopment := &promoterv1alpha1.CommitStatus{
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
+			Name:      fmt.Sprintf("%s-%s", "development", name),
+			Namespace: namespace,
+		},
+		Spec: promoterv1alpha1.CommitStatusSpec{
+			RepositoryReference: &promoterv1alpha1.Repository{
+				Owner: name,
+				Name:  name,
+				ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
+					Name:      name,
+					Namespace: namespace,
+				},
+			},
+			Sha:         "",
+			Name:        "",
+			Description: "",
+			Phase:       promoterv1alpha1.CommitPhasePending,
+			Url:         "",
+		},
+	}
+
+	commitStatusStaging := &promoterv1alpha1.CommitStatus{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-%s", "staging", name),
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.CommitStatusSpec{
@@ -460,5 +494,5 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 		},
 	}
 
-	return name, scmSecret, scmProvider, commitStatus, promotionStrategy
+	return name, scmSecret, scmProvider, commitStatusDevelopment, commitStatusStaging, promotionStrategy
 }

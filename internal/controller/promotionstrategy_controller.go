@@ -344,21 +344,29 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			}
 			commitStatus.Spec.DeepCopyInto(&cs.Spec)
 
-			if cs.Labels == nil {
-				cs.Labels = make(map[string]string)
-			}
-			cs.Labels[promoterv1alpha1.CommitStatusLabelCopy] = "true"
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
-			cs.Spec.Sha = copyToProposedHydratedSha
-			cs.Spec.Name = branch + " - " + commitStatus.Spec.Name
+			errRetry := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				csUpdated := promoterv1alpha1.PullRequest{}
+				errCSGet := r.Get(ctx, client.ObjectKey{Namespace: commitStatus.Namespace, Name: commitStatus.Name}, &csUpdated)
+				if errCSGet != nil {
+					return errCSGet
+				}
 
-			//TODO: This should be a function that gets the URL from the provider in a the providers required format
-			cs.Spec.Url = "https://github.com/" + cs.Spec.RepositoryReference.Owner + "/" + cs.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha
-			err = r.Update(ctx, &cs)
-			if err != nil {
-				return err
+				if cs.Labels == nil {
+					cs.Labels = make(map[string]string)
+				}
+				cs.Labels[promoterv1alpha1.CommitStatusLabelCopy] = "true"
+				cs.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
+				cs.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
+				cs.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
+				cs.Spec.Sha = copyToProposedHydratedSha
+				cs.Spec.Name = branch + " - " + commitStatus.Spec.Name
+
+				//TODO: This should be a function that gets the URL from the provider in a the providers required format
+				cs.Spec.Url = "https://github.com/" + cs.Spec.RepositoryReference.Owner + "/" + cs.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha
+				return r.Update(ctx, &cs)
+			})
+			if errRetry != nil {
+				return errRetry
 			}
 		}
 	}
