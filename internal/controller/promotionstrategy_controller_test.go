@@ -19,10 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"os"
 	"strings"
 	"time"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -414,7 +415,7 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 			Sha:         "",
 			Name:        "",
 			Description: "",
-			Phase:       "pending",
+			Phase:       promoterv1alpha1.CommitPhasePending,
 			Url:         "",
 		},
 	}

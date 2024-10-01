@@ -217,7 +217,7 @@ func proposedCommitResources(ctx context.Context, name, namespace string) (strin
 			Sha:         "",
 			Name:        "",
 			Description: "",
-			Phase:       "pending",
+			Phase:       promoterv1alpha1.CommitPhasePending,
 			Url:         "",
 		},
 	}
