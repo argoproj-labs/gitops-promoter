@@ -50,8 +50,8 @@ var _ = Describe("PullRequest Controller", func() {
 			}
 
 			pullRequest.Spec.Title = "Initial Title"
-			pullRequest.Spec.TargetBranch = "dev"
-			pullRequest.Spec.SourceBranch = "dev-next"
+			pullRequest.Spec.TargetBranch = "development"
+			pullRequest.Spec.SourceBranch = "development-next"
 			pullRequest.Spec.Description = "Initial Description"
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
