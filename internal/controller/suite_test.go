@@ -295,7 +295,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 	//gitPath, err := os.MkdirTemp("", "*")
 	//Expect(err).NotTo(HaveOccurred())
 
-	_, err := runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", repoOwner, repoName), ".")
+	_, err := runGitCmd(gitPath, "git", "clone", "--verbose", "--progress", "--filter=blob:none", fmt.Sprintf("http://localhost:5000/%s/%s", repoOwner, repoName), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
