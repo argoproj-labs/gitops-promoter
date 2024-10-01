@@ -338,7 +338,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
 				g.Expect(err).To(Succeed())
 
-				sha, err := runGitCmd(gitPath, "git", "rev-parse", proposedCommitDev.Spec.ActiveBranch)
+				_, err = runGitCmd(gitPath, "git", "fetch")
+				Expect(err).NotTo(HaveOccurred())
+				sha, err := runGitCmd(gitPath, "git", "rev-parse", "origin/"+proposedCommitDev.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -347,10 +349,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err = k8sClient.Update(ctx, commitStatus)
 				g.Expect(err).To(Succeed())
 
-			}, EventuallyTimeout).Should(Succeed())
-
-			Eventually(func(g Gomega) {
-
 				prName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-%s-%s", proposedCommitStaging.Spec.RepositoryReference.Name, proposedCommitStaging.Spec.RepositoryReference.Owner, proposedCommitStaging.Spec.ProposedBranch, proposedCommitStaging.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
@@ -358,6 +356,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestStaging)
 				g.Expect(err).To(Not(BeNil()))
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				prName = utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-%s-%s", proposedCommitProd.Spec.RepositoryReference.Name, proposedCommitProd.Spec.RepositoryReference.Owner, proposedCommitProd.Spec.ProposedBranch, proposedCommitProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
 
 			}, EventuallyTimeout).Should(Succeed())
 
