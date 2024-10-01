@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -289,19 +288,19 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Eventually(func(g Gomega) {
 				// Make sure proposed commits are created and the associated PRs
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
 					Namespace: typeNamespacedName.Namespace,
 				}, &proposedCommitDev)
 				g.Expect(err).To(Succeed())
 
 				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
 					Namespace: typeNamespacedName.Namespace,
 				}, &proposedCommitStaging)
 				g.Expect(err).To(Succeed())
 
 				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
 					Namespace: typeNamespacedName.Namespace,
 				}, &proposedCommitProd)
 				g.Expect(err).To(Succeed())
