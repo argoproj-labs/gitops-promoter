@@ -33,12 +33,6 @@ var _ = Describe("PullRequest Controller", func() {
 	Context("When reconciling a resource", func() {
 		ctx := context.Background()
 
-		BeforeEach(func() {
-		})
-
-		AfterEach(func() {
-		})
-
 		It("should successfully reconcile the resource when updating title then merging", func() {
 			By("Reconciling the created resource")
 

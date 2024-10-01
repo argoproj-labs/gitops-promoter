@@ -40,12 +40,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	Context("When reconciling a resource with no commit statuses", func() {
 		ctx := context.Background()
 
-		BeforeEach(func() {
-		})
-
-		AfterEach(func() {
-		})
-
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 

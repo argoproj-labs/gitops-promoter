@@ -36,12 +36,6 @@ var _ = Describe("ProposedCommit Controller", func() {
 	Context("When reconciling a resource", func() {
 		ctx := context.Background()
 
-		BeforeEach(func() {
-		})
-
-		AfterEach(func() {
-		})
-
 		It("should successfully reconcile the resource - with a pending commit and no commit status checks", func() {
 
 			name, scmSecret, scmProvider, _, proposedCommit := proposedCommitResources(ctx, "pc-without-commit-checks", "default")
