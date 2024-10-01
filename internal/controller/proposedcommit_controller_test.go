@@ -76,7 +76,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			prName := fmt.Sprintf("%s-%s-%s-%s", proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.RepositoryReference.Name, proposedCommit.Spec.ProposedBranch, proposedCommit.Spec.ActiveBranch)
+			prName := utils.GetPullRequestName(ctx, *proposedCommit)
 			Eventually(func(g Gomega) {
 
 				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{

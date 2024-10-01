@@ -100,6 +100,10 @@ func TruncateStringFromBeginning(str string, length int) string {
 
 var m1 = regexp.MustCompile("[^a-zA-Z0-9]+")
 
+func GetPullRequestName(ctx context.Context, proposedCommit promoterv1alpha1.ProposedCommit) string {
+	return KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-%s-%s", proposedCommit.Spec.RepositoryReference.Name, proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.ProposedBranch, proposedCommit.Spec.ActiveBranch))
+}
+
 // KubeSafeUniqueName Creates a safe name by replacing all non-alphanumeric characters with a hyphen and truncating to a max of 255 characters, then appending a hash of the name.
 func KubeSafeUniqueName(ctx context.Context, name string) string {
 	name = m1.ReplaceAllString(name, "-")

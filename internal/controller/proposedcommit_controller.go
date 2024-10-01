@@ -304,8 +304,7 @@ func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context,
 		// If the proposed dry sha is different from the active dry sha, create a pull request
 
 		logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
-		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
-		prName = utils.KubeSafeUniqueName(ctx, prName)
+		prName := utils.GetPullRequestName(ctx, *pc)
 
 		var pr promoterv1alpha1.PullRequest
 		err := r.Get(ctx, client.ObjectKey{
