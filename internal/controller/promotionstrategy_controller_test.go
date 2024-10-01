@@ -303,9 +303,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
 				g.Expect(err).To(Succeed())
 
-				_, err = runGitCmd(gitPath, "git", "fetch")
+				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "git", "rev-parse", "origin/"+proposedCommitDev.Spec.ActiveBranch)
+				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+proposedCommitDev.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -350,9 +350,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
 				g.Expect(err).To(Succeed())
 
-				_, err = runGitCmd(gitPath, "git", "fetch")
+				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "git", "rev-parse", "origin/"+proposedCommitStaging.Spec.ActiveBranch)
+				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+proposedCommitStaging.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -361,17 +361,20 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err = k8sClient.Update(ctx, commitStatus)
 				g.Expect(err).To(Succeed())
 
-				// Staging PR is closed because we set commit status to success
-				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitStaging))
+				// We have copied over the commit status from the previous environment over to the current environment by setting the sha to the current
+				// proposed hydrated sha
+				copiedCommitStatus := &promoterv1alpha1.CommitStatus{}
 				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      prName,
-					Namespace: typeNamespacedName.Namespace,
-				}, &pullRequestStaging)
-				g.Expect(err).To(Not(BeNil()))
-				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatus.Name),
+					Namespace: commitStatus.Namespace,
+				}, copiedCommitStatus)
+				g.Expect(err).To(Succeed())
+				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy]).To(Equal("true"))
+				g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(proposedCommitStaging.Status.Proposed.Hydrated.Sha))
+				g.Expect(copiedCommitStatus.Spec.Name).To(Equal(proposedCommitDev.Spec.ActiveBranch + " - " + commitStatus.Spec.Name))
 
 				// Production PR is closed because we set commit status to success
-				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitProd))
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitProd))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
