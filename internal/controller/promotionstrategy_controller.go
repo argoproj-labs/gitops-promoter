@@ -305,7 +305,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 
 			cs := promoterv1alpha1.CommitStatus{}
 			//TODO: do we like this name proposed-<name>?
-			copiedCSName := utils.KubeSafeUniqueName(ctx, "proposed-"+commitStatus.Name)
+			copiedCSName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatus.Name)
 			proposedCSObjectKey := client.ObjectKey{Namespace: commitStatus.Namespace, Name: copiedCSName}
 			errGet := r.Get(ctx, proposedCSObjectKey, &cs)
 			if errGet != nil {
