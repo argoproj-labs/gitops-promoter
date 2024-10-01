@@ -330,8 +330,6 @@ func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context,
 							"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, pc.Spec.ActiveBranch),
 							"promoter.argoproj.io/source-branch":      utils.KubeSafeLabel(ctx, pc.Spec.ProposedBranch),
 							"promoter.argoproj.io/target-branch":      utils.KubeSafeLabel(ctx, pc.Spec.ActiveBranch),
-							//"promoter.argoproj.io/source-sha":         pc.Status.Proposed.Hydrated.Sha,
-							//"promoter.argoproj.io/target-sha":         pc.Status.Active.Hydrated.Sha,
 						},
 					},
 					Spec: promoterv1alpha1.PullRequestSpec{

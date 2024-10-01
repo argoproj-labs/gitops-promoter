@@ -48,10 +48,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	if response.StatusCode != 200 {
-		logger.Info("github response status",
-			"status", response.Status)
-	}
+	logger.Info("github response status", "status", response.Status)
 
 	return strconv.Itoa(*githubPullRequest.Number), nil
 }
