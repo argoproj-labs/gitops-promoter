@@ -358,11 +358,6 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 	return sha, shortSha
 }
 
-func deleteRepo(owner, name string) {
-	err := os.RemoveAll(path.Join(gitStoragePath, owner, name))
-	Expect(err).NotTo(HaveOccurred())
-}
-
 func runGitCmd(directory string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	var stdoutBuf bytes.Buffer

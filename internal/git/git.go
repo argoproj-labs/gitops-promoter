@@ -62,13 +62,13 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 		}
 		logger.V(4).Info("Created directory", "directory", path)
 
-		_, stdout, stderr, err := g.runCmd(ctx, path, "git", "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.repoRef), path)
+		_, stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.repoRef), path)
 		if err != nil {
 			logger.Info("Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef), "stdout", stdout, "stderr", stderr)
 			return err
 		}
 
-		_, stdout, stderr, err = g.runCmd(ctx, path, "git", "config", "pull.rebase", "false")
+		_, stdout, stderr, err = g.runCmd(ctx, path, "config", "pull.rebase", "false")
 		if err != nil {
 			logger.Error(err, "could set git config", "stdout", stdout, "stderr", stderr)
 			return err
@@ -98,21 +98,21 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (m
 	for _, branch := range branches {
 		p := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef) + g.pathContext)
 		logger.V(4).Info("git path", "path", p)
-		_, _, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
+		_, _, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
 		if err != nil {
 			logger.Error(err, "could not git checkout", "gitError", stderr)
 			return nil, err
 		}
 		logger.V(4).Info("Checked out branch", "branch", branch)
 
-		_, _, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "pull", "--progress")
+		_, _, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "pull", "--progress")
 		if err != nil {
 			logger.Error(err, "could not git pull", "gitError", stderr)
 			return nil, err
 		}
 		logger.V(4).Info("Pulled branch", "branch", branch)
 
-		_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "rev-parse", branch)
+		_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "rev-parse", branch)
 		if err != nil {
 			logger.Error(err, "could not get branch shas", "gitError", stderr)
 			return nil, err
@@ -158,7 +158,7 @@ func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, er
 		return v1.Time{}, fmt.Errorf("no repo path found")
 	}
 
-	_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "git", "show", "-s", "--format=%cI", sha)
+	_, stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "show", "-s", "--format=%cI", sha)
 	if err != nil {
 		logger.Error(err, "could not git show", "gitError", stderr)
 		return v1.Time{}, err
@@ -173,7 +173,7 @@ func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, er
 	return v1.Time{Time: cTime}, nil
 }
 
-func (g *GitOperations) runCmd(ctx context.Context, directory string, name string, args ...string) (*exec.Cmd, string, string, error) {
+func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...string) (*exec.Cmd, string, string, error) {
 	user, err := g.gap.GetUser(ctx)
 	if err != nil {
 		return nil, "", "", err
@@ -184,7 +184,7 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, name strin
 		return nil, "", "", err
 	}
 
-	cmd := exec.Command(name, args...)
+	cmd := exec.Command("git", args...)
 	cmd.Env = []string{
 		"GIT_ASKPASS=promoter_askpass.sh", // Needs to be on path
 		fmt.Sprintf("GIT_USER=%s", user),

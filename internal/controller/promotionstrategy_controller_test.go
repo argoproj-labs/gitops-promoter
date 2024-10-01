@@ -344,7 +344,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			}, EventuallyTimeout).Should(Succeed())
 
-			By("Setting the commit status to success for production")
+			By("Setting the commit status to success for staging allowing production to merge")
 			Eventually(func(g Gomega) {
 
 				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
