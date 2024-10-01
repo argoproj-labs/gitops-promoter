@@ -104,8 +104,8 @@ func GetPullRequestName(ctx context.Context, proposedCommit promoterv1alpha1.Pro
 	return fmt.Sprintf("%s-%s-%s-%s", proposedCommit.Spec.RepositoryReference.Name, proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.ProposedBranch, proposedCommit.Spec.ActiveBranch)
 }
 
-func GetProposedCommitName(ctx context.Context, promotionStrategyName, environmentBranch string) string {
-	return KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch))
+func GetProposedCommitName(promotionStrategyName, environmentBranch string) string {
+	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
 
 // KubeSafeUniqueName Creates a safe name by replacing all non-alphanumeric characters with a hyphen and truncating to a max of 255 characters, then appending a hash of the name.

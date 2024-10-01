@@ -134,7 +134,7 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 	logger := log.FromContext(ctx)
 
 	pc := promoterv1alpha1.ProposedCommit{}
-	pcName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", ps.Name, environment.Branch))
+	pcName := utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(ps.Name, environment.Branch))
 	err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
