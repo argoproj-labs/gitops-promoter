@@ -73,7 +73,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				_ = k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
 
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s", promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Name:      utils.GetProposedCommitName(ctx, promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch),
 					Namespace: typeNamespacedName.Namespace,
 				}, &proposedCommitDev)
 				g.Expect(err).To(Succeed())
@@ -90,21 +90,21 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &proposedCommitProd)
 				g.Expect(err).To(Succeed())
 
-				prName := utils.GetPullRequestName(ctx, proposedCommitDev)
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitDev))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + prName + "\" not found"))
 
-				prName = utils.GetPullRequestName(ctx, proposedCommitStaging)
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitStaging))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + prName + "\" not found"))
 
-				prName = utils.GetPullRequestName(ctx, proposedCommitProd)
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitProd))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
@@ -173,7 +173,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			// We should now get PRs created for the ProposedCommits
 			Eventually(func(g Gomega) {
 				// Dev PR should exist
-				prName := utils.GetPullRequestName(ctx, proposedCommitDev)
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitDev))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
@@ -207,7 +207,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			Eventually(func(g Gomega) {
 				// The PRs should eventually close because of no commit status checks configured
-				prName := utils.GetPullRequestName(ctx, proposedCommitDev)
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitDev))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
@@ -217,7 +217,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				//g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + prName + "\" not found"))
 
-				prName = utils.GetPullRequestName(ctx, proposedCommitStaging)
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitStaging))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
@@ -227,7 +227,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				//
 				////g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + prName + "\" not found"))
 				//
-				prName = utils.GetPullRequestName(ctx, proposedCommitProd)
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitProd))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
@@ -310,7 +310,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 
 				// Dev PR should be closed because it is the lowest level environment
-				prName := utils.GetPullRequestName(ctx, proposedCommitDev)
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitDev))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
@@ -318,14 +318,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Not(BeNil()))
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-				prName = utils.GetPullRequestName(ctx, proposedCommitStaging)
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitStaging))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
 				g.Expect(err).To(Succeed())
 
-				prName = utils.GetPullRequestName(ctx, proposedCommitProd)
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitProd))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
@@ -350,7 +350,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err = k8sClient.Update(ctx, commitStatus)
 				g.Expect(err).To(Succeed())
 
-				prName := utils.GetPullRequestName(ctx, proposedCommitStaging)
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitStaging))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
@@ -358,7 +358,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Not(BeNil()))
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-				prName = utils.GetPullRequestName(ctx, proposedCommitProd)
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitProd))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
