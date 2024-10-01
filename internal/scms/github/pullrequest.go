@@ -48,8 +48,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		"remaining", response.Rate.Remaining,
 		"reset", response.Rate.Reset,
 		"url", response.Request.URL)
-	logger.V(4).Info("github response status",
-		"status", response.Status)
+	logger.Info("github response status", "status", response.Status)
 
 	return strconv.Itoa(*githubPullRequest.Number), nil
 }
@@ -144,7 +143,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	logger.V(4).Info("github response status",
 		"status", response.Status)
 
-	pullRequest.Status.State = v1alpha1.PullRequestMerged
+	//pullRequest.Status.State = v1alpha1.PullRequestMerged
 	return nil
 }
 

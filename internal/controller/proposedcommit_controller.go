@@ -180,7 +180,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
 				err := r.List(ctx, &csListActive, &client.ListOptions{
 					LabelSelector: labels.SelectorFromSet(map[string]string{
-						"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, status.Key),
+						promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(ctx, status.Key),
 					}),
 					FieldSelector: fields.SelectorFromSet(map[string]string{
 						".spec.sha": pc.Status.Active.Hydrated.Sha,
@@ -193,7 +193,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
 				csListSlice := []promoterv1alpha1.CommitStatus{}
 				for _, item := range csListActive.Items {
-					if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
+					if item.Labels[promoterv1alpha1.CommitStatusLabelCopy] != "true" {
 						csListSlice = append(csListSlice, item)
 					}
 				}
@@ -207,16 +207,17 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 					//TODO: decided how to bubble up errors
 					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
 						Key:   status.Key,
-						Phase: "to-many-matching-sha",
+						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
 					r.Recorder.Event(pc, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
 				} else if len(csListSlice) == 0 {
 					//TODO: decided how to bubble up errors
 					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
 						Key:   status.Key,
-						Phase: "no-commit-status-found",
+						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
-					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
+					// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
+					//r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
 
 			}
@@ -246,7 +247,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
 				err := r.List(ctx, &csListProposed, &client.ListOptions{
 					LabelSelector: labels.SelectorFromSet(map[string]string{
-						"promoter.argoproj.io/commit-status": utils.KubeSafeLabel(ctx, status.Key),
+						promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(ctx, status.Key),
 					}),
 					FieldSelector: fields.SelectorFromSet(map[string]string{
 						".spec.sha": pc.Status.Proposed.Hydrated.Sha,
@@ -259,7 +260,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
 				csListSlice := []promoterv1alpha1.CommitStatus{}
 				for _, item := range csListProposed.Items {
-					if item.Labels["promoter.argoproj.io/commit-status-copy"] != "true" {
+					if item.Labels[promoterv1alpha1.CommitStatusLabelCopy] != "true" {
 						csListSlice = append(csListSlice, item)
 					}
 				}
@@ -274,16 +275,17 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 					//TODO: decided how to bubble up errors
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
 						Key:   status.Key,
-						Phase: "to-many-matching-sha",
+						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
 					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the active commit status")
 				} else if len(csListSlice) == 0 {
 					//TODO: decided how to bubble up errors
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
 						Key:   status.Key,
-						Phase: "no-commit-status-found",
+						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
-					r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
+					// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
+					//r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
 
 			}
@@ -302,8 +304,7 @@ func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context,
 		// If the proposed dry sha is different from the active dry sha, create a pull request
 
 		logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
-		prName := fmt.Sprintf("%s-%s-%s-%s", pc.Spec.RepositoryReference.Owner, pc.Spec.RepositoryReference.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch)
-		prName = utils.KubeSafeUniqueName(ctx, prName)
+		prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, *pc))
 
 		var pr promoterv1alpha1.PullRequest
 		err := r.Get(ctx, client.ObjectKey{
@@ -312,7 +313,6 @@ func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context,
 		}, &pr)
 		if err != nil {
 			if errors.IsNotFound(err) {
-
 				// The code below sets the ownership for the PullRequest Object
 				kind := reflect.TypeOf(promoterv1alpha1.ProposedCommit{}).Name()
 				gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
@@ -365,7 +365,7 @@ func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context,
 			if err != nil {
 				return err
 			}
-			r.Recorder.Event(pc, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
+			//r.Recorder.Event(pc, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
 			logger.V(4).Info("Updated pull request resource")
 		}
 	}

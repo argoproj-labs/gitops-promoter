@@ -36,12 +36,6 @@ var _ = Describe("ProposedCommit Controller", func() {
 	Context("When reconciling a resource", func() {
 		ctx := context.Background()
 
-		BeforeEach(func() {
-		})
-
-		AfterEach(func() {
-		})
-
 		It("should successfully reconcile the resource - with a pending commit and no commit status checks", func() {
 
 			name, scmSecret, scmProvider, _, proposedCommit := proposedCommitResources(ctx, "pc-without-commit-checks", "default")
@@ -76,7 +70,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			prName := fmt.Sprintf("%s-%s-%s-%s", proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.RepositoryReference.Name, proposedCommit.Spec.ProposedBranch, proposedCommit.Spec.ActiveBranch)
+			prName := utils.GetPullRequestName(ctx, *proposedCommit)
 			Eventually(func(g Gomega) {
 
 				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
@@ -126,7 +120,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 			commitStatus.Spec.Name = "health-check"
 			commitStatus.Labels = map[string]string{
-				"promoter.argoproj.io/commit-status": "health-check",
+				promoterv1alpha1.CommitStatusLabel: "health-check",
 			}
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -217,7 +211,7 @@ func proposedCommitResources(ctx context.Context, name, namespace string) (strin
 			Sha:         "",
 			Name:        "",
 			Description: "",
-			Phase:       "pending",
+			Phase:       promoterv1alpha1.CommitPhasePending,
 			Url:         "",
 		},
 	}

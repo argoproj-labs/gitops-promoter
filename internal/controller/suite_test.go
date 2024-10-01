@@ -62,7 +62,7 @@ var gitStoragePath string
 var cancel context.CancelFunc
 var ctx context.Context
 
-const EventuallyTimeout = 120 * time.Second
+const EventuallyTimeout = 90 * time.Second
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -90,7 +90,9 @@ var _ = BeforeSuite(func() {
 	gitServer = startGitServer(gitStoragePath)
 
 	By("bootstrapping test environment")
+	useExistingCluster := false
 	testEnv = &envtest.Environment{
+		UseExistingCluster:      &useExistingCluster,
 		CRDDirectoryPaths:       []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing:   true,
 		ControlPlaneStopTimeout: 1 * time.Minute,
@@ -136,6 +138,9 @@ var _ = BeforeSuite(func() {
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
 		Recorder: k8sManager.GetEventRecorderFor("PromotionStrategy"),
+		Config: PromotionStrategyReconcilerConfig{
+			RequeueDuration: 5 * time.Second,
+		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -268,12 +273,20 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 	_, err = runGitCmd(gitPath, "git", "push")
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{"environment/development", "environment/staging", "environment/production", "environment/development-next", "environment/staging-next", "environment/production-next"} {
+	//"environment/development-next", "environment/staging-next", "environment/production-next"
+	for _, environment := range []string{"environment/development", "environment/staging", "environment/production"} {
 		_, err = runGitCmd(gitPath, "git", "checkout", "--orphan", environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "git", "commit", "--allow-empty", "-m", "initial commit")
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(gitPath, "git", "checkout", "-b", environment+"-next")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "git", "commit", "--allow-empty", "-m", "initial commit")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
 	}
 }
@@ -282,7 +295,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 	//gitPath, err := os.MkdirTemp("", "*")
 	//Expect(err).NotTo(HaveOccurred())
 
-	_, err := runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", repoOwner, repoName), ".")
+	_, err := runGitCmd(gitPath, "git", "clone", "--verbose", "--progress", "--filter=blob:none", fmt.Sprintf("http://localhost:5000/%s/%s", repoOwner, repoName), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
