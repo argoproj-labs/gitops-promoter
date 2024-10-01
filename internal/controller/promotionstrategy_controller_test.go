@@ -240,12 +240,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a commit statuses", func() {
-		BeforeEach(func() {
-		})
-
-		AfterEach(func() {
-		})
-
 		It("should successfully reconcile the resource", func() {
 			//Skip("Skipping test because of flakiness")
 			By("Reconciling the created resource")
