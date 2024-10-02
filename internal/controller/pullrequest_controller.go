@@ -127,15 +127,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
-		//err = r.Delete(ctx, &pr)
-		//if err != nil {
-		//	return ctrl.Result{}, err
-		//}
-		// We deleted the resource so we return the reconcile as done
 		err = r.Status().Update(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		// We requeue here because we want to delete the resource on the next reconcile, this does cause more API calls to the provider
+		// but is cleaner than deleting right away. Will revisit this.
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -146,15 +143,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
-		//err = r.Delete(ctx, &pr)
-		//if err != nil {
-		//	return ctrl.Result{}, err
-		//}
 		err = r.Status().Update(ctx, &pr)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		// We deleted the resource so we return the reconcile as done
+		// We requeue here because we want to delete the resource on the next reconcile, this does cause more API calls to the provider
+		// but is cleaner than deleting right away. Will revisit this.
 		return ctrl.Result{Requeue: true}, nil
 	}
 
