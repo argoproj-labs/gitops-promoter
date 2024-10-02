@@ -74,11 +74,11 @@ test-e2e:
 
 .PHONY: test-parallel
 test-parallel: ginkgo ## Run tests in parallel
-	$(GINKGO) -p -r -v internal/controller/
+	$(GINKGO) -p -r -v .
 
 .PHONY: test-parallel-repeat3
 test-parallel-repeat3: ginkgo ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
-	$(GINKGO) -p -r -v --repeat=2 internal/controller/
+	$(GINKGO) -p -r -v --repeat=2 .
 
 .PHONY: lint nilaway-no-test
 lint: golangci-lint ## Run golangci-lint linter & yamllint
