@@ -133,38 +133,38 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ProposedCommit, error) {
 	logger := log.FromContext(ctx)
 
-	pc := promoterv1alpha1.ProposedCommit{}
+	//pc := promoterv1alpha1.ProposedCommit{}
 	pcName := utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(ps.Name, environment.Branch))
+
+	// The code below sets the ownership for the Release Object
+	kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+	controllerRef := metav1.NewControllerRef(ps, gvk)
+
+	pc := promoterv1alpha1.ProposedCommit{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            pcName,
+			Namespace:       ps.Namespace,
+			OwnerReferences: []metav1.OwnerReference{*controllerRef},
+			Labels: map[string]string{
+				"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, ps.Name),
+				"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, pcName),
+				"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, environment.Branch),
+			},
+		},
+		Spec: promoterv1alpha1.ProposedCommitSpec{
+			RepositoryReference:    ps.Spec.RepositoryReference,
+			ProposedBranch:         fmt.Sprintf("%s-%s", environment.Branch, "next"),
+			ActiveBranch:           environment.Branch,
+			ActiveCommitStatuses:   append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...),
+			ProposedCommitStatuses: append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...),
+		},
+	}
+
 	err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("ProposedCommit not found, creating", "namespace", ps.Namespace, "name", pcName)
-
-			// The code below sets the ownership for the Release Object
-			kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
-			gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-			controllerRef := metav1.NewControllerRef(ps, gvk)
-
-			pc = promoterv1alpha1.ProposedCommit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:            pcName,
-					Namespace:       ps.Namespace,
-					OwnerReferences: []metav1.OwnerReference{*controllerRef},
-					Labels: map[string]string{
-						"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, ps.Name),
-						"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, pcName),
-						"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, environment.Branch),
-					},
-				},
-				Spec: promoterv1alpha1.ProposedCommitSpec{
-					RepositoryReference:    ps.Spec.RepositoryReference,
-					ProposedBranch:         fmt.Sprintf("%s-%s", environment.Branch, "next"),
-					ActiveBranch:           environment.Branch,
-					ActiveCommitStatuses:   append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...),
-					ProposedCommitStatuses: append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...),
-				},
-			}
-
 			err = r.Create(ctx, &pc)
 			if err != nil {
 				return &pc, err
@@ -173,20 +173,13 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 			logger.Error(err, "failed to get ProposedCommit", "namespace", ps.Namespace, "name", pcName)
 			return &pc, err
 		}
+	} else {
+		//TODO: Update the ProposedCommit with the new values, we could add a hash status to the ProposedCommit to see if we need to update it.
+		err = r.Update(ctx, &pc)
+		if err != nil {
+			return nil, err
+		}
 	}
-
-	pc.Spec.RepositoryReference = ps.Spec.RepositoryReference
-	pc.Spec.ProposedBranch = fmt.Sprintf("%s-%s", environment.Branch, "next")
-	pc.Spec.ActiveBranch = environment.Branch
-	pc.Spec.ActiveCommitStatuses = append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)
-	pc.Spec.ProposedCommitStatuses = append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)
-
-	//TODO: Update the ProposedCommit with the new values, we could add a hash status to the ProposedCommit to see if we need to update it.
-	err = r.Update(ctx, &pc)
-	if err != nil {
-		return nil, err
-	}
-
 	return &pc, nil
 }
 
