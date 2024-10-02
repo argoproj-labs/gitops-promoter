@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	. "github.com/onsi/ginkgo/v2"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+
+	. "github.com/onsi/ginkgo/v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 

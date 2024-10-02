@@ -19,7 +19,6 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"github.com/onsi/ginkgo/v2"
 	"os"
 	"time"
 
@@ -100,11 +99,6 @@ func main() {
 	webhookServer := webhook.NewServer(webhook.Options{
 		TLSOpts: tlsOpts,
 	})
-
-	if ginkgo.GinkgoParallelProcess() > 1 {
-		// Turn off metrics server if running tests in parallel mode
-		metricsAddr = "0"
-	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,

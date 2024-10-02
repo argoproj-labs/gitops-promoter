@@ -3,6 +3,7 @@ package fake
 import (
 	"context"
 	"fmt"
+
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	v1 "k8s.io/api/core/v1"

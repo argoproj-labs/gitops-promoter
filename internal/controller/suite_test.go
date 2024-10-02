@@ -29,10 +29,11 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"strings"
 	"testing"
 	"time"
+
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	ctrl "sigs.k8s.io/controller-runtime"
