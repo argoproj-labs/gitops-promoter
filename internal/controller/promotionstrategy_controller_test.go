@@ -40,7 +40,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		ctx := context.Background()
 
 		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
+			By("Creating the resources")
 
 			name, scmSecret, scmProvider, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
 
@@ -61,7 +61,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			pullRequestStaging := promoterv1alpha1.PullRequest{}
 			pullRequestProd := promoterv1alpha1.PullRequest{}
 
-			// Check that ProposedCommit are created
+			By("Checking that all the ProposedCommits are created and PRs are created and in their proper state with updated statuses and proper sha's")
 			Eventually(func(g Gomega) {
 				_ = k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
 
@@ -166,7 +166,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			makeChangeAndHydrateRepo(gitPath, name, name)
 
-			// We should now get PRs created for the ProposedCommits
+			By("Checking that the pull request for the development environment is created")
 			Eventually(func(g Gomega) {
 				// Dev PR should exist
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitDev))
@@ -176,31 +176,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestDev)
 				g.Expect(err).To(Succeed())
 
-				// Dev PR should not exists because we closed it
-				//prName = utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-%s-%s", proposedCommitDev.Spec.RepositoryReference.Name, proposedCommitDev.Spec.RepositoryReference.Owner, proposedCommitDev.Spec.ProposedBranch, proposedCommitDev.Spec.ActiveBranch))
-				//err = k8sClient.Get(ctx, types.NamespacedName{
-				//	Name:      prName,
-				//	Namespace: typeNamespacedName.Namespace,
-				//}, &pullRequestDev)
-				//g.Expect(err).To(Not(BeNil()))
-				//g.Expect(errors.IsNotFound(err)).To(BeTrue())
-
-				//prName = utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-%s-%s", proposedCommitStaging.Spec.RepositoryReference.Name, proposedCommitStaging.Spec.RepositoryReference.Owner, proposedCommitStaging.Spec.ProposedBranch, proposedCommitStaging.Spec.ActiveBranch))
-				//err = k8sClient.Get(ctx, types.NamespacedName{
-				//	Name:      prName,
-				//	Namespace: typeNamespacedName.Namespace,
-				//}, &pullRequestStaging)
-				//g.Expect(err).To(Succeed())
-
-				//prName = utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-%s-%s", proposedCommitProd.Spec.RepositoryReference.Name, proposedCommitProd.Spec.RepositoryReference.Owner, proposedCommitProd.Spec.ProposedBranch, proposedCommitProd.Spec.ActiveBranch))
-				//err = k8sClient.Get(ctx, types.NamespacedName{
-				//	Name:      prName,
-				//	Namespace: typeNamespacedName.Namespace,
-				//}, &pullRequestProd)
-				//g.Expect(err).To(Succeed())
-
 			}, EventuallyTimeout).Should(Succeed())
 
+			By("Checking that the pull request for the development, staging, and production environments are closed")
 			Eventually(func(g Gomega) {
 				// The PRs should eventually close because of no commit status checks configured
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitDev))
@@ -211,8 +189,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Not(BeNil()))
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-				//g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + prName + "\" not found"))
-
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitStaging))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
@@ -220,9 +196,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestStaging)
 				g.Expect(err).To(Not(BeNil()))
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-				//
-				////g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + prName + "\" not found"))
-				//
+
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitProd))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
@@ -230,8 +204,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestProd)
 				g.Expect(err).To(Not(BeNil()))
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-				//
-				////g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + prName + "\" not found"))
 
 			}, EventuallyTimeout).Should(Succeed())
 
@@ -242,7 +214,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	Context("When reconciling a resource with a commit statuses", func() {
 		It("should successfully reconcile the resource", func() {
 			//Skip("Skipping test because of flakiness")
-			By("Reconciling the created resource")
+			By("Creating the resource")
 			name, scmSecret, scmProvider, commitStatus, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-commit-status", "default")
 
 			typeNamespacedName := types.NamespacedName{
@@ -279,6 +251,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			pullRequestDev := promoterv1alpha1.PullRequest{}
 			pullRequestStaging := promoterv1alpha1.PullRequest{}
 			pullRequestProd := promoterv1alpha1.PullRequest{}
+			By("Checking that all the ProposedCommits are created and PRs are created and in their proper state")
 			Eventually(func(g Gomega) {
 				// Make sure proposed commits are created and the associated PRs
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -324,6 +297,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			}, EventuallyTimeout).Should(Succeed())
 
+			By("Updating the commit status to success, for the development environment")
 			Eventually(func(g Gomega) {
 
 				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
@@ -341,8 +315,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 			}).Should(Succeed())
 
+			By("By checking that the commit status has been copied")
 			Eventually(func(g Gomega) {
-				// Get the copied commmit status
+				// Get the copied commit status
 				var copiedCommitStatus promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatus.Name),
@@ -352,6 +327,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy]).To(Equal("true"))
 			}, EventuallyTimeout).Should(Succeed())
 
+			By("By checking that the staging pull request has been merged and the production pull request is still open")
 			Eventually(func(g Gomega) {
 
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitStaging))
