@@ -27,7 +27,7 @@ jobs:
       - name: Build
         run: make
       - name: Run Unit-Tests
-        run: make test
+        run: make test-parallel
       - name: Generate code coverage artifacts
         uses: actions/upload-artifact@v4
         with:
