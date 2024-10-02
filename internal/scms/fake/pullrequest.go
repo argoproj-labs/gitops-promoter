@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	. "github.com/onsi/ginkgo/v2"
 	"os"
 	"os/exec"
 	"strings"
@@ -73,7 +74,10 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	if err != nil {
 		panic("could not make temp dir for repo server")
 	}
-	_, err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:5000/%s/%s", pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name), ".")
+
+	gitServerPort := 5000 + GinkgoParallelProcess()
+	gitServerPortStr := fmt.Sprintf("%d", gitServerPort)
+	_, err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name), ".")
 	if err != nil {
 		return err
 	}

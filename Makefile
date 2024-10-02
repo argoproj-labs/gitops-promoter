@@ -72,6 +72,10 @@ test: manifests generate fmt vet envtest ## Run tests.
 test-e2e:
 	go test ./test/e2e/ -v
 
+.PHONY: test-parallel
+test-parallel: ginkgo ## Run tests in parallel
+	$(GINKGO) -p internal/controller/
+
 .PHONY: lint nilaway-no-test
 lint: golangci-lint ## Run golangci-lint linter & yamllint
 	$(GOLANGCI_LINT) run
@@ -166,6 +170,7 @@ ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 MOCKERY = $(LOCALBIN)/mockery-$(MOCKERY_VERSION)
 NILAWAY = $(LOCALBIN)/nilaway-$(NILAWAY_VERSION)
+GINKGO = $(LOCALBIN)/ginkgo-$(GINKGO_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.3.0
@@ -174,6 +179,7 @@ ENVTEST_VERSION ?= release-0.17
 GOLANGCI_LINT_VERSION ?= v1.54.2
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
+GINKGO_VERSION ?= latest
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -202,6 +208,10 @@ mockery:
 .PHONY: nilaway
 nilaway:
 	$(call go-install-tool,$(NILAWAY),go.uber.org/nilaway/cmd/nilaway,${NILAWAY_VERSION})
+
+.PHONY: ginkgo
+ginkgo:
+	$(call go-install-tool,$(GINKGO),github.com/onsi/ginkgo/v2/ginkgo,${GINKGO_VERSION})
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)
