@@ -339,6 +339,20 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				commitStatus.Spec.Phase = "success"
 				err = k8sClient.Update(ctx, commitStatus)
 				g.Expect(err).To(Succeed())
+			}).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				// Get the copied commmit status
+				var copiedCommitStatus promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatus.Name),
+					Namespace: typeNamespacedName.Namespace,
+				}, &copiedCommitStatus)
+				g.Expect(err).To(Succeed())
+				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy]).To(Equal("true"))
+			}, EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
 
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitStaging))
 				err = k8sClient.Get(ctx, types.NamespacedName{

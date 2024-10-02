@@ -303,37 +303,39 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 				continue
 			}
 
-			cs := promoterv1alpha1.CommitStatus{}
+			copiedCommitStatus := &promoterv1alpha1.CommitStatus{}
 			//TODO: do we like this name proposed-<name>?
 			copiedCSName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatus.Name)
 			proposedCSObjectKey := client.ObjectKey{Namespace: commitStatus.Namespace, Name: copiedCSName}
-			errGet := r.Get(ctx, proposedCSObjectKey, &cs)
+
+			copiedCommitStatus = &promoterv1alpha1.CommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        proposedCSObjectKey.Name,
+					Annotations: commitStatus.Annotations,
+					Labels:      commitStatus.Labels,
+					Namespace:   commitStatus.Namespace,
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					RepositoryReference: commitStatus.Spec.RepositoryReference,
+					Sha:                 copyToProposedHydratedSha,
+					Name:                branch + " - " + commitStatus.Spec.Name,
+					Description:         commitStatus.Spec.Description,
+					Phase:               commitStatus.Spec.Phase,
+					Url:                 "https://github.com/" + commitStatus.Spec.RepositoryReference.Owner + "/" + commitStatus.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha,
+				},
+			}
+			if copiedCommitStatus.Labels == nil {
+				copiedCommitStatus.Labels = make(map[string]string)
+			}
+			copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy] = "true"
+			copiedCommitStatus.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
+			copiedCommitStatus.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
+			copiedCommitStatus.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
+
+			errGet := r.Get(ctx, proposedCSObjectKey, copiedCommitStatus)
 			if errGet != nil {
 				if errors.IsNotFound(errGet) {
-					status := &promoterv1alpha1.CommitStatus{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:        proposedCSObjectKey.Name,
-							Annotations: commitStatus.Annotations,
-							Labels:      commitStatus.Labels,
-							Namespace:   commitStatus.Namespace,
-						},
-						Spec: promoterv1alpha1.CommitStatusSpec{
-							RepositoryReference: commitStatus.Spec.RepositoryReference,
-							Sha:                 copyToProposedHydratedSha,
-							Name:                branch + " - " + commitStatus.Spec.Name,
-							Description:         commitStatus.Spec.Description,
-							Phase:               commitStatus.Spec.Phase,
-							Url:                 "https://github.com/" + commitStatus.Spec.RepositoryReference.Owner + "/" + commitStatus.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha,
-						},
-					}
-					if status.Labels == nil {
-						status.Labels = make(map[string]string)
-					}
-					status.Labels[promoterv1alpha1.CommitStatusLabelCopy] = "true"
-					status.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
-					status.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
-					status.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
-					err := r.Create(ctx, status)
+					err := r.Create(ctx, copiedCommitStatus)
 					if err != nil {
 						return err
 					}
@@ -341,24 +343,12 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 					logger.Error(errGet, "failed to get CommitStatus", "namespace", proposedCSObjectKey.Namespace, "name", proposedCSObjectKey.Name)
 					return errGet
 				}
-			}
-			commitStatus.Spec.DeepCopyInto(&cs.Spec)
-
-			if cs.Labels == nil {
-				cs.Labels = make(map[string]string)
-			}
-			cs.Labels[promoterv1alpha1.CommitStatusLabelCopy] = "true"
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
-			cs.Spec.Sha = copyToProposedHydratedSha
-			cs.Spec.Name = branch + " - " + commitStatus.Spec.Name
-
-			//TODO: This should be a function that gets the URL from the provider in a the providers required format
-			cs.Spec.Url = "https://github.com/" + cs.Spec.RepositoryReference.Owner + "/" + cs.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha
-			err = r.Update(ctx, &cs)
-			if err != nil {
-				return err
+			} else {
+				//err = r.Patch(ctx, copiedCommitStatus, client.StrategicMergeFrom(&commitStatus))
+				err = r.Update(ctx, copiedCommitStatus)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
