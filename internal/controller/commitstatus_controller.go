@@ -88,7 +88,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s", commitStatus.Name, commitStatus.Spec.Phase)
+	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", commitStatus.Name, commitStatus.Spec.Phase, commitStatus.Spec.Sha)
 
 	commitStatus.Status.ObservedGeneration = commitStatus.Generation
 	err = r.Status().Update(ctx, commitStatus)
