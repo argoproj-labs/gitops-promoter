@@ -73,11 +73,11 @@ test-e2e:
 	go test ./test/e2e/ -v
 
 .PHONY: test-parallel
-test-parallel: ginkgo ## Run tests in parallel
+test-parallel: ginkgo manifests generate fmt vet envtest ## Run tests in parallel
 	$(GINKGO) -p -r -v internal/
 
 .PHONY: test-parallel-repeat3
-test-parallel-repeat3: ginkgo ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
+test-parallel-repeat3: ginkgo manifests generate fmt vet envtest ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
 	$(GINKGO) -p -r -v --repeat=2 internal/
 
 .PHONY: lint nilaway-no-test

@@ -215,7 +215,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			//Skip("Skipping test because of flakiness")
 			By("Creating the resource")
-			name, scmSecret, scmProvider, commitStatusDevelopment, commitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-commit-status", "default")
+			name, scmSecret, scmProvider, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-commit-status", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -227,12 +227,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Key: "health-check",
 				},
 			}
-			commitStatusDevelopment.Spec.Name = "health-check"
-			commitStatusDevelopment.Labels = map[string]string{
+			activeCommitStatusDevelopment.Spec.Name = "health-check"
+			activeCommitStatusDevelopment.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "health-check",
 			}
-			commitStatusStaging.Spec.Name = "health-check"
-			commitStatusStaging.Labels = map[string]string{
+			activeCommitStatusStaging.Spec.Name = "health-check"
+			activeCommitStatusStaging.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "health-check",
 			}
 
@@ -243,8 +243,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, commitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, commitStatusStaging)).To(Succeed())
+			Expect(k8sClient.Create(ctx, activeCommitStatusDevelopment)).To(Succeed())
+			Expect(k8sClient.Create(ctx, activeCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ProposedCommits
@@ -306,9 +306,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Eventually(func(g Gomega) {
 
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      commitStatusDevelopment.Name,
-					Namespace: commitStatusDevelopment.Namespace,
-				}, commitStatusDevelopment)
+					Name:      activeCommitStatusDevelopment.Name,
+					Namespace: activeCommitStatusDevelopment.Namespace,
+				}, activeCommitStatusDevelopment)
 				g.Expect(err).To(Succeed())
 
 				_, err = runGitCmd(gitPath, "git", "fetch")
@@ -317,9 +317,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
-				commitStatusDevelopment.Spec.Sha = sha
-				commitStatusDevelopment.Spec.Phase = "success"
-				err = k8sClient.Update(ctx, commitStatusDevelopment)
+				activeCommitStatusDevelopment.Spec.Sha = sha
+				activeCommitStatusDevelopment.Spec.Phase = "success"
+				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
 				g.Expect(err).To(Succeed())
 			}, EventuallyTimeout).Should(Succeed())
 
@@ -327,7 +327,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Eventually(func(g Gomega) {
 				var copiedCommitStatus promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatusDevelopment.Name),
+					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+activeCommitStatusDevelopment.Name),
 					Namespace: typeNamespacedName.Namespace,
 				}, &copiedCommitStatus)
 				g.Expect(err).To(Succeed())
@@ -359,9 +359,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Eventually(func(g Gomega) {
 
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      commitStatusStaging.Name,
-					Namespace: commitStatusStaging.Namespace,
-				}, commitStatusStaging)
+					Name:      activeCommitStatusStaging.Name,
+					Namespace: activeCommitStatusStaging.Namespace,
+				}, activeCommitStatusStaging)
 				g.Expect(err).To(Succeed())
 
 				_, err = runGitCmd(gitPath, "git", "fetch")
@@ -370,9 +370,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
-				commitStatusStaging.Spec.Sha = sha
-				commitStatusStaging.Spec.Phase = "success"
-				err = k8sClient.Update(ctx, commitStatusStaging)
+				activeCommitStatusStaging.Spec.Sha = sha
+				activeCommitStatusStaging.Spec.Phase = "success"
+				err = k8sClient.Update(ctx, activeCommitStatusStaging)
 				g.Expect(err).To(Succeed())
 			}, EventuallyTimeout).Should(Succeed())
 
@@ -381,7 +381,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// Get the copied commit status
 				var copiedCommitStatus promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatusStaging.Name),
+					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+activeCommitStatusStaging.Name),
 					Namespace: typeNamespacedName.Namespace,
 				}, &copiedCommitStatus)
 				g.Expect(err).To(Succeed())
