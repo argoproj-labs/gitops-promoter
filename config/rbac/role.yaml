@@ -8,135 +8,10 @@ rules:
   - promoter.argoproj.io
   resources:
   - commitstatuses
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - commitstatuses/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - commitstatuses/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
   - promotionstrategies
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - promotionstrategies/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - promotionstrategies/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
   - proposedcommits
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - proposedcommits/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - proposedcommits/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
   - pullrequests
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - pullrequests/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - pullrequests/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
   - revertcommits
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - revertcommits/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - revertcommits/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
   - scmproviders
   verbs:
   - create
@@ -149,12 +24,22 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - commitstatuses/finalizers
+  - promotionstrategies/finalizers
+  - proposedcommits/finalizers
+  - pullrequests/finalizers
+  - revertcommits/finalizers
   - scmproviders/finalizers
   verbs:
   - update
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - commitstatuses/status
+  - promotionstrategies/status
+  - proposedcommits/status
+  - pullrequests/status
+  - revertcommits/status
   - scmproviders/status
   verbs:
   - get
