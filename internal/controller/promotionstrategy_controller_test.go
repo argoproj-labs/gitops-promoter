@@ -325,7 +325,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("By checking that the commit status has been copied with the previous environments (development) active hydrated sha")
 			Eventually(func(g Gomega) {
-				// Get the copied commit status
 				var copiedCommitStatus promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+commitStatusDevelopment.Name),
@@ -333,6 +332,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &copiedCommitStatus)
 				g.Expect(err).To(Succeed())
 				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy]).To(Equal("true"))
+				g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(proposedCommitStaging.Status.Proposed.Hydrated.Sha))
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the staging pull request has been merged and the production pull request is still open")
@@ -386,6 +386,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &copiedCommitStatus)
 				g.Expect(err).To(Succeed())
 				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy]).To(Equal("true"))
+				// This cant' be tested because we close the PR to fast we tested behavior on the staging environment though
+				g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(proposedCommitProd.Status.Proposed.Hydrated.Sha))
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the production pull request has been merged")
