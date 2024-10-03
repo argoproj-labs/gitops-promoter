@@ -74,11 +74,11 @@ test-e2e:
 
 .PHONY: test-parallel
 test-parallel: ginkgo manifests generate fmt vet envtest ## Run tests in parallel
-	$(GINKGO) -p -r -v internal/
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -r -v internal/
 
 .PHONY: test-parallel-repeat3
 test-parallel-repeat3: ginkgo manifests generate fmt vet envtest ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
-	$(GINKGO) -p -r -v --repeat=2 internal/
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -r -v --repeat=2 internal/
 
 .PHONY: lint nilaway-no-test
 lint: golangci-lint ## Run golangci-lint linter & yamllint
