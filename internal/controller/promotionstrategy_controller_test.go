@@ -317,6 +317,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
+				// Check that the proposed commit has the correct sha, aka it has reconciled at least once since adding new commits
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &proposedCommitDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(proposedCommitDev.Status.Active.Hydrated.Sha).To(Equal(sha))
+
 				activeCommitStatusDevelopment.Spec.Sha = sha
 				activeCommitStatusDevelopment.Spec.Phase = "success"
 				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
@@ -333,7 +341,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy]).To(Equal("true"))
 				// Need to look into why this is flakey
-				//g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(proposedCommitStaging.Status.Proposed.Hydrated.Sha))
+				g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(proposedCommitStaging.Status.Proposed.Hydrated.Sha))
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the staging pull request has been merged and the production pull request is still open")
@@ -356,6 +364,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			}, EventuallyTimeout).Should(Succeed())
 
+			var shaProdProposedBeforePRClose string
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
 
@@ -371,6 +380,30 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
+				// Check that the proposed commit has the correct sha, aka it has reconciled at least once since adding new commits
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &proposedCommitStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(proposedCommitStaging.Status.Active.Hydrated.Sha).To(Equal(sha))
+
+				// Get an updated proposed commit for prod so that we can use save the sha before we update the commit status letting it merge
+				_, err = runGitCmd(gitPath, "git", "fetch")
+				Expect(err).NotTo(HaveOccurred())
+				shaProdProposed, err := runGitCmd(gitPath, "git", "rev-parse", "origin/"+proposedCommitProd.Spec.ProposedBranch)
+				Expect(err).NotTo(HaveOccurred())
+				shaProdProposed = strings.TrimSpace(shaProdProposed)
+
+				// Check that the proposed commit has the correct sha, aka it has reconciled at least once since adding new commits
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &proposedCommitProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(proposedCommitProd.Status.Proposed.Hydrated.Sha).To(Equal(shaProdProposed))
+				shaProdProposedBeforePRClose = proposedCommitProd.Status.Proposed.Hydrated.Sha
+
 				activeCommitStatusStaging.Spec.Sha = sha
 				activeCommitStatusStaging.Spec.Phase = "success"
 				err = k8sClient.Update(ctx, activeCommitStatusStaging)
@@ -381,14 +414,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Eventually(func(g Gomega) {
 				// Get the copied commit status
 				var copiedCommitStatus promoterv1alpha1.CommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{
+				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+activeCommitStatusStaging.Name),
 					Namespace: typeNamespacedName.Namespace,
 				}, &copiedCommitStatus)
 				g.Expect(err).To(Succeed())
 				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy]).To(Equal("true"))
-				// This cant' be tested because we close the PR to fast we tested behavior on the staging environment though
-				//g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(proposedCommitProd.Status.Proposed.Hydrated.Sha))
+				g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(shaProdProposedBeforePRClose))
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the production pull request has been merged")

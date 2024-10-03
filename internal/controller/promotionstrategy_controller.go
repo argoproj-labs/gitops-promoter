@@ -365,7 +365,7 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 
 		if previousEnvironmentStatus != nil {
 			// There is no previous environment to compare to, so we can't copy the commit statuses.
-			if previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha {
+			if proposedCommitMap[environment.Branch].Status.Proposed.Hydrated.Sha != "" && previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha {
 				// If the previous environment's running commit is the same as the current proposed commit, copy the commit statuses.
 				err := r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), previousEnvironmentStatus.Active.Hydrated.Sha, proposedCommitMap[environment.Branch].Status.Proposed.Hydrated.Sha, previousEnvironmentStatus.Branch) //pc.Status.Active.Hydrated.Sha
 				if err != nil {
