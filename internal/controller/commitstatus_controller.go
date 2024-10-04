@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"k8s.io/client-go/util/retry"
 
 	"k8s.io/client-go/tools/record"
 
@@ -89,14 +90,25 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	_, err = commitStatusProvider.Set(ctx, &cs)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		err := r.Client.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
+		if err != nil {
+			return err
+		}
 
-	cs.Status.ObservedGeneration = cs.Generation
-	err = r.Status().Update(ctx, &cs)
+		_, err = commitStatusProvider.Set(ctx, &cs)
+		if err != nil {
+			return err
+		}
+		r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
+
+		cs.Status.ObservedGeneration = cs.Generation
+		err = r.Status().Update(ctx, &cs)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
 		return ctrl.Result{}, err
 	}

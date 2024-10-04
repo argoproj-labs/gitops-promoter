@@ -329,28 +329,14 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			copiedCommitStatus.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
 			copiedCommitStatus.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
 
-			errGet := r.Get(ctx, proposedCSObjectKey, copiedCommitStatus)
-			if errGet != nil {
-				if errors.IsNotFound(errGet) {
-					err := r.Create(ctx, copiedCommitStatus)
-					if err != nil {
-						if errors.IsAlreadyExists(err) {
-							errExistsPatch := r.Patch(ctx, copiedCommitStatus, client.MergeFrom(&promoterv1alpha1.CommitStatus{}))
-							if errExistsPatch != nil {
-								return errExistsPatch
-							}
-							return nil
-						}
-						return err
+			err = r.Patch(ctx, copiedCommitStatus, client.MergeFrom(&promoterv1alpha1.CommitStatus{}))
+			if err != nil {
+				if errors.IsNotFound(err) {
+					errCreate := r.Create(ctx, copiedCommitStatus)
+					if errCreate != nil {
+						logger.Error(errCreate, "failed to create copied CommitStatus", "namespace", copiedCommitStatus.Namespace, "name", copiedCommitStatus.Name)
+						return errCreate
 					}
-				} else {
-					logger.Error(errGet, "failed to get CommitStatus", "namespace", proposedCSObjectKey.Namespace, "name", proposedCSObjectKey.Name)
-					return errGet
-				}
-			} else {
-				err = r.Patch(ctx, copiedCommitStatus, client.MergeFrom(&promoterv1alpha1.CommitStatus{}))
-				if err != nil {
-					return err
 				}
 			}
 		}
