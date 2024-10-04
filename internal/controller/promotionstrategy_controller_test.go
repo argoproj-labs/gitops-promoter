@@ -410,6 +410,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				activeCommitStatusStaging.Spec.Sha = sha
 				activeCommitStatusStaging.Spec.Phase = "success"
 				err = k8sClient.Update(ctx, activeCommitStatusStaging)
+				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 				g.Expect(err).To(Succeed())
 			}, EventuallyTimeout).Should(Succeed())
 
