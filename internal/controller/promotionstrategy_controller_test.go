@@ -329,7 +329,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				activeCommitStatusDevelopment.Spec.Sha = sha
 				activeCommitStatusDevelopment.Spec.Phase = "success"
 				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
+				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())
+
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the commit status has been copied with the previous environments (development) active hydrated sha")
