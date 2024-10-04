@@ -325,6 +325,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(proposedCommitDev.Status.Active.Hydrated.Sha).To(Equal(sha))
 
+				g.Expect(sha).To(Not(Equal("")))
 				activeCommitStatusDevelopment.Spec.Sha = sha
 				activeCommitStatusDevelopment.Spec.Phase = "success"
 				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
