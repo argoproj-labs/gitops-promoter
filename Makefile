@@ -74,7 +74,7 @@ test-e2e:
 
 .PHONY: test-parallel
 test-parallel: ginkgo manifests generate fmt vet envtest ## Run tests in parallel
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -r -v -cover -coverprofile=cover.out internal/
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -r -v -cover -coverprofile=cover.out --repeat=15 internal/
 
 .PHONY: test-parallel-repeat3
 test-parallel-repeat3: ginkgo manifests generate fmt vet envtest ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
