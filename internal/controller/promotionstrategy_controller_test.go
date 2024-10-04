@@ -211,11 +211,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 	})
 
-	Context("When reconciling a resource with a commit statuses", func() {
+	Context("When reconciling a resource with active commit statuses", func() {
 		It("should successfully reconcile the resource", func() {
 			//Skip("Skipping test because of flakiness")
 			By("Creating the resource")
-			name, scmSecret, scmProvider, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-commit-status", "default")
+			name, scmSecret, scmProvider, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-active-commit-status", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -434,6 +434,100 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestProd)
 				g.Expect(err).To(Not(BeNil()))
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+			}, EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+		})
+	})
+
+	Context("When reconciling a resource with a proposed commit status", func() {
+		It("should successfully reconcile the resource", func() {
+			//Skip("Skipping test because of flakiness")
+			By("Creating the resource")
+			name, scmSecret, scmProvider, proposedCommitStatusDevelopment, proposedCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-proposed-commit-status", "default")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{
+					Key: "no-deployments-allowed",
+				},
+			}
+			proposedCommitStatusDevelopment.Spec.Name = "no-deployments-allowed"
+			proposedCommitStatusDevelopment.Labels = map[string]string{
+				promoterv1alpha1.CommitStatusLabel: "no-deployments-allowed",
+			}
+			proposedCommitStatusStaging.Spec.Name = "no-deployments-allowed"
+			proposedCommitStatusStaging.Labels = map[string]string{
+				promoterv1alpha1.CommitStatusLabel: "no-deployments-allowed",
+			}
+
+			By("Adding a pending commit")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			makeChangeAndHydrateRepo(gitPath, name, name)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, proposedCommitStatusDevelopment)).To(Succeed())
+			Expect(k8sClient.Create(ctx, proposedCommitStatusStaging)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			// We should now get PRs created for the ProposedCommits
+			// Check that ProposedCommit are created
+			proposedCommitDev := promoterv1alpha1.ProposedCommit{}
+			proposedCommitStaging := promoterv1alpha1.ProposedCommit{}
+			proposedCommitProd := promoterv1alpha1.ProposedCommit{}
+
+			pullRequestDev := promoterv1alpha1.PullRequest{}
+			pullRequestStaging := promoterv1alpha1.PullRequest{}
+			pullRequestProd := promoterv1alpha1.PullRequest{}
+			By("Checking that all the ProposedCommits and PRs are created and in their proper state")
+			Eventually(func(g Gomega) {
+				// Make sure proposed commits are created and the associated PRs
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &proposedCommitDev)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &proposedCommitStaging)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &proposedCommitProd)
+				g.Expect(err).To(Succeed())
+
+				// Dev PR should stay open because it has a proposed commit
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitDev))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestDev)
+				g.Expect(err).To(Succeed())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitStaging))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(Succeed())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitProd))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
 
 			}, EventuallyTimeout).Should(Succeed())
 

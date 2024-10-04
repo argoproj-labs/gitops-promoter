@@ -161,7 +161,8 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 		},
 	}
 
-	err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
+	pcGet := promoterv1alpha1.ProposedCommit{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pcGet, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("ProposedCommit not found, creating", "namespace", ps.Namespace, "name", pcName)
@@ -174,8 +175,8 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 			return &pc, err
 		}
 	} else {
-		//TODO: Update the ProposedCommit with the new values, we could add a hash status to the ProposedCommit to see if we need to update it.
-		err = r.Update(ctx, &pc)
+		//TODO: Update the ProposedCommit with the new values, we should could add a hash status to the ProposedCommit to see if we need to update it.
+		err = r.Patch(ctx, &pc, client.MergeFrom(&promoterv1alpha1.ProposedCommit{}))
 		if err != nil {
 			return nil, err
 		}
@@ -381,9 +382,10 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 			previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha &&
 			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
-		proposedChecksPassed := environmentStatus.Proposed.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess)
+		proposedChecksPassed := environmentStatus.Proposed.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
+			environmentStatus.Proposed.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha
 
-		if (environmentIndex == 0 || (activeChecksPassed && proposedChecksPassed)) && environment.GetAutoMerge() {
+		if (environmentIndex == 0 && proposedChecksPassed || (activeChecksPassed && proposedChecksPassed)) && environment.GetAutoMerge() {
 			// We are either in the first environment or all checks have passed and the environment is set to auto merge.
 			prl := promoterv1alpha1.PullRequestList{}
 			// Find the PRs that match the proposed commit and the environment. There should only be one.
