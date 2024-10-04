@@ -84,14 +84,18 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	commitStatus, err := commitStatusProvider.Set(ctx, &cs)
-	if err != nil {
-		return ctrl.Result{}, err
+	if cs.Spec.Sha != "" && cs.Spec.Phase != "" {
+		_, err := commitStatusProvider.Set(ctx, &cs)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
+	} else {
+		logger.Info("Skip setting commit status, missing sha or phase", "namespace", req.Namespace, "name", req.Name)
 	}
-	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", commitStatus.Name, commitStatus.Spec.Phase, commitStatus.Spec.Sha)
 
-	commitStatus.Status.ObservedGeneration = commitStatus.Generation
-	err = r.Status().Update(ctx, commitStatus)
+	cs.Status.ObservedGeneration = cs.Generation
+	err = r.Status().Update(ctx, &cs)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

@@ -101,6 +101,7 @@ spec:
                 format: int64
                 type: integer
               phase:
+                default: pending
                 enum:
                 - pending
                 - success
