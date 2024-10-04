@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -225,7 +224,7 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	server := &http.Server{Addr: ":" + gitServerPortStr, Handler: service}
 
 	// Disables logging for gitkit
-	log.SetOutput(io.Discard)
+	//log.SetOutput(io.Discard)
 	go func() {
 		// Start HTTP server
 		if err := server.ListenAndServe(); err != nil {
