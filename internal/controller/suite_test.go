@@ -202,6 +202,17 @@ var _ = AfterSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 })
 
+type filterLogger struct {
+}
+
+func (f *filterLogger) Write(p []byte) (n int, err error) {
+	if strings.Contains(string(p), "request:") {
+		return len(p), nil
+	}
+	log.Print(string(p))
+	return len(p), nil
+}
+
 func startGitServer(gitStoragePath string) (string, *http.Server) {
 	hooks := &gitkit.HookScripts{
 		PreReceive: `echo "Hello World!"`,
@@ -225,6 +236,9 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 
 	// Disables logging for gitkit
 	//log.SetOutput(io.Discard)
+	gitKitFilterLogger := &filterLogger{}
+	log.SetOutput(gitKitFilterLogger)
+
 	go func() {
 		// Start HTTP server
 		if err := server.ListenAndServe(); err != nil {
