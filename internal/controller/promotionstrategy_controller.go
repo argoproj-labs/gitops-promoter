@@ -333,6 +333,9 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 				if errors.IsNotFound(errGet) {
 					err := r.Create(ctx, copiedCommitStatus)
 					if err != nil {
+						if errors.IsAlreadyExists(err) {
+							return nil
+						}
 						return err
 					}
 				} else {
@@ -340,8 +343,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 					return errGet
 				}
 			} else {
-				//err = r.Patch(ctx, copiedCommitStatus, client.StrategicMergeFrom(&commitStatus))
-				err = r.Update(ctx, copiedCommitStatus)
+				err = r.Patch(ctx, copiedCommitStatus, client.MergeFrom(&promoterv1alpha1.CommitStatus{}))
 				if err != nil {
 					return err
 				}
