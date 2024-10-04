@@ -244,6 +244,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			//logger.Info("No active commit statuses configured, assuming success", "branch", environment.Branch)
 		} else {
 			ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
+			ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
 			logger.Info("Active commit status pending", "branch", environment.Branch)
 		}
 
@@ -267,6 +268,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			//logger.Info("No proposed commit statuses configured, assuming success", "branch", environment.Branch)
 		} else {
 			ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
+			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
 			logger.Info("Proposed commit status pending", "branch", environment.Branch)
 		}
 	}
