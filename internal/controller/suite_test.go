@@ -30,7 +30,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -372,11 +371,7 @@ func deleteRepo(owner, name string) {
 	Expect(err).NotTo(HaveOccurred())
 }
 
-var mutexPR = &sync.Mutex{}
-
 func runGitCmd(directory string, name string, args ...string) (string, error) {
-	mutexPR.Lock()
-	defer mutexPR.Unlock()
 	cmd := exec.Command(name, args...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer

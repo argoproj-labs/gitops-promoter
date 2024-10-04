@@ -69,11 +69,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 	return nil
 }
 
-var mutexPRMerge sync.RWMutex
-
 func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest *v1alpha1.PullRequest) error {
-	mutexPRMerge.Lock()
-	defer mutexPRMerge.Unlock()
 	gitPath, err := os.MkdirTemp("", "*")
 	defer os.RemoveAll(gitPath)
 	if err != nil {
