@@ -92,6 +92,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 	} else {
 		logger.Info("Skip setting commit status, missing sha or phase", "namespace", req.Namespace, "name", req.Name)
+		return ctrl.Result{}, nil
 	}
 
 	cs.Status.ObservedGeneration = cs.Generation
