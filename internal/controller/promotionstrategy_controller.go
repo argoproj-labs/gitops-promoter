@@ -233,7 +233,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 				if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
 					ps.Status.Environments[i].Active.CommitStatus.Phase = status.Phase
 					ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
-					logger.Info("Active commit status not success", "branch", environment.Branch, "status", status.Phase)
+					logger.Info("Active commit status not success", "branch", environment.Branch, "status", status.Phase, "sha", pcMap[environment.Branch].Status.Active.Hydrated.Sha)
 					break
 				}
 			}

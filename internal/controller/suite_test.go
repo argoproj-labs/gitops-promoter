@@ -145,7 +145,7 @@ var _ = BeforeSuite(func() {
 		Scheme:   k8sManager.GetScheme(),
 		Recorder: k8sManager.GetEventRecorderFor("PromotionStrategy"),
 		Config: PromotionStrategyReconcilerConfig{
-			RequeueDuration: 5 * time.Second,
+			RequeueDuration: 10 * time.Second,
 		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -157,7 +157,7 @@ var _ = BeforeSuite(func() {
 		PathLookup: pathLookup,
 		Recorder:   k8sManager.GetEventRecorderFor("ProposedCommit"),
 		Config: ProposedCommitReconcilerConfig{
-			RequeueDuration: 5 * time.Second,
+			RequeueDuration: 10 * time.Second,
 		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
