@@ -126,7 +126,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Owns(&promoterv1alpha1.ProposedCommit{}).
+		//Owns(&promoterv1alpha1.ProposedCommit{}).
 		Complete(r)
 }
 
