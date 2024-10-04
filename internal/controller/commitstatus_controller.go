@@ -79,7 +79,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	if cs.Spec.Sha == "" && cs.Spec.Phase == "" {
+	if cs.Spec.Sha == "" || cs.Spec.Phase == "" {
 		logger.Info("Skip setting commit status, missing sha or phase", "namespace", req.Namespace, "name", req.Name)
 		return ctrl.Result{}, nil
 	}
