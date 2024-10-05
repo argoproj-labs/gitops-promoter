@@ -91,7 +91,8 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		err := r.Client.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
+		newCs := promoterv1alpha1.CommitStatus{}
+		err := r.Client.Get(ctx, req.NamespacedName, &newCs, &client.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -100,11 +101,14 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if err != nil {
 			return err
 		}
-		r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 
-		cs.Status.ObservedGeneration = cs.Generation
+		newCs.Status.ObservedGeneration = newCs.Generation
 		err = r.Status().Update(ctx, &cs)
 		if err != nil {
+			if errors.IsConflict(err) {
+				logger.Info("Conflict while updating status. Retrying")
+				return err
+			}
 			return err
 		}
 		return nil
@@ -112,6 +116,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 
 	return ctrl.Result{}, nil
 }
