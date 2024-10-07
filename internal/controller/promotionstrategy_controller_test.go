@@ -18,11 +18,9 @@ package controller
 
 import (
 	"context"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"os"
 	"strings"
-	"time"
-
-	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -158,7 +156,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(proposedCommitProd.Status.Proposed.Hydrated.Sha))
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
-				time.Sleep(30 * time.Second)
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("Adding a pending commit")
