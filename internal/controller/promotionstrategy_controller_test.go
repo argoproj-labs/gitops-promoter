@@ -534,6 +534,65 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			}, EventuallyTimeout).Should(Succeed())
 
+			By("Updating the commit status for the development environment to success")
+			Eventually(func(g Gomega) {
+
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      proposedCommitStatusDevelopment.Name,
+					Namespace: proposedCommitStatusDevelopment.Namespace,
+				}, proposedCommitStatusDevelopment)
+				g.Expect(err).To(Succeed())
+
+				_, err = runGitCmd(gitPath, "git", "fetch")
+				Expect(err).NotTo(HaveOccurred())
+				sha, err := runGitCmd(gitPath, "git", "rev-parse", "origin/"+proposedCommitDev.Spec.ProposedBranch)
+				Expect(err).NotTo(HaveOccurred())
+				sha = strings.TrimSpace(sha)
+
+				// Check that the proposed commit has the correct sha, aka it has reconciled at least once since adding new commits
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &proposedCommitDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(proposedCommitDev.Status.Proposed.Hydrated.Sha).To(Equal(sha))
+
+				g.Expect(sha).To(Not(Equal("")))
+				proposedCommitStatusDevelopment.Spec.Sha = sha
+				proposedCommitStatusDevelopment.Spec.Phase = "success"
+				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
+				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
+				g.Expect(err).To(Succeed())
+
+			}, EventuallyTimeout).Should(Succeed())
+
+			By("By checking that the development pull request has been merged and that staging, production pull request are still open")
+			Eventually(func(g Gomega) {
+
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitDev))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestDev)
+				g.Expect(err).To(Not(BeNil()))
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitStaging))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(Succeed())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, proposedCommitProd))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
+
+			}, EventuallyTimeout).Should(Succeed())
+
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
 	})
