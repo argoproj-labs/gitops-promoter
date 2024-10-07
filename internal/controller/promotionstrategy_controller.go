@@ -126,14 +126,13 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		//Owns(&promoterv1alpha1.ProposedCommit{}).
+		Owns(&promoterv1alpha1.ProposedCommit{}).
 		Complete(r)
 }
 
 func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ProposedCommit, error) {
 	logger := log.FromContext(ctx)
 
-	//pc := promoterv1alpha1.ProposedCommit{}
 	pcName := utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(ps.Name, environment.Branch))
 
 	// The code below sets the ownership for the Release Object
@@ -161,25 +160,16 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 		},
 	}
 
-	pcGet := promoterv1alpha1.ProposedCommit{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pcGet, &client.GetOptions{})
+	err := r.Patch(ctx, &pc, client.MergeFrom(&promoterv1alpha1.ProposedCommit{}))
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("ProposedCommit not found, creating")
 			err = r.Create(ctx, &pc)
 			if err != nil {
-				return &pc, err
+				return nil, err
 			}
-		} else {
-			logger.Error(err, "failed to get ProposedCommit")
-			return &pc, err
 		}
-	} else {
-		//TODO: Update the ProposedCommit with the new values, we should could add a hash status to the ProposedCommit to see if we need to update it.
-		err = r.Patch(ctx, &pc, client.MergeFrom(&promoterv1alpha1.ProposedCommit{}))
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 	return &pc, nil
 }
@@ -430,9 +420,9 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 						return err
 					}
 					r.Recorder.Event(ps, "Normal", "PullRequestMerged", fmt.Sprintf("Pull Request %s merged", pullRequest.Name))
-					logger.V(4).Info("Merged pull request", "namespace", pullRequest.Namespace, "name", pullRequest.Name)
+					logger.V(4).Info("Merged pull request")
 				} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-					logger.Info("Pull request not ready to merge yet", "namespace", pullRequest.Namespace, "name", pullRequest.Name)
+					logger.Info("Pull request not ready to merge yet")
 				}
 			}
 		}
