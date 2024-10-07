@@ -303,12 +303,18 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
 
+		//Sleep one seconds to differentiate the commits to prevent same hash
+		time.Sleep(1 * time.Second)
+
 		_, err = runGitCmd(gitPath, "git", "checkout", "-b", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "commit", "--allow-empty", "-m", "initial commit")
+		_, err = runGitCmd(gitPath, "git", "commit", "--allow-empty", "-m", "initial commit next")
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
+
+		//Sleep one seconds to differentiate the commits to prevent same hash
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -370,10 +376,13 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "commit", "-m", "added pending commit with dry sha")
+		_, err = runGitCmd(gitPath, "git", "commit", "-m", "added pending commit with dry sha, "+sha)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
+
+		//Sleep one seconds to differentiate the commits to prevent same hash
+		time.Sleep(1 * time.Second)
 	}
 
 	return sha, shortSha

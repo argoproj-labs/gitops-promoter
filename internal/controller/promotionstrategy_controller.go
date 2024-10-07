@@ -68,16 +68,16 @@ type PromotionStrategyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Reconciling PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
+	logger.V(1).Info("Reconciling PromotionStrategy")
 
 	var ps promoterv1alpha1.PromotionStrategy
 	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("PromotionStrategy not found", "namespace", req.Namespace, "name", req.Name)
+			logger.Info("PromotionStrategy not found")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "failed to get PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
+		logger.Error(err, "failed to get PromotionStrategy")
 		return ctrl.Result{}, err
 	}
 
@@ -86,7 +86,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	for _, environment := range ps.Spec.Environments {
 		pc, err := r.createOrGetProposedCommit(ctx, &ps, environment)
 		if err != nil {
-			logger.Error(err, "failed to create ProposedCommit", "namespace", ps.Namespace, "name", ps.Name)
+			logger.Error(err, "failed to create ProposedCommit")
 			return ctrl.Result{}, err
 		}
 		proposedCommitMap[environment.Branch] = pc
@@ -165,13 +165,13 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 	err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pcGet, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("ProposedCommit not found, creating", "namespace", ps.Namespace, "name", pcName)
+			logger.Info("ProposedCommit not found, creating")
 			err = r.Create(ctx, &pc)
 			if err != nil {
 				return &pc, err
 			}
 		} else {
-			logger.Error(err, "failed to get ProposedCommit", "namespace", ps.Namespace, "name", pcName)
+			logger.Error(err, "failed to get ProposedCommit")
 			return &pc, err
 		}
 	} else {
@@ -334,7 +334,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 				if errors.IsNotFound(err) {
 					errCreate := r.Create(ctx, copiedCommitStatus)
 					if errCreate != nil {
-						logger.Error(errCreate, "failed to create copied CommitStatus", "namespace", copiedCommitStatus.Namespace, "name", copiedCommitStatus.Name)
+						logger.Error(errCreate, "failed to create copied CommitStatus")
 						return errCreate
 					}
 				}

@@ -79,11 +79,11 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	err := r.Get(ctx, req.NamespacedName, &pc, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("ProposedCommit not found", "namespace", req.Namespace, "name", req.Name)
+			logger.Info("ProposedCommit not found")
 			return ctrl.Result{}, nil
 		}
 
-		logger.Error(err, "failed to get ProposedCommit", "namespace", req.Namespace, "name", req.Name)
+		logger.Error(err, "failed to get ProposedCommit")
 		return ctrl.Result{}, err
 	}
 
@@ -277,7 +277,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
-					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the active commit status")
+					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the proposed commit status")
 				} else if len(csListSlice) == 0 {
 					//TODO: decided how to bubble up errors
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{

@@ -106,8 +106,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		err = r.Status().Update(ctx, &cs)
 		if err != nil {
 			if errors.IsConflict(err) {
-				logger.Info("Conflict while updating status. Retrying")
-				return err
+				logger.Info("Conflict while updating CommitStatus status. Retrying")
 			}
 			return err
 		}
