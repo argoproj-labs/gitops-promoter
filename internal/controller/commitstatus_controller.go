@@ -66,22 +66,22 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	err := r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("CommitStatus not found", "namespace", req.Namespace, "name", req.Name)
+			logger.Info("CommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 
-		logger.Error(err, "failed to get CommitStatus", "namespace", req.Namespace, "name", req.Name)
+		logger.Error(err, "failed to get CommitStatus")
 		return ctrl.Result{}, err
 	}
 
 	// We use observed generation pattern here to avoid provider API calls.
 	if cs.Status.ObservedGeneration == cs.Generation {
-		logger.Info("No need to reconcile", "namespace", req.Namespace, "name", req.Name)
+		logger.Info("No need to reconcile")
 		return ctrl.Result{}, nil
 	}
 
 	if cs.Spec.Sha == "" || cs.Spec.Phase == "" {
-		logger.Info("Skip setting commit status, missing sha or phase", "namespace", req.Namespace, "name", req.Name)
+		logger.Info("Skip setting commit status, missing sha or phase")
 		return ctrl.Result{}, nil
 	}
 
