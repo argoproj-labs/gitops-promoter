@@ -80,6 +80,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
+	// empty phase should be impossible due to schema validation
 	if cs.Spec.Sha == "" || cs.Spec.Phase == "" {
 		logger.Info("Skip setting commit status, missing sha or phase")
 		return ctrl.Result{}, nil
@@ -97,13 +98,13 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return err
 		}
 
-		_, err = commitStatusProvider.Set(ctx, &cs)
+		_, err = commitStatusProvider.Set(ctx, &newCs)
 		if err != nil {
 			return err
 		}
 
 		newCs.Status.ObservedGeneration = newCs.Generation
-		err = r.Status().Update(ctx, &cs)
+		err = r.Status().Update(ctx, &newCs)
 		if err != nil {
 			if errors.IsConflict(err) {
 				logger.Info("Conflict while updating CommitStatus status. Retrying")

@@ -146,9 +146,9 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 			Namespace:       ps.Namespace,
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 			Labels: map[string]string{
-				"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, ps.Name),
-				"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, pcName),
-				"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, environment.Branch),
+				promoterv1alpha1.ProposedCommitPromotionStrategy: utils.KubeSafeLabel(ctx, ps.Name),
+				"promoter.argoproj.io/proposed-commit":           utils.KubeSafeLabel(ctx, pcName),
+				"promoter.argoproj.io/environment":               utils.KubeSafeLabel(ctx, environment.Branch),
 			},
 		},
 		Spec: promoterv1alpha1.ProposedCommitSpec{
@@ -315,9 +315,9 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 				copiedCommitStatus.Labels = make(map[string]string)
 			}
 			copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy] = "true"
-			copiedCommitStatus.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
-			copiedCommitStatus.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
-			copiedCommitStatus.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
+			copiedCommitStatus.Labels[promoterv1alpha1.CopiedCommitStatusFrom] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
+			copiedCommitStatus.Labels[promoterv1alpha1.CopiedCommmitStatusFromSha] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
+			copiedCommitStatus.Labels[promoterv1alpha1.CopiedCommitStatusBranch] = utils.KubeSafeLabel(ctx, branch)
 
 			err = r.Patch(ctx, copiedCommitStatus, client.MergeFrom(&promoterv1alpha1.CommitStatus{}))
 			if err != nil {
