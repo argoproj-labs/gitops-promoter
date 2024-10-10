@@ -10,7 +10,7 @@ const CommitStatusCopyLabel = "promoter.argoproj.io/commit-status-copy"
 // CopiedProposedCommitPrefixNameLabel is the prefix name for copied proposed commits
 const CopiedProposedCommitPrefixNameLabel = "proposed-"
 
-// CopiedCommitStatusFromLabel is the commit status that we where copied from
+// CopiedCommitStatusFromLabel is the commit status that we were copied from
 const CopiedCommitStatusFromLabel = "promoter.argoproj.io/commit-status-copy-from"
 
 // CommmitStatusFromShaLabel is the commit status hydrated sha that we were copied from
