@@ -193,7 +193,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
 				csListSlice := []promoterv1alpha1.CommitStatus{}
 				for _, item := range csListActive.Items {
-					if item.Labels[promoterv1alpha1.CommitStatusLabelCopy] != "true" {
+					if item.Labels[promoterv1alpha1.CommitStatusCopyLabel] != "true" {
 						csListSlice = append(csListSlice, item)
 					}
 				}
@@ -260,7 +260,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
 				csListSlice := []promoterv1alpha1.CommitStatus{}
 				for _, item := range csListProposed.Items {
-					if item.Labels[promoterv1alpha1.CommitStatusLabelCopy] != "true" {
+					if item.Labels[promoterv1alpha1.CommitStatusCopyLabel] != "true" {
 						csListSlice = append(csListSlice, item)
 					}
 				}
@@ -324,9 +324,9 @@ func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context,
 						Namespace:       pc.Namespace,
 						OwnerReferences: []metav1.OwnerReference{*controllerRef},
 						Labels: map[string]string{
-							"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, pc.Labels["promoter.argoproj.io/promotion-strategy"]),
-							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, pc.Name),
-							"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, pc.Spec.ActiveBranch),
+							promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ctx, pc.Labels["promoter.argoproj.io/promotion-strategy"]),
+							promoterv1alpha1.ProposedCommitLabel:    utils.KubeSafeLabel(ctx, pc.Name),
+							promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(ctx, pc.Spec.ActiveBranch),
 						},
 					},
 					Spec: promoterv1alpha1.PullRequestSpec{

@@ -336,11 +336,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Eventually(func(g Gomega) {
 				var copiedCommitStatus promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+activeCommitStatusDevelopment.Name),
+					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixNameLabel+activeCommitStatusDevelopment.Name),
 					Namespace: typeNamespacedName.Namespace,
 				}, &copiedCommitStatus)
 				g.Expect(err).To(Succeed())
-				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy]).To(Equal("true"))
+				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel]).To(Equal("true"))
 				// Need to look into why this is flakey
 				g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(proposedCommitStaging.Status.Proposed.Hydrated.Sha))
 			}, EventuallyTimeout).Should(Succeed())
@@ -417,11 +417,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// Get the copied commit status
 				var copiedCommitStatus promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixName+activeCommitStatusStaging.Name),
+					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixNameLabel+activeCommitStatusStaging.Name),
 					Namespace: typeNamespacedName.Namespace,
 				}, &copiedCommitStatus)
 				g.Expect(err).To(Succeed())
-				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy]).To(Equal("true"))
+				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel]).To(Equal("true"))
 				g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(shaProdProposedBeforePRClose))
 			}, EventuallyTimeout).Should(Succeed())
 
