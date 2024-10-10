@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+
 	"k8s.io/client-go/util/retry"
 
 	"k8s.io/client-go/tools/record"
@@ -91,6 +92,9 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
+	// We use retry on conflict to avoid conflicts when updating the status because so many other controllers will be
+	// creating and updating commit status and the API is very simple we try to avoid conflicts to update the status as
+	// soon as possible.
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		newCs := promoterv1alpha1.CommitStatus{}
 		err := r.Client.Get(ctx, req.NamespacedName, &newCs, &client.GetOptions{})

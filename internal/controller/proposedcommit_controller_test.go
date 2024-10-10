@@ -144,7 +144,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				sha = strings.TrimSpace(sha)
 
 				commitStatus.Spec.Sha = sha
-				commitStatus.Spec.Phase = "success"
+				commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, commitStatus)
 				g.Expect(err).To(Succeed())
 

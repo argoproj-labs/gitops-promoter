@@ -147,8 +147,7 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 			Labels: map[string]string{
 				promoterv1alpha1.ProposedCommitPromotionStrategy: utils.KubeSafeLabel(ctx, ps.Name),
-				"promoter.argoproj.io/proposed-commit":           utils.KubeSafeLabel(ctx, pcName),
-				"promoter.argoproj.io/environment":               utils.KubeSafeLabel(ctx, environment.Branch),
+				promoterv1alpha1.ProposedCommitEnvironment:       utils.KubeSafeLabel(ctx, environment.Branch),
 			},
 		},
 		Spec: promoterv1alpha1.ProposedCommitSpec{
@@ -374,9 +373,9 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 			// Find the PRs that match the proposed commit and the environment. There should only be one.
 			err := r.List(ctx, &prl, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, ps.Name),
-					"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, proposedCommitMap[environment.Branch].Name),
-					"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, environment.Branch),
+					promoterv1alpha1.ProposedCommitPromotionStrategy: utils.KubeSafeLabel(ctx, ps.Name),
+					promoterv1alpha1.ProposedCommitLabel:             utils.KubeSafeLabel(ctx, proposedCommitMap[environment.Branch].Name),
+					promoterv1alpha1.ProposedCommitEnvironment:       utils.KubeSafeLabel(ctx, environment.Branch),
 				}),
 			})
 			if err != nil {

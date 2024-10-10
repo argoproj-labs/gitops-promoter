@@ -72,12 +72,15 @@ test: manifests generate fmt vet envtest ## Run tests.
 test-e2e:
 	go test ./test/e2e/ -v
 
+.PHONY: test-deps
+test-deps: ginkgo manifests generate fmt vet envtest
+
 .PHONY: test-parallel
-test-parallel: ginkgo manifests generate fmt vet envtest ## Run tests in parallel
+test-parallel: test-deps ## Run tests in parallel
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -r -v -cover -coverprofile=cover.out internal/
 
 .PHONY: test-parallel-repeat3
-test-parallel-repeat3: ginkgo manifests generate fmt vet envtest ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
+test-parallel-repeat3: test-deps ## Run tests in parallel 3 times to check for flakiness --repeat does not count the first run
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" $(GINKGO) -p -r -v -cover -coverprofile=cover.out --repeat=2 internal/
 
 .PHONY: lint nilaway-no-test

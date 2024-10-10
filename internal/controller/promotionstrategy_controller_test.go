@@ -18,9 +18,10 @@ package controller
 
 import (
 	"context"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"os"
 	"strings"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -324,7 +325,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				g.Expect(sha).To(Not(Equal("")))
 				activeCommitStatusDevelopment.Spec.Sha = sha
-				activeCommitStatusDevelopment.Spec.Phase = "success"
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())
@@ -405,7 +406,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				shaProdProposedBeforePRClose = proposedCommitProd.Status.Proposed.Hydrated.Sha
 
 				activeCommitStatusStaging.Spec.Sha = sha
-				activeCommitStatusStaging.Spec.Phase = "success"
+				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, activeCommitStatusStaging)
 				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 				g.Expect(err).To(Succeed())
@@ -556,7 +557,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				g.Expect(sha).To(Not(Equal("")))
 				proposedCommitStatusDevelopment.Spec.Sha = sha
-				proposedCommitStatusDevelopment.Spec.Phase = "success"
+				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())

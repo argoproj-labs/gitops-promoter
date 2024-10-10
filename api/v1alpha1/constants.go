@@ -21,3 +21,8 @@ const CopiedCommitStatusBranch = "promoter.argoproj.io/commit-status-copy-from-b
 
 // ProposedCommitPromotionStrategy the promotion strategy which the proposed commit is associated with
 const ProposedCommitPromotionStrategy = "promoter.argoproj.io/promotion-strategy"
+
+// ProposedCommitEnvironment the environment branch for the proposed commit
+const ProposedCommitEnvironment = "promoter.argoproj.io/environment"
+
+const ProposedCommitLabel = "promoter.argoproj.io/proposed-commit"
