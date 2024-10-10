@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	. "github.com/onsi/ginkgo/v2"
+
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -38,6 +40,9 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	pullRequestCopy := pullRequest.DeepCopy()
 	if p, ok := pullRequests[pr.getMapKey(*pullRequest)]; ok {
 		logger.Info("Pull request already exists", "id", p.ID)
+	}
+	if pullRequestCopy == nil {
+		return "", fmt.Errorf("pull request is nil")
 	}
 
 	pullRequests[pr.getMapKey(*pullRequestCopy)] = PullRequestProviderState{
@@ -73,7 +78,10 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	if err != nil {
 		panic("could not make temp dir for repo server")
 	}
-	_, err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:5000/%s/%s", pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name), ".")
+
+	gitServerPort := 5000 + GinkgoParallelProcess()
+	gitServerPortStr := fmt.Sprintf("%d", gitServerPort)
+	_, err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name), ".")
 	if err != nil {
 		return err
 	}

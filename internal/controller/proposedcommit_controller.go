@@ -79,11 +79,11 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	err := r.Get(ctx, req.NamespacedName, &pc, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("ProposedCommit not found", "namespace", req.Namespace, "name", req.Name)
+			logger.Info("ProposedCommit not found")
 			return ctrl.Result{}, nil
 		}
 
-		logger.Error(err, "failed to get ProposedCommit", "namespace", req.Namespace, "name", req.Name)
+		logger.Error(err, "failed to get ProposedCommit")
 		return ctrl.Result{}, err
 	}
 
@@ -193,7 +193,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
 				csListSlice := []promoterv1alpha1.CommitStatus{}
 				for _, item := range csListActive.Items {
-					if item.Labels[promoterv1alpha1.CommitStatusLabelCopy] != "true" {
+					if item.Labels[promoterv1alpha1.CommitStatusCopyLabel] != "true" {
 						csListSlice = append(csListSlice, item)
 					}
 				}
@@ -260,7 +260,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
 				csListSlice := []promoterv1alpha1.CommitStatus{}
 				for _, item := range csListProposed.Items {
-					if item.Labels[promoterv1alpha1.CommitStatusLabelCopy] != "true" {
+					if item.Labels[promoterv1alpha1.CommitStatusCopyLabel] != "true" {
 						csListSlice = append(csListSlice, item)
 					}
 				}
@@ -277,7 +277,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
-					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the active commit status")
+					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the proposed commit status")
 				} else if len(csListSlice) == 0 {
 					//TODO: decided how to bubble up errors
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
@@ -324,9 +324,9 @@ func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context,
 						Namespace:       pc.Namespace,
 						OwnerReferences: []metav1.OwnerReference{*controllerRef},
 						Labels: map[string]string{
-							"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, pc.Labels["promoter.argoproj.io/promotion-strategy"]),
-							"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, pc.Name),
-							"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, pc.Spec.ActiveBranch),
+							promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ctx, pc.Labels["promoter.argoproj.io/promotion-strategy"]),
+							promoterv1alpha1.ProposedCommitLabel:    utils.KubeSafeLabel(ctx, pc.Name),
+							promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(ctx, pc.Spec.ActiveBranch),
 						},
 					},
 					Spec: promoterv1alpha1.PullRequestSpec{

@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 
+	"k8s.io/client-go/util/retry"
+
 	"k8s.io/client-go/tools/record"
 
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -65,17 +67,23 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	err := r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("CommitStatus not found", "namespace", req.Namespace, "name", req.Name)
+			logger.Info("CommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 
-		logger.Error(err, "failed to get CommitStatus", "namespace", req.Namespace, "name", req.Name)
+		logger.Error(err, "failed to get CommitStatus")
 		return ctrl.Result{}, err
 	}
 
 	// We use observed generation pattern here to avoid provider API calls.
 	if cs.Status.ObservedGeneration == cs.Generation {
-		logger.Info("No need to reconcile", "namespace", req.Namespace, "name", req.Name)
+		logger.Info("No need to reconcile")
+		return ctrl.Result{}, nil
+	}
+
+	// empty phase should be impossible due to schema validation
+	if cs.Spec.Sha == "" || cs.Spec.Phase == "" {
+		logger.Info("Skip setting commit status, missing sha or phase")
 		return ctrl.Result{}, nil
 	}
 
@@ -84,17 +92,35 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 
-	commitStatus, err := commitStatusProvider.Set(ctx, &cs)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s", commitStatus.Name, commitStatus.Spec.Phase)
+	// We use retry on conflict to avoid conflicts when updating the status because so many other controllers will be
+	// creating and updating commit status and the API is very simple we try to avoid conflicts to update the status as
+	// soon as possible.
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		newCs := promoterv1alpha1.CommitStatus{}
+		err := r.Client.Get(ctx, req.NamespacedName, &newCs, &client.GetOptions{})
+		if err != nil {
+			return err
+		}
 
-	commitStatus.Status.ObservedGeneration = commitStatus.Generation
-	err = r.Status().Update(ctx, commitStatus)
+		_, err = commitStatusProvider.Set(ctx, &newCs)
+		if err != nil {
+			return err
+		}
+
+		newCs.Status.ObservedGeneration = newCs.Generation
+		err = r.Status().Update(ctx, &newCs)
+		if err != nil {
+			if errors.IsConflict(err) {
+				logger.Info("Conflict while updating CommitStatus status. Retrying")
+			}
+			return err
+		}
+		return nil
+	})
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 
 	return ctrl.Result{}, nil
 }

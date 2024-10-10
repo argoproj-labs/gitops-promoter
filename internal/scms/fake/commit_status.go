@@ -23,6 +23,9 @@ func NewFakeCommitStatusProvider(secret v1.Secret) (*CommitStatus, error) {
 }
 
 func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
+	if commitStatus.Spec.Sha == "" {
+		return nil, fmt.Errorf("sha is required")
+	}
 	commitStatus.Status.Phase = commitStatus.Spec.Phase
 	cs.savePointer(commitStatus)
 	return commitStatus, nil

@@ -68,16 +68,16 @@ type PromotionStrategyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Reconciling PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
+	logger.V(1).Info("Reconciling PromotionStrategy")
 
 	var ps promoterv1alpha1.PromotionStrategy
 	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("PromotionStrategy not found", "namespace", req.Namespace, "name", req.Name)
+			logger.Info("PromotionStrategy not found")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "failed to get PromotionStrategy", "namespace", req.Namespace, "name", req.Name)
+		logger.Error(err, "failed to get PromotionStrategy")
 		return ctrl.Result{}, err
 	}
 
@@ -86,7 +86,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	for _, environment := range ps.Spec.Environments {
 		pc, err := r.createOrGetProposedCommit(ctx, &ps, environment)
 		if err != nil {
-			logger.Error(err, "failed to create ProposedCommit", "namespace", ps.Namespace, "name", ps.Name)
+			logger.Error(err, "failed to create ProposedCommit")
 			return ctrl.Result{}, err
 		}
 		proposedCommitMap[environment.Branch] = pc
@@ -133,66 +133,47 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ProposedCommit, error) {
 	logger := log.FromContext(ctx)
 
-	pc := promoterv1alpha1.ProposedCommit{}
 	pcName := utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(ps.Name, environment.Branch))
-	err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: pcName}, &pc, &client.GetOptions{})
+
+	// The code below sets the ownership for the Release Object
+	kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+	controllerRef := metav1.NewControllerRef(ps, gvk)
+
+	pc := promoterv1alpha1.ProposedCommit{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            pcName,
+			Namespace:       ps.Namespace,
+			OwnerReferences: []metav1.OwnerReference{*controllerRef},
+			Labels: map[string]string{
+				promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ctx, ps.Name),
+				promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(ctx, environment.Branch),
+			},
+		},
+		Spec: promoterv1alpha1.ProposedCommitSpec{
+			RepositoryReference:    ps.Spec.RepositoryReference,
+			ProposedBranch:         fmt.Sprintf("%s-%s", environment.Branch, "next"),
+			ActiveBranch:           environment.Branch,
+			ActiveCommitStatuses:   append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...),
+			ProposedCommitStatuses: append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...),
+		},
+	}
+
+	err := r.Patch(ctx, &pc, client.MergeFrom(&promoterv1alpha1.ProposedCommit{}))
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("ProposedCommit not found, creating", "namespace", ps.Namespace, "name", pcName)
-
-			// The code below sets the ownership for the Release Object
-			kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
-			gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-			controllerRef := metav1.NewControllerRef(ps, gvk)
-
-			pc = promoterv1alpha1.ProposedCommit{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:            pcName,
-					Namespace:       ps.Namespace,
-					OwnerReferences: []metav1.OwnerReference{*controllerRef},
-					Labels: map[string]string{
-						"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, ps.Name),
-						"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, pcName),
-						"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, environment.Branch),
-					},
-				},
-				Spec: promoterv1alpha1.ProposedCommitSpec{
-					RepositoryReference:    ps.Spec.RepositoryReference,
-					ProposedBranch:         fmt.Sprintf("%s-%s", environment.Branch, "next"),
-					ActiveBranch:           environment.Branch,
-					ActiveCommitStatuses:   append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...),
-					ProposedCommitStatuses: append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...),
-				},
-			}
-
+			logger.Info("ProposedCommit not found, creating")
 			err = r.Create(ctx, &pc)
 			if err != nil {
-				return &pc, err
+				return nil, err
 			}
-		} else {
-			logger.Error(err, "failed to get ProposedCommit", "namespace", ps.Namespace, "name", pcName)
-			return &pc, err
 		}
-	}
-
-	pc.Spec.RepositoryReference = ps.Spec.RepositoryReference
-	pc.Spec.ProposedBranch = fmt.Sprintf("%s-%s", environment.Branch, "next")
-	pc.Spec.ActiveBranch = environment.Branch
-	pc.Spec.ActiveCommitStatuses = append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)
-	pc.Spec.ProposedCommitStatuses = append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)
-
-	//TODO: Update the ProposedCommit with the new values, we could add a hash status to the ProposedCommit to see if we need to update it.
-	err = r.Update(ctx, &pc)
-	if err != nil {
 		return nil, err
 	}
-
 	return &pc, nil
 }
 
 func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ProposedCommit) error {
-	logger := log.FromContext(ctx)
-
 	for _, environment := range ps.Spec.Environments {
 		pc, ok := pcMap[environment.Branch]
 		if !ok {
@@ -231,52 +212,86 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
 		}
 
-		activeCommitStatusCount := len(environment.ActiveCommitStatuses) + len(ps.Spec.ActiveCommitStatuses)
-		if activeCommitStatusCount > 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == activeCommitStatusCount {
-			// We have configured active commits and our count of active commits from promotion strategy matches the count of active commit resource.
-			for _, status := range pcMap[environment.Branch].Status.Active.CommitStatuses {
-				ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-				ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
-				if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
-					ps.Status.Environments[i].Active.CommitStatus.Phase = status.Phase
-					ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
-					logger.Info("Active commit status not success", "branch", environment.Branch, "status", status.Phase)
-					break
-				}
-			}
-		} else if activeCommitStatusCount == 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == 0 {
-			// We have no configured active commits and our count of active commits from promotion strategy matches the count of active commit resource, should be 0 each.
-			ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-			ps.Status.Environments[i].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
-			//logger.Info("No active commit statuses configured, assuming success", "branch", environment.Branch)
-		} else {
-			ps.Status.Environments[i].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
-			logger.Info("Active commit status pending", "branch", environment.Branch)
+		err := r.calculateActiveCommitStatus(ctx, i, ps, pcMap, environment)
+		if err != nil {
+			return fmt.Errorf("failed to calculate active commit status: %w", err)
 		}
 
-		proposedCommitStatusCount := len(environment.ProposedCommitStatuses) + len(ps.Spec.ProposedCommitStatuses)
-		if proposedCommitStatusCount > 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCount {
-			// We have configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource.
-			for _, status := range pcMap[environment.Branch].Status.Proposed.CommitStatuses {
-				ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-				ps.Status.Environments[i].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
-				if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
-					ps.Status.Environments[i].Proposed.CommitStatus.Phase = status.Phase
-					ps.Status.Environments[i].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
-					logger.Info("Proposed commit status not success", "branch", environment.Branch, "status", status.Phase)
-					break
-				}
-			}
-		} else if proposedCommitStatusCount == 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == 0 {
-			// We have no configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource, should be 0 each.
-			ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-			ps.Status.Environments[i].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
-			//logger.Info("No proposed commit statuses configured, assuming success", "branch", environment.Branch)
-		} else {
-			ps.Status.Environments[i].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
-			logger.Info("Proposed commit status pending", "branch", environment.Branch)
+		err = r.calculateProposedCommitStatus(ctx, i, ps, pcMap, environment)
+		if err != nil {
+			return fmt.Errorf("failed to calculate proposed commit status: %w", err)
 		}
+
 	}
+	return nil
+}
+
+func (r *PromotionStrategyReconciler) calculateActiveCommitStatus(ctx context.Context, environmentIndex int, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ProposedCommit, environment promoterv1alpha1.Environment) error {
+	logger := log.FromContext(ctx)
+
+	if pcMap[environment.Branch] == nil {
+		return fmt.Errorf("ProposedCommit not found in map for branch %s while calculating activeCommitStatus", environment.Branch)
+	}
+
+	activeCommitStatusCount := len(environment.ActiveCommitStatuses) + len(ps.Spec.ActiveCommitStatuses)
+	if activeCommitStatusCount > 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == activeCommitStatusCount {
+		// We have configured active commits and our count of active commits from promotion strategy matches the count of active commit resource.
+		for _, status := range pcMap[environment.Branch].Status.Active.CommitStatuses {
+			ps.Status.Environments[environmentIndex].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
+			ps.Status.Environments[environmentIndex].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
+			if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
+				ps.Status.Environments[environmentIndex].Active.CommitStatus.Phase = status.Phase
+				ps.Status.Environments[environmentIndex].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
+				logger.Info("Active commit status not success", "branch", environment.Branch, "phase", status.Phase, "sha", pcMap[environment.Branch].Status.Active.Hydrated.Sha, "key", status.Key)
+
+				break
+			}
+		}
+	} else if activeCommitStatusCount == 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == 0 {
+		// We have no configured active commits and our count of active commits from promotion strategy matches the count of active commit resource, should be 0 each.
+		ps.Status.Environments[environmentIndex].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
+		ps.Status.Environments[environmentIndex].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
+		//logger.Info("No active commit statuses configured, assuming success", "branch", environment.Branch)
+	} else {
+		ps.Status.Environments[environmentIndex].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
+		ps.Status.Environments[environmentIndex].Active.CommitStatus.Sha = pcMap[environment.Branch].Status.Active.Hydrated.Sha
+		logger.Info("Active commit status pending", "branch", environment.Branch)
+	}
+
+	return nil
+}
+
+func (r *PromotionStrategyReconciler) calculateProposedCommitStatus(ctx context.Context, environmentIndex int, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ProposedCommit, environment promoterv1alpha1.Environment) error {
+	logger := log.FromContext(ctx)
+
+	if pcMap[environment.Branch] == nil {
+		return fmt.Errorf("ProposedCommit not found in map for branch %s while calculating proposedCommitStatus", environment.Branch)
+	}
+
+	proposedCommitStatusCount := len(environment.ProposedCommitStatuses) + len(ps.Spec.ProposedCommitStatuses)
+	if proposedCommitStatusCount > 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCount {
+		// We have configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource.
+		for _, status := range pcMap[environment.Branch].Status.Proposed.CommitStatuses {
+			ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
+			ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
+			if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
+				ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Phase = status.Phase
+				ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
+				logger.Info("Proposed commit status not success", "branch", environment.Branch, "phase", status.Phase, "sha", pcMap[environment.Branch].Status.Proposed.Hydrated.Sha, "key", status.Key)
+				break
+			}
+		}
+	} else if proposedCommitStatusCount == 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == 0 {
+		// We have no configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource, should be 0 each.
+		ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
+		ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
+		//logger.Info("No proposed commit statuses configured, assuming success", "branch", environment.Branch)
+	} else {
+		ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
+		ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
+		logger.Info("Proposed commit status pending", "branch", environment.Branch)
+	}
+
 	return nil
 }
 
@@ -299,66 +314,48 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 		}
 
 		for _, commitStatus := range commitStatuses.Items {
-			if commitStatus.Labels[promoterv1alpha1.CommitStatusLabelCopy] == "true" {
+			if commitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel] == "true" {
 				continue
 			}
 
-			cs := promoterv1alpha1.CommitStatus{}
+			copiedCommitStatus := &promoterv1alpha1.CommitStatus{}
 			//TODO: do we like this name proposed-<name>?
-			copiedCSName := utils.KubeSafeUniqueName(ctx, "proposed-"+commitStatus.Name)
+			copiedCSName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixNameLabel+commitStatus.Name)
 			proposedCSObjectKey := client.ObjectKey{Namespace: commitStatus.Namespace, Name: copiedCSName}
-			errGet := r.Get(ctx, proposedCSObjectKey, &cs)
-			if errGet != nil {
-				if errors.IsNotFound(errGet) {
-					status := &promoterv1alpha1.CommitStatus{
-						ObjectMeta: metav1.ObjectMeta{
-							Name:        proposedCSObjectKey.Name,
-							Annotations: commitStatus.Annotations,
-							Labels:      commitStatus.Labels,
-							Namespace:   commitStatus.Namespace,
-						},
-						Spec: promoterv1alpha1.CommitStatusSpec{
-							RepositoryReference: commitStatus.Spec.RepositoryReference,
-							Sha:                 copyToProposedHydratedSha,
-							Name:                branch + " - " + commitStatus.Spec.Name,
-							Description:         commitStatus.Spec.Description,
-							Phase:               commitStatus.Spec.Phase,
-							Url:                 "https://github.com/" + commitStatus.Spec.RepositoryReference.Owner + "/" + commitStatus.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha,
-						},
-					}
-					if status.Labels == nil {
-						status.Labels = make(map[string]string)
-					}
-					status.Labels[promoterv1alpha1.CommitStatusLabelCopy] = "true"
-					status.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
-					status.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
-					status.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
-					err := r.Create(ctx, status)
-					if err != nil {
-						return err
-					}
-				} else {
-					logger.Error(errGet, "failed to get CommitStatus", "namespace", proposedCSObjectKey.Namespace, "name", proposedCSObjectKey.Name)
-					return errGet
-				}
-			}
-			commitStatus.Spec.DeepCopyInto(&cs.Spec)
 
-			if cs.Labels == nil {
-				cs.Labels = make(map[string]string)
+			copiedCommitStatus = &promoterv1alpha1.CommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        proposedCSObjectKey.Name,
+					Annotations: commitStatus.Annotations,
+					Labels:      commitStatus.Labels,
+					Namespace:   commitStatus.Namespace,
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					RepositoryReference: commitStatus.Spec.RepositoryReference,
+					Sha:                 copyToProposedHydratedSha,
+					Name:                branch + " - " + commitStatus.Spec.Name,
+					Description:         commitStatus.Spec.Description,
+					Phase:               commitStatus.Spec.Phase,
+					Url:                 "https://github.com/" + commitStatus.Spec.RepositoryReference.Owner + "/" + commitStatus.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha,
+				},
 			}
-			cs.Labels[promoterv1alpha1.CommitStatusLabelCopy] = "true"
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from"] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from-sha"] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
-			cs.Labels["promoter.argoproj.io/commit-status-copy-from-branch"] = utils.KubeSafeLabel(ctx, branch)
-			cs.Spec.Sha = copyToProposedHydratedSha
-			cs.Spec.Name = branch + " - " + commitStatus.Spec.Name
+			if copiedCommitStatus.Labels == nil {
+				copiedCommitStatus.Labels = make(map[string]string)
+			}
+			copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel] = "true"
+			copiedCommitStatus.Labels[promoterv1alpha1.CopiedCommitStatusFromLabel] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
+			copiedCommitStatus.Labels[promoterv1alpha1.CommmitStatusFromShaLabel] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
+			copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusFromBranchLabel] = utils.KubeSafeLabel(ctx, branch)
 
-			//TODO: This should be a function that gets the URL from the provider in a the providers required format
-			cs.Spec.Url = "https://github.com/" + cs.Spec.RepositoryReference.Owner + "/" + cs.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha
-			err = r.Update(ctx, &cs)
+			err = r.Patch(ctx, copiedCommitStatus, client.MergeFrom(&promoterv1alpha1.CommitStatus{}))
 			if err != nil {
-				return err
+				if errors.IsNotFound(err) {
+					errCreate := r.Create(ctx, copiedCommitStatus)
+					if errCreate != nil {
+						logger.Error(errCreate, "failed to create copied CommitStatus")
+						return errCreate
+					}
+				}
 			}
 		}
 	}
@@ -380,9 +377,13 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 			return fmt.Errorf("EnvironmentStatus not found for branch %s", environment.Branch)
 		}
 
+		if proposedCommitMap[environment.Branch] == nil {
+			return fmt.Errorf("ProposedCommit not found in map for branch %s while merging pull requests", environment.Branch)
+		}
+
 		if previousEnvironmentStatus != nil {
-			// There is no previous environment to compare to, so we can't copy the commit statuses.
-			if previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha {
+			// There is a previous environment to compare to, so we can copy the commit statuses.
+			if proposedCommitMap[environment.Branch].Status.Proposed.Hydrated.Sha != "" && previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha {
 				// If the previous environment's running commit is the same as the current proposed commit, copy the commit statuses.
 				err := r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), previousEnvironmentStatus.Active.Hydrated.Sha, proposedCommitMap[environment.Branch].Status.Proposed.Hydrated.Sha, previousEnvironmentStatus.Branch) //pc.Status.Active.Hydrated.Sha
 				if err != nil {
@@ -396,17 +397,18 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 			previousEnvironmentStatus.Active.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha &&
 			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
-		proposedChecksPassed := environmentStatus.Proposed.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess)
+		proposedChecksPassed := environmentStatus.Proposed.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
+			environmentStatus.Proposed.Dry.Sha == proposedCommitMap[environment.Branch].Status.Proposed.Dry.Sha
 
-		if (environmentIndex == 0 || (activeChecksPassed && proposedChecksPassed)) && environment.GetAutoMerge() {
+		if (environmentIndex == 0 && proposedChecksPassed || (activeChecksPassed && proposedChecksPassed)) && environment.GetAutoMerge() {
 			// We are either in the first environment or all checks have passed and the environment is set to auto merge.
 			prl := promoterv1alpha1.PullRequestList{}
 			// Find the PRs that match the proposed commit and the environment. There should only be one.
 			err := r.List(ctx, &prl, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					"promoter.argoproj.io/promotion-strategy": utils.KubeSafeLabel(ctx, ps.Name),
-					"promoter.argoproj.io/proposed-commit":    utils.KubeSafeLabel(ctx, proposedCommitMap[environment.Branch].Name),
-					"promoter.argoproj.io/environment":        utils.KubeSafeLabel(ctx, environment.Branch),
+					promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ctx, ps.Name),
+					promoterv1alpha1.ProposedCommitLabel:    utils.KubeSafeLabel(ctx, proposedCommitMap[environment.Branch].Name),
+					promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(ctx, environment.Branch),
 				}),
 			})
 			if err != nil {
@@ -450,9 +452,9 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 						return err
 					}
 					r.Recorder.Event(ps, "Normal", "PullRequestMerged", fmt.Sprintf("Pull Request %s merged", pullRequest.Name))
-					logger.V(4).Info("Merged pull request", "namespace", pullRequest.Namespace, "name", pullRequest.Name)
+					logger.V(4).Info("Merged pull request")
 				} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-					logger.Info("Pull request not ready to merge yet", "namespace", pullRequest.Namespace, "name", pullRequest.Name)
+					logger.Info("Pull request not ready to merge yet")
 				}
 			}
 		}

@@ -57,6 +57,7 @@ type CommitStatusStatus struct {
 	ObservedGeneration int64  `json:"observedGeneration"`
 	Id                 string `json:"id"`
 	Sha                string `json:"sha"`
+	// +kubebuilder:default:=pending
 	// +kubebuilder:validation:Enum:=pending;success;failure
 	Phase CommitStatusPhase `json:"phase"`
 }

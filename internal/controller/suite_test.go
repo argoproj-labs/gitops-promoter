@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -32,6 +31,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -61,6 +62,7 @@ var gitServer *http.Server
 var gitStoragePath string
 var cancel context.CancelFunc
 var ctx context.Context
+var gitServerPort string
 
 const EventuallyTimeout = 90 * time.Second
 
@@ -87,7 +89,7 @@ var _ = BeforeSuite(func() {
 	if mkDirErr != nil {
 		panic("could not make temp dir for repo server")
 	}
-	gitServer = startGitServer(gitStoragePath)
+	gitServerPort, gitServer = startGitServer(gitStoragePath)
 
 	By("bootstrapping test environment")
 	useExistingCluster := false
@@ -124,6 +126,9 @@ var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(context.Background())
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: "0",
+		},
 	})
 	Expect(err).ToNot(HaveOccurred())
 
@@ -139,7 +144,7 @@ var _ = BeforeSuite(func() {
 		Scheme:   k8sManager.GetScheme(),
 		Recorder: k8sManager.GetEventRecorderFor("PromotionStrategy"),
 		Config: PromotionStrategyReconcilerConfig{
-			RequeueDuration: 5 * time.Second,
+			RequeueDuration: 10 * time.Second,
 		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -151,7 +156,7 @@ var _ = BeforeSuite(func() {
 		PathLookup: pathLookup,
 		Recorder:   k8sManager.GetEventRecorderFor("ProposedCommit"),
 		Config: ProposedCommitReconcilerConfig{
-			RequeueDuration: 5 * time.Second,
+			RequeueDuration: 10 * time.Second,
 		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -197,7 +202,18 @@ var _ = AfterSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 })
 
-func startGitServer(gitStoragePath string) *http.Server {
+type filterLogger struct {
+}
+
+func (f *filterLogger) Write(p []byte) (n int, err error) {
+	if strings.Contains(string(p), "request:") {
+		return len(p), nil
+	}
+	log.Print(string(p))
+	return len(p), nil
+}
+
+func startGitServer(gitStoragePath string) (string, *http.Server) {
 	hooks := &gitkit.HookScripts{
 		PreReceive: `echo "Hello World!"`,
 	}
@@ -214,10 +230,15 @@ func startGitServer(gitStoragePath string) *http.Server {
 		log.Fatal(err)
 	}
 
-	server := &http.Server{Addr: ":5000", Handler: service}
+	gitServerPort := 5000 + GinkgoParallelProcess()
+	gitServerPortStr := fmt.Sprintf("%d", gitServerPort)
+	server := &http.Server{Addr: ":" + gitServerPortStr, Handler: service}
 
 	// Disables logging for gitkit
-	log.SetOutput(io.Discard)
+	//log.SetOutput(io.Discard)
+	gitKitFilterLogger := &filterLogger{}
+	log.SetOutput(gitKitFilterLogger)
+
 	go func() {
 		// Start HTTP server
 		if err := server.ListenAndServe(); err != nil {
@@ -226,7 +247,7 @@ func startGitServer(gitStoragePath string) *http.Server {
 		fmt.Println("Git server exited")
 	}()
 
-	return server
+	return gitServerPortStr, server
 }
 
 func setupInitialTestGitRepoOnServer(owner string, name string) {
@@ -236,7 +257,7 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 	}
 	defer os.RemoveAll(gitPath)
 
-	_, err = runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:5000/%s/%s", owner, name), ".")
+	_, err = runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, owner, name), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
@@ -282,12 +303,18 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
 
+		//Sleep one seconds to differentiate the commits to prevent same hash
+		time.Sleep(1 * time.Second)
+
 		_, err = runGitCmd(gitPath, "git", "checkout", "-b", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "commit", "--allow-empty", "-m", "initial commit")
+		_, err = runGitCmd(gitPath, "git", "commit", "--allow-empty", "-m", "initial commit next")
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
+
+		//Sleep one seconds to differentiate the commits to prevent same hash
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -295,7 +322,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 	//gitPath, err := os.MkdirTemp("", "*")
 	//Expect(err).NotTo(HaveOccurred())
 
-	_, err := runGitCmd(gitPath, "git", "clone", "--verbose", "--progress", "--filter=blob:none", fmt.Sprintf("http://localhost:5000/%s/%s", repoOwner, repoName), ".")
+	_, err := runGitCmd(gitPath, "git", "clone", "--verbose", "--progress", "--filter=blob:none", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName), ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
@@ -349,10 +376,24 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "commit", "-m", "added pending commit with dry sha")
+
+		f, err = os.Create(path.Join(gitPath, "manifests-fake.timestamp"))
+		Expect(err).NotTo(HaveOccurred())
+		str := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339))
+		_, err = f.WriteString(str)
+		Expect(err).NotTo(HaveOccurred())
+		err = f.Close()
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "git", "add", "manifests-fake.timestamp")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(gitPath, "git", "commit", "-m", "added pending commit from dry sha, "+sha+" from environment "+strings.TrimRight(environment, "-next"))
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
+
+		//Sleep one seconds to differentiate the commits to prevent same hash
+		time.Sleep(1 * time.Second)
 	}
 
 	return sha, shortSha
