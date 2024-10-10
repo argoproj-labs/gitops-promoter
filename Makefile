@@ -92,7 +92,7 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 	$(GOLANGCI_LINT) run --fix
 
 .PHONY: nilaway-no-test
-nilaway-no-test: ## Run nilaway to remove nil checks from the code
+nilaway-no-test: nilaway ## Run nilaway to remove nil checks from the code
 	$(NILAWAY) --test=false ./...
 
 ##@ Build

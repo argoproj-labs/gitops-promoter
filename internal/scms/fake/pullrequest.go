@@ -41,6 +41,9 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	if p, ok := pullRequests[pr.getMapKey(*pullRequest)]; ok {
 		logger.Info("Pull request already exists", "id", p.ID)
 	}
+	if pullRequestCopy == nil {
+		return "", fmt.Errorf("pull request is nil")
+	}
 
 	pullRequests[pr.getMapKey(*pullRequestCopy)] = PullRequestProviderState{
 		ID:    fmt.Sprintf("%d", len(pullRequests)+1),

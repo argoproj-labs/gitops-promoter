@@ -212,16 +212,26 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
 		}
 
-		r.calculateActiveCommitStatus(ctx, i, ps, pcMap, environment)
+		err := r.calculateActiveCommitStatus(ctx, i, ps, pcMap, environment)
+		if err != nil {
+			return fmt.Errorf("failed to calculate active commit status: %w", err)
+		}
 
-		r.calculateProposedCommitStatus(ctx, i, ps, pcMap, environment)
+		err = r.calculateProposedCommitStatus(ctx, i, ps, pcMap, environment)
+		if err != nil {
+			return fmt.Errorf("failed to calculate proposed commit status: %w", err)
+		}
 
 	}
 	return nil
 }
 
-func (r *PromotionStrategyReconciler) calculateActiveCommitStatus(ctx context.Context, environmentIndex int, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ProposedCommit, environment promoterv1alpha1.Environment) {
+func (r *PromotionStrategyReconciler) calculateActiveCommitStatus(ctx context.Context, environmentIndex int, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ProposedCommit, environment promoterv1alpha1.Environment) error {
 	logger := log.FromContext(ctx)
+
+	if pcMap[environment.Branch] == nil {
+		return fmt.Errorf("ProposedCommit not found in map for branch %s while calculating activeCommitStatus", environment.Branch)
+	}
 
 	activeCommitStatusCount := len(environment.ActiveCommitStatuses) + len(ps.Spec.ActiveCommitStatuses)
 	if activeCommitStatusCount > 0 && len(pcMap[environment.Branch].Status.Active.CommitStatuses) == activeCommitStatusCount {
@@ -248,10 +258,15 @@ func (r *PromotionStrategyReconciler) calculateActiveCommitStatus(ctx context.Co
 		logger.Info("Active commit status pending", "branch", environment.Branch)
 	}
 
+	return nil
 }
 
-func (r *PromotionStrategyReconciler) calculateProposedCommitStatus(ctx context.Context, environmentIndex int, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ProposedCommit, environment promoterv1alpha1.Environment) {
+func (r *PromotionStrategyReconciler) calculateProposedCommitStatus(ctx context.Context, environmentIndex int, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ProposedCommit, environment promoterv1alpha1.Environment) error {
 	logger := log.FromContext(ctx)
+
+	if pcMap[environment.Branch] == nil {
+		return fmt.Errorf("ProposedCommit not found in map for branch %s while calculating proposedCommitStatus", environment.Branch)
+	}
 
 	proposedCommitStatusCount := len(environment.ProposedCommitStatuses) + len(ps.Spec.ProposedCommitStatuses)
 	if proposedCommitStatusCount > 0 && len(pcMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCount {
@@ -276,6 +291,8 @@ func (r *PromotionStrategyReconciler) calculateProposedCommitStatus(ctx context.
 		ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Sha = pcMap[environment.Branch].Status.Proposed.Hydrated.Sha
 		logger.Info("Proposed commit status pending", "branch", environment.Branch)
 	}
+
+	return nil
 }
 
 // copyCommitStatuses copies the commit statuses from one sha to another sha. This is mainly used to show the previous environments commit statuses on the current environments PR.
@@ -358,6 +375,10 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 		environmentIndex, environmentStatus := utils.GetEnvironmentStatusByBranch(*ps, environment.Branch)
 		if environmentStatus == nil {
 			return fmt.Errorf("EnvironmentStatus not found for branch %s", environment.Branch)
+		}
+
+		if proposedCommitMap[environment.Branch] == nil {
+			return fmt.Errorf("ProposedCommit not found in map for branch %s while merging pull requests", environment.Branch)
 		}
 
 		if previousEnvironmentStatus != nil {

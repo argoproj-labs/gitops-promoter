@@ -78,6 +78,9 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	if pullRequestProvider == nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil")
+	}
 
 	deleted, err := r.handleFinalizer(ctx, &pr, pullRequestProvider)
 	if err != nil {
