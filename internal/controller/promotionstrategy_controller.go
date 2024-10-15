@@ -318,12 +318,11 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 				continue
 			}
 
-			copiedCommitStatus := &promoterv1alpha1.CommitStatus{}
 			//TODO: do we like this name proposed-<name>?
 			copiedCSName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixNameLabel+commitStatus.Name)
 			proposedCSObjectKey := client.ObjectKey{Namespace: commitStatus.Namespace, Name: copiedCSName}
 
-			copiedCommitStatus = &promoterv1alpha1.CommitStatus{
+			copiedCommitStatus := &promoterv1alpha1.CommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        proposedCSObjectKey.Name,
 					Annotations: commitStatus.Annotations,

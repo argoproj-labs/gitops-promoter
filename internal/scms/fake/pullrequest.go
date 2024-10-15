@@ -73,29 +73,38 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 }
 
 func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest *v1alpha1.PullRequest) error {
+	logger := log.FromContext(ctx)
 	gitPath, err := os.MkdirTemp("", "*")
-	defer os.RemoveAll(gitPath)
+	defer func() {
+		err := os.RemoveAll(gitPath)
+		if err != nil {
+			logger.Error(err, "failed to remove temp dir")
+		}
+	}()
 	if err != nil {
 		panic("could not make temp dir for repo server")
 	}
 
 	gitServerPort := 5000 + GinkgoParallelProcess()
 	gitServerPortStr := fmt.Sprintf("%d", gitServerPort)
-	_, err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name), ".")
+	err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name), ".")
 	if err != nil {
 		return err
 	}
 
-	_, err = pr.runGitCmd(gitPath, "config", "pull.rebase", "false")
+	err = pr.runGitCmd(gitPath, "config", "pull.rebase", "false")
 	if err != nil {
 		return err
 	}
 
-	_, err = pr.runGitCmd(gitPath, "pull", "origin", pullRequest.Spec.SourceBranch)
+	err = pr.runGitCmd(gitPath, "pull", "origin", pullRequest.Spec.SourceBranch)
 	if err != nil {
 		return err
 	}
-	_, err = pr.runGitCmd(gitPath, "push")
+	err = pr.runGitCmd(gitPath, "push")
+	if err != nil {
+		return err
+	}
 
 	mutexPR.Lock()
 	prKey := pr.getMapKey(*pullRequest)
@@ -131,7 +140,7 @@ func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest) string {
 	return fmt.Sprintf("%s/%s/%s/%s", pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
 }
 
-func (pr *PullRequest) runGitCmd(gitPath string, args ...string) (string, error) {
+func (pr *PullRequest) runGitCmd(gitPath string, args ...string) error {
 	cmd := exec.Command("git", args...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
@@ -144,16 +153,16 @@ func (pr *PullRequest) runGitCmd(gitPath string, args ...string) (string, error)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return "", err
+		return err
 	}
 
 	if err := cmd.Wait(); err != nil {
 		if strings.Contains(stderrBuf.String(), "already exists and is not an empty directory") ||
 			strings.Contains(stdoutBuf.String(), "nothing to commit, working tree clean") {
-			return "", nil
+			return nil
 		}
-		return "", fmt.Errorf("failed to run git command: %s", stderrBuf.String())
+		return fmt.Errorf("failed to run git command: %s", stderrBuf.String())
 	}
 
-	return stdoutBuf.String(), nil
+	return nil
 }
