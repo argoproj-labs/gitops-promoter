@@ -140,7 +140,7 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 	controllerRef := metav1.NewControllerRef(ps, gvk)
 
-	pc := promoterv1alpha1.ProposedCommit{
+	pcNew := promoterv1alpha1.ProposedCommit{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            pcName,
 			Namespace:       ps.Namespace,
@@ -159,17 +159,27 @@ func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Cont
 		},
 	}
 
-	err := r.Patch(ctx, &pc, client.MergeFrom(&promoterv1alpha1.ProposedCommit{}))
+	pc := promoterv1alpha1.ProposedCommit{}
+	err := r.Get(ctx, client.ObjectKey{Name: pcName, Namespace: ps.Namespace}, &pc)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("ProposedCommit not found, creating")
-			err = r.Create(ctx, &pc)
+			err = r.Create(ctx, &pcNew)
 			if err != nil {
 				return nil, err
 			}
+			pcNew.DeepCopyInto(&pc)
+		} else {
+			return nil, err
 		}
-		return nil, err
+	} else {
+		pcNew.Spec.DeepCopyInto(&pc.Spec)
+		err = r.Update(ctx, &pc)
+		if err != nil {
+			return nil, err
+		}
 	}
+
 	return &pc, nil
 }
 
