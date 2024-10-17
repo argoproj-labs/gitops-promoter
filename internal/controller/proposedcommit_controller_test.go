@@ -139,7 +139,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
 				g.Expect(err).To(Succeed())
 
-				sha, err := runGitCmd(gitPath, "git", "rev-parse", proposedCommit.Spec.ActiveBranch)
+				sha, err := runGitCmd(gitPath, "rev-parse", proposedCommit.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -154,7 +154,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, proposedCommit)
 				g.Expect(err).To(Succeed())
 
-				sha, err := runGitCmd(gitPath, "git", "rev-parse", proposedCommit.Spec.ActiveBranch)
+				sha, err := runGitCmd(gitPath, "rev-parse", proposedCommit.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 

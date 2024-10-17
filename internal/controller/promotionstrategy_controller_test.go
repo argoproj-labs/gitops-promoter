@@ -225,13 +225,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Key: "health-check",
 				},
 			}
-			activeCommitStatusDevelopment.Spec.Name = "health-check"
+			activeCommitStatusDevelopment.Spec.Name = "health-check" //nolint: goconst
 			activeCommitStatusDevelopment.Labels = map[string]string{
-				promoterv1alpha1.CommitStatusLabel: "health-check",
+				promoterv1alpha1.CommitStatusLabel: "health-check", //nolint: goconst
 			}
-			activeCommitStatusStaging.Spec.Name = "health-check"
+			activeCommitStatusStaging.Spec.Name = "health-check" //nolint: goconst
 			activeCommitStatusStaging.Labels = map[string]string{
-				promoterv1alpha1.CommitStatusLabel: "health-check",
+				promoterv1alpha1.CommitStatusLabel: "health-check", //nolint: goconst
 			}
 
 			By("Adding a pending commit")
@@ -309,9 +309,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, activeCommitStatusDevelopment)
 				g.Expect(err).To(Succeed())
 
-				_, err = runGitCmd(gitPath, "git", "fetch")
+				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "git", "rev-parse", "origin/"+proposedCommitDev.Spec.ActiveBranch)
+				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+proposedCommitDev.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -375,9 +375,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, activeCommitStatusStaging)
 				g.Expect(err).To(Succeed())
 
-				_, err = runGitCmd(gitPath, "git", "fetch")
+				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "git", "rev-parse", "origin/"+proposedCommitStaging.Spec.ActiveBranch)
+				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+proposedCommitStaging.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -390,9 +390,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(proposedCommitStaging.Status.Active.Hydrated.Sha).To(Equal(sha))
 
 				// Get an updated proposed commit for prod so that we can use save the sha before we update the commit status letting it merge
-				_, err = runGitCmd(gitPath, "git", "fetch")
+				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				shaProdProposed, err := runGitCmd(gitPath, "git", "rev-parse", "origin/"+proposedCommitProd.Spec.ProposedBranch)
+				shaProdProposed, err := runGitCmd(gitPath, "rev-parse", "origin/"+proposedCommitProd.Spec.ProposedBranch)
 				Expect(err).NotTo(HaveOccurred())
 				shaProdProposed = strings.TrimSpace(shaProdProposed)
 
@@ -541,9 +541,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, proposedCommitStatusDevelopment)
 				g.Expect(err).To(Succeed())
 
-				_, err = runGitCmd(gitPath, "git", "fetch")
+				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "git", "rev-parse", "origin/"+proposedCommitDev.Spec.ProposedBranch)
+				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+proposedCommitDev.Spec.ProposedBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 

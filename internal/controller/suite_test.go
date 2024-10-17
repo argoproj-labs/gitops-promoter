@@ -255,14 +255,19 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 	if err != nil {
 		panic("could not make temp dir for repo server")
 	}
-	defer os.RemoveAll(gitPath)
+	defer func() {
+		err := os.RemoveAll(gitPath)
+		if err != nil {
+			fmt.Println(err, "failed to remove temp dir")
+		}
+	}()
 
-	_, err = runGitCmd(gitPath, "git", "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, owner, name), ".")
+	_, err = runGitCmd(gitPath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, owner, name), ".")
 	Expect(err).NotTo(HaveOccurred())
 
-	_, err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
+	_, err = runGitCmd(gitPath, "config", "user.name", "testuser")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "git", "config", "user.email", "testemail@test.com")
+	_, err = runGitCmd(gitPath, "config", "user.email", "testemail@test.com")
 	Expect(err).NotTo(HaveOccurred())
 
 	f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
@@ -272,12 +277,12 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 	err = f.Close()
 	Expect(err).NotTo(HaveOccurred())
 
-	_, err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
+	_, err = runGitCmd(gitPath, "add", "hydrator.metadata")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "git", "commit", "-m", "init commit")
+	_, err = runGitCmd(gitPath, "commit", "-m", "init commit")
 	Expect(err).NotTo(HaveOccurred())
 
-	sha, err := runGitCmd(gitPath, "git", "rev-parse", "master")
+	sha, err := runGitCmd(gitPath, "rev-parse", "master")
 	Expect(err).NotTo(HaveOccurred())
 	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
@@ -287,30 +292,30 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 	err = f.Close()
 	Expect(err).NotTo(HaveOccurred())
 
-	_, err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
+	_, err = runGitCmd(gitPath, "add", "hydrator.metadata")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "git", "commit", "-m", "second commit with dry sha")
+	_, err = runGitCmd(gitPath, "commit", "-m", "second commit with dry sha")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "git", "push")
+	_, err = runGitCmd(gitPath, "push")
 	Expect(err).NotTo(HaveOccurred())
 
 	//"environment/development-next", "environment/staging-next", "environment/production-next"
 	for _, environment := range []string{"environment/development", "environment/staging", "environment/production"} {
-		_, err = runGitCmd(gitPath, "git", "checkout", "--orphan", environment)
+		_, err = runGitCmd(gitPath, "checkout", "--orphan", environment)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "commit", "--allow-empty", "-m", "initial commit")
+		_, err = runGitCmd(gitPath, "commit", "--allow-empty", "-m", "initial commit")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment)
+		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Sleep one seconds to differentiate the commits to prevent same hash
 		time.Sleep(1 * time.Second)
 
-		_, err = runGitCmd(gitPath, "git", "checkout", "-b", environment+"-next")
+		_, err = runGitCmd(gitPath, "checkout", "-b", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "commit", "--allow-empty", "-m", "initial commit next")
+		_, err = runGitCmd(gitPath, "commit", "--allow-empty", "-m", "initial commit next")
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment+"-next")
+		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
 
 		//Sleep one seconds to differentiate the commits to prevent same hash
@@ -322,24 +327,24 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 	//gitPath, err := os.MkdirTemp("", "*")
 	//Expect(err).NotTo(HaveOccurred())
 
-	_, err := runGitCmd(gitPath, "git", "clone", "--verbose", "--progress", "--filter=blob:none", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName), ".")
+	_, err := runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName), ".")
 	Expect(err).NotTo(HaveOccurred())
 
-	_, err = runGitCmd(gitPath, "git", "config", "user.name", "testuser")
+	_, err = runGitCmd(gitPath, "config", "user.name", "testuser")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "git", "config", "user.email", "testemail@test.com")
+	_, err = runGitCmd(gitPath, "config", "user.email", "testemail@test.com")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "git", "config", "pull.rebase", "false")
+	_, err = runGitCmd(gitPath, "config", "pull.rebase", "false")
 	Expect(err).NotTo(HaveOccurred())
 
 	for _, environment := range []string{"environment/development", "environment/staging", "environment/production", "environment/development-next", "environment/staging-next", "environment/production-next"} {
-		_, err = runGitCmd(gitPath, "git", "checkout", "-B", environment, "origin/"+environment)
+		_, err = runGitCmd(gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "pull")
+		_, err = runGitCmd(gitPath, "pull")
 		Expect(err).NotTo(HaveOccurred())
 	}
 
-	_, err = runGitCmd(gitPath, "git", "checkout", "master")
+	_, err = runGitCmd(gitPath, "checkout", "master")
 	Expect(err).NotTo(HaveOccurred())
 
 	f, err := os.Create(path.Join(gitPath, "manifests-fake.timestamp"))
@@ -349,22 +354,22 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 	Expect(err).NotTo(HaveOccurred())
 	err = f.Close()
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "git", "add", "manifests-fake.timestamp")
+	_, err = runGitCmd(gitPath, "add", "manifests-fake.timestamp")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "git", "commit", "-m", "added fake manifests commit with timestamp")
+	_, err = runGitCmd(gitPath, "commit", "-m", "added fake manifests commit with timestamp")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", "master")
+	_, err = runGitCmd(gitPath, "push", "-u", "origin", "master")
 	Expect(err).NotTo(HaveOccurred())
 
-	sha, err := runGitCmd(gitPath, "git", "rev-parse", "master")
+	sha, err := runGitCmd(gitPath, "rev-parse", "master")
 	Expect(err).NotTo(HaveOccurred())
 	sha = strings.TrimSpace(sha)
-	shortSha, err := runGitCmd(gitPath, "git", "rev-parse", "--short=7", "master")
+	shortSha, err := runGitCmd(gitPath, "rev-parse", "--short=7", "master")
 	Expect(err).NotTo(HaveOccurred())
 	shortSha = strings.TrimSpace(shortSha)
 
 	for _, environment := range []string{"environment/development-next", "environment/staging-next", "environment/production-next"} {
-		_, err = runGitCmd(gitPath, "git", "checkout", "-B", environment, "origin/"+environment)
+		_, err = runGitCmd(gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 
 		f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
@@ -374,7 +379,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 		Expect(err).NotTo(HaveOccurred())
 		err = f.Close()
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "add", "hydrator.metadata")
+		_, err = runGitCmd(gitPath, "add", "hydrator.metadata")
 		Expect(err).NotTo(HaveOccurred())
 
 		f, err = os.Create(path.Join(gitPath, "manifests-fake.timestamp"))
@@ -384,12 +389,12 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 		Expect(err).NotTo(HaveOccurred())
 		err = f.Close()
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "add", "manifests-fake.timestamp")
+		_, err = runGitCmd(gitPath, "add", "manifests-fake.timestamp")
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = runGitCmd(gitPath, "git", "commit", "-m", "added pending commit from dry sha, "+sha+" from environment "+strings.TrimRight(environment, "-next"))
+		_, err = runGitCmd(gitPath, "commit", "-m", "added pending commit from dry sha, "+sha+" from environment "+strings.TrimRight(environment, "-next"))
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "git", "push", "-u", "origin", environment)
+		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
 
 		//Sleep one seconds to differentiate the commits to prevent same hash
@@ -399,13 +404,8 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 	return sha, shortSha
 }
 
-func deleteRepo(owner, name string) {
-	err := os.RemoveAll(path.Join(gitStoragePath, owner, name))
-	Expect(err).NotTo(HaveOccurred())
-}
-
-func runGitCmd(directory string, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
+func runGitCmd(directory string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf

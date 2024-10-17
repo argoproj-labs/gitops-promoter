@@ -62,8 +62,10 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	var promotionStrategyRequeue string
+	var proposedCommitRequeue string
+	flag.StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metric endpoint binds to.")
+	flag.StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
@@ -71,6 +73,10 @@ func main() {
 		"If set the metrics endpoint is served securely")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&promotionStrategyRequeue, "promotion-strategy-requeue-duration", "60s",
+		"How frequently to requeue promotion strategy resources for auto reconciliation")
+	flag.StringVar(&proposedCommitRequeue, "proposed-commit-requeue-duration", "60s",
+		"How frequently to requeue proposed commit resources for auto reconciliation")
 	opts := zap.Options{
 		Development: true,
 		TimeEncoder: zapcore.ISO8601TimeEncoder,
@@ -158,16 +164,28 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "RevertCommit")
 		os.Exit(1)
 	}
+
+	proposedCommitRequeueDuration, err := time.ParseDuration(proposedCommitRequeue)
+	if err != nil {
+		setupLog.Error(err, "failed to parse proposed commit requeue duration")
+		os.Exit(1)
+	}
 	if err = (&controller.ProposedCommitReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		PathLookup: pathLookup,
 		Recorder:   mgr.GetEventRecorderFor("ProposedCommit"),
 		Config: controller.ProposedCommitReconcilerConfig{
-			RequeueDuration: 30 * time.Second,
+			RequeueDuration: proposedCommitRequeueDuration,
 		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ProposedCommit")
+		os.Exit(1)
+	}
+
+	promotionStrategyRequeueDuration, err := time.ParseDuration(promotionStrategyRequeue)
+	if err != nil {
+		setupLog.Error(err, "failed to parse promotion strategy requeue duration")
 		os.Exit(1)
 	}
 	if err = (&controller.PromotionStrategyReconciler{
@@ -175,7 +193,7 @@ func main() {
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("PromotionStrategy"),
 		Config: controller.PromotionStrategyReconcilerConfig{
-			RequeueDuration: 15 * time.Second,
+			RequeueDuration: promotionStrategyRequeueDuration,
 		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "PromotionStrategy")

@@ -144,7 +144,7 @@ func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmPr
 		logger.V(4).Info("Creating GitHub git authentication provider")
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
 	default:
-		return nil, nil
+		return nil, fmt.Errorf("no supported git authentication provider found")
 	}
 }
 
@@ -240,7 +240,6 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 			}
 			pc.Status.Proposed.Dry.CommitTime = commitTime
 
-			allProposedCSList := []promoterv1alpha1.CommitStatus{}
 			proposedCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusPhase{}
 			for _, status := range pc.Spec.ProposedCommitStatuses {
 				var csListProposed promoterv1alpha1.CommitStatusList
@@ -266,7 +265,6 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				}
 
 				if len(csListSlice) == 1 {
-					allProposedCSList = append(allProposedCSList, csListSlice[0])
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(csListSlice[0].Status.Phase),
