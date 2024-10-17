@@ -6,4 +6,5 @@ resources:
 - promoter_v1alpha1_proposedcommit.yaml
 - promoter_v1alpha1_promotionstrategy.yaml
 - promoter_v1alpha1_scmprovider.yaml
+- promoter_v1alpha1_gitrepository.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples
