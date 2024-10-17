@@ -324,7 +324,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 		}
 
 		for _, commitStatus := range commitStatuses.Items {
-			if commitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel] == "true" {
+			if commitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel] == "true" { //nolint: goconst
 				continue
 			}
 
@@ -351,7 +351,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			if copiedCommitStatus.Labels == nil {
 				copiedCommitStatus.Labels = make(map[string]string)
 			}
-			copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel] = "true"
+			copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel] = "true" //nolint: goconst
 			copiedCommitStatus.Labels[promoterv1alpha1.CopiedCommitStatusFromLabel] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
 			copiedCommitStatus.Labels[promoterv1alpha1.CommmitStatusFromShaLabel] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
 			copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusFromBranchLabel] = utils.KubeSafeLabel(ctx, branch)

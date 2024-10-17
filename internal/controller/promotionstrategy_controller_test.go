@@ -225,13 +225,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Key: "health-check",
 				},
 			}
-			activeCommitStatusDevelopment.Spec.Name = "health-check"
+			activeCommitStatusDevelopment.Spec.Name = "health-check" //nolint: goconst
 			activeCommitStatusDevelopment.Labels = map[string]string{
-				promoterv1alpha1.CommitStatusLabel: "health-check",
+				promoterv1alpha1.CommitStatusLabel: "health-check", //nolint: goconst
 			}
-			activeCommitStatusStaging.Spec.Name = "health-check"
+			activeCommitStatusStaging.Spec.Name = "health-check" //nolint: goconst
 			activeCommitStatusStaging.Labels = map[string]string{
-				promoterv1alpha1.CommitStatusLabel: "health-check",
+				promoterv1alpha1.CommitStatusLabel: "health-check", //nolint: goconst
 			}
 
 			By("Adding a pending commit")
