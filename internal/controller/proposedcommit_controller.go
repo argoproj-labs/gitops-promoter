@@ -111,7 +111,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	err = r.creatOrUpdatePullRequest(ctx, &pc)
+	err = r.mergeOrPullRequestPromote(ctx, gitOperations, &pc)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -289,6 +289,29 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 			}
 			pc.Status.Proposed.CommitStatuses = proposedCommitStatusesState
 
+		}
+	}
+
+	return nil
+}
+
+func (r *ProposedCommitReconciler) mergeOrPullRequestPromote(ctx context.Context, gitOperations *git.GitOperations, pc *promoterv1alpha1.ProposedCommit) error {
+	if pc.Status.Proposed.Dry.Sha != pc.Status.Active.Dry.Sha {
+		prRequired, err := gitOperations.IsPullRequestRequired(ctx, pc.Spec.ActiveBranch, pc.Spec.ProposedBranch)
+		if err != nil {
+			return err
+		}
+
+		if prRequired {
+			err = r.creatOrUpdatePullRequest(ctx, pc)
+			if err != nil {
+				return err
+			}
+		} else {
+			err = gitOperations.PromoteEnvironmentWithMerge(ctx, pc.Spec.ActiveBranch, pc.Spec.ProposedBranch)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
