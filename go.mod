@@ -9,7 +9,7 @@ require (
 	github.com/google/go-github/v61 v61.0.0
 	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/onsi/gomega v1.34.2
-	github.com/relvacode/iso8601 v1.4.0
+	github.com/relvacode/iso8601 v1.5.0
 	github.com/sosedoff/gitkit v0.4.0
 	github.com/stretchr/testify v1.9.0
 	go.uber.org/zap v1.27.0
