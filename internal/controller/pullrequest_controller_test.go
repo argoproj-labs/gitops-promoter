@@ -36,7 +36,7 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should successfully reconcile the resource when updating title then merging", func() {
 			By("Reconciling the created resource")
 
-			name, scmSecret, scmProvider, pullRequest := pullRequestResources(ctx, "update-title", "default")
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "update-title", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -50,6 +50,7 @@ var _ = Describe("PullRequest Controller", func() {
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -85,7 +86,7 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should successfully reconcile the resource when closing", func() {
 			By("Reconciling the created resource")
 
-			name, scmSecret, scmProvider, pullRequest := pullRequestResources(ctx, "update-title", "default")
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "update-title", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -94,6 +95,7 @@ var _ = Describe("PullRequest Controller", func() {
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -118,7 +120,7 @@ var _ = Describe("PullRequest Controller", func() {
 	})
 })
 
-func pullRequestResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.PullRequest) {
+func pullRequestResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 	setupInitialTestGitRepoOnServer(name, name)
 
@@ -144,6 +146,21 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 		Status: promoterv1alpha1.ScmProviderStatus{},
 	}
 
+	gitRepo := &promoterv1alpha1.GitRepository{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: promoterv1alpha1.GitRepositorySpec{
+			Owner: name,
+			Name:  name,
+			ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
+				Name:      name,
+				Namespace: namespace,
+			},
+		},
+	}
+
 	pullRequest := &promoterv1alpha1.PullRequest{
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
@@ -151,13 +168,9 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.PullRequestSpec{
-			RepositoryReference: &promoterv1alpha1.Repository{
-				Owner: name,
-				Name:  name,
-				ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-					Name:      name,
-					Namespace: namespace,
-				},
+			RepositoryReference: &promoterv1alpha1.NamespacedObjectReference{
+				Name:      name,
+				Namespace: namespace,
 			},
 			Title:        "",
 			TargetBranch: "",
@@ -168,5 +181,5 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 		Status: promoterv1alpha1.PullRequestStatus{},
 	}
 
-	return name, scmSecret, scmProvider, pullRequest
+	return name, scmSecret, scmProvider, gitRepo, pullRequest
 }

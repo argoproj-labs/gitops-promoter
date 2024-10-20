@@ -29,7 +29,7 @@ type CommitStatusSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// +kubebuilder:validation:Required
-	RepositoryReference *Repository `json:"repository"`
+	RepositoryReference *NamespacedObjectReference `json:"gitRepositoryRef"`
 
 	// +kubebuilder:validation:Required
 	Sha string `json:"sha"`

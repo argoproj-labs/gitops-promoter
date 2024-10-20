@@ -48,6 +48,15 @@ spec:
             properties:
               description:
                 type: string
+              gitRepositoryRef:
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - name
+                type: object
               name:
                 type: string
               phase:
@@ -57,35 +66,15 @@ spec:
                 - success
                 - failure
                 type: string
-              repository:
-                properties:
-                  name:
-                    type: string
-                  owner:
-                    type: string
-                  scmProviderRef:
-                    properties:
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - name
-                    type: object
-                required:
-                - name
-                - owner
-                - scmProviderRef
-                type: object
               sha:
                 type: string
               url:
                 type: string
             required:
             - description
+            - gitRepositoryRef
             - name
             - phase
-            - repository
             - sha
             - url
             type: object

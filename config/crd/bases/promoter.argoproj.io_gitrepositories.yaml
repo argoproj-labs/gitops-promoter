@@ -39,10 +39,23 @@ spec:
           spec:
             description: GitRepositorySpec defines the desired state of GitRepository
             properties:
-              foo:
-                description: Foo is an example field of GitRepository. Edit gitrepository_types.go
-                  to remove/update
+              name:
                 type: string
+              owner:
+                type: string
+              scmProviderRef:
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - name
+            - owner
+            - scmProviderRef
             type: object
           status:
             description: GitRepositoryStatus defines the observed state of GitRepository

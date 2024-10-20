@@ -25,11 +25,12 @@ import (
 
 // GitRepositorySpec defines the desired state of GitRepository
 type GitRepositorySpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of GitRepository. Edit gitrepository_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// +kubebuilder:validation:Required
+	Owner string `json:"owner"`
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+	// +kubebuilder:validation:Required
+	ScmProviderRef NamespacedObjectReference `json:"scmProviderRef"`
 }
 
 // GitRepositoryStatus defines the observed state of GitRepository
