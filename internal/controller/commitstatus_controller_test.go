@@ -92,7 +92,7 @@ var _ = Describe("CommitStatus Controller", func() {
 				},
 				Spec: promoterv1alpha1.CommitStatusSpec{
 					Phase: promoterv1alpha1.CommitPhasePending,
-					RepositoryReference: &promoterv1alpha1.NamespacedObjectReference{
+					RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
 						Name:      typeNamespacedName.Name,
 						Namespace: typeNamespacedName.Namespace,
 					},

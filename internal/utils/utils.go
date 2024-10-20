@@ -45,7 +45,7 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 }
 
 // GetGitRepositorytFromRepositoryReference returns the GitRepository object from the repository reference
-func GetGitRepositorytFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryReference *promoterv1alpha1.NamespacedObjectReference) (*promoterv1alpha1.GitRepository, error) {
+func GetGitRepositorytFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryReference promoterv1alpha1.NamespacedObjectReference) (*promoterv1alpha1.GitRepository, error) {
 
 	var gitRepo promoterv1alpha1.GitRepository
 	objectKey := client.ObjectKey{
@@ -60,7 +60,7 @@ func GetGitRepositorytFromRepositoryReference(ctx context.Context, k8sClient cli
 	return &gitRepo, nil
 }
 
-func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef *promoterv1alpha1.NamespacedObjectReference, obj metav1.Object) (*promoterv1alpha1.ScmProvider, *v1.Secret, error) {
+func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.NamespacedObjectReference, obj metav1.Object) (*promoterv1alpha1.ScmProvider, *v1.Secret, error) {
 	logger := log.FromContext(ctx)
 
 	gitRepo, err := GetGitRepositorytFromRepositoryReference(ctx, k8sClient, repositoryRef)

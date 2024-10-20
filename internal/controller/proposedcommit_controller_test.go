@@ -217,7 +217,7 @@ func proposedCommitResources(ctx context.Context, name, namespace string) (strin
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.CommitStatusSpec{
-			RepositoryReference: &promoterv1alpha1.NamespacedObjectReference{
+			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
 				Name:      name,
 				Namespace: namespace,
 			},
@@ -235,7 +235,7 @@ func proposedCommitResources(ctx context.Context, name, namespace string) (strin
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.ProposedCommitSpec{
-			RepositoryReference: &promoterv1alpha1.NamespacedObjectReference{
+			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
 				Name:      name,
 				Namespace: namespace,
 			},

@@ -168,7 +168,7 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.PullRequestSpec{
-			RepositoryReference: &promoterv1alpha1.NamespacedObjectReference{
+			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
 				Name:      name,
 				Namespace: namespace,
 			},
