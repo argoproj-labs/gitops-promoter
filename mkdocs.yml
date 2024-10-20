@@ -18,7 +18,10 @@ theme:
         name: Switch to light mode
 nav:
   - Overview: index.md
-  - Installation: installation.md
+  - Installation:
+      - Installation: installation.md
+      - Github Application Configuration: github-app-configuration.md
   - Getting Started:
       - Basic Usage: getting-started.md
       - Non-Kubernetes Usage: non-kubernetes-usage.md
+  - CRD Reference: crd-reference.md
