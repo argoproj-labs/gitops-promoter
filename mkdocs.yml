@@ -19,7 +19,6 @@ theme:
 nav:
   - Overview: index.md
   - Installation: installation.md
-  - Concepts: concepts.md
-  - Architecture: architecture.md
   - Getting Started:
       - Basic Usage: getting-started.md
+      - Non-Kubernetes Usage: non-kubernetes-usage.md

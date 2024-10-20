@@ -1,17 +1,15 @@
-# Welcome to MkDocs
+# Welcome to GitOps Promotions
 
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
+GitOps Promoter is a tool designed to facilitate environment promotion in a GitOps workflow. It automates the process of promoting changes from one environment to the next by leveraging Git operations. The tool ensures that your environments are always in sync with the desired state defined in your Git repository.
 
-## Commands
+## Key Features
 
-* `mkdocs new [dir-name]` - Create a new project.
-* `mkdocs serve` - Start the live-reloading docs server.
-* `mkdocs build` - Build the documentation site.
-* `mkdocs -h` - Print help message and exit.
+- **Automated Environment Promotion**: Seamlessly promote changes across environments.
+- **GitOps First**: Adheres to GitOps principles, ensuring that all changes are version-controlled.
+- **YAML Diff Detection**: Detects changes in YAML files to determine if a pull request is required.
+- **Integration with CI/CD**: Easily integrates with your existing CI/CD pipelines.
+- **ArgoCD Integration**: Supports ArgoCD for managing Kubernetes resources.
 
-## Project layout
+## Getting Started
 
-    mkdocs.yml    # The configuration file.
-    docs/
-        index.md  # The documentation homepage.
-        ...       # Other markdown pages, images and other files.
+To get started with GitOps Promoter, follow the [installation guide](installation.md) and the [basic usage instructions](getting-started.md).
