@@ -31,14 +31,18 @@ type CommitStatusSpec struct {
 	// +kubebuilder:validation:Required
 	RepositoryReference *Repository `json:"repository"`
 
+	// Sha is the commit sha to report the status for
 	// +kubebuilder:validation:Required
 	Sha string `json:"sha"`
 
+	// Name is the name of the status check
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 
+	// Description is the description of the status check
 	Description string `json:"description"`
 
+	// Phase is the state of the status check it can be one of pending, success, failure
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=pending
 	// +kubebuilder:validation:Enum:=pending;success;failure
@@ -47,6 +51,7 @@ type CommitStatusSpec struct {
 	// (Gitlab: pending, running, success, failed, canceled)
 	// (Bitbucket: INPROGRESS, STOPPED, SUCCESSFUL, FAILED)
 
+	// Url is the url to the status check to provide more information
 	Url string `json:"url"`
 }
 

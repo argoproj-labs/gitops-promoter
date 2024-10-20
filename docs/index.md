@@ -13,3 +13,5 @@ GitOps Promoter is a tool designed to facilitate environment promotion in a GitO
 ## Getting Started
 
 To get started with GitOps Promoter, follow the [installation guide](installation.md) and the [basic usage instructions](getting-started.md).
+
+## Concepts of Promotion
