@@ -299,8 +299,6 @@ func (r *ProposedCommitReconciler) mergeOrPullRequestPromote(ctx context.Context
 	if pc.Status.Proposed.Dry.Sha == pc.Status.Active.Dry.Sha {
 		return nil
 	}
-	logger := log.FromContext(ctx)
-	logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
 
 	prRequired, err := gitOperations.IsPullRequestRequired(ctx, pc.Spec.ActiveBranch, pc.Spec.ProposedBranch)
 	if err != nil {
