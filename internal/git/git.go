@@ -70,19 +70,19 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 
 		stdout, stderr, err = g.runCmd(ctx, path, "config", "pull.rebase", "false")
 		if err != nil {
-			logger.Error(err, "could set git config", "stdout", stdout, "stderr", stderr)
+			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
 			return err
 		}
 
-		stdout, stderr, err = g.runCmd(ctx, path, "config", "user.name", "Gitops Promoter")
+		stdout, stderr, err = g.runCmd(ctx, path, "config", "user.name", "GitOps Promoter")
 		if err != nil {
-			logger.Error(err, "could set git config", "stdout", stdout, "stderr", stderr)
+			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
 			return err
 		}
 
-		stdout, stderr, err = g.runCmd(ctx, path, "config", "user.email", "GitopsPromoter@argoproj.io")
+		stdout, stderr, err = g.runCmd(ctx, path, "config", "user.email", "GitOpsPromoter@argoproj.io")
 		if err != nil {
-			logger.Error(err, "could set git config", "stdout", stdout, "stderr", stderr)
+			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
 			return err
 		}
 
