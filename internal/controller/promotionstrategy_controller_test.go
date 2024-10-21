@@ -684,7 +684,7 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.PromotionStrategySpec{
-			DryBanch: "main",
+			DryBranch: "main",
 			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
 				Name:      name,
 				Namespace: namespace,
