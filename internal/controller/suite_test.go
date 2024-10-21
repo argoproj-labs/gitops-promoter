@@ -105,7 +105,7 @@ var _ = BeforeSuite(func() {
 		// Note that you must have the required binaries setup under the bin directory to perform
 		// the tests directly. When we run make test it will be setup and used automatically.
 		BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
-			fmt.Sprintf("1.29.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
+			fmt.Sprintf("1.31.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
 	}
 
 	var err error
@@ -179,6 +179,13 @@ var _ = BeforeSuite(func() {
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
 		Recorder: k8sManager.GetEventRecorderFor("ScmProvider"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&GitRepositoryReconciler{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+		//Recorder: k8sManager.GetEventRecorderFor("GitRepository"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -282,7 +289,11 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 	_, err = runGitCmd(gitPath, "commit", "-m", "init commit")
 	Expect(err).NotTo(HaveOccurred())
 
-	sha, err := runGitCmd(gitPath, "rev-parse", "master")
+	defaultBranch, err := runGitCmd(gitPath, "rev-parse", "--abbrev-ref", "HEAD")
+	Expect(err).NotTo(HaveOccurred())
+	defaultBranch = strings.TrimSpace(defaultBranch)
+
+	sha, err := runGitCmd(gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
 	Expect(err).NotTo(HaveOccurred())
@@ -344,7 +355,11 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 		Expect(err).NotTo(HaveOccurred())
 	}
 
-	_, err = runGitCmd(gitPath, "checkout", "master")
+	defaultBranch, err := runGitCmd(gitPath, "rev-parse", "--abbrev-ref", "origin/HEAD")
+	Expect(err).NotTo(HaveOccurred())
+	defaultBranch, _ = strings.CutPrefix(strings.TrimSpace(defaultBranch), "origin/")
+
+	_, err = runGitCmd(gitPath, "checkout", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
 	f, err := os.Create(path.Join(gitPath, "manifests-fake.yaml"))
@@ -358,13 +373,13 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 	Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "commit", "-m", "added fake manifests commit with timestamp")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "push", "-u", "origin", "master")
+	_, err = runGitCmd(gitPath, "push", "-u", "origin", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
-	sha, err := runGitCmd(gitPath, "rev-parse", "master")
+	sha, err := runGitCmd(gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	sha = strings.TrimSpace(sha)
-	shortSha, err := runGitCmd(gitPath, "rev-parse", "--short=7", "master")
+	shortSha, err := runGitCmd(gitPath, "rev-parse", "--short=7", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	shortSha = strings.TrimSpace(shortSha)
 

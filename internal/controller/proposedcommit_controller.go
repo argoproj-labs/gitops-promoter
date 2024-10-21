@@ -87,7 +87,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, *pc.Spec.RepositoryReference, &pc)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, pc.Spec.RepositoryReference, &pc)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -96,7 +96,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, *pc.Spec.RepositoryReference, &pc, pc.Spec.ActiveBranch)
+	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, pc.Spec.RepositoryReference, &pc, pc.Spec.ActiveBranch)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -328,10 +328,14 @@ func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context,
 	}
 
 	logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
-	prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, *pc))
+	gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, r.Client, pc.Spec.RepositoryReference)
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+	prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch))
 
 	var pr promoterv1alpha1.PullRequest
-	err := r.Get(ctx, client.ObjectKey{
+	err = r.Get(ctx, client.ObjectKey{
 		Namespace: pc.Namespace,
 		Name:      prName,
 	}, &pr)

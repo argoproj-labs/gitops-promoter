@@ -71,21 +71,31 @@ func (_c *MockPullRequestProvider_Close_Call) RunAndReturn(run func(context.Cont
 }
 
 // Create provides a mock function with given fields: ctx, title, head, base, description, pullRequest
-func (_m *MockPullRequestProvider) Create(ctx context.Context, title string, head string, base string, description string, pullRequest *v1alpha1.PullRequest) error {
+func (_m *MockPullRequestProvider) Create(ctx context.Context, title string, head string, base string, description string, pullRequest *v1alpha1.PullRequest) (string, error) {
 	ret := _m.Called(ctx, title, head, base, description, pullRequest)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Create")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string, *v1alpha1.PullRequest) error); ok {
+	var r0 string
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string, *v1alpha1.PullRequest) (string, error)); ok {
+		return rf(ctx, title, head, base, description, pullRequest)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, string, string, *v1alpha1.PullRequest) string); ok {
 		r0 = rf(ctx, title, head, base, description, pullRequest)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(string)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, string, string, string, string, *v1alpha1.PullRequest) error); ok {
+		r1 = rf(ctx, title, head, base, description, pullRequest)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // MockPullRequestProvider_Create_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Create'
@@ -111,12 +121,12 @@ func (_c *MockPullRequestProvider_Create_Call) Run(run func(ctx context.Context,
 	return _c
 }
 
-func (_c *MockPullRequestProvider_Create_Call) Return(_a0 error) *MockPullRequestProvider_Create_Call {
-	_c.Call.Return(_a0)
+func (_c *MockPullRequestProvider_Create_Call) Return(_a0 string, _a1 error) *MockPullRequestProvider_Create_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockPullRequestProvider_Create_Call) RunAndReturn(run func(context.Context, string, string, string, string, *v1alpha1.PullRequest) error) *MockPullRequestProvider_Create_Call {
+func (_c *MockPullRequestProvider_Create_Call) RunAndReturn(run func(context.Context, string, string, string, string, *v1alpha1.PullRequest) (string, error)) *MockPullRequestProvider_Create_Call {
 	_c.Call.Return(run)
 	return _c
 }

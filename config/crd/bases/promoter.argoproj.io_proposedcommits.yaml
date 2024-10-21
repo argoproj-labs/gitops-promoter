@@ -61,6 +61,16 @@ spec:
                   - key
                   type: object
                 type: array
+              gitRepositoryRef:
+                description: RepositoryReference what repository to open the PR on.
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - name
+                type: object
               proposedBranch:
                 description: ProposedBranch staging hydrated branch
                 type: string
@@ -76,31 +86,10 @@ spec:
                   - key
                   type: object
                 type: array
-              repository:
-                description: RepositoryReference what repository to open the PR on.
-                properties:
-                  name:
-                    type: string
-                  owner:
-                    type: string
-                  scmProviderRef:
-                    properties:
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - name
-                    type: object
-                required:
-                - name
-                - owner
-                - scmProviderRef
-                type: object
             required:
             - activeBranch
+            - gitRepositoryRef
             - proposedBranch
-            - repository
             type: object
           status:
             description: ProposedCommitStatus defines the observed state of ProposedCommit

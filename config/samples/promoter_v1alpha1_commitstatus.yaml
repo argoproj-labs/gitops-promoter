@@ -11,7 +11,7 @@ spec:
     repository:
       owner: zachaller
       name: promoter-testing
-      scmProviderRef:
+      gitRepositoryRef:
           name: scmprovider-sample
     phase: pending
     name: health
