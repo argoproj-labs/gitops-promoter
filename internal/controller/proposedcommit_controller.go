@@ -320,7 +320,7 @@ func (r *ProposedCommitReconciler) mergeOrPullRequestPromote(ctx context.Context
 
 func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context, pc *promoterv1alpha1.ProposedCommit) error {
 	logger := log.FromContext(ctx)
-	if pc.Status.Proposed.Dry.Sha != pc.Status.Active.Dry.Sha {
+	if pc.Status.Proposed.Dry.Sha == pc.Status.Active.Dry.Sha {
 		// If the proposed dry sha is different from the active dry sha, create a pull request
 		return nil
 	}
