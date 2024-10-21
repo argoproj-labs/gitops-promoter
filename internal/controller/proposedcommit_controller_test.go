@@ -38,7 +38,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 		It("should successfully reconcile the resource - with a pending commit and no commit status checks", func() {
 
-			name, scmSecret, scmProvider, _, proposedCommit := proposedCommitResources(ctx, "pc-without-commit-checks", "default")
+			name, scmSecret, scmProvider, gitRepo, _, proposedCommit := proposedCommitResources(ctx, "pc-without-commit-checks", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -50,13 +50,14 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, proposedCommit)).To(Succeed())
 
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.RepositoryReference.Name)
+			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Owner, gitRepo.Spec.Name)
 
 			By("Reconciling the created resource")
 
@@ -70,7 +71,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			prName := utils.GetPullRequestName(ctx, *proposedCommit)
+			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, proposedCommit.Spec.ProposedBranch, proposedCommit.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
 
 				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
@@ -85,7 +86,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("Adding another pending commit")
-			_, shortSha = makeChangeAndHydrateRepo(gitPath, proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.RepositoryReference.Name)
+			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Owner, gitRepo.Spec.Name)
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -102,7 +103,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 		It("should successfully reconcile the resource - with a pending commit with commit status checks", func() {
 
-			name, scmSecret, scmProvider, commitStatus, proposedCommit := proposedCommitResources(ctx, "pc-with-commit-checks", "default")
+			name, scmSecret, scmProvider, gitRepo, commitStatus, proposedCommit := proposedCommitResources(ctx, "pc-with-commit-checks", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -125,6 +126,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
 			Expect(k8sClient.Create(ctx, proposedCommit)).To(Succeed())
 
@@ -132,7 +134,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			makeChangeAndHydrateRepo(gitPath, proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.RepositoryReference.Name)
+			makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Owner, gitRepo.Spec.Name)
 
 			Eventually(func(g Gomega) {
 
@@ -167,7 +169,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 	})
 })
 
-func proposedCommitResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ProposedCommit) {
+func proposedCommitResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ProposedCommit) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 	setupInitialTestGitRepoOnServer(name, name)
 
@@ -193,6 +195,21 @@ func proposedCommitResources(ctx context.Context, name, namespace string) (strin
 		Status: promoterv1alpha1.ScmProviderStatus{},
 	}
 
+	gitRepo := &promoterv1alpha1.GitRepository{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: promoterv1alpha1.GitRepositorySpec{
+			Owner: name,
+			Name:  name,
+			ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
+				Name:      name,
+				Namespace: namespace,
+			},
+		},
+	}
+
 	commitStatus := &promoterv1alpha1.CommitStatus{
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
@@ -200,13 +217,9 @@ func proposedCommitResources(ctx context.Context, name, namespace string) (strin
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.CommitStatusSpec{
-			RepositoryReference: &promoterv1alpha1.Repository{
-				Owner: name,
-				Name:  name,
-				ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-					Name:      name,
-					Namespace: namespace,
-				},
+			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
+				Name:      name,
+				Namespace: namespace,
 			},
 			Sha:         "",
 			Name:        "",
@@ -222,16 +235,12 @@ func proposedCommitResources(ctx context.Context, name, namespace string) (strin
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.ProposedCommitSpec{
-			RepositoryReference: &promoterv1alpha1.Repository{
-				Owner: name,
-				Name:  name,
-				ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-					Name:      name,
-					Namespace: namespace,
-				},
+			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
+				Name:      name,
+				Namespace: namespace,
 			},
 		},
 	}
 
-	return name, scmSecret, scmProvider, commitStatus, proposedCommit
+	return name, scmSecret, scmProvider, gitRepo, commitStatus, proposedCommit
 }
