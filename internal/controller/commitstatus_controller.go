@@ -134,14 +134,14 @@ func (r *CommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, commitStatus promoterv1alpha1.CommitStatus) (scms.CommitStatusProvider, error) {
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, *commitStatus.Spec.RepositoryReference, &commitStatus)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, commitStatus.Spec.RepositoryReference, &commitStatus)
 	if err != nil {
 		return nil, err
 	}
 
 	switch {
 	case scmProvider.Spec.GitHub != nil:
-		return github.NewGithubCommitStatusProvider(*secret)
+		return github.NewGithubCommitStatusProvider(r.Client, *secret)
 	case scmProvider.Spec.Fake != nil:
 		return fake.NewFakeCommitStatusProvider(*secret)
 	default:

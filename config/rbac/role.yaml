@@ -8,6 +8,7 @@ rules:
   - promoter.argoproj.io
   resources:
   - commitstatuses
+  - gitrepositories
   - promotionstrategies
   - proposedcommits
   - pullrequests
@@ -25,6 +26,7 @@ rules:
   - promoter.argoproj.io
   resources:
   - commitstatuses/finalizers
+  - gitrepositories/finalizers
   - promotionstrategies/finalizers
   - proposedcommits/finalizers
   - pullrequests/finalizers
@@ -36,6 +38,7 @@ rules:
   - promoter.argoproj.io
   resources:
   - commitstatuses/status
+  - gitrepositories/status
   - promotionstrategies/status
   - proposedcommits/status
   - pullrequests/status

@@ -332,6 +332,11 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			copiedCSName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixNameLabel+commitStatus.Name)
 			proposedCSObjectKey := client.ObjectKey{Namespace: commitStatus.Namespace, Name: copiedCSName}
 
+			gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, r.Client, commitStatus.Spec.RepositoryReference)
+			if err != nil {
+				return fmt.Errorf("failed to get GitRepository: %w", err)
+			}
+
 			copiedCommitStatus := &promoterv1alpha1.CommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:        proposedCSObjectKey.Name,
@@ -345,7 +350,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 					Name:                branch + " - " + commitStatus.Spec.Name,
 					Description:         commitStatus.Spec.Description,
 					Phase:               commitStatus.Spec.Phase,
-					Url:                 "https://github.com/" + commitStatus.Spec.RepositoryReference.Owner + "/" + commitStatus.Spec.RepositoryReference.Name + "/commit/" + copyFromActiveHydratedSha,
+					Url:                 "https://github.com/" + gitRepo.Spec.Owner + "/" + gitRepo.Spec.Name + "/commit/" + copyFromActiveHydratedSha,
 				},
 			}
 			if copiedCommitStatus.Labels == nil {

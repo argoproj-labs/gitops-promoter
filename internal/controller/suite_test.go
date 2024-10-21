@@ -182,6 +182,13 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	err = (&GitRepositoryReconciler{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+		//Recorder: k8sManager.GetEventRecorderFor("GitRepository"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	go func() {
 		defer GinkgoRecover()
 		err = k8sManager.Start(ctx)
@@ -355,14 +362,14 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 	_, err = runGitCmd(gitPath, "checkout", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
-	f, err := os.Create(path.Join(gitPath, "manifests-fake.timestamp"))
+	f, err := os.Create(path.Join(gitPath, "manifests-fake.yaml"))
 	Expect(err).NotTo(HaveOccurred())
 	str := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339))
 	_, err = f.WriteString(str)
 	Expect(err).NotTo(HaveOccurred())
 	err = f.Close()
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "add", "manifests-fake.timestamp")
+	_, err = runGitCmd(gitPath, "add", "manifests-fake.yaml")
 	Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "commit", "-m", "added fake manifests commit with timestamp")
 	Expect(err).NotTo(HaveOccurred())
@@ -390,14 +397,14 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 		_, err = runGitCmd(gitPath, "add", "hydrator.metadata")
 		Expect(err).NotTo(HaveOccurred())
 
-		f, err = os.Create(path.Join(gitPath, "manifests-fake.timestamp"))
+		f, err = os.Create(path.Join(gitPath, "manifests-fake.yaml"))
 		Expect(err).NotTo(HaveOccurred())
 		str := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339))
 		_, err = f.WriteString(str)
 		Expect(err).NotTo(HaveOccurred())
 		err = f.Close()
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "add", "manifests-fake.timestamp")
+		_, err = runGitCmd(gitPath, "add", "manifests-fake.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
 		_, err = runGitCmd(gitPath, "commit", "-m", "added pending commit from dry sha, "+sha+" from environment "+strings.TrimRight(environment, "-next"))

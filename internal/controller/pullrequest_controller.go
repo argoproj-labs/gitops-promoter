@@ -180,16 +180,17 @@ func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, *pr.Spec.RepositoryReference, &pr)
+
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, pr.Spec.RepositoryReference, &pr)
 	if err != nil {
 		return nil, err
 	}
 
 	switch {
 	case scmProvider.Spec.GitHub != nil:
-		return github.NewGithubPullRequestProvider(*secret)
+		return github.NewGithubPullRequestProvider(r.Client, *secret)
 	case scmProvider.Spec.Fake != nil:
-		return fake.NewFakePullRequestProvider(), nil
+		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:
 		return nil, nil
 	}

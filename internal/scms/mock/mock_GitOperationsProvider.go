@@ -23,17 +23,17 @@ func (_m *MockGitOperationsProvider) EXPECT() *MockGitOperationsProvider_Expecte
 	return &MockGitOperationsProvider_Expecter{mock: &_m.Mock}
 }
 
-// GetGitHttpsRepoUrl provides a mock function with given fields: repoRef
-func (_m *MockGitOperationsProvider) GetGitHttpsRepoUrl(repoRef v1alpha1.Repository) string {
-	ret := _m.Called(repoRef)
+// GetGitHttpsRepoUrl provides a mock function with given fields: gitRepo
+func (_m *MockGitOperationsProvider) GetGitHttpsRepoUrl(gitRepo v1alpha1.GitRepository) string {
+	ret := _m.Called(gitRepo)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetGitHttpsRepoUrl")
 	}
 
 	var r0 string
-	if rf, ok := ret.Get(0).(func(v1alpha1.Repository) string); ok {
-		r0 = rf(repoRef)
+	if rf, ok := ret.Get(0).(func(v1alpha1.GitRepository) string); ok {
+		r0 = rf(gitRepo)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
@@ -47,14 +47,14 @@ type MockGitOperationsProvider_GetGitHttpsRepoUrl_Call struct {
 }
 
 // GetGitHttpsRepoUrl is a helper method to define mock.On call
-//   - repoRef v1alpha1.Repository
-func (_e *MockGitOperationsProvider_Expecter) GetGitHttpsRepoUrl(repoRef interface{}) *MockGitOperationsProvider_GetGitHttpsRepoUrl_Call {
-	return &MockGitOperationsProvider_GetGitHttpsRepoUrl_Call{Call: _e.mock.On("GetGitHttpsRepoUrl", repoRef)}
+//   - gitRepo v1alpha1.GitRepository
+func (_e *MockGitOperationsProvider_Expecter) GetGitHttpsRepoUrl(gitRepo interface{}) *MockGitOperationsProvider_GetGitHttpsRepoUrl_Call {
+	return &MockGitOperationsProvider_GetGitHttpsRepoUrl_Call{Call: _e.mock.On("GetGitHttpsRepoUrl", gitRepo)}
 }
 
-func (_c *MockGitOperationsProvider_GetGitHttpsRepoUrl_Call) Run(run func(repoRef v1alpha1.Repository)) *MockGitOperationsProvider_GetGitHttpsRepoUrl_Call {
+func (_c *MockGitOperationsProvider_GetGitHttpsRepoUrl_Call) Run(run func(gitRepo v1alpha1.GitRepository)) *MockGitOperationsProvider_GetGitHttpsRepoUrl_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(v1alpha1.Repository))
+		run(args[0].(v1alpha1.GitRepository))
 	})
 	return _c
 }
@@ -64,7 +64,7 @@ func (_c *MockGitOperationsProvider_GetGitHttpsRepoUrl_Call) Return(_a0 string) 
 	return _c
 }
 
-func (_c *MockGitOperationsProvider_GetGitHttpsRepoUrl_Call) RunAndReturn(run func(v1alpha1.Repository) string) *MockGitOperationsProvider_GetGitHttpsRepoUrl_Call {
+func (_c *MockGitOperationsProvider_GetGitHttpsRepoUrl_Call) RunAndReturn(run func(v1alpha1.GitRepository) string) *MockGitOperationsProvider_GetGitHttpsRepoUrl_Call {
 	_c.Call.Return(run)
 	return _c
 }

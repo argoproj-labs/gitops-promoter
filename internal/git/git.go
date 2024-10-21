@@ -23,7 +23,7 @@ import (
 
 type GitOperations struct {
 	gap         scms.GitOperationsProvider
-	repoRef     *v1alpha1.Repository
+	gitRepo     *v1alpha1.GitRepository
 	scmProvider *v1alpha1.ScmProvider
 	pathLookup  utils.PathLookup
 	pathContext string
@@ -34,9 +34,14 @@ type HydratorMetadataFile struct {
 	DrySHA   string   `json:"drySha"`
 }
 
-func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, pathLookup utils.PathLookup, repoRef v1alpha1.Repository, obj v1.Object, pathConext string) (*GitOperations, error) {
+func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, pathLookup utils.PathLookup, repoRef v1alpha1.NamespacedObjectReference, obj v1.Object, pathConext string) (*GitOperations, error) {
 
-	scmProvider, err := utils.GetScmProviderFromRepositoryReference(ctx, k8sClient, repoRef, obj)
+	gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, k8sClient, repoRef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, k8sClient, gitRepo, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +49,7 @@ func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.Git
 	gitOperations := GitOperations{
 		gap:         gap,
 		scmProvider: scmProvider,
-		repoRef:     &repoRef,
+		gitRepo:     gitRepo,
 		pathLookup:  pathLookup,
 		pathContext: pathConext,
 	}
@@ -52,30 +57,42 @@ func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.Git
 	return &gitOperations, nil
 }
 
-// CloneRepo clones the repository to a temporary directory if needed does nothing if the repo is already cloned.
+// CloneRepo clones the gitRepo to a temporary directory if needed does nothing if the repo is already cloned.
 func (g *GitOperations) CloneRepo(ctx context.Context) error {
 	logger := log.FromContext(ctx)
-	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) == "" {
+	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
 		path, err := os.MkdirTemp("", "*")
 		if err != nil {
 			return err
 		}
 		logger.V(4).Info("Created directory", "directory", path)
 
-		stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.repoRef), path)
+		stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), path)
 		if err != nil {
-			logger.Info("Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef), "stdout", stdout, "stderr", stderr)
+			logger.Info("Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "stdout", stdout, "stderr", stderr)
 			return err
 		}
 
 		stdout, stderr, err = g.runCmd(ctx, path, "config", "pull.rebase", "false")
 		if err != nil {
-			logger.Error(err, "could set git config", "stdout", stdout, "stderr", stderr)
+			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
 			return err
 		}
-		logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.repoRef))
+		stdout, stderr, err = g.runCmd(ctx, path, "config", "user.name", "GitOps Promoter")
+		if err != nil {
+			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
+			return err
+		}
 
-		g.pathLookup.Set(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext, path)
+		stdout, stderr, err = g.runCmd(ctx, path, "config", "user.email", "GitOpsPromoter@argoproj.io")
+		if err != nil {
+			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
+			return err
+		}
+
+		logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
+
+		g.pathLookup.Set(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext, path)
 
 	}
 
@@ -89,30 +106,30 @@ type BranchShas struct {
 
 func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (map[string]*BranchShas, error) {
 	logger := log.FromContext(ctx)
-	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) == "" {
+	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
 		return nil, fmt.Errorf("no repo path found")
 	}
 
 	shaMap := make(map[string]*BranchShas)
 
 	for _, branch := range branches {
-		p := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef) + g.pathContext)
+		p := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
 		logger.V(4).Info("git path", "path", p)
-		_, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
+		_, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
 		if err != nil {
 			logger.Error(err, "could not git checkout", "gitError", stderr)
 			return nil, err
 		}
 		logger.V(4).Info("Checked out branch", "branch", branch)
 
-		_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "pull", "--progress")
+		_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "pull", "--progress")
 		if err != nil {
 			logger.Error(err, "could not git pull", "gitError", stderr)
 			return nil, err
 		}
 		logger.V(4).Info("Pulled branch", "branch", branch)
 
-		stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "rev-parse", branch)
+		stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "rev-parse", branch)
 		if err != nil {
 			logger.Error(err, "could not get branch shas", "gitError", stderr)
 			return nil, err
@@ -125,7 +142,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (m
 		logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", shaMap[branch].Hydrated)
 
 		//TODO: safe path join
-		metadataFile := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) + "/hydrator.metadata"
+		metadataFile := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) + "/hydrator.metadata"
 		if _, err := os.Stat(metadataFile); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				logger.Info("dry sha does not exist", "branch", branch)
@@ -154,11 +171,11 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (m
 
 func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {
 	logger := log.FromContext(ctx)
-	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext) == "" {
+	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
 		return v1.Time{}, fmt.Errorf("no repo path found")
 	}
 
-	stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "show", "-s", "--format=%cI", sha)
+	stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "show", "-s", "--format=%cI", sha)
 	if err != nil {
 		logger.Error(err, "could not git show", "gitError", stderr)
 		return v1.Time{}, err
@@ -171,6 +188,98 @@ func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, er
 	}
 
 	return v1.Time{Time: cTime}, nil
+}
+
+func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environmentBranch, environmentNextBranch string) error {
+	logger := log.FromContext(ctx)
+
+	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
+		return fmt.Errorf("no repo path found")
+	}
+
+	_, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "fetch", "origin")
+	if err != nil {
+		logger.Error(err, "could not fetch origin", "gitError", stderr)
+		return err
+	}
+
+	_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", environmentBranch, fmt.Sprintf("origin/%s", environmentBranch))
+	if err != nil {
+		logger.Error(err, "could not git checkout", "gitError", stderr)
+		return err
+	}
+	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
+
+	// Don't think this is needed
+	//_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "pull", "--progress")
+	//if err != nil {
+	//	logger.Error(err, "could not git pull", "gitError", stderr)
+	//	return err
+	//}
+	//logger.V(4).Info("Pulled branch", "branch", environmentBranch)
+
+	_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "pull", "--progress", "origin", environmentNextBranch)
+	if err != nil {
+		logger.Error(err, "could not git pull", "gitError", stderr)
+		return err
+	}
+	logger.V(4).Info("Pulled branch", "branch", environmentNextBranch)
+
+	_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "push", "--progress", "origin", environmentBranch)
+	if err != nil {
+		logger.Error(err, "could not git pull", "gitError", stderr)
+		return err
+	}
+	logger.V(4).Info("Pushed branch", "branch", environmentBranch)
+
+	return nil
+}
+
+// IsPullRequestRequired will compare the environment branch with the next environment branch and return true if a PR is required.
+// The PR is required if the diff between the two branches contain edits to yaml files.
+func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentBranch, environmentNextBranch string) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	//environmentNextBranch := environmentBranch + "-next"
+
+	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
+		return false, fmt.Errorf("no repo path found")
+	}
+
+	// Checkout the environment branch
+	_, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", environmentBranch, fmt.Sprintf("origin/%s", environmentBranch))
+	if err != nil {
+		logger.Error(err, "could not git checkout", "gitError", stderr)
+		return false, err
+	}
+	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
+
+	// Fetch the next environment branch
+	_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "fetch", "origin", environmentNextBranch)
+	if err != nil {
+		logger.Error(err, "could not fetch branch", "gitError", stderr)
+		return false, err
+	}
+	logger.V(4).Info("Fetched branch", "branch", environmentNextBranch)
+
+	// Get the diff between the two branches
+	stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "diff", fmt.Sprintf("origin/%s", environmentBranch), fmt.Sprintf("origin/%s", environmentNextBranch), "--name-only", "--diff-filter=ACMRT")
+	if err != nil {
+		logger.Error(err, "could not get diff", "gitError", stderr)
+		return false, err
+	}
+	logger.V(4).Info("Got diff", "diff", stdout)
+
+	// Check if the diff contains any YAML files if so we expect a manifest to have changed
+	// TODO: This is temporary check we should add some path globbing support to the specs
+	for _, file := range strings.Split(stdout, "\n") {
+		if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
+			logger.V(4).Info("YAML file changed", "file", file)
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...string) (string, string, error) {

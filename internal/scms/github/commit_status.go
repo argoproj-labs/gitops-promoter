@@ -2,6 +2,9 @@ package github
 
 import (
 	"context"
+	"fmt"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strconv"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -12,19 +15,21 @@ import (
 )
 
 type CommitStatus struct {
-	client *github.Client
+	client    *github.Client
+	k8sClient client.Client
 }
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
-func NewGithubCommitStatusProvider(secret v1.Secret) (*CommitStatus, error) {
+func NewGithubCommitStatusProvider(k8sClient client.Client, secret v1.Secret) (*CommitStatus, error) {
 	client, err := GetClient(secret)
 	if err != nil {
 		return nil, err
 	}
 
 	return &CommitStatus{
-		client: client,
+		client:    client,
+		k8sClient: k8sClient,
 	}, nil
 }
 
@@ -39,7 +44,12 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 		Context:     github.String(commitStatus.Spec.Name),
 	}
 
-	repoStatus, response, err := cs.client.Repositories.CreateStatus(ctx, commitStatus.Spec.RepositoryReference.Owner, commitStatus.Spec.RepositoryReference.Name, commitStatus.Spec.Sha, commitStatusS)
+	gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, cs.k8sClient, commitStatus.Spec.RepositoryReference)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	repoStatus, response, err := cs.client.Repositories.CreateStatus(ctx, gitRepo.Spec.Owner, commitStatus.Spec.RepositoryReference.Name, commitStatus.Spec.Sha, commitStatusS)
 	if err != nil {
 		return nil, err
 	}
