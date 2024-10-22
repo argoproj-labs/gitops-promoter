@@ -84,7 +84,7 @@ func (b *CommitBranchState) DryShaShort() string {
 	return b.Dry.Sha[:7]
 }
 
-// ChangeTransferPolicyStatus defines the observed state of ProposedCommit
+// ChangeTransferPolicyStatus defines the observed state of ChangeTransferPolicy
 type ChangeTransferPolicyStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
