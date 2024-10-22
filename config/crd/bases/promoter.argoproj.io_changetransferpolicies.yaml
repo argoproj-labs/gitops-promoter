@@ -91,7 +91,8 @@ spec:
             - proposedBranch
             type: object
           status:
-            description: ProposedCommitStatus defines the observed state of ProposedCommit
+            description: ChangeTransferPolicyStatus defines the observed state of
+              ChangeTransferPolicy
             properties:
               active:
                 properties:

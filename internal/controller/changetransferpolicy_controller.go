@@ -76,11 +76,11 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	err := r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("ProposedCommit not found")
+			logger.Info("ChangeTransferPolicy not found")
 			return ctrl.Result{}, nil
 		}
 
-		logger.Error(err, "failed to get ProposedCommit")
+		logger.Error(err, "failed to get ChangeTransferPolicy")
 		return ctrl.Result{}, err
 	}
 

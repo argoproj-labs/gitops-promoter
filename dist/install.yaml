@@ -16,6 +16,185 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.3
+  name: changetransferpolicies.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: ChangeTransferPolicy
+    listKind: ChangeTransferPolicyList
+    plural: changetransferpolicies
+    singular: changetransferpolicy
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.active.dry.sha
+      name: Active Dry Sha
+      type: string
+    - jsonPath: .status.proposed.dry.sha
+      name: Proposed Dry Sha
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ChangeTransferPolicy is the Schema for the changetransferpolicies
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ChangeTransferPolicySpec defines the desired state of ChangeTransferPolicy
+            properties:
+              activeBranch:
+                description: ActiveBranch staging hydrated branch
+                type: string
+              activeCommitStatuses:
+                description: ActiveCommitStatuses lists the statuses to be monitored
+                  on the active branch
+                items:
+                  properties:
+                    key:
+                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                      type: string
+                  required:
+                  - key
+                  type: object
+                type: array
+              gitRepositoryRef:
+                description: RepositoryReference what repository to open the PR on.
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+              proposedBranch:
+                description: ProposedBranch staging hydrated branch
+                type: string
+              proposedCommitStatuses:
+                description: ProposedCommitStatuses lists the statuses to be monitored
+                  on the proposed branch
+                items:
+                  properties:
+                    key:
+                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                      type: string
+                  required:
+                  - key
+                  type: object
+                type: array
+            required:
+            - activeBranch
+            - gitRepositoryRef
+            - proposedBranch
+            type: object
+          status:
+            description: ChangeTransferPolicyStatus defines the observed state of
+              ChangeTransferPolicy
+            properties:
+              active:
+                properties:
+                  commitStatuses:
+                    items:
+                      properties:
+                        key:
+                          description: Key staging hydrated branch
+                          type: string
+                        phase:
+                          description: Phase what phase is the status in
+                          enum:
+                          - pending
+                          - success
+                          - failure
+                          type: string
+                      required:
+                      - key
+                      - phase
+                      type: object
+                    type: array
+                  dry:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                  hydrated:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                type: object
+              proposed:
+                description: |-
+                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                properties:
+                  commitStatuses:
+                    items:
+                      properties:
+                        key:
+                          description: Key staging hydrated branch
+                          type: string
+                        phase:
+                          description: Phase what phase is the status in
+                          enum:
+                          - pending
+                          - success
+                          - failure
+                          type: string
+                      required:
+                      - key
+                      - phase
+                      type: object
+                    type: array
+                  dry:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                  hydrated:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: commitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -60,6 +239,13 @@ spec:
             properties:
               description:
                 type: string
+              gitRepositoryRef:
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
               name:
                 type: string
               phase:
@@ -69,35 +255,15 @@ spec:
                 - success
                 - failure
                 type: string
-              repository:
-                properties:
-                  name:
-                    type: string
-                  owner:
-                    type: string
-                  scmProviderRef:
-                    properties:
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - name
-                    type: object
-                required:
-                - name
-                - owner
-                - scmProviderRef
-                type: object
               sha:
                 type: string
               url:
                 type: string
             required:
             - description
+            - gitRepositoryRef
             - name
             - phase
-            - repository
             - sha
             - url
             type: object
@@ -126,6 +292,71 @@ spec:
             - observedGeneration
             - phase
             - sha
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: gitrepositories.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: GitRepository
+    listKind: GitRepositoryList
+    plural: gitrepositories
+    singular: gitrepository
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: GitRepository is the Schema for the gitrepositories API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: GitRepositorySpec defines the desired state of GitRepository
+            properties:
+              name:
+                type: string
+              owner:
+                type: string
+              scmProviderRef:
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - name
+            - owner
+            - scmProviderRef
+            type: object
+          status:
+            description: GitRepositoryStatus defines the observed state of GitRepository
             type: object
         type: object
     served: true
@@ -225,6 +456,13 @@ spec:
                   type: object
                 minItems: 1
                 type: array
+              gitRepositoryRef:
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
               proposedCommitStatuses:
                 items:
                   properties:
@@ -235,30 +473,10 @@ spec:
                   - key
                   type: object
                 type: array
-              repository:
-                properties:
-                  name:
-                    type: string
-                  owner:
-                    type: string
-                  scmProviderRef:
-                    properties:
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - name
-                    type: object
-                required:
-                - name
-                - owner
-                - scmProviderRef
-                type: object
             required:
             - dryBranch
             - environments
-            - repository
+            - gitRepositoryRef
             type: object
           status:
             description: PromotionStrategyStatus defines the observed state of PromotionStrategy
@@ -375,196 +593,6 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.3
-  name: proposedcommits.promoter.argoproj.io
-spec:
-  group: promoter.argoproj.io
-  names:
-    kind: ProposedCommit
-    listKind: ProposedCommitList
-    plural: proposedcommits
-    singular: proposedcommit
-  scope: Namespaced
-  versions:
-  - additionalPrinterColumns:
-    - jsonPath: .status.active.dry.sha
-      name: Active Dry Sha
-      type: string
-    - jsonPath: .status.proposed.dry.sha
-      name: Proposed Dry Sha
-      type: string
-    name: v1alpha1
-    schema:
-      openAPIV3Schema:
-        description: ProposedCommit is the Schema for the proposedcommits API
-        properties:
-          apiVersion:
-            description: |-
-              APIVersion defines the versioned schema of this representation of an object.
-              Servers should convert recognized schemas to the latest internal value, and
-              may reject unrecognized values.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
-            type: string
-          kind:
-            description: |-
-              Kind is a string value representing the REST resource this object represents.
-              Servers may infer this from the endpoint the client submits requests to.
-              Cannot be updated.
-              In CamelCase.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-            type: string
-          metadata:
-            type: object
-          spec:
-            description: ProposedCommitSpec defines the desired state of ProposedCommit
-            properties:
-              activeBranch:
-                description: ActiveBranch staging hydrated branch
-                type: string
-              activeCommitStatuses:
-                description: ActiveCommitStatuses lists the statuses to be monitored
-                  on the active branch
-                items:
-                  properties:
-                    key:
-                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
-                      type: string
-                  required:
-                  - key
-                  type: object
-                type: array
-              proposedBranch:
-                description: ProposedBranch staging hydrated branch
-                type: string
-              proposedCommitStatuses:
-                description: ProposedCommitStatuses lists the statuses to be monitored
-                  on the proposed branch
-                items:
-                  properties:
-                    key:
-                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
-                      type: string
-                  required:
-                  - key
-                  type: object
-                type: array
-              repository:
-                description: RepositoryReference what repository to open the PR on.
-                properties:
-                  name:
-                    type: string
-                  owner:
-                    type: string
-                  scmProviderRef:
-                    properties:
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - name
-                    type: object
-                required:
-                - name
-                - owner
-                - scmProviderRef
-                type: object
-            required:
-            - activeBranch
-            - proposedBranch
-            - repository
-            type: object
-          status:
-            description: ProposedCommitStatus defines the observed state of ProposedCommit
-            properties:
-              active:
-                properties:
-                  commitStatuses:
-                    items:
-                      properties:
-                        key:
-                          description: Key staging hydrated branch
-                          type: string
-                        phase:
-                          description: Phase what phase is the status in
-                          enum:
-                          - pending
-                          - success
-                          - failure
-                          type: string
-                      required:
-                      - key
-                      - phase
-                      type: object
-                    type: array
-                  dry:
-                    properties:
-                      commitTime:
-                        format: date-time
-                        type: string
-                      sha:
-                        type: string
-                    type: object
-                  hydrated:
-                    properties:
-                      commitTime:
-                        format: date-time
-                        type: string
-                      sha:
-                        type: string
-                    type: object
-                type: object
-              proposed:
-                description: |-
-                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
-                properties:
-                  commitStatuses:
-                    items:
-                      properties:
-                        key:
-                          description: Key staging hydrated branch
-                          type: string
-                        phase:
-                          description: Phase what phase is the status in
-                          enum:
-                          - pending
-                          - success
-                          - failure
-                          type: string
-                      required:
-                      - key
-                      - phase
-                      type: object
-                    type: array
-                  dry:
-                    properties:
-                      commitTime:
-                        format: date-time
-                        type: string
-                      sha:
-                        type: string
-                    type: object
-                  hydrated:
-                    properties:
-                      commitTime:
-                        format: date-time
-                        type: string
-                      sha:
-                        type: string
-                    type: object
-                type: object
-            type: object
-        type: object
-    served: true
-    storage: true
-    subresources:
-      status: {}
----
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  annotations:
-    controller-gen.kubebuilder.io/version: v0.16.3
   name: pullrequests.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -610,26 +638,13 @@ spec:
               description:
                 description: Body the description body of the pull/merge request
                 type: string
-              repository:
+              gitRepositoryRef:
                 description: RepositoryReference what repository to open the PR on.
                 properties:
                   name:
                     type: string
-                  owner:
-                    type: string
-                  scmProviderRef:
-                    properties:
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - name
-                    type: object
                 required:
                 - name
-                - owner
-                - scmProviderRef
                 type: object
               sourceBranch:
                 description: Base the git reference that we are merging into Head
@@ -653,7 +668,7 @@ spec:
                 description: Title is the title of the pull request.
                 type: string
             required:
-            - repository
+            - gitRepositoryRef
             - sourceBranch
             - state
             - targetBranch
@@ -878,9 +893,10 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - changetransferpolicies
   - commitstatuses
+  - gitrepositories
   - promotionstrategies
-  - proposedcommits
   - pullrequests
   - revertcommits
   - scmproviders
@@ -895,9 +911,10 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - changetransferpolicies/finalizers
   - commitstatuses/finalizers
+  - gitrepositories/finalizers
   - promotionstrategies/finalizers
-  - proposedcommits/finalizers
   - pullrequests/finalizers
   - revertcommits/finalizers
   - scmproviders/finalizers
@@ -906,9 +923,10 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - changetransferpolicies/status
   - commitstatuses/status
+  - gitrepositories/status
   - promotionstrategies/status
-  - proposedcommits/status
   - pullrequests/status
   - revertcommits/status
   - scmproviders/status

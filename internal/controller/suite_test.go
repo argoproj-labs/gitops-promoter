@@ -154,7 +154,7 @@ var _ = BeforeSuite(func() {
 		Client:     k8sManager.GetClient(),
 		Scheme:     k8sManager.GetScheme(),
 		PathLookup: pathLookup,
-		Recorder:   k8sManager.GetEventRecorderFor("ProposedCommit"),
+		Recorder:   k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
 		Config: ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: 10 * time.Second,
 		},

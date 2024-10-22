@@ -116,7 +116,7 @@ func GetPullRequestName(ctx context.Context, repoOwner, repoName, pcProposedBran
 	return fmt.Sprintf("%s-%s-%s-%s", repoOwner, repoName, pcProposedBranch, pcActiveBranch)
 }
 
-func GetProposedCommitName(promotionStrategyName, environmentBranch string) string {
+func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string) string {
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
 

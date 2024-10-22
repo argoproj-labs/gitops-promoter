@@ -81,12 +81,12 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ProposedCommit in a map with the branch as the key.
+	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a map with the branch as the key.
 	var ctpMap = make(map[string]*promoterv1alpha1.ChangeTransferPolicy)
 	for _, environment := range ps.Spec.Environments {
 		pc, err := r.createOrGetChangeTransferPolicy(ctx, &ps, environment)
 		if err != nil {
-			logger.Error(err, "failed to create ProposedCommit")
+			logger.Error(err, "failed to create ChangeTransferPolicy")
 			return ctrl.Result{}, err
 		}
 		ctpMap[environment.Branch] = pc
@@ -133,7 +133,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	logger := log.FromContext(ctx)
 
-	pcName := utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(ps.Name, environment.Branch))
+	pcName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
 
 	// The code below sets the ownership for the Release Object
 	kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
@@ -163,7 +163,7 @@ func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx contex
 	err := r.Get(ctx, client.ObjectKey{Name: pcName, Namespace: ps.Namespace}, &pc)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("ProposedCommit not found, creating")
+			logger.Info("ChangeTransferPolicy not found, creating")
 			err = r.Create(ctx, &pcNew)
 			if err != nil {
 				return nil, err
@@ -187,7 +187,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 	for _, environment := range ps.Spec.Environments {
 		pc, ok := pcMap[environment.Branch]
 		if !ok {
-			return fmt.Errorf("ProposedCommit not found for branch %s", environment.Branch)
+			return fmt.Errorf("ChangeTransferPolicy not found for branch %s", environment.Branch)
 		}
 
 		ps.Status.Environments = utils.UpsertEnvironmentStatus(ps.Status.Environments, func() promoterv1alpha1.EnvironmentStatus {
@@ -240,7 +240,7 @@ func (r *PromotionStrategyReconciler) calculateActiveCommitStatus(ctx context.Co
 	logger := log.FromContext(ctx)
 
 	if ctpMap[environment.Branch] == nil {
-		return fmt.Errorf("ProposedCommit not found in map for branch %s while calculating activeCommitStatus", environment.Branch)
+		return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while calculating activeCommitStatus", environment.Branch)
 	}
 
 	activeCommitStatusCount := len(environment.ActiveCommitStatuses) + len(ps.Spec.ActiveCommitStatuses)
@@ -275,7 +275,7 @@ func (r *PromotionStrategyReconciler) calculateProposedCommitStatus(ctx context.
 	logger := log.FromContext(ctx)
 
 	if ctpMap[environment.Branch] == nil {
-		return fmt.Errorf("ProposedCommit not found in map for branch %s while calculating proposedCommitStatus", environment.Branch)
+		return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while calculating proposedCommitStatus", environment.Branch)
 	}
 
 	proposedCommitStatusCount := len(environment.ProposedCommitStatuses) + len(ps.Spec.ProposedCommitStatuses)
@@ -392,7 +392,7 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 		}
 
 		if ctpMap[environment.Branch] == nil {
-			return fmt.Errorf("ProposedCommit not found in map for branch %s while merging pull requests", environment.Branch)
+			return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while merging pull requests", environment.Branch)
 		}
 
 		if previousEnvironmentStatus != nil {
@@ -430,7 +430,7 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 			}
 
 			if len(prl.Items) > 1 {
-				return fmt.Errorf("More than one PullRequest found for ProposedCommit %s and Environment %s", ctpMap[environment.Branch].Name, environment.Branch)
+				return fmt.Errorf("more than one PullRequest found for ChangeTransferPolicy %s and Environment %s", ctpMap[environment.Branch].Name, environment.Branch)
 			}
 
 			if len(prl.Items) == 1 {
