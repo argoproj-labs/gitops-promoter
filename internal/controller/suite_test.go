@@ -150,12 +150,12 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	pathLookup := utils.NewPathLookup()
-	err = (&ProposedCommitReconciler{
+	err = (&ChangeTransferPolicyReconciler{
 		Client:     k8sManager.GetClient(),
 		Scheme:     k8sManager.GetScheme(),
 		PathLookup: pathLookup,
 		Recorder:   k8sManager.GetEventRecorderFor("ProposedCommit"),
-		Config: ProposedCommitReconcilerConfig{
+		Config: ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: 10 * time.Second,
 		},
 	}).SetupWithManager(k8sManager)

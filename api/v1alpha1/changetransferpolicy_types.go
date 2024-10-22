@@ -28,14 +28,68 @@ type ChangeTransferPolicySpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of ChangeTransferPolicy. Edit changetransferpolicy_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// RepositoryReference what repository to open the PR on.
+	// +kubebuilder:validation:Required
+	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
+
+	// ProposedBranch staging hydrated branch
+	// +kubebuilder:validation:Required
+	ProposedBranch string `json:"proposedBranch"`
+
+	// ActiveBranch staging hydrated branch
+	// +kubebuilder:validation:Required
+	ActiveBranch string `json:"activeBranch"`
+
+	// ActiveCommitStatuses lists the statuses to be monitored on the active branch
+	// +kubebuilder:validation:Optional
+	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+
+	// ProposedCommitStatuses lists the statuses to be monitored on the proposed branch
+	// +kubebuilder:validation:Optional
+	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
-// ChangeTransferPolicyStatus defines the observed state of ChangeTransferPolicy
+type ChangeRequestPolicyCommitStatusPhase struct {
+	// Key staging hydrated branch
+	// +kubebuilder:validation:Required
+	Key string `json:"key"`
+
+	// Phase what phase is the status in
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum:=pending;success;failure
+	Phase string `json:"phase"`
+}
+
+type CommitBranchState struct {
+	Dry      CommitShaState `json:"dry,omitempty"`
+	Hydrated CommitShaState `json:"hydrated,omitempty"`
+	// +kubebuilder:validation:Optional
+	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
+}
+
+type CommitShaState struct {
+	Sha        string      `json:"sha,omitempty"`
+	CommitTime metav1.Time `json:"commitTime,omitempty"`
+}
+
+func (b *CommitBranchState) DryShaShort() string {
+	if b == nil {
+		return ""
+	}
+
+	if len(b.Dry.Sha) < 7 {
+		return b.Dry.Sha
+	}
+
+	return b.Dry.Sha[:7]
+}
+
+// ProposedCommitStatus defines the observed state of ProposedCommit
 type ChangeTransferPolicyStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	Proposed CommitBranchState `json:"proposed,omitempty"`
+	Active   CommitBranchState `json:"active,omitempty"`
 }
 
 //+kubebuilder:object:root=true

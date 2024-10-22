@@ -3,9 +3,10 @@ package github
 import (
 	"context"
 	"fmt"
+	"strconv"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strconv"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	v1 "k8s.io/api/core/v1"

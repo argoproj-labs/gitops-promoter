@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
 	. "github.com/onsi/ginkgo/v2"
 
