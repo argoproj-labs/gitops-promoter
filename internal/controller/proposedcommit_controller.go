@@ -328,7 +328,7 @@ func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context,
 	}
 
 	logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
-	gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, r.Client, pc.Spec.RepositoryReference)
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: pc.Namespace, Name: pc.Spec.RepositoryReference.Name})
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
