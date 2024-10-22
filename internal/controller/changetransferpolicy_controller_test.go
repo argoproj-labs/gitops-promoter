@@ -31,7 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-var _ = Describe("ProposedCommit Controller", func() {
+var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 	Context("When reconciling a resource", func() {
 		ctx := context.Background()
@@ -61,7 +61,7 @@ var _ = Describe("ProposedCommit Controller", func() {
 
 			By("Reconciling the created resource")
 
-			//var changeTransferPolicy promoterv1alpha1.ProposedCommit
+			//var changeTransferPolicy promoterv1alpha1.ChangeTransferPolicy
 			Eventually(func(g Gomega) {
 				_ = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha, fullSha)
