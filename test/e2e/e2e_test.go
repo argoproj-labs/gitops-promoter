@@ -61,7 +61,7 @@ var _ = Describe("controller", Ordered, func() {
 
 			// projectimage stores the name of the image used in the example
 			var imageTag = "0.0.0-test-e2e"
-			var projectimage = fmt.Sprintf("example.com/promoter:%s", imageTag)
+			var projectimage = fmt.Sprintf("quay.io/argoprojlabs/gitops-promoter:%s", imageTag)
 
 			By("building the manager(Operator) image")
 			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMAGE_TAG=%s", imageTag))
