@@ -14,7 +14,14 @@ spec:
     singular: changetransferpolicy
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.active.dry.sha
+      name: Active Dry Sha
+      type: string
+    - jsonPath: .status.proposed.dry.sha
+      name: Proposed Dry Sha
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ChangeTransferPolicy is the Schema for the changetransferpolicies

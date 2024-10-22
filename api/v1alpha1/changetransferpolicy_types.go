@@ -95,6 +95,8 @@ type ChangeTransferPolicyStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
+// +kubebuilder:printcolumn:name="Active Dry Sha",type=string,JSONPath=`.status.active.dry.sha`
+// +kubebuilder:printcolumn:name="Proposed Dry Sha",type=string,JSONPath=`.status.proposed.dry.sha`
 // ChangeTransferPolicy is the Schema for the changetransferpolicies API
 type ChangeTransferPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
