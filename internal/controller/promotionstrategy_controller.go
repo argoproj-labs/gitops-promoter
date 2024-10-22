@@ -332,7 +332,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			copiedCSName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixNameLabel+commitStatus.Name)
 			proposedCSObjectKey := client.ObjectKey{Namespace: commitStatus.Namespace, Name: copiedCSName}
 
-			gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, r.Client, commitStatus.Spec.RepositoryReference)
+			gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: commitStatus.Namespace, Name: commitStatus.Spec.RepositoryReference.Name})
 			if err != nil {
 				return fmt.Errorf("failed to get GitRepository: %w", err)
 			}

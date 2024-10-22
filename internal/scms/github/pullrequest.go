@@ -44,7 +44,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		Body:  github.String(description),
 	}
 
-	gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, pr.k8sClient, pullRequest.Spec.RepositoryReference)
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
 	}
@@ -76,7 +76,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 		return err
 	}
 
-	gitRepo, _ := utils.GetGitRepositorytFromRepositoryReference(ctx, pr.k8sClient, pullRequest.Spec.RepositoryReference)
+	gitRepo, _ := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 
 	_, response, err := pr.client.PullRequests.Edit(context.Background(), gitRepo.Spec.Owner, gitRepo.Spec.Name, prNumber, newPR)
 	if err != nil {
@@ -106,7 +106,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 		return err
 	}
 
-	gitRepo, _ := utils.GetGitRepositorytFromRepositoryReference(ctx, pr.k8sClient, pullRequest.Spec.RepositoryReference)
+	gitRepo, _ := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 
 	_, response, err := pr.client.PullRequests.Edit(context.Background(), gitRepo.Spec.Owner, gitRepo.Spec.Name, prNumber, newPR)
 	if err != nil {
@@ -130,7 +130,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	if err != nil {
 		return err
 	}
-	gitRepo, _ := utils.GetGitRepositorytFromRepositoryReference(ctx, pr.k8sClient, pullRequest.Spec.RepositoryReference)
+	gitRepo, _ := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 
 	_, response, err := pr.client.PullRequests.Merge(
 		context.Background(),
@@ -160,7 +160,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
-	gitRepo, _ := utils.GetGitRepositorytFromRepositoryReference(ctx, pr.k8sClient, pullRequest.Spec.RepositoryReference)
+	gitRepo, _ := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 
 	pullRequests, response, err := pr.client.PullRequests.List(ctx, gitRepo.Spec.Owner,
 		gitRepo.Spec.Name,

@@ -29,7 +29,7 @@ type PromotionStrategySpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// +kubebuilder:validation:Required
-	RepositoryReference NamespacedObjectReference `json:"gitRepositoryRef"`
+	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
 	// +kubebuilder:validation:Required
 	DryBanch string `json:"dryBranch"`

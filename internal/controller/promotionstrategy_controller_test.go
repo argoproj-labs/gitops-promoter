@@ -633,9 +633,8 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Owner: name,
 			Name:  name,
-			ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-				Name:      name,
-				Namespace: namespace,
+			ScmProviderRef: promoterv1alpha1.ObjectReference{
+				Name: name,
 			},
 		},
 	}
@@ -647,9 +646,8 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.CommitStatusSpec{
-			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
-				Name:      name,
-				Namespace: namespace,
+			RepositoryReference: promoterv1alpha1.ObjectReference{
+				Name: name,
 			},
 			Sha:         "",
 			Name:        "",
@@ -666,9 +664,8 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.CommitStatusSpec{
-			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
-				Name:      name,
-				Namespace: namespace,
+			RepositoryReference: promoterv1alpha1.ObjectReference{
+				Name: name,
 			},
 			Sha:         "",
 			Name:        "",
@@ -685,9 +682,8 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 		},
 		Spec: promoterv1alpha1.PromotionStrategySpec{
 			DryBanch: "main",
-			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
-				Name:      name,
-				Namespace: namespace,
+			RepositoryReference: promoterv1alpha1.ObjectReference{
+				Name: name,
 			},
 			Environments: []promoterv1alpha1.Environment{
 				{Branch: "environment/development"},

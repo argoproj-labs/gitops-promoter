@@ -203,9 +203,8 @@ func proposedCommitResources(ctx context.Context, name, namespace string) (strin
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Owner: name,
 			Name:  name,
-			ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-				Name:      name,
-				Namespace: namespace,
+			ScmProviderRef: promoterv1alpha1.ObjectReference{
+				Name: name,
 			},
 		},
 	}
@@ -217,9 +216,8 @@ func proposedCommitResources(ctx context.Context, name, namespace string) (strin
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.CommitStatusSpec{
-			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
-				Name:      name,
-				Namespace: namespace,
+			RepositoryReference: promoterv1alpha1.ObjectReference{
+				Name: name,
 			},
 			Sha:         "",
 			Name:        "",
@@ -235,9 +233,8 @@ func proposedCommitResources(ctx context.Context, name, namespace string) (strin
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.ProposedCommitSpec{
-			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
-				Name:      name,
-				Namespace: namespace,
+			RepositoryReference: promoterv1alpha1.ObjectReference{
+				Name: name,
 			},
 		},
 	}

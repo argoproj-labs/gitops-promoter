@@ -154,9 +154,8 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Owner: name,
 			Name:  name,
-			ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-				Name:      name,
-				Namespace: namespace,
+			ScmProviderRef: promoterv1alpha1.ObjectReference{
+				Name: name,
 			},
 		},
 	}
@@ -168,9 +167,8 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.PullRequestSpec{
-			RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
-				Name:      name,
-				Namespace: namespace,
+			RepositoryReference: promoterv1alpha1.ObjectReference{
+				Name: name,
 			},
 			Title:        "",
 			TargetBranch: "",
