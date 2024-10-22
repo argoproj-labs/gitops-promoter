@@ -206,7 +206,7 @@ func main() {
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
 		PathLookup: pathLookup,
-		Recorder:   mgr.GetEventRecorderFor("ProposedCommit"),
+		Recorder:   mgr.GetEventRecorderFor("ChangeTransferPolicy"),
 		Config: controller.ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: ctpRequeueDuration,
 		},
