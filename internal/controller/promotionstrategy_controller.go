@@ -82,23 +82,23 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// If a ProposedCommit does not exist, create it otherwise get it and store the ProposedCommit in a map with the branch as the key.
-	var proposedCommitMap = make(map[string]*promoterv1alpha1.ChangeTransferPolicy)
+	var ctpMap = make(map[string]*promoterv1alpha1.ChangeTransferPolicy)
 	for _, environment := range ps.Spec.Environments {
-		pc, err := r.createOrGetProposedCommit(ctx, &ps, environment)
+		pc, err := r.createOrGetChangeTransferPolicy(ctx, &ps, environment)
 		if err != nil {
 			logger.Error(err, "failed to create ProposedCommit")
 			return ctrl.Result{}, err
 		}
-		proposedCommitMap[environment.Branch] = pc
+		ctpMap[environment.Branch] = pc
 	}
 
 	// Calculate the status of the PromotionStrategy
-	err = r.calculateStatus(ctx, &ps, proposedCommitMap)
+	err = r.calculateStatus(ctx, &ps, ctpMap)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	err = r.mergePullRequests(ctx, &ps, proposedCommitMap)
+	err = r.mergePullRequests(ctx, &ps, ctpMap)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -130,7 +130,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *PromotionStrategyReconciler) createOrGetProposedCommit(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	logger := log.FromContext(ctx)
 
 	pcName := utils.KubeSafeUniqueName(ctx, utils.GetProposedCommitName(ps.Name, environment.Branch))
@@ -420,9 +420,9 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 			// Find the PRs that match the proposed commit and the environment. There should only be one.
 			err := r.List(ctx, &prl, &client.ListOptions{
 				LabelSelector: labels.SelectorFromSet(map[string]string{
-					promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ctx, ps.Name),
-					promoterv1alpha1.ProposedCommitLabel:    utils.KubeSafeLabel(ctx, ctpMap[environment.Branch].Name),
-					promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(ctx, environment.Branch),
+					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctx, ps.Name),
+					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctx, ctpMap[environment.Branch].Name),
+					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctx, environment.Branch),
 				}),
 			})
 			if err != nil {

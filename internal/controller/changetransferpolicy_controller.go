@@ -349,9 +349,9 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 					Namespace:       ctp.Namespace,
 					OwnerReferences: []metav1.OwnerReference{*controllerRef},
 					Labels: map[string]string{
-						promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ctx, ctp.Labels["promoter.argoproj.io/promotion-strategy"]),
-						promoterv1alpha1.ProposedCommitLabel:    utils.KubeSafeLabel(ctx, ctp.Name),
-						promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(ctx, ctp.Spec.ActiveBranch),
+						promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctx, ctp.Labels["promoter.argoproj.io/promotion-strategy"]),
+						promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctx, ctp.Name),
+						promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctx, ctp.Spec.ActiveBranch),
 					},
 				},
 				Spec: promoterv1alpha1.PullRequestSpec{

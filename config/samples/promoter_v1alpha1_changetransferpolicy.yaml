@@ -6,4 +6,9 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: changetransferpolicy-sample
 spec:
-  # TODO(user): Add fields here
+  gitRepositoryRef:
+    name: promoter-testing
+  proposedBranch: environment/development-next
+  activeBranch: environment/development
+  commitStatuses:
+    - key: healthy

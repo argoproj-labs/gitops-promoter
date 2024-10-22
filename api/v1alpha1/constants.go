@@ -25,4 +25,4 @@ const PromotionStrategyLabel = "promoter.argoproj.io/promotion-strategy"
 // EnvironmentLabel the environment branch for the proposed commit
 const EnvironmentLabel = "promoter.argoproj.io/environment"
 
-const ProposedCommitLabel = "promoter.argoproj.io/proposed-commit"
+const ChangeTransferPolicyLabel = "promoter.argoproj.io/change-transfer-policy"

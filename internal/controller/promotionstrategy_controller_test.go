@@ -52,7 +52,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
-			// Check that ProposedCommit are created
+			// Check that ChangeTransferPolicy's are created
 			ctpDev := promoterv1alpha1.ChangeTransferPolicy{}
 			ctpStaging := promoterv1alpha1.ChangeTransferPolicy{}
 			ctpProd := promoterv1alpha1.ChangeTransferPolicy{}
@@ -107,22 +107,21 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Not(BeNil()))
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-				//By("Checking that all the ProposedCommits are created")
 				g.Expect(len(promotionStrategy.Status.Environments)).To(Equal(3))
 
-				//By("Checking that the ProposedCommit for development has shas that are not empty, meaning we have reconciled the resource")
+				//By("Checking that the ChangeTransferPolicy for development has shas that are not empty, meaning we have reconciled the resource")
 				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
 				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Not(BeEmpty()))
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Not(BeEmpty()))
 				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
-				//By("Checking that the ProposedCommit for staging has shas that are not empty, meaning we have reconciled the resource")
+				//By("Checking that the ChangeTransferPolicy for staging has shas that are not empty, meaning we have reconciled the resource")
 				g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
 				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Not(BeEmpty()))
 				g.Expect(ctpStaging.Status.Proposed.Hydrated.Sha).To(Not(BeEmpty()))
 				g.Expect(ctpStaging.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
-				//By("Checking that the ProposedCommit for production has shas that are not empty, meaning we have reconciled the resource")
+				//By("Checking that the ChangeTransferPolicy for production has shas that are not empty, meaning we have reconciled the resource")
 				g.Expect(ctpProd.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
 				g.Expect(ctpProd.Status.Active.Dry.Sha).To(Not(BeEmpty()))
 				g.Expect(ctpProd.Status.Proposed.Hydrated.Sha).To(Not(BeEmpty()))
