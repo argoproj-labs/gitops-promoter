@@ -1,0 +1,9 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: example-scm-provider
+spec:
+  secretRef:
+    name: example-scm-provider-secret
+  github:
+    domain: github.com
