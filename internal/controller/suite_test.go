@@ -70,11 +70,11 @@ func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	c, _ := GinkgoConfiguration()
-	c.FocusFiles = []string{
-		"proposedcommit_controller_test.go",
-		"pullrequest_controller_test.go",
-		"promotionstrategy_controller_test.go",
-	}
+	//c.FocusFiles = []string{
+	//	"changetransferpolicy_controller_test.go",
+	//	"pullrequest_controller_test.go",
+	//	"promotionstrategy_controller_test.go",
+	//}
 	//GinkgoWriter.TeeTo(os.Stdout)
 
 	RunSpecs(t, "Controller Suite", c)
@@ -150,12 +150,12 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	pathLookup := utils.NewPathLookup()
-	err = (&ProposedCommitReconciler{
+	err = (&ChangeTransferPolicyReconciler{
 		Client:     k8sManager.GetClient(),
 		Scheme:     k8sManager.GetScheme(),
 		PathLookup: pathLookup,
-		Recorder:   k8sManager.GetEventRecorderFor("ProposedCommit"),
-		Config: ProposedCommitReconcilerConfig{
+		Recorder:   k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
+		Config: ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: 10 * time.Second,
 		},
 	}).SetupWithManager(k8sManager)

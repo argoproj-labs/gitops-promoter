@@ -22,21 +22,18 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/record"
-
 	"k8s.io/client-go/util/retry"
-
-	"github.com/argoproj-labs/gitops-promoter/internal/git"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
-	"k8s.io/apimachinery/pkg/api/errors"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -46,48 +43,48 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-type ProposedCommitReconcilerConfig struct {
+type ChangeTransferPolicyReconcilerConfig struct {
 	RequeueDuration time.Duration
 }
 
-// ProposedCommitReconciler reconciles a ProposedCommit object
-type ProposedCommitReconciler struct {
+// ChangeTransferPolicyReconciler reconciles a ChangeTransferPolicy object
+type ChangeTransferPolicyReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	PathLookup utils.PathLookup
 	Recorder   record.EventRecorder
-	Config     ProposedCommitReconcilerConfig
+	Config     ChangeTransferPolicyReconcilerConfig
 }
 
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=proposedcommits,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=proposedcommits/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=proposedcommits/finalizers,verbs=update
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the ProposedCommit object against the actual cluster state, and then
+// the ChangeTransferPolicy object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
-func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	var pc promoterv1alpha1.ProposedCommit
-	err := r.Get(ctx, req.NamespacedName, &pc, &client.GetOptions{})
+	var ctp promoterv1alpha1.ChangeTransferPolicy
+	err := r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("ProposedCommit not found")
+			logger.Info("ChangeTransferPolicy not found")
 			return ctrl.Result{}, nil
 		}
 
-		logger.Error(err, "failed to get ProposedCommit")
+		logger.Error(err, "failed to get ChangeTransferPolicy")
 		return ctrl.Result{}, err
 	}
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, pc.Spec.RepositoryReference, &pc)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, ctp.Spec.RepositoryReference, &ctp)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -96,7 +93,7 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, pc.Spec.RepositoryReference, &pc, pc.Spec.ActiveBranch)
+	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, ctp.Spec.RepositoryReference, &ctp, ctp.Spec.ActiveBranch)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -106,17 +103,17 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	err = r.calculateStatus(ctx, &pc, gitOperations)
+	err = r.calculateStatus(ctx, &ctp, gitOperations)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	err = r.mergeOrPullRequestPromote(ctx, gitOperations, &pc)
+	err = r.mergeOrPullRequestPromote(ctx, gitOperations, &ctp)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	err = r.Status().Update(ctx, &pc)
+	err = r.Status().Update(ctx, &ctp)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -128,13 +125,13 @@ func (r *ProposedCommitReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ProposedCommitReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.ProposedCommit{}).
+		For(&promoterv1alpha1.ChangeTransferPolicy{}).
 		Complete(r)
 }
 
-func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
+func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
 	logger := log.FromContext(ctx)
 	switch {
 	case scmProvider.Spec.Fake != nil:
@@ -148,7 +145,7 @@ func (r *ProposedCommitReconciler) getGitAuthProvider(ctx context.Context, scmPr
 	}
 }
 
-func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *promoterv1alpha1.ProposedCommit, gitOperations *git.GitOperations) error {
+func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, pc *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.GitOperations) error {
 	logger := log.FromContext(ctx)
 
 	branchShas, err := gitOperations.GetBranchShas(ctx, []string{pc.Spec.ActiveBranch, pc.Spec.ProposedBranch})
@@ -174,7 +171,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 			}
 			pc.Status.Active.Dry.CommitTime = commitTime
 
-			activeCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusPhase{}
+			activeCommitStatusesState := []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
 			for _, status := range pc.Spec.ActiveCommitStatuses {
 				var csListActive promoterv1alpha1.CommitStatusList
 				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
@@ -199,20 +196,20 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				}
 
 				if len(csListSlice) == 1 {
-					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(csListSlice[0].Status.Phase),
 					})
 				} else if len(csListSlice) > 1 {
 					//TODO: decided how to bubble up errors
-					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
 					r.Recorder.Event(pc, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
 				} else if len(csListSlice) == 0 {
 					//TODO: decided how to bubble up errors
-					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
@@ -240,7 +237,7 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 			}
 			pc.Status.Proposed.Dry.CommitTime = commitTime
 
-			proposedCommitStatusesState := []promoterv1alpha1.ProposedCommitCommitStatusPhase{}
+			proposedCommitStatusesState := []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
 			for _, status := range pc.Spec.ProposedCommitStatuses {
 				var csListProposed promoterv1alpha1.CommitStatusList
 				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
@@ -265,20 +262,20 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 				}
 
 				if len(csListSlice) == 1 {
-					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(csListSlice[0].Status.Phase),
 					})
 				} else if len(csListSlice) > 1 {
 					//TODO: decided how to bubble up errors
-					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
 					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the proposed commit status")
 				} else if len(csListSlice) == 0 {
 					//TODO: decided how to bubble up errors
-					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ProposedCommitCommitStatusPhase{
+					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
@@ -295,23 +292,23 @@ func (r *ProposedCommitReconciler) calculateStatus(ctx context.Context, pc *prom
 	return nil
 }
 
-func (r *ProposedCommitReconciler) mergeOrPullRequestPromote(ctx context.Context, gitOperations *git.GitOperations, pc *promoterv1alpha1.ProposedCommit) error {
-	if pc.Status.Proposed.Dry.Sha == pc.Status.Active.Dry.Sha {
+func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.Context, gitOperations *git.GitOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
 		return nil
 	}
 
-	prRequired, err := gitOperations.IsPullRequestRequired(ctx, pc.Spec.ActiveBranch, pc.Spec.ProposedBranch)
+	prRequired, err := gitOperations.IsPullRequestRequired(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch)
 	if err != nil {
 		return err
 	}
 
 	if prRequired {
-		err = r.creatOrUpdatePullRequest(ctx, pc)
+		err = r.creatOrUpdatePullRequest(ctx, ctp)
 		if err != nil {
 			return err
 		}
 	} else {
-		err = gitOperations.PromoteEnvironmentWithMerge(ctx, pc.Spec.ActiveBranch, pc.Spec.ProposedBranch)
+		err = gitOperations.PromoteEnvironmentWithMerge(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch)
 		if err != nil {
 			return err
 		}
@@ -320,49 +317,49 @@ func (r *ProposedCommitReconciler) mergeOrPullRequestPromote(ctx context.Context
 	return nil
 }
 
-func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context, pc *promoterv1alpha1.ProposedCommit) error {
+func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	logger := log.FromContext(ctx)
-	if pc.Status.Proposed.Dry.Sha == pc.Status.Active.Dry.Sha {
+	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
 		// If the proposed dry sha is different from the active dry sha, create a pull request
 		return nil
 	}
 
-	logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", pc.Status.Proposed.Dry.Sha, "activeDrySha", pc.Status.Active.Dry.Sha)
-	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: pc.Namespace, Name: pc.Spec.RepositoryReference.Name})
+	logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", ctp.Status.Proposed.Dry.Sha, "activeDrySha", ctp.Status.Active.Dry.Sha)
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Spec.RepositoryReference.Name})
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
-	prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, pc.Spec.ProposedBranch, pc.Spec.ActiveBranch))
+	prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
 
 	var pr promoterv1alpha1.PullRequest
 	err = r.Get(ctx, client.ObjectKey{
-		Namespace: pc.Namespace,
+		Namespace: ctp.Namespace,
 		Name:      prName,
 	}, &pr)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			// The code below sets the ownership for the PullRequest Object
-			kind := reflect.TypeOf(promoterv1alpha1.ProposedCommit{}).Name()
+			kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
 			gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-			controllerRef := metav1.NewControllerRef(pc, gvk)
+			controllerRef := metav1.NewControllerRef(ctp, gvk)
 
 			pr = promoterv1alpha1.PullRequest{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:            prName,
-					Namespace:       pc.Namespace,
+					Namespace:       ctp.Namespace,
 					OwnerReferences: []metav1.OwnerReference{*controllerRef},
 					Labels: map[string]string{
-						promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ctx, pc.Labels["promoter.argoproj.io/promotion-strategy"]),
-						promoterv1alpha1.ProposedCommitLabel:    utils.KubeSafeLabel(ctx, pc.Name),
-						promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(ctx, pc.Spec.ActiveBranch),
+						promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctx, ctp.Labels["promoter.argoproj.io/promotion-strategy"]),
+						promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctx, ctp.Name),
+						promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctx, ctp.Spec.ActiveBranch),
 					},
 				},
 				Spec: promoterv1alpha1.PullRequestSpec{
-					RepositoryReference: pc.Spec.RepositoryReference,
-					Title:               fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch),
-					TargetBranch:        pc.Spec.ActiveBranch,
-					SourceBranch:        pc.Spec.ProposedBranch,
-					Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha),
+					RepositoryReference: ctp.Spec.RepositoryReference,
+					Title:               fmt.Sprintf("Promote %s to `%s`", ctp.Status.Proposed.DryShaShort(), ctp.Spec.ActiveBranch),
+					TargetBranch:        ctp.Spec.ActiveBranch,
+					SourceBranch:        ctp.Spec.ProposedBranch,
+					Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", ctp.Spec.ActiveBranch, ctp.Status.Active.Dry.Sha, ctp.Status.Proposed.Dry.Sha),
 					State:               "open",
 				},
 			}
@@ -370,7 +367,7 @@ func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context,
 			if err != nil {
 				return err
 			}
-			r.Recorder.Event(pc, "Normal", "PullRequestCreated", fmt.Sprintf("Pull Request %s created", pr.Name))
+			r.Recorder.Event(ctp, "Normal", "PullRequestCreated", fmt.Sprintf("Pull Request %s created", pr.Name))
 			logger.V(4).Info("Created pull request")
 		} else {
 			return err
@@ -383,17 +380,17 @@ func (r *ProposedCommitReconciler) creatOrUpdatePullRequest(ctx context.Context,
 			if err != nil {
 				return err
 			}
-			prUpdated.Spec.RepositoryReference = pc.Spec.RepositoryReference
-			prUpdated.Spec.Title = fmt.Sprintf("Promote %s to `%s`", pc.Status.Proposed.DryShaShort(), pc.Spec.ActiveBranch)
-			prUpdated.Spec.TargetBranch = pc.Spec.ActiveBranch
-			prUpdated.Spec.SourceBranch = pc.Spec.ProposedBranch
-			prUpdated.Spec.Description = fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", pc.Spec.ActiveBranch, pc.Status.Active.Dry.Sha, pc.Status.Proposed.Dry.Sha)
+			prUpdated.Spec.RepositoryReference = ctp.Spec.RepositoryReference
+			prUpdated.Spec.Title = fmt.Sprintf("Promote %s to `%s`", ctp.Status.Proposed.DryShaShort(), ctp.Spec.ActiveBranch)
+			prUpdated.Spec.TargetBranch = ctp.Spec.ActiveBranch
+			prUpdated.Spec.SourceBranch = ctp.Spec.ProposedBranch
+			prUpdated.Spec.Description = fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", ctp.Spec.ActiveBranch, ctp.Status.Active.Dry.Sha, ctp.Status.Proposed.Dry.Sha)
 			return r.Update(ctx, &prUpdated)
 		})
 		if err != nil {
 			return err
 		}
-		//r.Recorder.Event(pc, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
+		//r.Recorder.Event(ctp, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
 		logger.V(4).Info("Updated pull request resource")
 	}
 

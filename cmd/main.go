@@ -63,7 +63,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var promotionStrategyRequeue string
-	var proposedCommitRequeue string
+	var changeTransferPolicyRequeue string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -75,7 +75,7 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&promotionStrategyRequeue, "promotion-strategy-requeue-duration", "60s",
 		"How frequently to requeue promotion strategy resources for auto reconciliation")
-	flag.StringVar(&proposedCommitRequeue, "proposed-commit-requeue-duration", "60s",
+	flag.StringVar(&changeTransferPolicyRequeue, "proposed-commit-requeue-duration", "60s",
 		"How frequently to requeue proposed commit resources for auto reconciliation")
 	opts := zap.Options{
 		Development: true,
@@ -165,24 +165,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	proposedCommitRequeueDuration, err := time.ParseDuration(proposedCommitRequeue)
-	if err != nil {
-		setupLog.Error(err, "failed to parse proposed commit requeue duration")
-		os.Exit(1)
-	}
-	if err = (&controller.ProposedCommitReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		PathLookup: pathLookup,
-		Recorder:   mgr.GetEventRecorderFor("ProposedCommit"),
-		Config: controller.ProposedCommitReconcilerConfig{
-			RequeueDuration: proposedCommitRequeueDuration,
-		},
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ProposedCommit")
-		os.Exit(1)
-	}
-
 	promotionStrategyRequeueDuration, err := time.ParseDuration(promotionStrategyRequeue)
 	if err != nil {
 		setupLog.Error(err, "failed to parse promotion strategy requeue duration")
@@ -212,6 +194,24 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GitRepository")
+		os.Exit(1)
+	}
+
+	ctpRequeueDuration, err := time.ParseDuration(changeTransferPolicyRequeue)
+	if err != nil {
+		setupLog.Error(err, "failed to parse proposed commit requeue duration")
+		os.Exit(1)
+	}
+	if err = (&controller.ChangeTransferPolicyReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		PathLookup: pathLookup,
+		Recorder:   mgr.GetEventRecorderFor("ChangeTransferPolicy"),
+		Config: controller.ChangeTransferPolicyReconcilerConfig{
+			RequeueDuration: ctpRequeueDuration,
+		},
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ChangeTransferPolicy")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

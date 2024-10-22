@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.3
-  name: proposedcommits.promoter.argoproj.io
+  name: changetransferpolicies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: ProposedCommit
-    listKind: ProposedCommitList
-    plural: proposedcommits
-    singular: proposedcommit
+    kind: ChangeTransferPolicy
+    listKind: ChangeTransferPolicyList
+    plural: changetransferpolicies
+    singular: changetransferpolicy
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -24,7 +24,8 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ProposedCommit is the Schema for the proposedcommits API
+        description: ChangeTransferPolicy is the Schema for the changetransferpolicies
+          API
         properties:
           apiVersion:
             description: |-
@@ -44,7 +45,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: ProposedCommitSpec defines the desired state of ProposedCommit
+            description: ChangeTransferPolicySpec defines the desired state of ChangeTransferPolicy
             properties:
               activeBranch:
                 description: ActiveBranch staging hydrated branch
@@ -90,7 +91,8 @@ spec:
             - proposedBranch
             type: object
           status:
-            description: ProposedCommitStatus defines the observed state of ProposedCommit
+            description: ChangeTransferPolicyStatus defines the observed state of
+              ChangeTransferPolicy
             properties:
               active:
                 properties:
