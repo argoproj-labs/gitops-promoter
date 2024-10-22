@@ -81,7 +81,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	// If a ProposedCommit does not exist, create it otherwise get it and store the ProposedCommit in a map with the branch as the key.
+	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ProposedCommit in a map with the branch as the key.
 	var ctpMap = make(map[string]*promoterv1alpha1.ChangeTransferPolicy)
 	for _, environment := range ps.Spec.Environments {
 		pc, err := r.createOrGetChangeTransferPolicy(ctx, &ps, environment)
