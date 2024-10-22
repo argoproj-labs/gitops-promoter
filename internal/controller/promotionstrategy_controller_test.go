@@ -481,7 +481,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ProposedCommits
-			// Check that ProposedCommit are created
+			// Check that ChangeTransferPolicy are created
 			ctpDev := promoterv1alpha1.ChangeTransferPolicy{}
 			ctpStaging := promoterv1alpha1.ChangeTransferPolicy{}
 			ctpProd := promoterv1alpha1.ChangeTransferPolicy{}
