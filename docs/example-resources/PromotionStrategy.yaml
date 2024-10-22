@@ -1,0 +1,43 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: example-promotion-strategy
+spec:
+  gitRepositoryRef:
+    name: example-git-repo
+  dryBranch: main
+  activeCommitStatuses:
+    - key: argocd-app-health
+  proposedCommitStatuses:
+    - key: security-scan
+  environments:
+    - branch: env/dev
+    - branch: env/test
+    - branch: env/prod
+      autoMerge: false
+      activeCommitStatuses:
+      - key: performance-test
+      proposedCommitStatuses:
+      - key: deployment-freeze
+status:
+  environments:
+  - branch: env/dev
+    active:
+      dry:
+        sha:
+        commitTime:
+      hydrated:
+        sha:
+        commitTime:
+      commitStatus:
+        sha:
+        phase:
+    proposed:
+      # same fields as active
+    lastHealthyDryShas:
+    - sha:
+      time:
+  - branch: env/test
+    # same fields as dev
+  - branch: env/prod
+    # same fields as dev

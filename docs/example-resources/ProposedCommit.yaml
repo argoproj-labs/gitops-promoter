@@ -1,0 +1,14 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ProposedCommit
+metadata:
+  name: environment
+spec:
+  gitRepositoryRef:
+    name: example-git-repository
+  proposedBranch: env/dev-next
+  activeBranch: env/dev
+  activeCommitStatuses:
+  - key: argocd-app-health
+  proposedCommitStatuses:
+  - key: security-scan
+  - key: previous-environment
