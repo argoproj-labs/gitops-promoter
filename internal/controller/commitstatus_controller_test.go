@@ -30,6 +30,7 @@ import (
 )
 
 var _ = Describe("CommitStatus Controller", func() {
+	var gitRepo *promoterv1alpha1.GitRepository
 	var scmProvider *promoterv1alpha1.ScmProvider
 	var scmSecret *v1.Secret
 	var commitStatus *promoterv1alpha1.CommitStatus
@@ -69,6 +70,20 @@ var _ = Describe("CommitStatus Controller", func() {
 				Status: promoterv1alpha1.ScmProviderStatus{},
 			}
 
+			gitRepo = &promoterv1alpha1.GitRepository{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      typeNamespacedName.Name,
+					Namespace: typeNamespacedName.Namespace,
+				},
+				Spec: promoterv1alpha1.GitRepositorySpec{
+					Owner: typeNamespacedName.Name,
+					Name:  typeNamespacedName.Name,
+					ScmProviderRef: promoterv1alpha1.ObjectReference{
+						Name: typeNamespacedName.Name,
+					},
+				},
+			}
+
 			commitStatus = &promoterv1alpha1.CommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      typeNamespacedName.Name,
@@ -76,13 +91,8 @@ var _ = Describe("CommitStatus Controller", func() {
 				},
 				Spec: promoterv1alpha1.CommitStatusSpec{
 					Phase: promoterv1alpha1.CommitPhasePending,
-					RepositoryReference: &promoterv1alpha1.Repository{
-						Owner: "test",
-						Name:  "test",
-						ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-							Name:      typeNamespacedName.Name,
-							Namespace: typeNamespacedName.Namespace,
-						},
+					RepositoryReference: promoterv1alpha1.ObjectReference{
+						Name: typeNamespacedName.Name,
 					},
 				},
 				// TODO(user): Specify other spec details if needed.
@@ -93,6 +103,7 @@ var _ = Describe("CommitStatus Controller", func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			By("Cleanup the specific resource instance CommitStatus")
 			_ = k8sClient.Delete(ctx, commitStatus)
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 		})
@@ -100,6 +111,7 @@ var _ = Describe("CommitStatus Controller", func() {
 			By("Reconciling the created resource")
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
 
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.

@@ -49,26 +49,13 @@ spec:
               description:
                 description: Body the description body of the pull/merge request
                 type: string
-              repository:
+              gitRepositoryRef:
                 description: RepositoryReference what repository to open the PR on.
                 properties:
                   name:
                     type: string
-                  owner:
-                    type: string
-                  scmProviderRef:
-                    properties:
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - name
-                    type: object
                 required:
                 - name
-                - owner
-                - scmProviderRef
                 type: object
               sourceBranch:
                 description: Base the git reference that we are merging into Head
@@ -92,7 +79,7 @@ spec:
                 description: Title is the title of the pull request.
                 type: string
             required:
-            - repository
+            - gitRepositoryRef
             - sourceBranch
             - state
             - targetBranch

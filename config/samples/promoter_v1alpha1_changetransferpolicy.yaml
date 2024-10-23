@@ -1,16 +1,13 @@
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: ProposedCommit
+kind: ChangeTransferPolicy
 metadata:
   labels:
     app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: proposedcommit-sample
+  name: changetransferpolicy-sample
 spec:
-  repository:
-    owner: zachaller
+  gitRepositoryRef:
     name: promoter-testing
-    scmProviderRef:
-      name: scmprovider-sample
   proposedBranch: environment/development-next
   activeBranch: environment/development
   commitStatuses:

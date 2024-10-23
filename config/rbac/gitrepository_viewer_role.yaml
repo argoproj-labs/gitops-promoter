@@ -1,31 +1,27 @@
-# permissions for end users to edit proposedcommits.
+# permissions for end users to view gitrepositories.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
     app.kubernetes.io/name: clusterrole
-    app.kubernetes.io/instance: proposedcommit-editor-role
+    app.kubernetes.io/instance: gitrepository-viewer-role
     app.kubernetes.io/component: rbac
     app.kubernetes.io/created-by: promoter
     app.kubernetes.io/part-of: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: proposedcommit-editor-role
+  name: gitrepository-viewer-role
 rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - proposedcommits
+  - gitrepositories
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - proposedcommits/status
+  - gitrepositories/status
   verbs:
   - get

@@ -5,9 +5,10 @@ resources:
 - bases/promoter.argoproj.io_pullrequests.yaml
 - bases/promoter.argoproj.io_commitstatuses.yaml
 - bases/promoter.argoproj.io_revertcommits.yaml
-- bases/promoter.argoproj.io_proposedcommits.yaml
 - bases/promoter.argoproj.io_promotionstrategies.yaml
 - bases/promoter.argoproj.io_scmproviders.yaml
+- bases/promoter.argoproj.io_gitrepositories.yaml
+- bases/promoter.argoproj.io_changetransferpolicies.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:
@@ -16,9 +17,10 @@ patches:
 #- path: patches/webhook_in_pullrequests.yaml
 #- path: patches/webhook_in_commitstatuses.yaml
 #- path: patches/webhook_in_revertcommits.yaml
-#- path: patches/webhook_in_proposedcommits.yaml
 #- path: patches/webhook_in_promotionstrategies.yaml
 #- path: patches/webhook_in_scmproviders.yaml
+#- path: patches/webhook_in_gitrepositories.yaml
+#- path: patches/webhook_in_changetransferpolicies.yaml
 #+kubebuilder:scaffold:crdkustomizewebhookpatch
 
 # [CERTMANAGER] To enable cert-manager, uncomment all the sections with [CERTMANAGER] prefix.
@@ -26,9 +28,10 @@ patches:
 #- path: patches/cainjection_in_pullrequests.yaml
 #- path: patches/cainjection_in_commitstatuses.yaml
 #- path: patches/cainjection_in_revertcommits.yaml
-#- path: patches/cainjection_in_proposedcommits.yaml
 #- path: patches/cainjection_in_promotionstrategies.yaml
 #- path: patches/cainjection_in_scmproviders.yaml
+#- path: patches/cainjection_in_gitrepositories.yaml
+#- path: patches/cainjection_in_changetransferpolicies.yaml
 #+kubebuilder:scaffold:crdkustomizecainjectionpatch
 
 # [WEBHOOK] To enable webhook, uncomment the following section

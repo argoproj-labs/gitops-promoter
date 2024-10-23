@@ -16,6 +16,10 @@ theme:
       toggle:
         icon: material/toggle-switch
         name: Switch to light mode
+markdown_extensions:
+  - markdown_include.include
+  - codehilite:
+      css_class: highlight
 nav:
   - Overview: index.md
   - Installation:
@@ -24,4 +28,4 @@ nav:
   - Getting Started:
       - Basic Usage: getting-started.md
       - Non-Kubernetes Usage: non-kubernetes-usage.md
-  - CRD Reference: crd-reference.md
+  - CRD Specs: crd-specs.md

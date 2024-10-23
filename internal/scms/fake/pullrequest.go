@@ -9,11 +9,14 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+
 	. "github.com/onsi/ginkgo/v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var pullRequests map[string]PullRequestProviderState
@@ -24,10 +27,11 @@ type PullRequestProviderState struct {
 	State v1alpha1.PullRequestState
 }
 type PullRequest struct {
+	k8sClient client.Client
 }
 
-func NewFakePullRequestProvider() *PullRequest {
-	return &PullRequest{}
+func NewFakePullRequestProvider(k8sClient client.Client) *PullRequest {
+	return &PullRequest{k8sClient: k8sClient}
 }
 
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (id string, err error) {
@@ -37,15 +41,20 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		pullRequests = make(map[string]PullRequestProviderState)
 	}
 
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return "", fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
 	pullRequestCopy := pullRequest.DeepCopy()
-	if p, ok := pullRequests[pr.getMapKey(*pullRequest)]; ok {
+	if p, ok := pullRequests[pr.getMapKey(*pullRequest, gitRepo.Spec.Owner, gitRepo.Spec.Name)]; ok {
 		logger.Info("Pull request already exists", "id", p.ID)
 	}
 	if pullRequestCopy == nil {
 		return "", fmt.Errorf("pull request is nil")
 	}
 
-	pullRequests[pr.getMapKey(*pullRequestCopy)] = PullRequestProviderState{
+	pullRequests[pr.getMapKey(*pullRequestCopy, gitRepo.Spec.Owner, gitRepo.Spec.Name)] = PullRequestProviderState{
 		ID:    fmt.Sprintf("%d", len(pullRequests)+1),
 		State: v1alpha1.PullRequestOpen,
 	}
@@ -60,7 +69,13 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 
 func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequest) error {
 	mutexPR.Lock()
-	prKey := pr.getMapKey(*pullRequest)
+
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Owner, gitRepo.Spec.Name)
 	if _, ok := pullRequests[prKey]; !ok {
 		return fmt.Errorf("pull request not found")
 	}
@@ -85,9 +100,14 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 		panic("could not make temp dir for repo server")
 	}
 
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
 	gitServerPort := 5000 + GinkgoParallelProcess()
 	gitServerPortStr := fmt.Sprintf("%d", gitServerPort)
-	err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name), ".")
+	err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Owner, gitRepo.Spec.Name), ".")
 	if err != nil {
 		return err
 	}
@@ -107,7 +127,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	}
 
 	mutexPR.Lock()
-	prKey := pr.getMapKey(*pullRequest)
+	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Owner, gitRepo.Spec.Name)
 
 	if _, ok := pullRequests[prKey]; !ok {
 		return fmt.Errorf("pull request not found")
@@ -132,12 +152,19 @@ func (pr *PullRequest) findOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 	if pullRequests == nil {
 		return false
 	}
-	pullRequestState, ok := pullRequests[pr.getMapKey(*pullRequest)]
+
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		log.FromContext(ctx).Error(err, "failed to get GitRepository")
+		return false
+	}
+
+	pullRequestState, ok := pullRequests[pr.getMapKey(*pullRequest, gitRepo.Spec.Owner, gitRepo.Spec.Name)]
 	return ok && pullRequestState.State == v1alpha1.PullRequestOpen
 }
 
-func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest) string {
-	return fmt.Sprintf("%s/%s/%s/%s", pullRequest.Spec.RepositoryReference.Owner, pullRequest.Spec.RepositoryReference.Name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
+func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name string) string {
+	return fmt.Sprintf("%s/%s/%s/%s", owner, name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
 }
 
 func (pr *PullRequest) runGitCmd(gitPath string, args ...string) error {

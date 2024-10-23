@@ -91,6 +91,13 @@ spec:
                   type: object
                 minItems: 1
                 type: array
+              gitRepositoryRef:
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
               proposedCommitStatuses:
                 items:
                   properties:
@@ -101,30 +108,10 @@ spec:
                   - key
                   type: object
                 type: array
-              repository:
-                properties:
-                  name:
-                    type: string
-                  owner:
-                    type: string
-                  scmProviderRef:
-                    properties:
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - name
-                    type: object
-                required:
-                - name
-                - owner
-                - scmProviderRef
-                type: object
             required:
             - dryBranch
             - environments
-            - repository
+            - gitRepositoryRef
             type: object
           status:
             description: PromotionStrategyStatus defines the observed state of PromotionStrategy
@@ -177,6 +164,8 @@ spec:
                           sha:
                             type: string
                           time:
+                            description: 'FIXME: docs, is this commit time, first-became-healthy
+                              time, most-recently-observed-healthy time, etc?'
                             format: date-time
                             type: string
                         required:

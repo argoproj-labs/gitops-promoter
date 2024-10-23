@@ -29,7 +29,7 @@ type PromotionStrategySpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// +kubebuilder:validation:Required
-	RepositoryReference *Repository `json:"repository"`
+	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
 	// +kubebuilder:validation:Required
 	DryBanch string `json:"dryBranch"`
@@ -82,7 +82,8 @@ type EnvironmentStatus struct {
 }
 
 type HealthyDryShas struct {
-	Sha  string      `json:"sha"`
+	Sha string `json:"sha"`
+	// FIXME: docs, is this commit time, first-became-healthy time, most-recently-observed-healthy time, etc?
 	Time metav1.Time `json:"time"`
 }
 

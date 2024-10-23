@@ -6,11 +6,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: promotionstrategy-sample
 spec:
-  repository:
-    owner: zachaller
+  gitRepositoryRef:
     name: promoter-testing
-    scmProviderRef:
-      name: scmprovider-sample
   dryBranch: main
   activeCommitStatuses:
     - key: healthy

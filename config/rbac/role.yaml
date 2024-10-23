@@ -7,9 +7,10 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - changetransferpolicies
   - commitstatuses
+  - gitrepositories
   - promotionstrategies
-  - proposedcommits
   - pullrequests
   - revertcommits
   - scmproviders
@@ -24,9 +25,10 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - changetransferpolicies/finalizers
   - commitstatuses/finalizers
+  - gitrepositories/finalizers
   - promotionstrategies/finalizers
-  - proposedcommits/finalizers
   - pullrequests/finalizers
   - revertcommits/finalizers
   - scmproviders/finalizers
@@ -35,9 +37,10 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - changetransferpolicies/status
   - commitstatuses/status
+  - gitrepositories/status
   - promotionstrategies/status
-  - proposedcommits/status
   - pullrequests/status
   - revertcommits/status
   - scmproviders/status

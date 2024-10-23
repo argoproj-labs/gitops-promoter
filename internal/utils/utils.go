@@ -16,19 +16,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func GetScmProviderFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.Repository, obj metav1.Object) (*promoterv1alpha1.ScmProvider, error) {
+func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Client, repositoryRef *promoterv1alpha1.GitRepository, obj metav1.Object) (*promoterv1alpha1.ScmProvider, error) {
 	logger := log.FromContext(ctx)
 
 	var scmProvider promoterv1alpha1.ScmProvider
-	var namespace string
-	if repositoryRef.ScmProviderRef.Namespace != "" {
-		namespace = repositoryRef.ScmProviderRef.Namespace
-	} else {
-		namespace = obj.GetNamespace()
-	}
+	namespace := obj.GetNamespace()
+
 	objectKey := client.ObjectKey{
 		Namespace: namespace,
-		Name:      repositoryRef.ScmProviderRef.Name,
+		Name:      repositoryRef.Spec.ScmProviderRef.Name,
 	}
 	err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
 	if err != nil {
@@ -44,10 +40,26 @@ func GetScmProviderFromRepositoryReference(ctx context.Context, k8sClient client
 	return &scmProvider, nil
 }
 
-func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.Repository, obj metav1.Object) (*promoterv1alpha1.ScmProvider, *v1.Secret, error) {
-	logger := log.FromContext(ctx)
+// GetGitRepositorytFromObjectKey returns the GitRepository object from the repository reference
+func GetGitRepositorytFromObjectKey(ctx context.Context, k8sClient client.Client, objectKey client.ObjectKey) (*promoterv1alpha1.GitRepository, error) {
 
-	scmProvider, err := GetScmProviderFromRepositoryReference(ctx, k8sClient, repositoryRef, obj)
+	var gitRepo promoterv1alpha1.GitRepository
+	err := k8sClient.Get(ctx, objectKey, &gitRepo)
+	if err != nil {
+		return nil, err
+	}
+
+	return &gitRepo, nil
+}
+
+func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (*promoterv1alpha1.ScmProvider, *v1.Secret, error) {
+	logger := log.FromContext(ctx)
+	gitRepo, err := GetGitRepositorytFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	scmProvider, err := GetScmProviderFromGitRepository(ctx, k8sClient, gitRepo, obj)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -100,11 +112,11 @@ func TruncateStringFromBeginning(str string, length int) string {
 
 var m1 = regexp.MustCompile("[^a-zA-Z0-9]+")
 
-func GetPullRequestName(ctx context.Context, proposedCommit promoterv1alpha1.ProposedCommit) string {
-	return fmt.Sprintf("%s-%s-%s-%s", proposedCommit.Spec.RepositoryReference.Name, proposedCommit.Spec.RepositoryReference.Owner, proposedCommit.Spec.ProposedBranch, proposedCommit.Spec.ActiveBranch)
+func GetPullRequestName(ctx context.Context, repoOwner, repoName, pcProposedBranch, pcActiveBranch string) string {
+	return fmt.Sprintf("%s-%s-%s-%s", repoOwner, repoName, pcProposedBranch, pcActiveBranch)
 }
 
-func GetProposedCommitName(promotionStrategyName, environmentBranch string) string {
+func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string) string {
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
 

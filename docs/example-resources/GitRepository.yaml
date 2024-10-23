@@ -1,0 +1,9 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: example-git-repository
+spec:
+  owner:
+  name:
+  scmProviderRef:
+    name: example-scm-provider
