@@ -31,10 +31,6 @@ type PromotionStrategySpec struct {
 	// +kubebuilder:validation:Required
 	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
-	// DryBranch is the branch that contains the intended system state.
-	// +kubebuilder:validation:Required
-	DryBranch string `json:"dryBranch"`
-
 	// ActiveCommitStatuses are commit statuses describing an actively running dry commit. If an active commit status
 	// is failing for an environment, subsequent environments will not deploy the failing commit.
 	//

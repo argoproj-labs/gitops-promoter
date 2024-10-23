@@ -431,10 +431,6 @@ spec:
                   - key
                   type: object
                 type: array
-              dryBranch:
-                description: DryBranch is the branch that contains the intended system
-                  state.
-                type: string
               environments:
                 description: Environments is the sequence of environments that a dry
                   commit will be promoted through.
@@ -511,7 +507,6 @@ spec:
                   type: object
                 type: array
             required:
-            - dryBranch
             - environments
             - gitRepositoryRef
             type: object
