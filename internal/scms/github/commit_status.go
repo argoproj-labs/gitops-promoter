@@ -3,9 +3,10 @@ package github
 import (
 	"context"
 	"fmt"
+	"strconv"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strconv"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -44,7 +45,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 		Context:     github.String(commitStatus.Spec.Name),
 	}
 
-	gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, cs.k8sClient, commitStatus.Spec.RepositoryReference)
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, cs.k8sClient, client.ObjectKey{Namespace: commitStatus.Namespace, Name: commitStatus.Spec.RepositoryReference.Name})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}

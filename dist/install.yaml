@@ -15,7 +15,186 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: changetransferpolicies.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: ChangeTransferPolicy
+    listKind: ChangeTransferPolicyList
+    plural: changetransferpolicies
+    singular: changetransferpolicy
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.active.dry.sha
+      name: Active Dry Sha
+      type: string
+    - jsonPath: .status.proposed.dry.sha
+      name: Proposed Dry Sha
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ChangeTransferPolicy is the Schema for the changetransferpolicies
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ChangeTransferPolicySpec defines the desired state of ChangeTransferPolicy
+            properties:
+              activeBranch:
+                description: ActiveBranch staging hydrated branch
+                type: string
+              activeCommitStatuses:
+                description: ActiveCommitStatuses lists the statuses to be monitored
+                  on the active branch
+                items:
+                  properties:
+                    key:
+                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                      type: string
+                  required:
+                  - key
+                  type: object
+                type: array
+              gitRepositoryRef:
+                description: RepositoryReference what repository to open the PR on.
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+              proposedBranch:
+                description: ProposedBranch staging hydrated branch
+                type: string
+              proposedCommitStatuses:
+                description: ProposedCommitStatuses lists the statuses to be monitored
+                  on the proposed branch
+                items:
+                  properties:
+                    key:
+                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                      type: string
+                  required:
+                  - key
+                  type: object
+                type: array
+            required:
+            - activeBranch
+            - gitRepositoryRef
+            - proposedBranch
+            type: object
+          status:
+            description: ChangeTransferPolicyStatus defines the observed state of
+              ChangeTransferPolicy
+            properties:
+              active:
+                properties:
+                  commitStatuses:
+                    items:
+                      properties:
+                        key:
+                          description: Key staging hydrated branch
+                          type: string
+                        phase:
+                          description: Phase what phase is the status in
+                          enum:
+                          - pending
+                          - success
+                          - failure
+                          type: string
+                      required:
+                      - key
+                      - phase
+                      type: object
+                    type: array
+                  dry:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                  hydrated:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                type: object
+              proposed:
+                description: |-
+                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                properties:
+                  commitStatuses:
+                    items:
+                      properties:
+                        key:
+                          description: Key staging hydrated branch
+                          type: string
+                        phase:
+                          description: Phase what phase is the status in
+                          enum:
+                          - pending
+                          - success
+                          - failure
+                          type: string
+                      required:
+                      - key
+                      - phase
+                      type: object
+                    type: array
+                  dry:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                  hydrated:
+                    properties:
+                      commitTime:
+                        format: date-time
+                        type: string
+                      sha:
+                        type: string
+                    type: object
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: commitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -26,7 +205,14 @@ spec:
     singular: commitstatus
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.sha
+      name: Sha
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: CommitStatus is the Schema for the commitstatuses API
@@ -51,13 +237,61 @@ spec:
           spec:
             description: CommitStatusSpec defines the desired state of CommitStatus
             properties:
-              foo:
-                description: Foo is an example field of CommitStatus. Edit commitstatus_types.go
-                  to remove/update
+              description:
                 type: string
+              gitRepositoryRef:
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+              name:
+                type: string
+              phase:
+                default: pending
+                enum:
+                - pending
+                - success
+                - failure
+                type: string
+              sha:
+                type: string
+              url:
+                type: string
+            required:
+            - description
+            - gitRepositoryRef
+            - name
+            - phase
+            - sha
+            - url
             type: object
           status:
             description: CommitStatusStatus defines the observed state of CommitStatus
+            properties:
+              id:
+                type: string
+              observedGeneration:
+                description: |-
+                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                format: int64
+                type: integer
+              phase:
+                default: pending
+                enum:
+                - pending
+                - success
+                - failure
+                type: string
+              sha:
+                type: string
+            required:
+            - id
+            - observedGeneration
+            - phase
+            - sha
             type: object
         type: object
     served: true
@@ -69,7 +303,72 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
+  name: gitrepositories.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: GitRepository
+    listKind: GitRepositoryList
+    plural: gitrepositories
+    singular: gitrepository
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: GitRepository is the Schema for the gitrepositories API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: GitRepositorySpec defines the desired state of GitRepository
+            properties:
+              name:
+                type: string
+              owner:
+                type: string
+              scmProviderRef:
+                properties:
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - name
+            - owner
+            - scmProviderRef
+            type: object
+          status:
+            description: GitRepositoryStatus defines the observed state of GitRepository
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: promotionstrategies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -80,7 +379,14 @@ spec:
     singular: promotionstrategy
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.active.dry.sha
+      name: Active Dry Sha
+      type: string
+    - jsonPath: .status.proposed.dry.sha
+      name: Proposed Dry Sha
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: PromotionStrategy is the Schema for the promotionstrategies API
@@ -105,136 +411,176 @@ spec:
           spec:
             description: PromotionStrategySpec defines the desired state of PromotionStrategy
             properties:
-              foo:
-                description: Foo is an example field of PromotionStrategy. Edit promotionstrategy_types.go
-                  to remove/update
-                type: string
-            type: object
-          status:
-            description: PromotionStrategyStatus defines the observed state of PromotionStrategy
-            type: object
-        type: object
-    served: true
-    storage: true
-    subresources:
-      status: {}
----
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
-  name: proposedcommits.promoter.argoproj.io
-spec:
-  group: promoter.argoproj.io
-  names:
-    kind: ProposedCommit
-    listKind: ProposedCommitList
-    plural: proposedcommits
-    singular: proposedcommit
-  scope: Namespaced
-  versions:
-  - name: v1alpha1
-    schema:
-      openAPIV3Schema:
-        description: ProposedCommit is the Schema for the proposedcommits API
-        properties:
-          apiVersion:
-            description: |-
-              APIVersion defines the versioned schema of this representation of an object.
-              Servers should convert recognized schemas to the latest internal value, and
-              may reject unrecognized values.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
-            type: string
-          kind:
-            description: |-
-              Kind is a string value representing the REST resource this object represents.
-              Servers may infer this from the endpoint the client submits requests to.
-              Cannot be updated.
-              In CamelCase.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-            type: string
-          metadata:
-            type: object
-          spec:
-            description: ProposedCommitSpec defines the desired state of ProposedCommit
-            properties:
-              activeBranch:
-                description: ActiveBranch staging hydrated branch
-                type: string
-              commitStatuses:
+              activeCommitStatuses:
                 items:
                   properties:
                     key:
-                      description: Key staging hydrated branch
+                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
                       type: string
                   required:
                   - key
                   type: object
                 type: array
-              proposedBranch:
-                description: ProposedBranch staging hydrated branch
+              dryBranch:
                 type: string
-              repository:
-                description: RepositoryReference what repository to open the PR on.
+              environments:
+                items:
+                  properties:
+                    activeCommitStatuses:
+                      items:
+                        properties:
+                          key:
+                            pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                            type: string
+                        required:
+                        - key
+                        type: object
+                      type: array
+                    autoMerge:
+                      default: true
+                      type: boolean
+                    branch:
+                      type: string
+                    proposedCommitStatuses:
+                      items:
+                        properties:
+                          key:
+                            pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                            type: string
+                        required:
+                        - key
+                        type: object
+                      type: array
+                  required:
+                  - branch
+                  type: object
+                minItems: 1
+                type: array
+              gitRepositoryRef:
                 properties:
                   name:
                     type: string
-                  owner:
-                    type: string
-                  scmProviderRef:
-                    properties:
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - name
-                    type: object
                 required:
                 - name
-                - owner
-                - scmProviderRef
                 type: object
-            required:
-            - activeBranch
-            - proposedBranch
-            - repository
-            type: object
-          status:
-            description: ProposedCommitStatus defines the observed state of ProposedCommit
-            properties:
-              active:
-                properties:
-                  drySha:
-                    type: string
-                  hydratedSha:
-                    type: string
-                type: object
-              commitStatuses:
+              proposedCommitStatuses:
                 items:
                   properties:
                     key:
-                      description: Key staging hydrated branch
-                      type: string
-                    phase:
-                      description: Phase what phase is the status in
+                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
                       type: string
                   required:
                   - key
-                  - phase
                   type: object
                 type: array
-              proposed:
-                description: |-
-                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
-                properties:
-                  drySha:
-                    type: string
-                  hydratedSha:
-                    type: string
-                type: object
+            required:
+            - dryBranch
+            - environments
+            - gitRepositoryRef
+            type: object
+          status:
+            description: PromotionStrategyStatus defines the observed state of PromotionStrategy
+            properties:
+              environments:
+                items:
+                  properties:
+                    active:
+                      properties:
+                        commitStatus:
+                          properties:
+                            phase:
+                              enum:
+                              - pending
+                              - success
+                              - failure
+                              type: string
+                            sha:
+                              type: string
+                          required:
+                          - phase
+                          - sha
+                          type: object
+                        dry:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
+                        hydrated:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
+                      required:
+                      - commitStatus
+                      - dry
+                      - hydrated
+                      type: object
+                    branch:
+                      type: string
+                    lastHealthyDryShas:
+                      items:
+                        properties:
+                          sha:
+                            type: string
+                          time:
+                            format: date-time
+                            type: string
+                        required:
+                        - sha
+                        - time
+                        type: object
+                      type: array
+                    proposed:
+                      properties:
+                        commitStatus:
+                          properties:
+                            phase:
+                              enum:
+                              - pending
+                              - success
+                              - failure
+                              type: string
+                            sha:
+                              type: string
+                          required:
+                          - phase
+                          - sha
+                          type: object
+                        dry:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
+                        hydrated:
+                          properties:
+                            commitTime:
+                              format: date-time
+                              type: string
+                            sha:
+                              type: string
+                          type: object
+                      required:
+                      - commitStatus
+                      - dry
+                      - hydrated
+                      type: object
+                  required:
+                  - active
+                  - branch
+                  - proposed
+                  type: object
+                type: array
+            required:
+            - environments
             type: object
         type: object
     served: true
@@ -246,7 +592,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: pullrequests.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -257,7 +603,14 @@ spec:
     singular: pullrequest
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.id
+      name: ID
+      type: string
+    - jsonPath: .status.state
+      name: State
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: PullRequest is the Schema for the pullrequests API
@@ -285,26 +638,13 @@ spec:
               description:
                 description: Body the description body of the pull/merge request
                 type: string
-              repository:
+              gitRepositoryRef:
                 description: RepositoryReference what repository to open the PR on.
                 properties:
                   name:
                     type: string
-                  owner:
-                    type: string
-                  scmProviderRef:
-                    properties:
-                      name:
-                        type: string
-                      namespace:
-                        type: string
-                    required:
-                    - name
-                    type: object
                 required:
                 - name
-                - owner
-                - scmProviderRef
                 type: object
               sourceBranch:
                 description: Base the git reference that we are merging into Head
@@ -328,7 +668,7 @@ spec:
                 description: Title is the title of the pull request.
                 type: string
             required:
-            - repository
+            - gitRepositoryRef
             - sourceBranch
             - state
             - targetBranch
@@ -340,12 +680,19 @@ spec:
               id:
                 description: ID the id of the pull request
                 type: string
-              specHash:
-                description: SpecHash used to track if we need to update
+              observedGeneration:
+                description: ObservedGeneration the generation observed by the controller
+                format: int64
+                type: integer
+              prCreationTime:
+                description: PRCreationTime the time the PR was created
+                format: date-time
                 type: string
               state:
                 description: State of the merge request closed/merged/open
                 type: string
+            required:
+            - observedGeneration
             type: object
         type: object
     served: true
@@ -357,7 +704,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: revertcommits.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -411,7 +758,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: scmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -464,10 +811,13 @@ spec:
                   a specific provider
                 properties:
                   name:
+                    default: ""
                     description: |-
                       Name of the referent.
+                      This field is effectively required, but due to backwards compatibility is
+                      allowed to be empty. Instances of this type with an empty value here are
+                      almost certainly wrong.
                       More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                      TODO: Add other useful fields. apiVersion, kind, uid?
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic
@@ -543,136 +893,12 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - changetransferpolicies
   - commitstatuses
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - commitstatuses/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - commitstatuses/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
+  - gitrepositories
   - promotionstrategies
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - promotionstrategies/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - promotionstrategies/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - proposedcommits
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - proposedcommits/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - proposedcommits/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
   - pullrequests
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - pullrequests/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - pullrequests/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
   - revertcommits
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - revertcommits/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
-  - revertcommits/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - promoter.argoproj.io
-  resources:
   - scmproviders
   verbs:
   - create
@@ -685,12 +911,24 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - changetransferpolicies/finalizers
+  - commitstatuses/finalizers
+  - gitrepositories/finalizers
+  - promotionstrategies/finalizers
+  - pullrequests/finalizers
+  - revertcommits/finalizers
   - scmproviders/finalizers
   verbs:
   - update
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - changetransferpolicies/status
+  - commitstatuses/status
+  - gitrepositories/status
+  - promotionstrategies/status
+  - pullrequests/status
+  - revertcommits/status
   - scmproviders/status
   verbs:
   - get
@@ -847,6 +1085,21 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/component: manager
+              topologyKey: kubernetes.io/hostname
+            weight: 100
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: deployment
+              topologyKey: kubernetes.io/hostname
+            weight: 5
       containers:
       - args:
         - --secure-listen-address=0.0.0.0:8443
@@ -877,7 +1130,7 @@ spec:
         - --leader-elect
         command:
         - /manager
-        image: controller:latest
+        image: quay.io/argoprojlabs/gitops-promoter:latest
         livenessProbe:
           httpGet:
             path: /healthz
@@ -905,5 +1158,7 @@ spec:
             - ALL
       securityContext:
         runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccountName: promoter-controller-manager
       terminationGracePeriodSeconds: 10

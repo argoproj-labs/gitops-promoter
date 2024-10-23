@@ -16,6 +16,10 @@ theme:
       toggle:
         icon: material/toggle-switch
         name: Switch to light mode
+markdown_extensions:
+  - markdown_include.include
+  - codehilite:
+      css_class: highlight
 nav:
   - Overview: index.md
   - Installation: installation.md
@@ -23,3 +27,4 @@ nav:
   - Architecture: architecture.md
   - Getting Started:
       - Basic Usage: getting-started.md
+  - CRD Specs: crd-specs.md

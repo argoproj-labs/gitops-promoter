@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
 	. "github.com/onsi/ginkgo/v2"
 
@@ -40,7 +41,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		pullRequests = make(map[string]PullRequestProviderState)
 	}
 
-	gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, pr.k8sClient, pullRequest.Spec.RepositoryReference)
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
 	}
@@ -69,7 +70,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequest) error {
 	mutexPR.Lock()
 
-	gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, pr.k8sClient, pullRequest.Spec.RepositoryReference)
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
@@ -99,7 +100,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 		panic("could not make temp dir for repo server")
 	}
 
-	gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, pr.k8sClient, pullRequest.Spec.RepositoryReference)
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
@@ -152,7 +153,7 @@ func (pr *PullRequest) findOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 		return false
 	}
 
-	gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, pr.k8sClient, pullRequest.Spec.RepositoryReference)
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		log.FromContext(ctx).Error(err, "failed to get GitRepository")
 		return false

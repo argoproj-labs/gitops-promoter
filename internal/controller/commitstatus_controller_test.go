@@ -78,9 +78,8 @@ var _ = Describe("CommitStatus Controller", func() {
 				Spec: promoterv1alpha1.GitRepositorySpec{
 					Owner: typeNamespacedName.Name,
 					Name:  typeNamespacedName.Name,
-					ScmProviderRef: promoterv1alpha1.NamespacedObjectReference{
-						Name:      typeNamespacedName.Name,
-						Namespace: typeNamespacedName.Namespace,
+					ScmProviderRef: promoterv1alpha1.ObjectReference{
+						Name: typeNamespacedName.Name,
 					},
 				},
 			}
@@ -92,9 +91,8 @@ var _ = Describe("CommitStatus Controller", func() {
 				},
 				Spec: promoterv1alpha1.CommitStatusSpec{
 					Phase: promoterv1alpha1.CommitPhasePending,
-					RepositoryReference: promoterv1alpha1.NamespacedObjectReference{
-						Name:      typeNamespacedName.Name,
-						Namespace: typeNamespacedName.Namespace,
+					RepositoryReference: promoterv1alpha1.ObjectReference{
+						Name: typeNamespacedName.Name,
 					},
 				},
 				// TODO(user): Specify other spec details if needed.

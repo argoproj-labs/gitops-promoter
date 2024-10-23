@@ -30,7 +30,7 @@ type GitRepositorySpec struct {
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 	// +kubebuilder:validation:Required
-	ScmProviderRef NamespacedObjectReference `json:"scmProviderRef"`
+	ScmProviderRef ObjectReference `json:"scmProviderRef"`
 }
 
 // GitRepositoryStatus defines the observed state of GitRepository

@@ -23,14 +23,14 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// ProposedCommitSpec defines the desired state of ProposedCommit
-type ProposedCommitSpec struct {
+// ChangeTransferPolicySpec defines the desired state of ChangeTransferPolicy
+type ChangeTransferPolicySpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// RepositoryReference what repository to open the PR on.
 	// +kubebuilder:validation:Required
-	RepositoryReference NamespacedObjectReference `json:"gitRepositoryRef"`
+	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
 	// ProposedBranch staging hydrated branch
 	// +kubebuilder:validation:Required
@@ -49,7 +49,7 @@ type ProposedCommitSpec struct {
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
-type ProposedCommitCommitStatusPhase struct {
+type ChangeRequestPolicyCommitStatusPhase struct {
 	// Key staging hydrated branch
 	// +kubebuilder:validation:Required
 	Key string `json:"key"`
@@ -64,7 +64,7 @@ type CommitBranchState struct {
 	Dry      CommitShaState `json:"dry,omitempty"`
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
 	// +kubebuilder:validation:Optional
-	CommitStatuses []ProposedCommitCommitStatusPhase `json:"commitStatuses,omitempty"`
+	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 
 type CommitShaState struct {
@@ -84,8 +84,8 @@ func (b *CommitBranchState) DryShaShort() string {
 	return b.Dry.Sha[:7]
 }
 
-// ProposedCommitStatus defines the observed state of ProposedCommit
-type ProposedCommitStatus struct {
+// ChangeTransferPolicyStatus defines the observed state of ChangeTransferPolicy
+type ChangeTransferPolicyStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	Proposed CommitBranchState `json:"proposed,omitempty"`
@@ -97,24 +97,24 @@ type ProposedCommitStatus struct {
 
 // +kubebuilder:printcolumn:name="Active Dry Sha",type=string,JSONPath=`.status.active.dry.sha`
 // +kubebuilder:printcolumn:name="Proposed Dry Sha",type=string,JSONPath=`.status.proposed.dry.sha`
-// ProposedCommit is the Schema for the proposedcommits API
-type ProposedCommit struct {
+// ChangeTransferPolicy is the Schema for the changetransferpolicies API
+type ChangeTransferPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ProposedCommitSpec   `json:"spec,omitempty"`
-	Status ProposedCommitStatus `json:"status,omitempty"`
+	Spec   ChangeTransferPolicySpec   `json:"spec,omitempty"`
+	Status ChangeTransferPolicyStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// ProposedCommitList contains a list of ProposedCommit
-type ProposedCommitList struct {
+// ChangeTransferPolicyList contains a list of ChangeTransferPolicy
+type ChangeTransferPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []ProposedCommit `json:"items"`
+	Items           []ChangeTransferPolicy `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&ProposedCommit{}, &ProposedCommitList{})
+	SchemeBuilder.Register(&ChangeTransferPolicy{}, &ChangeTransferPolicyList{})
 }

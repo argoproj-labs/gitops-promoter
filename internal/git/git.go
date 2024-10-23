@@ -34,9 +34,9 @@ type HydratorMetadataFile struct {
 	DrySHA   string   `json:"drySha"`
 }
 
-func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, pathLookup utils.PathLookup, repoRef v1alpha1.NamespacedObjectReference, obj v1.Object, pathConext string) (*GitOperations, error) {
+func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, pathLookup utils.PathLookup, repoRef v1alpha1.ObjectReference, obj v1.Object, pathConext string) (*GitOperations, error) {
 
-	gitRepo, err := utils.GetGitRepositorytFromRepositoryReference(ctx, k8sClient, repoRef)
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repoRef.Name})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
@@ -75,9 +75,21 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 
 		stdout, stderr, err = g.runCmd(ctx, path, "config", "pull.rebase", "false")
 		if err != nil {
-			logger.Error(err, "could set git config", "stdout", stdout, "stderr", stderr)
+			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
 			return err
 		}
+		stdout, stderr, err = g.runCmd(ctx, path, "config", "user.name", "GitOps Promoter")
+		if err != nil {
+			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
+			return err
+		}
+
+		stdout, stderr, err = g.runCmd(ctx, path, "config", "user.email", "GitOpsPromoter@argoproj.io")
+		if err != nil {
+			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
+			return err
+		}
+
 		logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 
 		g.pathLookup.Set(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext, path)
@@ -176,6 +188,98 @@ func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, er
 	}
 
 	return v1.Time{Time: cTime}, nil
+}
+
+func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environmentBranch, environmentNextBranch string) error {
+	logger := log.FromContext(ctx)
+
+	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
+		return fmt.Errorf("no repo path found")
+	}
+
+	_, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "fetch", "origin")
+	if err != nil {
+		logger.Error(err, "could not fetch origin", "gitError", stderr)
+		return err
+	}
+
+	_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", environmentBranch, fmt.Sprintf("origin/%s", environmentBranch))
+	if err != nil {
+		logger.Error(err, "could not git checkout", "gitError", stderr)
+		return err
+	}
+	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
+
+	// Don't think this is needed
+	//_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "pull", "--progress")
+	//if err != nil {
+	//	logger.Error(err, "could not git pull", "gitError", stderr)
+	//	return err
+	//}
+	//logger.V(4).Info("Pulled branch", "branch", environmentBranch)
+
+	_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "pull", "--progress", "origin", environmentNextBranch)
+	if err != nil {
+		logger.Error(err, "could not git pull", "gitError", stderr)
+		return err
+	}
+	logger.V(4).Info("Pulled branch", "branch", environmentNextBranch)
+
+	_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "push", "--progress", "origin", environmentBranch)
+	if err != nil {
+		logger.Error(err, "could not git pull", "gitError", stderr)
+		return err
+	}
+	logger.V(4).Info("Pushed branch", "branch", environmentBranch)
+
+	return nil
+}
+
+// IsPullRequestRequired will compare the environment branch with the next environment branch and return true if a PR is required.
+// The PR is required if the diff between the two branches contain edits to yaml files.
+func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentBranch, environmentNextBranch string) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	//environmentNextBranch := environmentBranch + "-next"
+
+	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
+		return false, fmt.Errorf("no repo path found")
+	}
+
+	// Checkout the environment branch
+	_, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", environmentBranch, fmt.Sprintf("origin/%s", environmentBranch))
+	if err != nil {
+		logger.Error(err, "could not git checkout", "gitError", stderr)
+		return false, err
+	}
+	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
+
+	// Fetch the next environment branch
+	_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "fetch", "origin", environmentNextBranch)
+	if err != nil {
+		logger.Error(err, "could not fetch branch", "gitError", stderr)
+		return false, err
+	}
+	logger.V(4).Info("Fetched branch", "branch", environmentNextBranch)
+
+	// Get the diff between the two branches
+	stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "diff", fmt.Sprintf("origin/%s", environmentBranch), fmt.Sprintf("origin/%s", environmentNextBranch), "--name-only", "--diff-filter=ACMRT")
+	if err != nil {
+		logger.Error(err, "could not get diff", "gitError", stderr)
+		return false, err
+	}
+	logger.V(4).Info("Got diff", "diff", stdout)
+
+	// Check if the diff contains any YAML files if so we expect a manifest to have changed
+	// TODO: This is temporary check we should add some path globbing support to the specs
+	for _, file := range strings.Split(stdout, "\n") {
+		if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
+			logger.V(4).Info("YAML file changed", "file", file)
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...string) (string, string, error) {

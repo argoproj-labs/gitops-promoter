@@ -70,11 +70,11 @@ func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
 
 	c, _ := GinkgoConfiguration()
-	c.FocusFiles = []string{
-		"proposedcommit_controller_test.go",
-		"pullrequest_controller_test.go",
-		"promotionstrategy_controller_test.go",
-	}
+	//c.FocusFiles = []string{
+	//	"changetransferpolicy_controller_test.go",
+	//	"pullrequest_controller_test.go",
+	//	"promotionstrategy_controller_test.go",
+	//}
 	//GinkgoWriter.TeeTo(os.Stdout)
 
 	RunSpecs(t, "Controller Suite", c)
@@ -150,12 +150,12 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	pathLookup := utils.NewPathLookup()
-	err = (&ProposedCommitReconciler{
+	err = (&ChangeTransferPolicyReconciler{
 		Client:     k8sManager.GetClient(),
 		Scheme:     k8sManager.GetScheme(),
 		PathLookup: pathLookup,
-		Recorder:   k8sManager.GetEventRecorderFor("ProposedCommit"),
-		Config: ProposedCommitReconcilerConfig{
+		Recorder:   k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
+		Config: ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: 10 * time.Second,
 		},
 	}).SetupWithManager(k8sManager)
@@ -362,14 +362,14 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 	_, err = runGitCmd(gitPath, "checkout", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
-	f, err := os.Create(path.Join(gitPath, "manifests-fake.timestamp"))
+	f, err := os.Create(path.Join(gitPath, "manifests-fake.yaml"))
 	Expect(err).NotTo(HaveOccurred())
 	str := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339))
 	_, err = f.WriteString(str)
 	Expect(err).NotTo(HaveOccurred())
 	err = f.Close()
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "add", "manifests-fake.timestamp")
+	_, err = runGitCmd(gitPath, "add", "manifests-fake.yaml")
 	Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "commit", "-m", "added fake manifests commit with timestamp")
 	Expect(err).NotTo(HaveOccurred())
@@ -397,14 +397,14 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 		_, err = runGitCmd(gitPath, "add", "hydrator.metadata")
 		Expect(err).NotTo(HaveOccurred())
 
-		f, err = os.Create(path.Join(gitPath, "manifests-fake.timestamp"))
+		f, err = os.Create(path.Join(gitPath, "manifests-fake.yaml"))
 		Expect(err).NotTo(HaveOccurred())
 		str := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339))
 		_, err = f.WriteString(str)
 		Expect(err).NotTo(HaveOccurred())
 		err = f.Close()
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "add", "manifests-fake.timestamp")
+		_, err = runGitCmd(gitPath, "add", "manifests-fake.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
 		_, err = runGitCmd(gitPath, "commit", "-m", "added pending commit from dry sha, "+sha+" from environment "+strings.TrimRight(environment, "-next"))

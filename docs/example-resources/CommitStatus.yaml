@@ -1,0 +1,16 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: CommitStatus
+metadata:
+  name: example-commit-status
+spec:
+  gitRepositoryRef:
+    name: example-git-repo
+  sha: 1234567890abcdef
+  name: argocd-app-health
+  description: Argo CD application `example-app` is healthy
+
+  # Can be pending, success, failure. Default is pending.
+  phase: success
+
+  # Optional URL to link to more information about the commit status.
+  url: https://argocd.example.com/applications/example-app
