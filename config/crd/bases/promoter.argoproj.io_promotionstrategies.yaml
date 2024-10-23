@@ -197,6 +197,8 @@ spec:
                           sha:
                             type: string
                           time:
+                            description: 'FIXME: docs, is this commit time, first-became-healthy
+                              time, most-recently-observed-healthy time, etc?'
                             format: date-time
                             type: string
                         required:
