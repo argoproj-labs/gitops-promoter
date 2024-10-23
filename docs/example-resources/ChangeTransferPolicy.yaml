@@ -1,5 +1,5 @@
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: ProposedCommit
+kind: ChangeTransferPolicy
 metadata:
   name: environment
 spec:
