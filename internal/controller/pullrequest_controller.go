@@ -188,7 +188,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 
 	switch {
 	case scmProvider.Spec.GitHub != nil:
-		return github.NewGithubPullRequestProvider(r.Client, *secret)
+		return github.NewGithubPullRequestProvider(r.Client, *secret, scmProvider.Spec.GitHub.Domain)
 	case scmProvider.Spec.Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:

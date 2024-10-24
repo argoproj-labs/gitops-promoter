@@ -141,7 +141,7 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 
 	switch {
 	case scmProvider.Spec.GitHub != nil:
-		return github.NewGithubCommitStatusProvider(r.Client, *secret)
+		return github.NewGithubCommitStatusProvider(r.Client, *secret, scmProvider.Spec.GitHub.Domain)
 	case scmProvider.Spec.Fake != nil:
 		return fake.NewFakeCommitStatusProvider(*secret)
 	default:
