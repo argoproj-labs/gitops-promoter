@@ -58,7 +58,7 @@ func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error)
 	return "git", nil
 }
 
-func GetClient(secret v1.Secret) (*github.Client, error) {
+func GetClient(secret v1.Secret, domain string) (*github.Client, error) {
 
 	appID, err := strconv.ParseInt(string(secret.Data["appID"]), 10, 64)
 	if err != nil {
@@ -74,28 +74,42 @@ func GetClient(secret v1.Secret) (*github.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := github.NewClient(&http.Client{Transport: itr})
+
+	var client *github.Client
+	if domain == "" || domain == "github.com" {
+		client = github.NewClient(&http.Client{Transport: itr})
+	} else {
+		baseURL := fmt.Sprintf("https://%s/api/v3", domain)
+		uploadsURL := fmt.Sprintf("https://%s/api/uploads", domain)
+		client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseURL, uploadsURL)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return client, nil
 }
 
-//func GetEnterpriseClient(secret v1.Secret) (*github.Client, error) {
-//
-//	appID, err := strconv.ParseInt(string(secret.Data["appID"]), 10, 64)
-//	if err != nil {
-//		panic(err)
-//	}
-//
-//	installationID, err := strconv.ParseInt(string(secret.Data["installationID"]), 10, 64)
-//	if err != nil {
-//		panic(err)
-//	}
-//
-//	itr, _ := ghinstallation.New(http.DefaultTransport, appID, installationID, secret.Data["privateKey"])
-//
-//	client, err := github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs("https://github.example.com/api/v3", "https://github.example.com/api/v3")
-//	if err != nil {
-//		return nil, err
-//	}
-//
-//	return client, nil
-//}
+func GetEnterpriseClient(secret v1.Secret, domain string) (*github.Client, error) {
+
+	appID, err := strconv.ParseInt(string(secret.Data["appID"]), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	installationID, err := strconv.ParseInt(string(secret.Data["installationID"]), 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	itr, _ := ghinstallation.New(http.DefaultTransport, appID, installationID, secret.Data["privateKey"])
+
+	baseURL := fmt.Sprintf("https://%s/api/v3", domain)
+	uploadsURL := fmt.Sprintf("https://%s/api/uploads", domain)
+	client, err := github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseURL, uploadsURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
+}
