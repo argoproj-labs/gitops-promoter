@@ -67,6 +67,8 @@ spec:
               sha:
                 type: string
               url:
+                description: Url is a URL that the user can follow to see more details
+                  about the status
                 type: string
             required:
             - description
@@ -80,6 +82,8 @@ spec:
             description: CommitStatusStatus defines the observed state of CommitStatus
             properties:
               id:
+                description: Id is the unique identifier of the commit status, set
+                  by the SCM
                 type: string
               observedGeneration:
                 description: |-

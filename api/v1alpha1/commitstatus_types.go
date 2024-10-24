@@ -47,6 +47,7 @@ type CommitStatusSpec struct {
 	// (Gitlab: pending, running, success, failed, canceled)
 	// (Bitbucket: INPROGRESS, STOPPED, SUCCESSFUL, FAILED)
 
+	// Url is a URL that the user can follow to see more details about the status
 	Url string `json:"url"`
 }
 
@@ -54,9 +55,10 @@ type CommitStatusSpec struct {
 type CommitStatusStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	ObservedGeneration int64  `json:"observedGeneration"`
-	Id                 string `json:"id"`
-	Sha                string `json:"sha"`
+	ObservedGeneration int64 `json:"observedGeneration"`
+	// Id is the unique identifier of the commit status, set by the SCM
+	Id  string `json:"id"`
+	Sha string `json:"sha"`
 	// +kubebuilder:default:=pending
 	// +kubebuilder:validation:Enum:=pending;success;failure
 	Phase CommitStatusPhase `json:"phase"`
