@@ -56,8 +56,6 @@ spec:
                   - key
                   type: object
                 type: array
-              dryBranch:
-                type: string
               environments:
                 items:
                   properties:
@@ -109,7 +107,6 @@ spec:
                   type: object
                 type: array
             required:
-            - dryBranch
             - environments
             - gitRepositoryRef
             type: object
