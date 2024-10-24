@@ -31,9 +31,6 @@ type PromotionStrategySpec struct {
 	// +kubebuilder:validation:Required
 	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
-	// +kubebuilder:validation:Required
-	DryBanch string `json:"dryBranch"`
-
 	// +kubebuilder:validation:Optional
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 
