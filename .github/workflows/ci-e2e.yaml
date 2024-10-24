@@ -35,6 +35,6 @@ jobs:
           node_image: kindest/node:v${{ matrix.kubernetes-minor-version }}
           kubectl_version: v${{ matrix.kubernetes-minor-version }}
       - name: Checkout Repo
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # pin@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4
       - name: Run E2E-Tests
         run: make test-e2e
