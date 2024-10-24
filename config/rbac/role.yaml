@@ -5,6 +5,14 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - Secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - promoter.argoproj.io
   resources:
   - changetransferpolicies
