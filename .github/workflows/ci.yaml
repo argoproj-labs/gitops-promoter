@@ -52,13 +52,13 @@ jobs:
         run: |
           go mod tidy
           if ! git diff --exit-code; then
-            echo "::error file=go.sum::Run 'go mod tidy' and commit the changes"
+            echo "::error file=go.sum::go.sum is out of date. Run 'go mod tidy' and commit the changes."
             exit 1
           fi
       - name: make build-installer
         run: |
           make build-installer
           if ! git diff --exit-code; then
-            echo "::error ::Run 'make build-installer' and commit the changes"
+            echo "::error ::Manifests are out of date. Run 'make build-installer' and commit the changes."
             exit 1
           fi
