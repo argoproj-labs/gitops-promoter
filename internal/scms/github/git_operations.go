@@ -80,10 +80,11 @@ func GetClient(secret v1.Secret, domain string) (*github.Client, error) {
 	}
 
 	var client *github.Client
-	if domain == "" || domain == "github.com" {
+	if domain == "" {
 		client = github.NewClient(&http.Client{Transport: itr})
 	} else {
 		baseURL := fmt.Sprintf("https://%s/api/v3", domain)
+		itr.BaseURL = baseURL
 		uploadsURL := fmt.Sprintf("https://%s/api/uploads", domain)
 		client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseURL, uploadsURL)
 		if err != nil {
