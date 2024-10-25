@@ -36,6 +36,10 @@ func NewGithubGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secre
 		panic(err)
 	}
 
+	if scmProvider.Spec.GitHub != nil && scmProvider.Spec.GitHub.Domain != "" {
+		itr.BaseURL = fmt.Sprintf("https://%s/api/v3", scmProvider.Spec.GitHub.Domain)
+	}
+
 	return GitAuthenticationProvider{
 		scmProvider: scmProvider,
 		secret:      secret,
@@ -44,10 +48,10 @@ func NewGithubGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secre
 }
 
 func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepository v1alpha1.GitRepository) string {
-	if gh.scmProvider.Spec.GitHub != nil && gh.scmProvider.Spec.GitHub.Domain == "" {
-		return fmt.Sprintf("https://git@github.com/%s/%s.git", gitRepository.Spec.Owner, gitRepository.Spec.Name)
+	if gh.scmProvider.Spec.GitHub != nil && gh.scmProvider.Spec.GitHub.Domain != "" {
+		return fmt.Sprintf("https://git@%s/%s/%s.git", gh.scmProvider.Spec.GitHub.Domain, gitRepository.Spec.Owner, gitRepository.Spec.Name)
 	}
-	return fmt.Sprintf("https://git@%s/%s/%s.git", gh.scmProvider.Spec.GitHub.Domain, gitRepository.Spec.Owner, gitRepository.Spec.Name)
+	return fmt.Sprintf("https://git@github.com/%s/%s.git", gitRepository.Spec.Owner, gitRepository.Spec.Name)
 }
 
 func (gh GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
