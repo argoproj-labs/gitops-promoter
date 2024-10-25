@@ -13,15 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Checkout Repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4
       - name: Set up Go
         uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # pin@v5
         with:
           go-version: "1.22"
-          # see https://github.com/actions/setup-go?tab=readme-ov-file#caching-dependency-files-and-build-outputs
-          cache-dependency-path: |
-            go.sum
-      - name: Checkout Repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4
       - name: Get dependencies
         run: go mod download
       - name: Build
@@ -40,3 +37,28 @@ jobs:
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  codegen:
+    name: Check Codegen
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4
+      - name: Set up Go
+        uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # pin@v5
+        with:
+          go-version: "1.22"
+      - name: go mod tidy
+        run: |
+          go mod tidy
+          if ! git diff --exit-code; then
+            echo "::error file=go.sum::Run 'go mod tidy' and commit the changes"
+            exit 1
+          fi
+      - name: make build-installer
+        run: |
+          make build-installer
+          if ! git diff --exit-code; then
+            echo "::error ::Run 'make build-installer' and commit the changes"
+            exit 1
+          fi
