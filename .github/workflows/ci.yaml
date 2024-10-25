@@ -51,7 +51,7 @@ jobs:
       - name: go mod tidy
         run: |
           go mod tidy
-          if ! diff=$(git diff --exit-code -- go.sum); then
+          if ! diff=$(git diff --exit-code --unified=0 -- go.sum); then
             line=$(echo "$diff" | sed -nr 's/@@ -([0-9]+),.*/\1/p' | head -n 1 | tr -d '\n')
             echo "::error file=go.sum,line=$line::go.sum is out of date. Run 'go mod tidy' and commit the changes."
             exit 1
