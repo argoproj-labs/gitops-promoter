@@ -925,6 +925,14 @@ metadata:
   name: promoter-manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - promoter.argoproj.io
   resources:
   - changetransferpolicies

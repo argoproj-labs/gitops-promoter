@@ -7,7 +7,7 @@
 ## ProposedCommit
 
 ```yaml
-{!docs/example-resources/ProposedCommit.yaml!}
+{!docs/example-resources/ChangeTransferPolicy.yaml!}
 ```
 
 ## PullRequest

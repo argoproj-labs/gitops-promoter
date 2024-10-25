@@ -22,8 +22,8 @@ type CommitStatus struct {
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
-func NewGithubCommitStatusProvider(k8sClient client.Client, secret v1.Secret) (*CommitStatus, error) {
-	client, err := GetClient(secret)
+func NewGithubCommitStatusProvider(k8sClient client.Client, secret v1.Secret, domain string) (*CommitStatus, error) {
+	client, err := GetClient(secret, domain)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +50,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	repoStatus, response, err := cs.client.Repositories.CreateStatus(ctx, gitRepo.Spec.Owner, commitStatus.Spec.RepositoryReference.Name, commitStatus.Spec.Sha, commitStatusS)
+	repoStatus, response, err := cs.client.Repositories.CreateStatus(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, commitStatus.Spec.Sha, commitStatusS)
 	if err != nil {
 		return nil, err
 	}
