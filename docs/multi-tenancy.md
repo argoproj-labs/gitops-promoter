@@ -11,7 +11,7 @@ To enable environment promotion, a user must install these namespaced resources:
 * ScmProvider
 * Secret (for SCM access)
 
-To enable self-service PromotionStrategy management for multiple tenants, a GitOps Promoter admin they can give each 
+To enable self-service PromotionStrategy management for multiple tenants, a GitOps Promoter admin can give each 
 tenant write access to a namespace to manage these resources. As long as the GitOps Promoter controller has access to 
 those namespaces, it will reconcile the resources. 
 
