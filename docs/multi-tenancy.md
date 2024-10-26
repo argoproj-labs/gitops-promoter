@@ -2,7 +2,7 @@
 
 ## PromotionStrategy Tenancy
 
-GitOps Promoter provides namespace-based tenancy.
+GitOps Promoter provides namespace-based tenancy for PromotionStrategies.
 
 To enable environment promotion, a user must install these namespaced resources:
 
