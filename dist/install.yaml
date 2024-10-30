@@ -421,8 +421,6 @@ spec:
                   - key
                   type: object
                 type: array
-              dryBranch:
-                type: string
               environments:
                 items:
                   properties:
@@ -474,7 +472,6 @@ spec:
                   type: object
                 type: array
             required:
-            - dryBranch
             - environments
             - gitRepositoryRef
             type: object
@@ -529,6 +526,8 @@ spec:
                           sha:
                             type: string
                           time:
+                            description: 'FIXME: docs, is this commit time, first-became-healthy
+                              time, most-recently-observed-healthy time, etc?'
                             format: date-time
                             type: string
                         required:
@@ -890,6 +889,14 @@ kind: ClusterRole
 metadata:
   name: promoter-manager-role
 rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - promoter.argoproj.io
   resources:

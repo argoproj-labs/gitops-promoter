@@ -4,7 +4,7 @@
 {!docs/example-resources/PromotionStrategy.yaml!}
 ```
 
-## ProposedCommit
+## ChangeTransferPolicy
 
 ```yaml
 {!docs/example-resources/ChangeTransferPolicy.yaml!}
