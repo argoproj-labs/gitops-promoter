@@ -6,4 +6,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: gitrepository-sample
 spec:
-  # TODO(user): Add fields here
+  repo:
+  owner:
+  scmProviderRef:
+    name: example-scm-provider

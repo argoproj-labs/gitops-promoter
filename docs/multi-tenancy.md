@@ -15,9 +15,10 @@ To enable self-service PromotionStrategy management for multiple tenants, a GitO
 tenant write access to a namespace to manage these resources. As long as the GitOps Promoter controller has access to 
 those namespaces, it will reconcile the resources. 
 
-PromotionStrategies, GitRepositories, and ScmProviders may only reference resources in the same namespace. This prevents
-one tenant from referencing a Secret in another tenant's namespace and gaining write access to another tenant's 
-repositories.
+Secrets with SCM credentials may only be referenced by ScmProviders in the same namespace, which in turn may only be
+referenced by GitRepositories in the same namespace, which may only be referenced by PromotionStrategies in the same
+namespace. Limiting these references to a namespace prevents one tenant from referencing a Secret in another tenant's 
+namespace and thereby gaining write access to another tenant's repositories.
 
 **Important**: Provision Secrets securely!
 
@@ -27,6 +28,9 @@ an external secrets operator or sealed secrets.
 If an administrator does not want to use namespace-based tenancy, they must either fully manage GitOps Promoter 
 resources themselves or build some other system to regulate Secret access among tenants (for example, by validating
 that one tenant's resources do not reference another tenant's resources within the same namespace).
+
+If there are no trust boundaries to be enforced among PromotionStrategy users, a GitOps Promoter admin may choose to 
+host all resources in a single namespace, keeping in mind the need to avoid resource name collisions.
 
 ## CommitStatus Tenancy
 
