@@ -192,6 +192,7 @@ func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, er
 
 func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environmentBranch, environmentNextBranch string) error {
 	logger := log.FromContext(ctx)
+	logger.Info("Promoting environment with merge", "environmentBranch", environmentBranch, "environmentNextBranch", environmentNextBranch)
 
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
 		return fmt.Errorf("no repo path found")
@@ -230,7 +231,7 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 		logger.Error(err, "could not git pull", "gitError", stderr)
 		return err
 	}
-	logger.V(4).Info("Pushed branch", "branch", environmentBranch)
+	logger.Info("Pushed branch", "branch", environmentBranch)
 
 	return nil
 }

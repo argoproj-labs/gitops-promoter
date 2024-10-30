@@ -128,7 +128,8 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
+		// TODO: reduce reconciliation frequency by not reconciling when updates happen to CTPs, makes race easier to reason about
+		//Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
 		Complete(r)
 }
 
@@ -468,7 +469,7 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 						return err
 					}
 					r.Recorder.Event(ps, "Normal", "PullRequestMerged", fmt.Sprintf("Pull Request %s merged", pullRequest.Name))
-					logger.V(4).Info("Merged pull request")
+					logger.Info("Merged pull request")
 				} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
 					logger.Info("Pull request not ready to merge yet")
 				}
