@@ -128,7 +128,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// TODO: reduce reconciliation frequency by not reconciling when updates happen to CTPs
+		// TODO: reduce reconciliation frequency by not reconciling when updates happen to CTPs, makes race easier to reason about
 		//Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
 		Complete(r)
 }
