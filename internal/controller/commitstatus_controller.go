@@ -87,10 +87,10 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
+	//commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
+	//if err != nil {
+	//	return ctrl.Result{}, err
+	//}
 
 	// We use retry on conflict to avoid conflicts when updating the status because so many other controllers will be
 	// creating and updating commit status and the API is very simple we try to avoid conflicts to update the status as
@@ -102,10 +102,10 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return err
 		}
 
-		_, err = commitStatusProvider.Set(ctx, &newCs)
-		if err != nil {
-			return err
-		}
+		//_, err = commitStatusProvider.Set(ctx, &newCs)
+		//if err != nil {
+		//	return err
+		//}
 
 		newCs.Status.ObservedGeneration = newCs.Generation
 		err = r.Status().Update(ctx, &newCs)
