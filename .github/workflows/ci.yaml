@@ -21,7 +21,14 @@ jobs:
           go-version: "1.22"
       - name: Get dependencies
         run: go mod download
+      - name: Restore build output from cache
+        id: cache-build
+        uses: actions/cache@v4
+        with:
+          path: bin/manager
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
       - name: Build
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
       - name: Run Unit-Tests
         run: make test-parallel
