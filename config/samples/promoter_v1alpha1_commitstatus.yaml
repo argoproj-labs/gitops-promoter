@@ -8,12 +8,9 @@ metadata:
   name: commitstatus-sample
 spec:
     sha: 68522faaf5591f98c7a89dd74069e79195e4d6c6
-    repository:
-      owner: zachaller
-      name: promoter-testing
-      gitRepositoryRef:
-          name: scmprovider-sample
+    gitRepositoryRef:
+        name: scmprovider-sample
     phase: pending
     name: health
     description: "The build succeeded!"
-    url: "https://google.com"
+    url: "https://example.com"
