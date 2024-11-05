@@ -13,30 +13,67 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Checkout Repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4
       - name: Set up Go
         uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # pin@v5
         with:
           go-version: "1.22"
-          # see https://github.com/actions/setup-go?tab=readme-ov-file#caching-dependency-files-and-build-outputs
-          cache-dependency-path: |
-            go.sum
-      - name: Checkout Repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4
       - name: Get dependencies
         run: go mod download
+      - name: Restore build output from cache
+        id: cache-build
+        uses: actions/cache@v4
+        with:
+          path: bin/manager
+          key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
       - name: Build
+        if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
       - name: Run Unit-Tests
         run: make test-parallel
       - name: Generate code coverage artifacts
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: code-coverage
           path: cover.out
       - name: Upload code coverage information to codecov.io
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v4.6.0
         with:
           file: cover.out
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload test results to codecov.io
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+  codegen:
+    name: Check Codegen
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4
+      - name: Set up Go
+        uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # pin@v5
+        with:
+          go-version: "1.22"
+      - name: go mod tidy
+        run: |
+          go mod tidy
+          if ! diff=$(git diff --exit-code --unified=0 -- go.sum); then
+            line=$(echo "$diff" | sed -nr 's/@@ -([0-9]+),.*/\1/p' | head -n 1 | tr -d '\n')
+            echo "::error file=go.sum,line=$line::go.sum is out of date. Run 'go mod tidy' and commit the changes."
+            exit 1
+          fi
+      - name: make build-installer
+        run: |
+          make build-installer
+          if ! git diff --exit-code; then
+            echo "::error ::Manifests are out of date. Run 'make build-installer' and commit the changes."
+            exit 1
+          fi

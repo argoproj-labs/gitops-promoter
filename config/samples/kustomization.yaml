@@ -1,4 +1,3 @@
-## Append samples of your project ##
 resources:
 - promoter_v1alpha1_pullrequest.yaml
 - promoter_v1alpha1_commitstatus.yaml

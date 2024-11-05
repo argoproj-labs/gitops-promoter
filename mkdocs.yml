@@ -22,9 +22,5 @@ markdown_extensions:
       css_class: highlight
 nav:
   - Overview: index.md
-  - Installation: installation.md
-  - Concepts: concepts.md
-  - Architecture: architecture.md
-  - Getting Started:
-      - Basic Usage: getting-started.md
   - CRD Specs: crd-specs.md
+  - Multi-Tenancy: multi-tenancy.md

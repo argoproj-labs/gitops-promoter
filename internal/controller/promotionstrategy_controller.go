@@ -61,10 +61,6 @@ type PromotionStrategyReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the PromotionStrategy object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
@@ -128,7 +124,8 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
+		// TODO: reduce reconciliation frequency by not reconciling when updates happen to CTPs, makes race easier to reason about
+		//Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
 		Complete(r)
 }
 
@@ -468,7 +465,7 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 						return err
 					}
 					r.Recorder.Event(ps, "Normal", "PullRequestMerged", fmt.Sprintf("Pull Request %s merged", pullRequest.Name))
-					logger.V(4).Info("Merged pull request")
+					logger.Info("Merged pull request")
 				} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
 					logger.Info("Pull request not ready to merge yet")
 				}
