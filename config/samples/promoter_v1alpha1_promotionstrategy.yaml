@@ -8,7 +8,6 @@ metadata:
 spec:
   gitRepositoryRef:
     name: promoter-testing
-  dryBranch: main
   activeCommitStatuses:
     - key: healthy
     - key: healthy-load
