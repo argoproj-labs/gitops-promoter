@@ -75,7 +75,7 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	flag.StringVar(&promotionStrategyRequeue, "promotion-strategy-requeue-duration", "60s",
 		"How frequently to requeue promotion strategy resources for auto reconciliation")
-	flag.StringVar(&changeTransferPolicyRequeue, "proposed-commit-requeue-duration", "60s",
+	flag.StringVar(&changeTransferPolicyRequeue, "change-transfer-policy-requeue-duration", "60s",
 		"How frequently to requeue proposed commit resources for auto reconciliation")
 	opts := zap.Options{
 		Development: true,
