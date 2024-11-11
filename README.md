@@ -1,3 +1,5 @@
+[![codecov](https://codecov.io/gh/argoproj-labs/gitops-promoter/graph/badge.svg?token=Nbye3NDioO)](https://codecov.io/gh/argoproj-labs/gitops-promoter)
+
 # GitOps Promoter
 
 GitOps Promoter facilitates environment promotion for config managed via GitOps.
