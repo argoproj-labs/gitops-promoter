@@ -35,7 +35,6 @@ type HydratorMetadataFile struct {
 }
 
 func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, pathLookup utils.PathLookup, repoRef v1alpha1.ObjectReference, obj v1.Object, pathConext string) (*GitOperations, error) {
-
 	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repoRef.Name})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
@@ -93,7 +92,6 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 		logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 
 		g.pathLookup.Set(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext, path)
-
 	}
 
 	return nil
@@ -141,7 +139,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (m
 		shaMap[branch].Hydrated = strings.TrimSpace(stdout)
 		logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", shaMap[branch].Hydrated)
 
-		//TODO: safe path join
+		// TODO: safe path join
 		metadataFile := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) + "/hydrator.metadata"
 		if _, err := os.Stat(metadataFile); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -212,12 +210,12 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
 
 	// Don't think this is needed
-	//_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "pull", "--progress")
-	//if err != nil {
-	//	logger.Error(err, "could not git pull", "gitError", stderr)
-	//	return err
-	//}
-	//logger.V(4).Info("Pulled branch", "branch", environmentBranch)
+	// _, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "pull", "--progress")
+	// if err != nil {
+	// 	logger.Error(err, "could not git pull", "gitError", stderr)
+	// 	return err
+	// }
+	// logger.V(4).Info("Pulled branch", "branch", environmentBranch)
 
 	_, stderr, err = g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "pull", "--progress", "origin", environmentNextBranch)
 	if err != nil {
@@ -240,8 +238,6 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 // The PR is required if the diff between the two branches contain edits to yaml files.
 func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentBranch, environmentNextBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
-
-	//environmentNextBranch := environmentBranch + "-next"
 
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
 		return false, fmt.Errorf("no repo path found")
@@ -313,7 +309,7 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...st
 	}
 
 	if err := cmd.Wait(); err != nil {
-		//exitErr := err.(*exec.ExitError)
+		// exitErr := err.(*exec.ExitError)
 		return "", stderrBuf.String(), err
 	}
 

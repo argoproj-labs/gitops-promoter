@@ -29,7 +29,6 @@ import (
 )
 
 var _ = Describe("PullRequest Controller", func() {
-
 	Context("When reconciling a resource", func() {
 		ctx := context.Background()
 
@@ -115,7 +114,6 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 			}, EventuallyTimeout).Should(Succeed())
-
 		})
 	})
 })

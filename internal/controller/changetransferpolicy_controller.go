@@ -156,7 +156,6 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, pc
 
 	for branch, shas := range branchShas {
 		if branch == pc.Spec.ActiveBranch {
-
 			pc.Status.Active.Hydrated.Sha = shas.Hydrated
 			commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
 			if err != nil {
@@ -201,25 +200,23 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, pc
 						Phase: string(csListSlice[0].Status.Phase),
 					})
 				} else if len(csListSlice) > 1 {
-					//TODO: decided how to bubble up errors
+					// TODO: decided how to bubble up errors
 					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
 					r.Recorder.Event(pc, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
 				} else if len(csListSlice) == 0 {
-					//TODO: decided how to bubble up errors
+					// TODO: decided how to bubble up errors
 					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
 					// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
-					//r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
+					// r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
-
 			}
 			pc.Status.Active.CommitStatuses = activeCommitStatusesState
-
 		}
 
 		if branch == pc.Spec.ProposedBranch {
@@ -267,25 +264,23 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, pc
 						Phase: string(csListSlice[0].Status.Phase),
 					})
 				} else if len(csListSlice) > 1 {
-					//TODO: decided how to bubble up errors
+					// TODO: decided how to bubble up errors
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
 					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the proposed commit status")
 				} else if len(csListSlice) == 0 {
-					//TODO: decided how to bubble up errors
+					// TODO: decided how to bubble up errors
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
 					// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
-					//r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
+					// r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
-
 			}
 			pc.Status.Proposed.CommitStatuses = proposedCommitStatusesState
-
 		}
 	}
 
@@ -390,7 +385,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		if err != nil {
 			return err
 		}
-		//r.Recorder.Event(ctp, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
+		// r.Recorder.Event(ctp, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
 		logger.V(4).Info("Updated pull request resource")
 	}
 

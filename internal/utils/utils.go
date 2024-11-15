@@ -42,7 +42,6 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 
 // GetGitRepositorytFromObjectKey returns the GitRepository object from the repository reference
 func GetGitRepositorytFromObjectKey(ctx context.Context, k8sClient client.Client, objectKey client.ObjectKey) (*promoterv1alpha1.GitRepository, error) {
-
 	var gitRepo promoterv1alpha1.GitRepository
 	err := k8sClient.Get(ctx, objectKey, &gitRepo)
 	if err != nil {

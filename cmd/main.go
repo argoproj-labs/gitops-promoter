@@ -134,9 +134,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	//TODO: Create secret informer, and possibly ScmProvider Informer to pass into controllers
-	//kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
-	//informerFactory := informers.NewSharedInformerFactory(kubeClient, 10*time.Minute)
+	// TODO: Create secret informer, and possibly ScmProvider Informer to pass into controllers
+	// kubeClient, err := kubernetes.NewForConfig(mgr.GetConfig())
+	// informerFactory := informers.NewSharedInformerFactory(kubeClient, 10*time.Minute)
 
 	pathLookup := utils.NewPathLookup()
 
@@ -227,9 +227,9 @@ func main() {
 
 	processSignals := ctrl.SetupSignalHandler()
 
-	//setupLog.Info("starting informer factory")
-	//informerFactory.Start(processSignals.Done())
-	//informerFactory.WaitForCacheSync(processSignals.Done())
+	// setupLog.Info("starting informer factory")
+	// informerFactory.Start(processSignals.Done())
+	// informerFactory.WaitForCacheSync(processSignals.Done())
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(processSignals); err != nil {
