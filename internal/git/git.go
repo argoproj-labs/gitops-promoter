@@ -108,7 +108,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (m
 		return nil, fmt.Errorf("no repo path found")
 	}
 
-	shaMap := make(map[string]*BranchShas)
+	shaMap := make(map[string]*BranchShas, len(branches))
 
 	for _, branch := range branches {
 		p := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
