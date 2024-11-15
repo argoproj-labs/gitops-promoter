@@ -238,7 +238,7 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 
 // IsPullRequestRequired will compare the environment branch with the next environment branch and return true if a PR is required.
 // The PR is required if the diff between the two branches contain edits to yaml files.
-func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentBranch, environmentNextBranch string) (bool, error) {
+func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNextBranch, environmentBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	//environmentNextBranch := environmentBranch + "-next"

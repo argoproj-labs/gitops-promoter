@@ -76,34 +76,35 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "failed to get PromotionStrategy")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get PromitionStrategy %q: %w", req.Name, err)
 	}
 
 	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a map with the branch as the key.
-	var ctpMap = make(map[string]*promoterv1alpha1.ChangeTransferPolicy)
+	var ctpsByBranch = make(map[string]*promoterv1alpha1.ChangeTransferPolicy)
 	for _, environment := range ps.Spec.Environments {
-		pc, err := r.createOrGetChangeTransferPolicy(ctx, &ps, environment)
+		var ctp *promoterv1alpha1.ChangeTransferPolicy
+		ctp, err = r.createOrGetChangeTransferPolicy(ctx, &ps, environment)
 		if err != nil {
 			logger.Error(err, "failed to create ChangeTransferPolicy")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("failed to create ChangeTransferPolicy for branch %q: %w", environment.Branch, err)
 		}
-		ctpMap[environment.Branch] = pc
+		ctpsByBranch[environment.Branch] = ctp
 	}
 
 	// Calculate the status of the PromotionStrategy
-	err = r.calculateStatus(ctx, &ps, ctpMap)
+	err = r.calculateStatus(ctx, &ps, ctpsByBranch)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to calculate PromotionStrategy status: %w", err)
 	}
 
-	err = r.mergePullRequests(ctx, &ps, ctpMap)
+	err = r.mergePullRequests(ctx, &ps, ctpsByBranch)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to merge PRs: %w", err)
 	}
 
 	err = r.Status().Update(ctx, &ps)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
 	}
 
 	return ctrl.Result{
@@ -119,7 +120,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		cs := rawObj.(*promoterv1alpha1.CommitStatus)
 		return []string{cs.Spec.Sha}
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to set field index for .spec.sha: %w", err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -165,7 +166,7 @@ func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx contex
 			logger.Info("ChangeTransferPolicy not found, creating")
 			err = r.Create(ctx, &pcNew)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to create ChangeTransferPolicy %q: %w", pc.Name, err)
 			}
 			pcNew.DeepCopyInto(&pc)
 		} else {
@@ -175,16 +176,16 @@ func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx contex
 		pcNew.Spec.DeepCopyInto(&pc.Spec)
 		err = r.Update(ctx, &pc)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)
 		}
 	}
 
 	return &pc, nil
 }
 
-func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ChangeTransferPolicy) error {
+func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctpsByBranch map[string]*promoterv1alpha1.ChangeTransferPolicy) error {
 	for _, environment := range ps.Spec.Environments {
-		pc, ok := pcMap[environment.Branch]
+		pc, ok := ctpsByBranch[environment.Branch]
 		if !ok {
 			return fmt.Errorf("ChangeTransferPolicy not found for branch %s", environment.Branch)
 		}
@@ -221,14 +222,14 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
 		}
 
-		err := r.calculateActiveCommitStatus(ctx, i, ps, pcMap, environment)
+		err := r.calculateActiveCommitStatus(ctx, i, ps, ctpsByBranch, environment)
 		if err != nil {
-			return fmt.Errorf("failed to calculate active commit status: %w", err)
+			return fmt.Errorf("failed to calculate active commit status for environment %q: %w", environment.Branch, err)
 		}
 
-		err = r.calculateProposedCommitStatus(ctx, i, ps, pcMap, environment)
+		err = r.calculateProposedCommitStatus(ctx, i, ps, ctpsByBranch, environment)
 		if err != nil {
-			return fmt.Errorf("failed to calculate proposed commit status: %w", err)
+			return fmt.Errorf("failed to calculate proposed commit status for environment %q: %w", environment.Branch, err)
 		}
 
 	}
@@ -308,9 +309,10 @@ func (r *PromotionStrategyReconciler) calculateProposedCommitStatus(ctx context.
 func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, csSelector []promoterv1alpha1.CommitStatusSelector, copyFromActiveHydratedSha string, copyToProposedHydratedSha string, branch string) error {
 	logger := log.FromContext(ctx)
 
+	var err error
 	for _, value := range csSelector {
 		var commitStatuses promoterv1alpha1.CommitStatusList
-		err := r.List(ctx, &commitStatuses, &client.ListOptions{
+		err = r.List(ctx, &commitStatuses, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
 				promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(ctx, value.Key),
 			}),
@@ -319,7 +321,7 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			}),
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get list CommitStatuses for key %q and SHA %q: %w", value.Key, copyFromActiveHydratedSha, err)
 		}
 
 		for _, commitStatus := range commitStatuses.Items {
@@ -331,9 +333,10 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			copiedCSName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixNameLabel+commitStatus.Name)
 			proposedCSObjectKey := client.ObjectKey{Namespace: commitStatus.Namespace, Name: copiedCSName}
 
-			gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: commitStatus.Namespace, Name: commitStatus.Spec.RepositoryReference.Name})
+			var gitRepo *promoterv1alpha1.GitRepository
+			gitRepo, err = utils.GetGitRepositorytFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: commitStatus.Namespace, Name: commitStatus.Spec.RepositoryReference.Name})
 			if err != nil {
-				return fmt.Errorf("failed to get GitRepository: %w", err)
+				return fmt.Errorf("failed to get GitRepository %q: %w", commitStatus.Spec.RepositoryReference.Name, err)
 			}
 
 			copiedCommitStatus := &promoterv1alpha1.CommitStatus{
@@ -349,7 +352,8 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 					Name:                branch + " - " + commitStatus.Spec.Name,
 					Description:         commitStatus.Spec.Description,
 					Phase:               commitStatus.Spec.Phase,
-					Url:                 "https://github.com/" + gitRepo.Spec.Owner + "/" + gitRepo.Spec.Name + "/commit/" + copyFromActiveHydratedSha,
+					// FIXME: use a URL lib to join these parts.
+					Url: "https://github.com/" + gitRepo.Spec.Owner + "/" + gitRepo.Spec.Name + "/commit/" + copyFromActiveHydratedSha,
 				},
 			}
 			if copiedCommitStatus.Labels == nil {
@@ -363,10 +367,10 @@ func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, cs
 			err = r.Patch(ctx, copiedCommitStatus, client.MergeFrom(&promoterv1alpha1.CommitStatus{}))
 			if err != nil {
 				if errors.IsNotFound(err) {
-					errCreate := r.Create(ctx, copiedCommitStatus)
-					if errCreate != nil {
-						logger.Error(errCreate, "failed to create copied CommitStatus")
-						return errCreate
+					err = r.Create(ctx, copiedCommitStatus)
+					if err != nil {
+						logger.Error(err, "failed to create copied CommitStatus")
+						return fmt.Errorf("failed to create copied CommitStatus %q: %w", copiedCommitStatus.Name, err)
 					}
 				}
 			}
@@ -425,7 +429,7 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 				}),
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to list PullRequests for PromotionStrategy %q, ChangeTransferPolicy %q, and environment %q: %w", ps.Name, ctpMap[environment.Branch].Name, environment.Branch, err)
 			}
 
 			if len(prl.Items) > 1 {
@@ -452,17 +456,19 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 				}
 
 				if pullRequest.Spec.State == promoterv1alpha1.PullRequestOpen && pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-					err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+					err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 						var pr promoterv1alpha1.PullRequest
-						err := r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
+						// TODO: consider skipping the Get on the first attempt, the object might already be up to date.
+						err = r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
 						if err != nil {
-							return err
+							return fmt.Errorf("failed to get PullRequest %q: %w", pullRequest.Name, err)
 						}
 						pr.Spec.State = promoterv1alpha1.PullRequestMerged
+						// No need to wrap this error, it will be wrapped outside the retry.
 						return r.Update(ctx, &pr)
 					})
 					if err != nil {
-						return err
+						return fmt.Errorf("failed to update PullRequest %q: %w", pullRequest.Name, err)
 					}
 					r.Recorder.Event(ps, "Normal", "PullRequestMerged", fmt.Sprintf("Pull Request %s merged", pullRequest.Name))
 					logger.Info("Merged pull request")
@@ -471,7 +477,6 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 				}
 			}
 		}
-
 	}
 
 	return nil
