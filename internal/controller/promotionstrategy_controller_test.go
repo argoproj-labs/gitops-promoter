@@ -134,7 +134,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
-				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				// Pending due to PromotionStrategy CommitStatus
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 
 				// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
 				g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal("environment/staging"))
@@ -144,7 +145,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[1].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
-				g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				// Pending due to PromotionStrategy CommitStatus
+				g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 
 				// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
 				g.Expect(ctpProd.Spec.ActiveBranch).To(Equal("environment/production"))
@@ -154,7 +156,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[2].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
-				g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				// Pending due to PromotionStrategy CommitStatus
+				g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("Adding a pending commit")
@@ -253,7 +256,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			pullRequestProd := promoterv1alpha1.PullRequest{}
 			By("Checking that all the ChangeTransferPolicies and PRs are created and in their proper state")
 			Eventually(func(g Gomega) {
-				// Make sure proposed commits are created and the associated PRs
+				// Make sure ctp's are created and the associated PRs
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
 					Namespace: typeNamespacedName.Namespace,
@@ -326,19 +329,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 			}, EventuallyTimeout).Should(Succeed())
 
-			By("By checking that the commit status has been copied with the previous environments (development) active hydrated sha")
-			Eventually(func(g Gomega) {
-				var copiedCommitStatus promoterv1alpha1.CommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixNameLabel+activeCommitStatusDevelopment.Name),
-					Namespace: typeNamespacedName.Namespace,
-				}, &copiedCommitStatus)
-				g.Expect(err).To(Succeed())
-				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel]).To(Equal("true"))
-				// Need to look into why this is flakey
-				g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
-			}, EventuallyTimeout).Should(Succeed())
-
 			By("By checking that the staging pull request has been merged and the production pull request is still open")
 			Eventually(func(g Gomega) {
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
@@ -357,7 +347,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 			}, EventuallyTimeout).Should(Succeed())
 
-			var shaProdProposedBeforePRClose string
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -394,26 +383,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpProd)
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpProd.Status.Proposed.Hydrated.Sha).To(Equal(shaProdProposed))
-				shaProdProposedBeforePRClose = ctpProd.Status.Proposed.Hydrated.Sha
 
 				activeCommitStatusStaging.Spec.Sha = sha
 				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, activeCommitStatusStaging)
 				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
-
-			By("By checking that the commit status has been copied with the previous environments (staging) active hydrated sha")
-			Eventually(func(g Gomega) {
-				// Get the copied commit status
-				var copiedCommitStatus promoterv1alpha1.CommitStatus
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixNameLabel+activeCommitStatusStaging.Name),
-					Namespace: typeNamespacedName.Namespace,
-				}, &copiedCommitStatus)
-				g.Expect(err).To(Succeed())
-				g.Expect(copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel]).To(Equal("true"))
-				g.Expect(copiedCommitStatus.Spec.Sha).To(Equal(shaProdProposedBeforePRClose))
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the production pull request has been merged")

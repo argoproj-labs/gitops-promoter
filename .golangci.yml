@@ -17,12 +17,14 @@ issues:
         - dupl
         - lll
 linters:
-  disable-all: true
   enable:
     - dupl
     - errcheck
+    - errorlint
     - exportloopref
     - goconst
+    - gocritic
+    - gofumpt
     - gocyclo
     - gofmt
     - goimports
@@ -34,7 +36,21 @@ linters:
     - nakedret
     - prealloc
     - staticcheck
+    #- testifylint
+    - thelper
     - typecheck
     - unconvert
     - unparam
     - unused
+    - usestdlibvars
+    - whitespace
+linters-settings:
+  gocritic:
+    disabled-checks:
+      - assignOp  # Keep it disabled for readability
+      - ifElseChain
+  testifylint:
+    enable-all: true
+
+
+

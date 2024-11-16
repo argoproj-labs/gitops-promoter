@@ -95,7 +95,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, ctp.Spec.RepositoryReference, &ctp, ctp.Spec.ActiveBranch)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to create git operations: %w", err)
 	}
 
 	err = gitOperations.CloneRepo(ctx)
@@ -111,6 +111,11 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	err = r.mergeOrPullRequestPromote(ctx, gitOperations, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set promotion state: %w", err)
+	}
+
+	err = r.mergePullRequests(ctx, &ctp)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to merge pull requests: %w", err)
 	}
 
 	err = r.Status().Update(ctx, &ctp)
@@ -145,35 +150,34 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 	}
 }
 
-func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, pc *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.GitOperations) error {
+func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.GitOperations) error {
 	logger := log.FromContext(ctx)
 
-	branchShas, err := gitOperations.GetBranchShas(ctx, []string{pc.Spec.ActiveBranch, pc.Spec.ProposedBranch})
+	branchShas, err := gitOperations.GetBranchShas(ctx, []string{ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch})
 	if err != nil {
-		return fmt.Errorf("failed to get SHAs for branches %q and %q: %w", pc.Spec.ActiveBranch, pc.Spec.ProposedBranch, err)
+		return fmt.Errorf("failed to get SHAs for branches %q and %q: %w", ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch, err)
 	}
 	logger.Info("Branch SHAs", "branchShas", branchShas)
 
 	// TODO: consider parallelizing this loop since there's network-bound work.
 	for branch, shas := range branchShas {
-		if branch == pc.Spec.ActiveBranch {
-			pc.Status.Active.Hydrated.Sha = shas.Hydrated
-			var commitTime metav1.Time
-			commitTime, err = gitOperations.GetShaTime(ctx, shas.Hydrated)
+		if branch == ctp.Spec.ActiveBranch {
+			ctp.Status.Active.Hydrated.Sha = shas.Hydrated
+			commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
 			if err != nil {
 				return fmt.Errorf("failed to get commit time for hydrated SHA %q on branch %q: %w", shas.Hydrated, branch, err)
 			}
-			pc.Status.Active.Hydrated.CommitTime = commitTime
+			ctp.Status.Active.Hydrated.CommitTime = commitTime
 
-			pc.Status.Active.Dry.Sha = shas.Dry
+			ctp.Status.Active.Dry.Sha = shas.Dry
 			commitTime, err = gitOperations.GetShaTime(ctx, shas.Dry)
 			if err != nil {
 				return fmt.Errorf("failed to get dry SHA %q on branch %q: %w", shas.Dry, branch, err)
 			}
-			pc.Status.Active.Dry.CommitTime = commitTime
+			ctp.Status.Active.Dry.CommitTime = commitTime
 
-			var activeCommitStatusesState []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase
-			for _, status := range pc.Spec.ActiveCommitStatuses {
+			activeCommitStatusesState := []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
+			for _, status := range ctp.Spec.ActiveCommitStatuses {
 				var csListActive promoterv1alpha1.CommitStatusList
 				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
 				err = r.List(ctx, &csListActive, &client.ListOptions{
@@ -181,65 +185,54 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, pc
 						promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(ctx, status.Key),
 					}),
 					FieldSelector: fields.SelectorFromSet(map[string]string{
-						".spec.sha": pc.Status.Active.Hydrated.Sha,
+						".spec.sha": ctp.Status.Active.Hydrated.Sha,
 					}),
 				})
 				if err != nil {
-					return fmt.Errorf("failed to list CommitStatuses for key %q and SHA %q: %w", status.Key, pc.Status.Active.Hydrated.Sha, err)
+					return fmt.Errorf("failed to list CommitStatuses for key %q and SHA %q: %w", status.Key, ctp.Status.Active.Hydrated.Sha, err)
 				}
 
-				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
-				var csListSlice []promoterv1alpha1.CommitStatus
-				for _, item := range csListActive.Items {
-					if item.Labels[promoterv1alpha1.CommitStatusCopyLabel] != "true" {
-						csListSlice = append(csListSlice, item)
-					}
-				}
-
-				if len(csListSlice) == 1 {
+				if len(csListActive.Items) == 1 {
 					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
-						Phase: string(csListSlice[0].Status.Phase),
+						Phase: string(csListActive.Items[0].Status.Phase),
 					})
-				} else if len(csListSlice) > 1 {
+				} else if len(csListActive.Items) > 1 {
 					// TODO: decided how to bubble up errors
 					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
-					r.Recorder.Event(pc, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
-				} else if len(csListSlice) == 0 {
+					r.Recorder.Event(ctp, "Warning", "ToManyMatchingSha", "There are to many matching sha's for the active commit status")
+				} else if len(csListActive.Items) == 0 {
 					// TODO: decided how to bubble up errors
 					activeCommitStatusesState = append(activeCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
 					// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
-					// r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
 			}
-			pc.Status.Active.CommitStatuses = activeCommitStatusesState
+			ctp.Status.Active.CommitStatuses = activeCommitStatusesState
 		}
 
-		// TODO: consider abstracting this block. It looks very similar to the above block for ActiveBranch.
-		if branch == pc.Spec.ProposedBranch {
-			pc.Status.Proposed.Hydrated.Sha = shas.Hydrated
-			var commitTime metav1.Time
-			commitTime, err = gitOperations.GetShaTime(ctx, shas.Hydrated)
+		if branch == ctp.Spec.ProposedBranch {
+			ctp.Status.Proposed.Hydrated.Sha = shas.Hydrated
+			commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
 			if err != nil {
 				return fmt.Errorf("failed to get commit time for SHA %q on branch %q: %w", shas.Hydrated, branch, err)
 			}
-			pc.Status.Proposed.Hydrated.CommitTime = commitTime
+			ctp.Status.Proposed.Hydrated.CommitTime = commitTime
 
-			pc.Status.Proposed.Dry.Sha = shas.Dry
+			ctp.Status.Proposed.Dry.Sha = shas.Dry
 			commitTime, err = gitOperations.GetShaTime(ctx, shas.Dry)
 			if err != nil {
 				return fmt.Errorf("failed to get commit time for SHA %q on branch %q: %w", shas.Dry, branch, err)
 			}
-			pc.Status.Proposed.Dry.CommitTime = commitTime
+			ctp.Status.Proposed.Dry.CommitTime = commitTime
 
-			var proposedCommitStatusesState []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase
-			for _, status := range pc.Spec.ProposedCommitStatuses {
+			proposedCommitStatusesState := []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
+			for _, status := range ctp.Spec.ProposedCommitStatuses {
 				var csListProposed promoterv1alpha1.CommitStatusList
 				// Find all the replicasets that match the commit status configured name and the sha of the active hydrated commit
 				err = r.List(ctx, &csListProposed, &client.ListOptions{
@@ -247,44 +240,35 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, pc
 						promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(ctx, status.Key),
 					}),
 					FieldSelector: fields.SelectorFromSet(map[string]string{
-						".spec.sha": pc.Status.Proposed.Hydrated.Sha,
+						".spec.sha": ctp.Status.Proposed.Hydrated.Sha,
 					}),
 				})
 				if err != nil {
-					return fmt.Errorf("failed to list CommitStatuses for key %q and SHA %q: %w", status.Key, pc.Status.Proposed.Hydrated.Sha, err)
+					return fmt.Errorf("failed to list CommitStatuses for key %q and SHA %q: %w", status.Key, ctp.Status.Proposed.Hydrated.Sha, err)
 				}
 
-				// We don't want to capture any of the copied commits statuses that are used for GitHub/Provider UI experience only.
-				var csListSlice []promoterv1alpha1.CommitStatus
-				for _, item := range csListProposed.Items {
-					if item.Labels[promoterv1alpha1.CommitStatusCopyLabel] != "true" {
-						csListSlice = append(csListSlice, item)
-					}
-				}
-
-				if len(csListSlice) == 1 {
+				if len(csListProposed.Items) == 1 {
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
-						Phase: string(csListSlice[0].Status.Phase),
+						Phase: string(csListProposed.Items[0].Status.Phase),
 					})
-				} else if len(csListSlice) > 1 {
+				} else if len(csListProposed.Items) > 1 {
 					// TODO: decided how to bubble up errors
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
-					r.Recorder.Event(pc, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the proposed commit status")
-				} else if len(csListSlice) == 0 {
+					r.Recorder.Event(ctp, "Warning", "TooManyMatchingSha", "There are to many matching sha's for the proposed commit status")
+				} else if len(csListProposed.Items) == 0 {
 					// TODO: decided how to bubble up errors
 					proposedCommitStatusesState = append(proposedCommitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						Key:   status.Key,
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 					})
 					// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
-					// r.Recorder.Event(pc, "Warning", "NoCommitStatusFound", "No commit status found for the active commit")
 				}
 			}
-			pc.Status.Proposed.CommitStatuses = proposedCommitStatusesState
+			ctp.Status.Proposed.CommitStatuses = proposedCommitStatusesState
 		}
 	}
 
@@ -310,7 +294,7 @@ func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.C
 	} else {
 		err = gitOperations.PromoteEnvironmentWithMerge(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch)
 		if err != nil {
-			return fmt.Errorf("failed to merge PR: %w", err)
+			return fmt.Errorf("failed to merge: %w", err)
 		}
 	}
 
@@ -350,7 +334,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 					Namespace:       ctp.Namespace,
 					OwnerReferences: []metav1.OwnerReference{*controllerRef},
 					Labels: map[string]string{
-						promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctx, ctp.Labels["promoter.argoproj.io/promotion-strategy"]),
+						promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctx, ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
 						promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctx, ctp.Name),
 						promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctx, ctp.Spec.ActiveBranch),
 					},
@@ -366,7 +350,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			}
 			err = r.Create(ctx, &pr)
 			if err != nil {
-				return fmt.Errorf("failed to create PR from branch %q to %q: %q", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+				return fmt.Errorf("failed to create PR from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 			}
 			r.Recorder.Event(ctp, "Normal", "PullRequestCreated", fmt.Sprintf("Pull Request %s created", pr.Name))
 			logger.V(4).Info("Created pull request")
@@ -394,6 +378,70 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		}
 		// r.Recorder.Event(ctp, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
 		logger.V(4).Info("Updated pull request resource")
+	}
+
+	return nil
+}
+
+// mergePullRequests tries to merge the pull request if all the checks have passed and the environment is set to auto merge.
+func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	logger := log.FromContext(ctx)
+
+	for i, status := range ctp.Status.Proposed.CommitStatuses {
+		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
+			logger.Info("Proposed commit status is not success", "key", ctp.Spec.ProposedCommitStatuses[i].Key)
+			return nil
+		}
+	}
+
+	if *ctp.Spec.AutoMerge {
+		prl := promoterv1alpha1.PullRequestList{}
+		// Find the PRs that match the proposed commit and the environment. There should only be one.
+		err := r.List(ctx, &prl, &client.ListOptions{
+			LabelSelector: labels.SelectorFromSet(map[string]string{
+				promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctx, ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+				promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctx, ctp.Name),
+				promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctx, ctp.Spec.ActiveBranch),
+			}),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %s and Environment %s: %w", ctp.Name, ctp.Spec.ActiveBranch, err)
+		}
+
+		if len(prl.Items) > 1 {
+			return fmt.Errorf("more than one PullRequest found for ChangeTransferPolicy %s and Environment %s", ctp.Name, ctp.Spec.ActiveBranch)
+		}
+
+		if len(prl.Items) == 1 {
+			// We found 1 pull request process it.
+			pullRequest := prl.Items[0]
+			if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+				logger.Info("Commit status checks passed", "branch", ctp.Spec.ActiveBranch,
+					"activeCommitStatuses", ctp.Status.Active.CommitStatuses,
+					"proposedCommitStatuses", ctp.Status.Proposed.CommitStatuses,
+					"activeDryCommitTime", ctp.Status.Active.Dry.CommitTime)
+			}
+
+			if pullRequest.Spec.State == promoterv1alpha1.PullRequestOpen && pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+				err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+					var pr promoterv1alpha1.PullRequest
+					err = r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
+					if err != nil {
+						return err
+					}
+					pr.Spec.State = promoterv1alpha1.PullRequestMerged
+					return r.Update(ctx, &pr)
+				})
+				if err != nil {
+					return fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
+				}
+				r.Recorder.Event(ctp, "Normal", "PullRequestMerged", fmt.Sprintf("Pull Request %s merged", pullRequest.Name))
+				logger.Info("Merged pull request")
+			} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+				// This is for the case where the PR is set to merge in k8s but something else is blocking it, like an external commit status check.
+				logger.Info("Pull request not ready to merge yet")
+			}
+		}
 	}
 
 	return nil
