@@ -32,12 +32,10 @@ import (
 )
 
 var _ = Describe("ChangeTransferPolicy Controller", func() {
-
 	Context("When reconciling a resource", func() {
 		ctx := context.Background()
 
 		It("should successfully reconcile the resource - with a pending commit and no commit status checks", func() {
-
 			name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy := changeTransferPolicyResources(ctx, "pc-without-commit-checks", "default")
 
 			typeNamespacedName := types.NamespacedName{
@@ -61,19 +59,17 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			By("Reconciling the created resource")
 
-			//var changeTransferPolicy promoterv1alpha1.ChangeTransferPolicy
+			// var changeTransferPolicy promoterv1alpha1.ChangeTransferPolicy
 			Eventually(func(g Gomega) {
 				_ = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha, fullSha)
 				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha, Not(Equal("")))
 				g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha, Not(Equal("")))
-
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
 			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
-
 				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
 					Namespace: "default",
@@ -97,12 +93,10 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
-
 			}, EventuallyTimeout).Should(Succeed())
 		})
 
 		It("should successfully reconcile the resource - with a pending commit with commit status checks", func() {
-
 			name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy := changeTransferPolicyResources(ctx, "pc-with-commit-checks", "default")
 
 			typeNamespacedName := types.NamespacedName{
@@ -137,7 +131,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Owner, gitRepo.Spec.Name)
 
 			Eventually(func(g Gomega) {
-
 				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
 				g.Expect(err).To(Succeed())
 
@@ -149,7 +142,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, commitStatus)
 				g.Expect(err).To(Succeed())
-
 			}, EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -164,7 +156,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal("health-check"))
 				g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("success"))
 			}, EventuallyTimeout).Should(Succeed())
-
 		})
 	})
 })

@@ -63,7 +63,6 @@ func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error)
 }
 
 func GetClient(secret v1.Secret, domain string) (*github.Client, error) {
-
 	appID, err := strconv.ParseInt(string(secret.Data["appID"]), 10, 64)
 	if err != nil {
 		panic(err)

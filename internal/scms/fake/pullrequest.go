@@ -19,8 +19,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var pullRequests map[string]PullRequestProviderState
-var mutexPR sync.RWMutex
+var (
+	pullRequests map[string]PullRequestProviderState
+	mutexPR      sync.RWMutex
+)
 
 type PullRequestProviderState struct {
 	ID    string
