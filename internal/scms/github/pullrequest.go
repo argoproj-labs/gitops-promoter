@@ -92,7 +92,6 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 		"status", response.Status)
 
 	return nil
-
 }
 
 func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequest) error {

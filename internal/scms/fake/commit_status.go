@@ -10,11 +10,12 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-var commitStatuses map[string]*promoterv1alpha1.CommitStatus
-var mutexCS sync.RWMutex
+var (
+	commitStatuses map[string]*promoterv1alpha1.CommitStatus
+	mutexCS        sync.RWMutex
+)
 
-type CommitStatus struct {
-}
+type CommitStatus struct{}
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
