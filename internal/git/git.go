@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -151,12 +150,9 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (m
 		if err != nil {
 			return nil, err
 		}
-		byteValue, err := io.ReadAll(jsonFile)
-		if err != nil {
-			return nil, err
-		}
 		var hydratorFile HydratorMetadataFile
-		err = json.Unmarshal(byteValue, &hydratorFile)
+		decoder := json.NewDecoder(jsonFile)
+		err = decoder.Decode(&hydratorFile)
 		if err != nil {
 			return nil, err
 		}
