@@ -173,7 +173,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 				if errors.As(err, &tooManyMatchingShaError) {
 					r.Recorder.Event(ctp, "Warning", "TooManyMatchingSha", "There are to many matching SHAs for the active commit status")
 				}
-				return fmt.Errorf("failed to do stuff: %w", err)
+				return fmt.Errorf("failed to set active commit status state: %w", err)
 			}
 		}
 
@@ -184,7 +184,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 				if errors.As(err, &tooManyMatchingShaError) {
 					r.Recorder.Event(ctp, "Warning", "TooManyMatchingSha", "There are to many matching SHAs for the proposed commit status")
 				}
-				return fmt.Errorf("failed to do stuff: %w", err)
+				return fmt.Errorf("failed to set proposed commit status state: %w", err)
 			}
 		}
 	}
