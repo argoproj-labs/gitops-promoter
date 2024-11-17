@@ -104,18 +104,19 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Namespace: "default", // TODO(user):Modify as needed
 			}
 
+			const checkName = "health-check"
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
 			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
 
 			changeTransferPolicy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{
-					Key: "health-check",
+					Key: checkName,
 				},
 			}
 
-			commitStatus.Spec.Name = "health-check"
+			commitStatus.Spec.Name = checkName
 			commitStatus.Labels = map[string]string{
-				promoterv1alpha1.CommitStatusLabel: "health-check",
+				promoterv1alpha1.CommitStatusLabel: checkName,
 			}
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())

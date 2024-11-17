@@ -201,8 +201,7 @@ ENVTEST_VERSION ?= release-0.19
 GOLANGCI_LINT_VERSION ?= v1.54.2
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
-GINKGO_VERSION ?= latest
-
+GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)

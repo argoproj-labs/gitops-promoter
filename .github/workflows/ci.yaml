@@ -42,7 +42,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v5.0.0
         with:
-          file: cover.out
+          files: cover.out
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
