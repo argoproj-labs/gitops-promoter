@@ -69,6 +69,8 @@ var (
 const EventuallyTimeout = 90 * time.Second
 
 func TestControllers(t *testing.T) {
+	t.Parallel()
+
 	RegisterFailHandler(Fail)
 
 	c, _ := GinkgoConfiguration()
@@ -125,6 +127,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	//nolint:fatcontext
 	ctx, cancel = context.WithCancel(context.Background())
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
@@ -432,7 +435,7 @@ func runGitCmd(directory string, args ...string) (string, error) {
 	}
 
 	if err := cmd.Start(); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to start git command: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {

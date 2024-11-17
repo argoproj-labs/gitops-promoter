@@ -5,6 +5,7 @@ import (
 )
 
 func TestGetClient(t *testing.T) {
+	t.Parallel()
 	// itr, _ := ghinstallation.NewKeyFromFile(http.DefaultTransport, 865488, 49029877, "/Users/zaller/Development/promoter/argoproj-promoter.2024-04-09.private-key.pem")
 	// token, err := itr.Token(context.Background())
 	// fmt.Println(token, err)

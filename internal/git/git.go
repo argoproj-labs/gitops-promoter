@@ -42,7 +42,7 @@ func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.Git
 
 	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, k8sClient, gitRepo, obj)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get ScmProvider: %w", err)
 	}
 
 	gitOperations := GitOperations{
@@ -62,7 +62,7 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
 		path, err := os.MkdirTemp("", "*")
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create temp directory: %w", err)
 		}
 		logger.V(4).Info("Created directory", "directory", path)
 
@@ -105,7 +105,7 @@ type BranchShas struct {
 func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (map[string]*BranchShas, error) {
 	logger := log.FromContext(ctx)
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
-		return nil, fmt.Errorf("no repo path found")
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
 	shaMap := make(map[string]*BranchShas, len(branches))
@@ -149,16 +149,17 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (m
 		}
 		jsonFile, err := os.Open(metadataFile)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not open metadata file: %w", err)
 		}
+		// TODO: enforce configurable max file length before reading to avoid OOM
 		byteValue, err := io.ReadAll(jsonFile)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not read metadata file: %w", err)
 		}
 		var hydratorFile HydratorMetadataFile
 		err = json.Unmarshal(byteValue, &hydratorFile)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not unmarshal metadata file: %w", err)
 		}
 		shaMap[branch].Dry = hydratorFile.DrySHA
 		logger.V(4).Info("Got dry branch sha", "branch", branch, "sha", shaMap[branch].Dry)
@@ -170,7 +171,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (m
 func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {
 	logger := log.FromContext(ctx)
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
-		return v1.Time{}, fmt.Errorf("no repo path found")
+		return v1.Time{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
 	stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "show", "-s", "--format=%cI", sha)
@@ -180,9 +181,10 @@ func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, er
 	}
 	logger.V(4).Info("Got sha time", "sha", sha, "time", stdout)
 
-	cTime, err := iso8601.ParseString(strings.TrimSpace(stdout))
+	trimmedStdout := strings.TrimSpace(stdout)
+	cTime, err := iso8601.ParseString(trimmedStdout)
 	if err != nil {
-		return v1.Time{}, err
+		return v1.Time{}, fmt.Errorf("failed to parse time %q: %w", trimmedStdout, err)
 	}
 
 	return v1.Time{Time: cTime}, nil
@@ -193,7 +195,7 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 	logger.Info("Promoting environment with merge", "environmentBranch", environmentBranch, "environmentNextBranch", environmentNextBranch)
 
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
-		return fmt.Errorf("no repo path found")
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
 	_, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "fetch", "origin")
@@ -240,7 +242,7 @@ func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNe
 	logger := log.FromContext(ctx)
 
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
-		return false, fmt.Errorf("no repo path found")
+		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
 	// Checkout the environment branch
@@ -282,12 +284,12 @@ func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNe
 func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...string) (string, string, error) {
 	user, err := g.gap.GetUser(ctx)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("failed to get user: %w", err)
 	}
 
 	token, err := g.gap.GetToken(ctx)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("failed to get token: %w", err)
 	}
 
 	cmd := exec.Command("git", args...)
@@ -305,7 +307,7 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...st
 	cmd.Dir = directory
 
 	if cmd.Start() != nil {
-		return "", "failed to start", err
+		return "", "failed to start", fmt.Errorf("failed to start git command: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {

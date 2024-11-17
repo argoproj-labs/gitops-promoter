@@ -30,11 +30,11 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
-			return nil, err
+			return nil, fmt.Errorf("ScmProvider not found: %w", err)
 		}
 
 		logger.Error(err, "failed to get ScmProvider", "namespace", namespace, "name", objectKey.Name)
-		return nil, err
+		return nil, fmt.Errorf("failed to get ScmProvider: %w", err)
 	}
 
 	return &scmProvider, nil
@@ -45,7 +45,7 @@ func GetGitRepositorytFromObjectKey(ctx context.Context, k8sClient client.Client
 	var gitRepo promoterv1alpha1.GitRepository
 	err := k8sClient.Get(ctx, objectKey, &gitRepo)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	return &gitRepo, nil
@@ -72,11 +72,11 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("Secret from ScmProvider not found", "namespace", scmProvider.Namespace, "name", objectKey.Name)
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("secret from ScmProvider not found: %w", err)
 		}
 
 		logger.Error(err, "failed to get Secret from ScmProvider", "namespace", scmProvider.Namespace, "name", objectKey.Name)
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to get Secret from ScmProvider: %w", err)
 	}
 
 	return scmProvider, &secret, nil
