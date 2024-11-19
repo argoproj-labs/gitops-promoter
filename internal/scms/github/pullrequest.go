@@ -50,9 +50,9 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	githubPullRequest, response, err := pr.client.PullRequests.Create(context.Background(), gitRepo.Spec.Owner, gitRepo.Spec.Name, newPR)
+	githubPullRequest, response, err := pr.client.PullRequests.Create(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, newPR)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create pull request: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -74,14 +74,14 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to convert PR number to int: %w", err)
 	}
 
 	gitRepo, _ := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 
-	_, response, err := pr.client.PullRequests.Edit(context.Background(), gitRepo.Spec.Owner, gitRepo.Spec.Name, prNumber, newPR)
+	_, response, err := pr.client.PullRequests.Edit(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, prNumber, newPR)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to edit pull request: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -103,14 +103,17 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to convert PR number to int: %w", err)
 	}
 
-	gitRepo, _ := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
-
-	_, response, err := pr.client.PullRequests.Edit(context.Background(), gitRepo.Spec.Owner, gitRepo.Spec.Name, prNumber, newPR)
+	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	_, response, err := pr.client.PullRequests.Edit(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, prNumber, newPR)
+	if err != nil {
+		return fmt.Errorf("failed to close pull request: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -128,12 +131,12 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to convert PR number to int: %w", err)
 	}
 	gitRepo, _ := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 
 	_, response, err := pr.client.PullRequests.Merge(
-		context.Background(),
+		ctx,
 		gitRepo.Spec.Owner,
 		gitRepo.Spec.Name,
 		prNumber,
@@ -143,7 +146,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 			DontDefaultIfBlank: false,
 		})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -166,7 +169,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 		gitRepo.Spec.Name,
 		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: pullRequest.Spec.SourceBranch, State: "open"})
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,

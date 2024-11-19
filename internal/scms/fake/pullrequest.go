@@ -3,6 +3,7 @@ package fake
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -53,7 +54,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		logger.Info("Pull request already exists", "id", p.ID)
 	}
 	if pullRequestCopy == nil {
-		return "", fmt.Errorf("pull request is nil")
+		return "", errors.New("pull request is nil")
 	}
 
 	pullRequests[pr.getMapKey(*pullRequestCopy, gitRepo.Spec.Owner, gitRepo.Spec.Name)] = PullRequestProviderState{
@@ -79,7 +80,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 
 	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Owner, gitRepo.Spec.Name)
 	if _, ok := pullRequests[prKey]; !ok {
-		return fmt.Errorf("pull request not found")
+		return errors.New("pull request not found")
 	}
 	pullRequests[prKey] = PullRequestProviderState{
 		ID:    pullRequests[prKey].ID,
@@ -132,7 +133,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Owner, gitRepo.Spec.Name)
 
 	if _, ok := pullRequests[prKey]; !ok {
-		return fmt.Errorf("pull request not found")
+		return errors.New("pull request not found")
 	}
 	pullRequests[prKey] = PullRequestProviderState{
 		ID:    pullRequests[prKey].ID,
@@ -182,7 +183,7 @@ func (pr *PullRequest) runGitCmd(gitPath string, args ...string) error {
 	}
 
 	if err := cmd.Start(); err != nil {
-		return err
+		return fmt.Errorf("failed to start git command: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {

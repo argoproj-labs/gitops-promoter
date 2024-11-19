@@ -52,7 +52,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 
 	repoStatus, response, err := cs.client.Repositories.CreateStatus(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, commitStatus.Spec.Sha, commitStatusS)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create status: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,

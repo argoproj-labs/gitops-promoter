@@ -31,6 +31,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+const healthCheckCSKey = "health-check"
+
 var _ = Describe("ChangeTransferPolicy Controller", func() {
 	Context("When reconciling a resource", func() {
 		ctx := context.Background()
@@ -62,9 +64,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			// var changeTransferPolicy promoterv1alpha1.ChangeTransferPolicy
 			Eventually(func(g Gomega) {
 				_ = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
-				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha, fullSha)
-				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha, Not(Equal("")))
-				g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha, Not(Equal("")))
+				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
+				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).ToNot(Equal(""))
+				g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).ToNot(Equal(""))
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
@@ -104,19 +106,18 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Namespace: "default", // TODO(user):Modify as needed
 			}
 
-			const checkName = "health-check"
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
 			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
 
 			changeTransferPolicy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{
-					Key: checkName,
+					Key: healthCheckCSKey,
 				},
 			}
 
-			commitStatus.Spec.Name = checkName
+			commitStatus.Spec.Name = healthCheckCSKey
 			commitStatus.Labels = map[string]string{
-				promoterv1alpha1.CommitStatusLabel: checkName,
+				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
 			}
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -154,7 +155,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				sha = strings.TrimSpace(sha)
 
 				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).To(Equal(sha))
-				g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal("health-check"))
+				g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
 				g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("success"))
 			}, EventuallyTimeout).Should(Succeed())
 		})
