@@ -49,6 +49,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
 			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -129,6 +130,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
 			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
 			changeTransferPolicy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
