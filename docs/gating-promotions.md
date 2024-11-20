@@ -43,10 +43,10 @@ commit SHAs:
 | `main`         | `b5d8f7` |
 | `env/dev`      | `a1b2c3` |
 | `env/dev-next` | `d4e5f6` |
-| `env/stg`      | `g7h8i9` |
-| `env/stg-next` | `j0k1l2` |
-| `env/prd`      | `m3n4o5` |
-| `env/prd-next` | `p6q7r8` |
+| `env/stg`      | `a7b8c9` |
+| `env/stg-next` | `d0e1f2` |
+| `env/prd`      | `a3b4c5` |
+| `env/prd-next` | `d6e7f8` |
 
 For a change to be promoted through all environments, the following CommitStatuses must exist:
 
@@ -64,7 +64,7 @@ metadata:
   labels:
     promoter.argoproj.io/commit-status: healthy
 spec:
-  sha: g7h8i9  # env/stg
+  sha: a7b8c9  # env/stg
   phase: success
 ---
 kind: CommitStatus
@@ -72,7 +72,7 @@ metadata:
   labels:
     promoter.argoproj.io/commit-status: healthy
 spec:
-  sha: m3n4o5  # env/prd
+  sha: a3b4c5  # env/prd
   phase: success
 ---
 kind: CommitStatus
@@ -80,7 +80,7 @@ metadata:
   labels:
     promoter.argoproj.io/commit-status: deployment-freeze
 spec:
-  sha: p6q7r8  # env/prd-next
+  sha: d6e7f8  # env/prd-next
   phase: success
 ```
 
@@ -126,7 +126,7 @@ metadata:
   labels:
     promoter.argoproj.io/commit-status: promoter-previous-environment
 spec:
-  sha: j0k1l2  # env/stg-next
+  sha: d0e1f2  # env/stg-next
   phase: success
 ```
 
