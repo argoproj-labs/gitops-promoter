@@ -105,6 +105,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				Expect(err).To(Succeed())
+				// We now have a PR so we can set it to true and then check that it gets merged
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
 				err = k8sClient.Update(ctx, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
@@ -188,6 +189,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				Expect(err).To(Succeed())
+				// We now have a PR so we can set it to true and then check that it gets merged
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
 				err = k8sClient.Update(ctx, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
