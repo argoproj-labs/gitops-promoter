@@ -88,9 +88,9 @@ var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("setting up git server")
-	var mkDirErr error
-	gitStoragePath, mkDirErr = os.MkdirTemp("", "*")
-	if mkDirErr != nil {
+	var errMkDir error
+	gitStoragePath, errMkDir = os.MkdirTemp("", "*")
+	if errMkDir != nil {
 		panic("could not make temp dir for repo server")
 	}
 	gitServerPort, gitServer = startGitServer(gitStoragePath)

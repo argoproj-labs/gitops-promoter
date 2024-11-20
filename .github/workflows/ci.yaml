@@ -27,10 +27,16 @@ jobs:
         with:
           path: bin/manager
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62.0
+          args: --timeout=5m
+          skip-cache: false
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
-      - name: Run Unit-Tests
+      - name: Run Integration Tests
         run: make test-parallel
       - name: Generate code coverage artifacts
         if: ${{ !cancelled() }}
