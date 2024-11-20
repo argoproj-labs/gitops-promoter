@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/utils/pointer"
 	"os"
 	"strings"
 
@@ -47,6 +49,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
 			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			changeTransferPolicy.Spec.AutoMerge = pointer.Bool(false)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -63,8 +66,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			// var changeTransferPolicy promoterv1alpha1.ChangeTransferPolicy
 			Eventually(func(g Gomega) {
-				_ = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
-				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
+				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+				g.Expect(err).To(Succeed())
+				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha, fullSha)
 				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).ToNot(Equal(""))
 				g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).ToNot(Equal(""))
 			}, EventuallyTimeout).Should(Succeed())
@@ -96,6 +100,23 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
 			}, EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+				Expect(err).To(Succeed())
+				changeTransferPolicy.Spec.AutoMerge = pointer.Bool(true)
+				err = k8sClient.Update(ctx, changeTransferPolicy)
+				g.Expect(err).To(Succeed())
+			})
+
+			Eventually(func(g Gomega) {
+				typeNamespacedNamePR := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, prName),
+					Namespace: "default",
+				}
+				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			})
 		})
 
 		It("should successfully reconcile the resource - with a pending commit with commit status checks", func() {
@@ -108,6 +129,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
 			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			changeTransferPolicy.Spec.AutoMerge = pointer.Bool(false)
 
 			changeTransferPolicy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{
@@ -158,6 +180,25 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
 				g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("success"))
 			}, EventuallyTimeout).Should(Succeed())
+
+			var pr promoterv1alpha1.PullRequest
+			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+			Eventually(func(g Gomega) {
+				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+				Expect(err).To(Succeed())
+				changeTransferPolicy.Spec.AutoMerge = pointer.Bool(true)
+				err = k8sClient.Update(ctx, changeTransferPolicy)
+				g.Expect(err).To(Succeed())
+			})
+
+			Eventually(func(g Gomega) {
+				typeNamespacedNamePR := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, prName),
+					Namespace: "default",
+				}
+				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			})
 		})
 	})
 })

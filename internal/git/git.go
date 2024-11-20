@@ -150,7 +150,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (m
 		if err != nil {
 			return nil, fmt.Errorf("could not open metadata file: %w", err)
 		}
-    
+
 		var hydratorFile HydratorMetadataFile
 		decoder := json.NewDecoder(jsonFile)
 		err = decoder.Decode(&hydratorFile)
