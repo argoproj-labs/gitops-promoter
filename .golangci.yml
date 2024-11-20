@@ -3,54 +3,81 @@ run:
   allow-parallel-runners: true
 
 issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
   # don't skip warning about doc comments
   # don't exclude the default set of lint
   exclude-use-default: false
   # restore some of the defaults
   # (fill in the rest as needed)
   exclude-rules:
-    - path: "api/*"
+    - path: "api/.*"
       linters:
         - lll
-    - path: "internal/*"
+    - path: "internal/.*"
+      linters:
+        - lll
+    - path: ".*_test.go"
       linters:
         - dupl
-        - lll
 linters:
   enable:
+    - bodyclose
+    - canonicalheader
+    - containedctx
+    - contextcheck
+    - copyloopvar
     - dupl
+    - durationcheck
     - errcheck
+    - errchkjson
+    - errname
     - errorlint
-    - exportloopref
-    - goconst
+    - fatcontext
+    - forcetypeassert
+    - gocheckcompilerdirectives
     - gocritic
-    - gofumpt
+    - goconst
     - gocyclo
     - gofmt
+    - gofumpt
     - goimports
     - gosimple
     - govet
     - ineffassign
     - lll
+    - loggercheck
+    - makezero
     - misspell
+    - musttag
     - nakedret
+    - noctx
+    - nolintlint
+    - nosprintfhostport
+    - paralleltest
     - prealloc
+    - promlinter
     - staticcheck
-    #- testifylint
+    - tenv
+    - testifylint
     - thelper
+    - tparallel
     - typecheck
     - unconvert
     - unparam
     - unused
     - usestdlibvars
+    - wastedassign
     - whitespace
+    - wrapcheck
 linters-settings:
+  copyloopvar:
+    check-alias: true
+  goconst:
+    ignore-strings: "true"
   gocritic:
     disabled-checks:
       - assignOp  # Keep it disabled for readability
       - ifElseChain
   testifylint:
     enable-all: true
-
-
-

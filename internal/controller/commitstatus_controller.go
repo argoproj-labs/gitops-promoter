@@ -117,6 +117,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 				logger.Info("Conflict while updating CommitStatus status. Retrying")
 			}
 			// Don't wrap this error, it'll be wrapped one level up.
+			//nolint: wrapcheck
 			return err
 		}
 		return nil
@@ -131,9 +132,13 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.CommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
+	if err != nil {
+		return fmt.Errorf("failed to create controller: %w", err)
+	}
+	return nil
 }
 
 func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, commitStatus promoterv1alpha1.CommitStatus) (scms.CommitStatusProvider, error) {
@@ -151,6 +156,7 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		}
 		return p, nil
 	case scmProvider.Spec.Fake != nil:
+		//nolint: wrapcheck
 		return fake.NewFakeCommitStatusProvider(*secret)
 	default:
 		return nil, nil

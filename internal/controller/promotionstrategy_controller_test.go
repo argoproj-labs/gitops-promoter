@@ -87,7 +87,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
-				g.Expect(err).To(Not(BeNil()))
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
@@ -95,7 +95,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
-				g.Expect(err).To(Not(BeNil()))
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
@@ -103,10 +103,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
-				g.Expect(err).To(Not(BeNil()))
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-				g.Expect(len(promotionStrategy.Status.Environments)).To(Equal(3))
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
 
 				// By("Checking that the ChangeTransferPolicy for development has shas that are not empty, meaning we have reconciled the resource")
 				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
@@ -184,7 +184,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
-				g.Expect(err).To(Not(BeNil()))
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
@@ -192,7 +192,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
-				g.Expect(err).To(Not(BeNil()))
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
@@ -200,7 +200,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
-				g.Expect(err).To(Not(BeNil()))
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, EventuallyTimeout).Should(Succeed())
 
@@ -221,16 +221,16 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{
-					Key: "health-check",
+					Key: healthCheckCSKey,
 				},
 			}
-			activeCommitStatusDevelopment.Spec.Name = "health-check" //nolint: goconst
+			activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
 			activeCommitStatusDevelopment.Labels = map[string]string{
-				promoterv1alpha1.CommitStatusLabel: "health-check", //nolint: goconst
+				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
 			}
-			activeCommitStatusStaging.Spec.Name = "health-check" //nolint: goconst
+			activeCommitStatusStaging.Spec.Name = healthCheckCSKey
 			activeCommitStatusStaging.Labels = map[string]string{
-				promoterv1alpha1.CommitStatusLabel: "health-check", //nolint: goconst
+				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
 			}
 
 			By("Adding a pending commit")
@@ -281,7 +281,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
-				g.Expect(err).To(Not(BeNil()))
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
@@ -336,7 +336,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
-				g.Expect(err).To(Not(BeNil()))
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
@@ -398,7 +398,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
-				g.Expect(err).To(Not(BeNil()))
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, EventuallyTimeout).Should(Succeed())
 
@@ -533,7 +533,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
-				g.Expect(err).To(Not(BeNil()))
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
