@@ -68,7 +68,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
-				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha, fullSha)
+				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
 				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).ToNot(Equal(""))
 				g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).ToNot(Equal(""))
 			}, EventuallyTimeout).Should(Succeed())
