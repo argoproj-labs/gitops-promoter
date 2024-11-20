@@ -28,7 +28,7 @@ import (
 func TestE2E(t *testing.T) {
 	t.Parallel()
 	RegisterFailHandler(Fail)
-	//nolint: errcheck
-	fmt.Fprintf(GinkgoWriter, "Starting promoter suite\n")
+
+	fmt.Fprintf(GinkgoWriter, "Starting promoter suite\n") //nolint:errcheck
 	RunSpecs(t, "e2e suite")
 }

@@ -19,8 +19,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/utils/pointer"
 	"os"
 	"strings"
 
@@ -29,8 +27,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 )
 
 const healthCheckCSKey = "health-check"
@@ -49,7 +49,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
 			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
-			changeTransferPolicy.Spec.AutoMerge = pointer.Bool(false)
+			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -104,7 +104,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				Expect(err).To(Succeed())
-				changeTransferPolicy.Spec.AutoMerge = pointer.Bool(true)
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
 				err = k8sClient.Update(ctx, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
 			})
@@ -129,7 +129,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
 			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
-			changeTransferPolicy.Spec.AutoMerge = pointer.Bool(false)
+			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
 			changeTransferPolicy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{
@@ -186,7 +186,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				Expect(err).To(Succeed())
-				changeTransferPolicy.Spec.AutoMerge = pointer.Bool(true)
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
 				err = k8sClient.Update(ctx, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
 			})
