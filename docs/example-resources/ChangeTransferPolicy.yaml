@@ -11,4 +11,4 @@ spec:
   - key: argocd-app-health
   proposedCommitStatuses:
   - key: security-scan
-  - key: previous-environment
+  - key: promoter-previous-environment
