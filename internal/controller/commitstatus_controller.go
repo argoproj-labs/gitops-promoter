@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/client-go/util/retry"
 
@@ -72,7 +73,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 
 		logger.Error(err, "failed to get CommitStatus")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
 	}
 
 	// We use observed generation pattern here to avoid provider API calls.
@@ -89,7 +90,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)
 	}
 
 	// We use retry on conflict to avoid conflicts when updating the status because so many other controllers will be
@@ -97,14 +98,16 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// soon as possible.
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		newCs := promoterv1alpha1.CommitStatus{}
-		err := r.Client.Get(ctx, req.NamespacedName, &newCs, &client.GetOptions{})
+		// TODO: consider skipping Get on the initial attempt. The object we already got might be up to date.
+		err = r.Client.Get(ctx, req.NamespacedName, &newCs, &client.GetOptions{})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
 		}
 
+		// TODO: consider pulling this outside the retry loop and instead using the reconcile requeue to handle SCM errors.
 		_, err = commitStatusProvider.Set(ctx, &newCs)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
 		}
 
 		newCs.Status.ObservedGeneration = newCs.Generation
@@ -113,12 +116,14 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			if errors.IsConflict(err) {
 				logger.Info("Conflict while updating CommitStatus status. Retrying")
 			}
+			// Don't wrap this error, it'll be wrapped one level up.
+			//nolint: wrapcheck
 			return err
 		}
 		return nil
 	})
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus %q, %w", req.Name, err)
 	}
 	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 
@@ -127,22 +132,31 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.CommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
+	if err != nil {
+		return fmt.Errorf("failed to create controller: %w", err)
+	}
+	return nil
 }
 
 func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, commitStatus promoterv1alpha1.CommitStatus) (scms.CommitStatusProvider, error) {
-
 	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, commitStatus.Spec.RepositoryReference, &commitStatus)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", commitStatus.Spec.RepositoryReference.Name, err)
 	}
 
 	switch {
 	case scmProvider.Spec.GitHub != nil:
-		return github.NewGithubCommitStatusProvider(r.Client, *secret, scmProvider.Spec.GitHub.Domain)
+		var p *github.CommitStatus
+		p, err = github.NewGithubCommitStatusProvider(r.Client, *secret, scmProvider.Spec.GitHub.Domain)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get GitHub provider for domain %q with secret %q: %w", scmProvider.Spec.GitHub.Domain, secret.Name, err)
+		}
+		return p, nil
 	case scmProvider.Spec.Fake != nil:
+		//nolint: wrapcheck
 		return fake.NewFakeCommitStatusProvider(*secret)
 	default:
 		return nil, nil

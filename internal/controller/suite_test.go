@@ -55,27 +55,31 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-var cfg *rest.Config
-var k8sClient client.Client
-var testEnv *envtest.Environment
-var gitServer *http.Server
-var gitStoragePath string
-var cancel context.CancelFunc
-var ctx context.Context
-var gitServerPort string
+var (
+	cfg            *rest.Config
+	k8sClient      client.Client
+	testEnv        *envtest.Environment
+	gitServer      *http.Server
+	gitStoragePath string
+	cancel         context.CancelFunc
+	ctx            context.Context
+	gitServerPort  string
+)
 
 const EventuallyTimeout = 90 * time.Second
 
 func TestControllers(t *testing.T) {
+	t.Parallel()
+
 	RegisterFailHandler(Fail)
 
 	c, _ := GinkgoConfiguration()
-	//c.FocusFiles = []string{
-	//	"changetransferpolicy_controller_test.go",
-	//	"pullrequest_controller_test.go",
-	//	"promotionstrategy_controller_test.go",
-	//}
-	//GinkgoWriter.TeeTo(os.Stdout)
+	// c.FocusFiles = []string{
+	// 	"changetransferpolicy_controller_test.go",
+	// 	"pullrequest_controller_test.go",
+	// 	"promotionstrategy_controller_test.go",
+	// }
+	// GinkgoWriter.TeeTo(os.Stdout)
 
 	RunSpecs(t, "Controller Suite", c)
 }
@@ -84,9 +88,9 @@ var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("setting up git server")
-	var mkDirErr error
-	gitStoragePath, mkDirErr = os.MkdirTemp("", "*")
-	if mkDirErr != nil {
+	var errMkDir error
+	gitStoragePath, errMkDir = os.MkdirTemp("", "*")
+	if errMkDir != nil {
 		panic("could not make temp dir for repo server")
 	}
 	gitServerPort, gitServer = startGitServer(gitStoragePath)
@@ -123,6 +127,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	//nolint:fatcontext
 	ctx, cancel = context.WithCancel(context.Background())
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
@@ -185,7 +190,7 @@ var _ = BeforeSuite(func() {
 	err = (&GitRepositoryReconciler{
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
-		//Recorder: k8sManager.GetEventRecorderFor("GitRepository"),
+		// Recorder: k8sManager.GetEventRecorderFor("GitRepository"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -194,7 +199,6 @@ var _ = BeforeSuite(func() {
 		err = k8sManager.Start(ctx)
 		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
 	}()
-
 })
 
 var _ = AfterSuite(func() {
@@ -209,8 +213,7 @@ var _ = AfterSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 })
 
-type filterLogger struct {
-}
+type filterLogger struct{}
 
 func (f *filterLogger) Write(p []byte) (n int, err error) {
 	if strings.Contains(string(p), "request:") {
@@ -242,7 +245,7 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	server := &http.Server{Addr: ":" + gitServerPortStr, Handler: service}
 
 	// Disables logging for gitkit
-	//log.SetOutput(io.Discard)
+	// log.SetOutput(io.Discard)
 	gitKitFilterLogger := &filterLogger{}
 	log.SetOutput(gitKitFilterLogger)
 
@@ -310,7 +313,7 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 	_, err = runGitCmd(gitPath, "push")
 	Expect(err).NotTo(HaveOccurred())
 
-	//"environment/development-next", "environment/staging-next", "environment/production-next"
+	// "environment/development-next", "environment/staging-next", "environment/production-next"
 	for _, environment := range []string{"environment/development", "environment/staging", "environment/production"} {
 		_, err = runGitCmd(gitPath, "checkout", "--orphan", environment)
 		Expect(err).NotTo(HaveOccurred())
@@ -319,7 +322,7 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
 
-		//Sleep one seconds to differentiate the commits to prevent same hash
+		// Sleep one seconds to differentiate the commits to prevent same hash
 		time.Sleep(1 * time.Second)
 
 		_, err = runGitCmd(gitPath, "checkout", "-b", environment+"-next")
@@ -329,14 +332,14 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment+"-next")
 		Expect(err).NotTo(HaveOccurred())
 
-		//Sleep one seconds to differentiate the commits to prevent same hash
+		// Sleep one seconds to differentiate the commits to prevent same hash
 		time.Sleep(1 * time.Second)
 	}
 }
 
 func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string) (string, string) {
-	//gitPath, err := os.MkdirTemp("", "*")
-	//Expect(err).NotTo(HaveOccurred())
+	// gitPath, err := os.MkdirTemp("", "*")
+	// Expect(err).NotTo(HaveOccurred())
 
 	_, err := runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName), ".")
 	Expect(err).NotTo(HaveOccurred())
@@ -412,7 +415,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
 
-		//Sleep one seconds to differentiate the commits to prevent same hash
+		// Sleep one seconds to differentiate the commits to prevent same hash
 		time.Sleep(1 * time.Second)
 	}
 
@@ -432,7 +435,7 @@ func runGitCmd(directory string, args ...string) (string, error) {
 	}
 
 	if err := cmd.Start(); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to start git command: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {

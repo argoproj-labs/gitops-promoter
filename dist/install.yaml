@@ -74,6 +74,9 @@ spec:
                   - key
                   type: object
                 type: array
+              autoMerge:
+                default: true
+                type: boolean
               gitRepositoryRef:
                 description: RepositoryReference what repository to open the PR on.
                 properties:

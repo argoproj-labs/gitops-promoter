@@ -103,6 +103,11 @@ func (in *ChangeTransferPolicyList) DeepCopyObject() runtime.Object {
 func (in *ChangeTransferPolicySpec) DeepCopyInto(out *ChangeTransferPolicySpec) {
 	*out = *in
 	out.RepositoryReference = in.RepositoryReference
+	if in.AutoMerge != nil {
+		in, out := &in.AutoMerge, &out.AutoMerge
+		*out = new(bool)
+		**out = **in
+	}
 	if in.ActiveCommitStatuses != nil {
 		in, out := &in.ActiveCommitStatuses, &out.ActiveCommitStatuses
 		*out = make([]CommitStatusSelector, len(*in))

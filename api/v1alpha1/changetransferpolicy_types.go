@@ -40,6 +40,10 @@ type ChangeTransferPolicySpec struct {
 	// +kubebuilder:validation:Required
 	ActiveBranch string `json:"activeBranch"`
 
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=true
+	AutoMerge *bool `json:"autoMerge,omitempty"`
+
 	// ActiveCommitStatuses lists the statuses to be monitored on the active branch
 	// +kubebuilder:validation:Optional
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`

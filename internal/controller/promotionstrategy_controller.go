@@ -20,16 +20,12 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"time"
 
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
-
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -76,34 +72,35 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			return ctrl.Result{}, nil
 		}
 		logger.Error(err, "failed to get PromotionStrategy")
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to get PromitionStrategy %q: %w", req.Name, err)
 	}
 
 	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a map with the branch as the key.
-	var ctpMap = make(map[string]*promoterv1alpha1.ChangeTransferPolicy)
+	ctpsByBranch := make(map[string]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
 	for _, environment := range ps.Spec.Environments {
-		pc, err := r.createOrGetChangeTransferPolicy(ctx, &ps, environment)
+		var ctp *promoterv1alpha1.ChangeTransferPolicy
+		ctp, err = r.createOrGetChangeTransferPolicy(ctx, &ps, environment)
 		if err != nil {
 			logger.Error(err, "failed to create ChangeTransferPolicy")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, fmt.Errorf("failed to create ChangeTransferPolicy for branch %q: %w", environment.Branch, err)
 		}
-		ctpMap[environment.Branch] = pc
+		ctpsByBranch[environment.Branch] = ctp
 	}
 
 	// Calculate the status of the PromotionStrategy
-	err = r.calculateStatus(ctx, &ps, ctpMap)
+	err = r.calculateStatus(&ps, ctpsByBranch)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to calculate PromotionStrategy status: %w", err)
 	}
 
-	err = r.mergePullRequests(ctx, &ps, ctpMap)
+	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctpsByBranch)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to merge PRs: %w", err)
 	}
 
 	err = r.Status().Update(ctx, &ps)
 	if err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
 	}
 
 	return ctrl.Result{
@@ -114,19 +111,23 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.CommitStatus{}, ".spec.sha", func(rawObj client.Object) []string {
+		//nolint:forcetypeassert
 		cs := rawObj.(*promoterv1alpha1.CommitStatus)
 		return []string{cs.Spec.Sha}
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to set field index for .spec.sha: %w", err)
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// TODO: reduce reconciliation frequency by not reconciling when updates happen to CTPs, makes race easier to reason about
-		//Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
+		// Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
 		Complete(r)
+	if err != nil {
+		return fmt.Errorf("failed to create controller: %w", err)
+	}
+	return nil
 }
 
 func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
@@ -155,7 +156,15 @@ func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx contex
 			ActiveBranch:           environment.Branch,
 			ActiveCommitStatuses:   append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...),
 			ProposedCommitStatuses: append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...),
+			AutoMerge:              environment.AutoMerge,
 		},
+	}
+
+	previousEnvironmentCommitStatusSelector := promoterv1alpha1.CommitStatusSelector{
+		Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+	}
+	if !slices.Contains(pcNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector) {
+		pcNew.Spec.ProposedCommitStatuses = append(pcNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector)
 	}
 
 	pc := promoterv1alpha1.ChangeTransferPolicy{}
@@ -165,26 +174,26 @@ func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx contex
 			logger.Info("ChangeTransferPolicy not found, creating")
 			err = r.Create(ctx, &pcNew)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to create ChangeTransferPolicy %q: %w", pc.Name, err)
 			}
 			pcNew.DeepCopyInto(&pc)
 		} else {
-			return nil, err
+			return nil, fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", pc.Name, err)
 		}
 	} else {
 		pcNew.Spec.DeepCopyInto(&pc.Spec)
 		err = r.Update(ctx, &pc)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)
 		}
 	}
 
 	return &pc, nil
 }
 
-func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, pcMap map[string]*promoterv1alpha1.ChangeTransferPolicy) error {
+func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.PromotionStrategy, ctpsByBranch map[string]*promoterv1alpha1.ChangeTransferPolicy) error {
 	for _, environment := range ps.Spec.Environments {
-		pc, ok := pcMap[environment.Branch]
+		pc, ok := ctpsByBranch[environment.Branch]
 		if !ok {
 			return fmt.Errorf("ChangeTransferPolicy not found for branch %s", environment.Branch)
 		}
@@ -221,164 +230,98 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
 		}
 
-		err := r.calculateActiveCommitStatus(ctx, i, ps, pcMap, environment)
-		if err != nil {
-			return fmt.Errorf("failed to calculate active commit status: %w", err)
+		if ctpsByBranch[environment.Branch] == nil {
+			return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while calculating activeCommitStatus", environment.Branch)
 		}
-
-		err = r.calculateProposedCommitStatus(ctx, i, ps, pcMap, environment)
-		if err != nil {
-			return fmt.Errorf("failed to calculate proposed commit status: %w", err)
-		}
-
+		activeEnvStatus := ctpsByBranch[environment.Branch].Status.Active
+		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Active.CommitStatus, len(environment.ActiveCommitStatuses)+len(ps.Spec.ActiveCommitStatuses), activeEnvStatus)
+		proposedEnvStatus := ctpsByBranch[environment.Branch].Status.Proposed
+		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Proposed.CommitStatus, len(environment.ProposedCommitStatuses)+len(ps.Spec.ProposedCommitStatuses), proposedEnvStatus)
 	}
 	return nil
 }
 
-func (r *PromotionStrategyReconciler) calculateActiveCommitStatus(ctx context.Context, environmentIndex int, ps *promoterv1alpha1.PromotionStrategy, ctpMap map[string]*promoterv1alpha1.ChangeTransferPolicy, environment promoterv1alpha1.Environment) error {
-	logger := log.FromContext(ctx)
-
-	if ctpMap[environment.Branch] == nil {
-		return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while calculating activeCommitStatus", environment.Branch)
-	}
-
-	activeCommitStatusCount := len(environment.ActiveCommitStatuses) + len(ps.Spec.ActiveCommitStatuses)
-	if activeCommitStatusCount > 0 && len(ctpMap[environment.Branch].Status.Active.CommitStatuses) == activeCommitStatusCount {
+// setEnvironmentCommitStatus sets the commit status for the environment based on the configured commit statuses.
+func (r *PromotionStrategyReconciler) setEnvironmentCommitStatus(targetStatus *promoterv1alpha1.PromotionStrategyCommitStatus, statusCount int, envStatus promoterv1alpha1.CommitBranchState) {
+	if statusCount > 0 && len(envStatus.CommitStatuses) == statusCount {
 		// We have configured active commits and our count of active commits from promotion strategy matches the count of active commit resource.
-		for _, status := range ctpMap[environment.Branch].Status.Active.CommitStatuses {
-			ps.Status.Environments[environmentIndex].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-			ps.Status.Environments[environmentIndex].Active.CommitStatus.Sha = ctpMap[environment.Branch].Status.Active.Hydrated.Sha
+		for _, status := range envStatus.CommitStatuses {
+			targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
+			targetStatus.Sha = envStatus.Hydrated.Sha
 			if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
-				ps.Status.Environments[environmentIndex].Active.CommitStatus.Phase = status.Phase
-				ps.Status.Environments[environmentIndex].Active.CommitStatus.Sha = ctpMap[environment.Branch].Status.Active.Hydrated.Sha
-				logger.Info("Active commit status not success", "branch", environment.Branch, "phase", status.Phase, "sha", ctpMap[environment.Branch].Status.Active.Hydrated.Sha, "key", status.Key)
-
+				targetStatus.Phase = status.Phase
+				targetStatus.Sha = envStatus.Hydrated.Sha
 				break
 			}
 		}
-	} else if activeCommitStatusCount == 0 && len(ctpMap[environment.Branch].Status.Active.CommitStatuses) == 0 {
+	} else if statusCount == 0 && len(envStatus.CommitStatuses) == 0 {
 		// We have no configured active commits and our count of active commits from promotion strategy matches the count of active commit resource, should be 0 each.
-		ps.Status.Environments[environmentIndex].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-		ps.Status.Environments[environmentIndex].Active.CommitStatus.Sha = ctpMap[environment.Branch].Status.Active.Hydrated.Sha
-		//logger.Info("No active commit statuses configured, assuming success", "branch", environment.Branch)
+		targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
+		targetStatus.Sha = envStatus.Hydrated.Sha
 	} else {
-		ps.Status.Environments[environmentIndex].Active.CommitStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
-		ps.Status.Environments[environmentIndex].Active.CommitStatus.Sha = ctpMap[environment.Branch].Status.Active.Hydrated.Sha
-		logger.Info("Active commit status pending", "branch", environment.Branch)
+		targetStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
+		targetStatus.Sha = envStatus.Hydrated.Sha
 	}
-
-	return nil
 }
 
-func (r *PromotionStrategyReconciler) calculateProposedCommitStatus(ctx context.Context, environmentIndex int, ps *promoterv1alpha1.PromotionStrategy, ctpMap map[string]*promoterv1alpha1.ChangeTransferPolicy, environment promoterv1alpha1.Environment) error {
-	logger := log.FromContext(ctx)
+func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentStatus *promoterv1alpha1.EnvironmentStatus) error {
+	// TODO: do we like this name proposed-<name>?
+	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
+	proposedCSObjectKey := client.ObjectKey{Namespace: ctp.Namespace, Name: csName}
 
-	if ctpMap[environment.Branch] == nil {
-		return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while calculating proposedCommitStatus", environment.Branch)
+	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+	controllerRef := metav1.NewControllerRef(ctp, gvk)
+
+	branch := "no previous environment"
+	if previousEnvironmentStatus != nil {
+		branch = previousEnvironmentStatus.Branch + " - synced and healthy"
 	}
 
-	proposedCommitStatusCount := len(environment.ProposedCommitStatuses) + len(ps.Spec.ProposedCommitStatuses)
-	if proposedCommitStatusCount > 0 && len(ctpMap[environment.Branch].Status.Proposed.CommitStatuses) == proposedCommitStatusCount {
-		// We have configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource.
-		for _, status := range ctpMap[environment.Branch].Status.Proposed.CommitStatuses {
-			ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-			ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Sha = ctpMap[environment.Branch].Status.Proposed.Hydrated.Sha
-			if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
-				ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Phase = status.Phase
-				ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Sha = ctpMap[environment.Branch].Status.Proposed.Hydrated.Sha
-				logger.Info("Proposed commit status not success", "branch", environment.Branch, "phase", status.Phase, "sha", ctpMap[environment.Branch].Status.Proposed.Hydrated.Sha, "key", status.Key)
-				break
+	commitStatus := &promoterv1alpha1.CommitStatus{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: proposedCSObjectKey.Name,
+			Labels: map[string]string{
+				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+			},
+			Namespace:       proposedCSObjectKey.Namespace,
+			OwnerReferences: []metav1.OwnerReference{*controllerRef},
+		},
+		Spec: promoterv1alpha1.CommitStatusSpec{
+			RepositoryReference: ctp.Spec.RepositoryReference,
+			Sha:                 ctp.Status.Proposed.Hydrated.Sha,
+			Name:                branch,
+			Description:         branch,
+			Phase:               phase,
+			// Url:                 "https://github.com/" + gitRepo.Spec.Owner + "/" + gitRepo.Spec.Name + "/commit/" + copyFromActiveHydratedSha,
+		},
+	}
+	updatedCS := &promoterv1alpha1.CommitStatus{}
+	err := r.Get(ctx, proposedCSObjectKey, updatedCS)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			err = r.Create(ctx, commitStatus)
+			if err != nil {
+				return fmt.Errorf("failed to create previous environments CommitStatus: %w", err)
 			}
 		}
-	} else if proposedCommitStatusCount == 0 && len(ctpMap[environment.Branch].Status.Proposed.CommitStatuses) == 0 {
-		// We have no configured proposed commits and our count of proposed commits from promotion strategy matches the count of proposed commit resource, should be 0 each.
-		ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-		ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Sha = ctpMap[environment.Branch].Status.Proposed.Hydrated.Sha
-		//logger.Info("No proposed commit statuses configured, assuming success", "branch", environment.Branch)
-	} else {
-		ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
-		ps.Status.Environments[environmentIndex].Proposed.CommitStatus.Sha = ctpMap[environment.Branch].Status.Proposed.Hydrated.Sha
-		logger.Info("Proposed commit status pending", "branch", environment.Branch)
-	}
+	} else if updatedCS.Spec.Phase != phase || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha {
+		updatedCS.Spec.Phase = phase
+		updatedCS.Spec.Sha = ctp.Status.Proposed.Hydrated.Sha
+		updatedCS.Spec.Description = commitStatus.Spec.Description
+		updatedCS.Spec.Name = commitStatus.Spec.Name
 
-	return nil
-}
-
-// copyCommitStatuses copies the commit statuses from one sha to another sha. This is mainly used to show the previous environments commit statuses on the current environments PR.
-func (r *PromotionStrategyReconciler) copyCommitStatuses(ctx context.Context, csSelector []promoterv1alpha1.CommitStatusSelector, copyFromActiveHydratedSha string, copyToProposedHydratedSha string, branch string) error {
-	logger := log.FromContext(ctx)
-
-	for _, value := range csSelector {
-		var commitStatuses promoterv1alpha1.CommitStatusList
-		err := r.List(ctx, &commitStatuses, &client.ListOptions{
-			LabelSelector: labels.SelectorFromSet(map[string]string{
-				promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(ctx, value.Key),
-			}),
-			FieldSelector: fields.SelectorFromSet(map[string]string{
-				".spec.sha": copyFromActiveHydratedSha,
-			}),
-		})
+		err = r.Update(ctx, updatedCS)
 		if err != nil {
-			return err
-		}
-
-		for _, commitStatus := range commitStatuses.Items {
-			if commitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel] == "true" { //nolint: goconst
-				continue
-			}
-
-			//TODO: do we like this name proposed-<name>?
-			copiedCSName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.CopiedProposedCommitPrefixNameLabel+commitStatus.Name)
-			proposedCSObjectKey := client.ObjectKey{Namespace: commitStatus.Namespace, Name: copiedCSName}
-
-			gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: commitStatus.Namespace, Name: commitStatus.Spec.RepositoryReference.Name})
-			if err != nil {
-				return fmt.Errorf("failed to get GitRepository: %w", err)
-			}
-
-			copiedCommitStatus := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        proposedCSObjectKey.Name,
-					Annotations: commitStatus.Annotations,
-					Labels:      commitStatus.Labels,
-					Namespace:   commitStatus.Namespace,
-				},
-				Spec: promoterv1alpha1.CommitStatusSpec{
-					RepositoryReference: commitStatus.Spec.RepositoryReference,
-					Sha:                 copyToProposedHydratedSha,
-					Name:                branch + " - " + commitStatus.Spec.Name,
-					Description:         commitStatus.Spec.Description,
-					Phase:               commitStatus.Spec.Phase,
-					Url:                 "https://github.com/" + gitRepo.Spec.Owner + "/" + gitRepo.Spec.Name + "/commit/" + copyFromActiveHydratedSha,
-				},
-			}
-			if copiedCommitStatus.Labels == nil {
-				copiedCommitStatus.Labels = make(map[string]string)
-			}
-			copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusCopyLabel] = "true" //nolint: goconst
-			copiedCommitStatus.Labels[promoterv1alpha1.CopiedCommitStatusFromLabel] = utils.KubeSafeLabel(ctx, commitStatus.Spec.Name)
-			copiedCommitStatus.Labels[promoterv1alpha1.CommmitStatusFromShaLabel] = utils.KubeSafeLabel(ctx, copyFromActiveHydratedSha)
-			copiedCommitStatus.Labels[promoterv1alpha1.CommitStatusFromBranchLabel] = utils.KubeSafeLabel(ctx, branch)
-
-			err = r.Patch(ctx, copiedCommitStatus, client.MergeFrom(&promoterv1alpha1.CommitStatus{}))
-			if err != nil {
-				if errors.IsNotFound(err) {
-					errCreate := r.Create(ctx, copiedCommitStatus)
-					if errCreate != nil {
-						logger.Error(errCreate, "failed to create copied CommitStatus")
-						return errCreate
-					}
-				}
-			}
+			return fmt.Errorf("failed to update previous environments CommitStatus: %w", err)
 		}
 	}
 
 	return nil
 }
 
-// mergePullRequests checks if any environment is ready to be merged and if so, merges the pull request. It does this by looking at any active and proposed commit statuses.
-func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctpMap map[string]*promoterv1alpha1.ChangeTransferPolicy) error {
-
+// updatePreviousEnvironmentCommitStatus checks if any environment is ready to be merged and if so, merges the pull request. It does this by looking at any active and proposed commit statuses.
+func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctpMap map[string]*promoterv1alpha1.ChangeTransferPolicy) error {
 	logger := log.FromContext(ctx)
 	// Go through each environment and copy any commit statuses from the previous environment if the previous environment's running dry commit is the same as the
 	// currently processing environments proposed dry sha.
@@ -394,84 +337,21 @@ func (r *PromotionStrategyReconciler) mergePullRequests(ctx context.Context, ps 
 			return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while merging pull requests", environment.Branch)
 		}
 
-		if previousEnvironmentStatus != nil {
-			// There is a previous environment to compare to, so we can copy the commit statuses.
-			if ctpMap[environment.Branch].Status.Proposed.Hydrated.Sha != "" && previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha {
-				// If the previous environment's running commit is the same as the current proposed commit, copy the commit statuses.
-				err := r.copyCommitStatuses(ctx, append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...), previousEnvironmentStatus.Active.Hydrated.Sha, ctpMap[environment.Branch].Status.Proposed.Hydrated.Sha, previousEnvironmentStatus.Branch) //pc.Status.Active.Hydrated.Sha
-				if err != nil {
-					return err
-				}
-			}
-		}
-
 		activeChecksPassed := previousEnvironmentStatus != nil &&
 			previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
 			previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha &&
 			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
-		proposedChecksPassed := environmentStatus.Proposed.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
-			environmentStatus.Proposed.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha
-
-		if (environmentIndex == 0 && proposedChecksPassed || (activeChecksPassed && proposedChecksPassed)) && environment.GetAutoMerge() {
-			// We are either in the first environment or all checks have passed and the environment is set to auto merge.
-			prl := promoterv1alpha1.PullRequestList{}
-			// Find the PRs that match the proposed commit and the environment. There should only be one.
-			err := r.List(ctx, &prl, &client.ListOptions{
-				LabelSelector: labels.SelectorFromSet(map[string]string{
-					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctx, ps.Name),
-					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctx, ctpMap[environment.Branch].Name),
-					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctx, environment.Branch),
-				}),
-			})
-			if err != nil {
-				return err
-			}
-
-			if len(prl.Items) > 1 {
-				return fmt.Errorf("more than one PullRequest found for ChangeTransferPolicy %s and Environment %s", ctpMap[environment.Branch].Name, environment.Branch)
-			}
-
-			if len(prl.Items) == 1 {
-				// We found 1 pull request process it.
-				pullRequest := prl.Items[0]
-				if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-					if previousEnvironmentStatus != nil {
-						logger.Info("Active checks passed", "branch", environment.Branch,
-							"autoMerge", environment.AutoMerge,
-							"previousEnvironmentState", previousEnvironmentStatus.Active.CommitStatus.Phase,
-							"previousEnvironmentSha", previousEnvironmentStatus.Active.CommitStatus.Sha,
-							"previousEnvironmentCommitTime", previousEnvironmentStatus.Active.Dry.CommitTime,
-							"currentEnvironmentCommitTime", environmentStatus.Active.Dry.CommitTime)
-					} else {
-						// There is no previous environment to log information about.
-						logger.Info("Active checks passed without previous environment", "branch", environment.Branch,
-							"autoMerge", environment.AutoMerge,
-							"numberOfActiveCommitStatuses", len(append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)))
-					}
-				}
-
-				if pullRequest.Spec.State == promoterv1alpha1.PullRequestOpen && pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-					err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-						var pr promoterv1alpha1.PullRequest
-						err := r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
-						if err != nil {
-							return err
-						}
-						pr.Spec.State = promoterv1alpha1.PullRequestMerged
-						return r.Update(ctx, &pr)
-					})
-					if err != nil {
-						return err
-					}
-					r.Recorder.Event(ps, "Normal", "PullRequestMerged", fmt.Sprintf("Pull Request %s merged", pullRequest.Name))
-					logger.Info("Merged pull request")
-				} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-					logger.Info("Pull request not ready to merge yet")
-				}
-			}
+		commitStatusPhase := promoterv1alpha1.CommitPhasePending
+		if environmentIndex == 0 || activeChecksPassed {
+			logger.Info("Checks passed, setting previous environment check to success", "branch", environment.Branch)
+			commitStatusPhase = promoterv1alpha1.CommitPhaseSuccess
 		}
 
+		err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus)
+		if err != nil {
+			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", environment.Branch, err)
+		}
 	}
 
 	return nil

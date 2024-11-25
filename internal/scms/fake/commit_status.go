@@ -2,6 +2,7 @@ package fake
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -10,11 +11,12 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-var commitStatuses map[string]*promoterv1alpha1.CommitStatus
-var mutexCS sync.RWMutex
+var (
+	commitStatuses map[string]*promoterv1alpha1.CommitStatus
+	mutexCS        sync.RWMutex
+)
 
-type CommitStatus struct {
-}
+type CommitStatus struct{}
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
@@ -24,7 +26,7 @@ func NewFakeCommitStatusProvider(secret v1.Secret) (*CommitStatus, error) {
 
 func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	if commitStatus.Spec.Sha == "" {
-		return nil, fmt.Errorf("sha is required")
+		return nil, errors.New("sha is required")
 	}
 	commitStatus.Status.Phase = commitStatus.Spec.Phase
 	cs.savePointer(commitStatus)
