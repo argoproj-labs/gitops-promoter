@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"go.uber.org/zap/zapcore"
@@ -85,6 +86,15 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	// Recover any panic and log using the configured logger. This ensures that panics get logged in JSON format if
+	// JSON logging is enabled.
+	defer func() {
+		if r := recover(); r != nil {
+			setupLog.Error(nil, "recovered from panic", "panic", r, "trace", string(debug.Stack()))
+			os.Exit(1)
+		}
+	}()
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
