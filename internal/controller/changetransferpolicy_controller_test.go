@@ -17,10 +17,13 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -40,15 +43,15 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 		ctx := context.Background()
 
 		It("should successfully reconcile the resource - with a pending commit and no commit status checks", func() {
-			name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy := changeTransferPolicyResources(ctx, "pc-without-commit-checks", "default")
+			name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy := changeTransferPolicyResources(ctx, "ctp-without-commit-checks", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
 				Namespace: "default", // TODO(user):Modify as needed
 			}
 
-			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
-			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next" //nolint:goconst
+			changeTransferPolicy.Spec.ActiveBranch = "environment/development"        //nolint:goconst
 			// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
@@ -65,7 +68,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			By("Reconciling the created resource")
 
-			// var changeTransferPolicy promoterv1alpha1.ChangeTransferPolicy
+			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
@@ -91,6 +94,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			By("Adding another pending commit")
 			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Owner, gitRepo.Spec.Name)
 
+			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
@@ -122,7 +126,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 		})
 
 		It("should successfully reconcile the resource - with a pending commit with commit status checks", func() {
-			name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy := changeTransferPolicyResources(ctx, "pc-with-commit-checks", "default")
+			name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy := changeTransferPolicyResources(ctx, "ctp-with-commit-checks", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -203,6 +207,79 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			})
+		})
+
+		It("webhook should modify annotation", func() {
+			webhookPort := WebhookReceiverPort + GinkgoParallelProcess()
+			webhookURL := fmt.Sprintf("http://localhost:%d/", webhookPort)
+
+			name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy := changeTransferPolicyResources(ctx, "ctp-webhook", "default")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default", // TODO(user):Modify as needed
+			}
+
+			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
+			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			// We set auto merge too false to avoid the PR being merged automatically so we can run checks on it
+			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Adding a pending commit")
+			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Owner, gitRepo.Spec.Name)
+
+			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
+			Eventually(func(g Gomega) {
+				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+				g.Expect(err).To(Succeed())
+				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
+				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).ToNot(Equal(""))
+				g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).ToNot(Equal(""))
+			}, EventuallyTimeout).Should(Succeed())
+
+			var pr promoterv1alpha1.PullRequest
+			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+			Eventually(func(g Gomega) {
+				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, prName),
+					Namespace: "default",
+				}
+				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
+				g.Expect(err).To(Succeed())
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
+			}, EventuallyTimeout).Should(Succeed())
+
+			// Make http request
+			jsonStr := []byte(fmt.Sprintf(`{"before":"%s", "pusher":""}`, changeTransferPolicy.Status.Proposed.Hydrated.Sha))
+			req, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewBuffer(jsonStr))
+			req.Header.Set("Content-Type", "application/json")
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(200))
+			err = resp.Body.Close()
+			Expect(err).To(Succeed())
+
+			Eventually(func(g Gomega) {
+				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+				g.Expect(err).To(Succeed())
+				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
+
+				t, err := time.Parse(time.RFC3339, changeTransferPolicy.Annotations[promoterv1alpha1.ReconcileAtAnnotation])
+				g.Expect(err).To(Succeed())
+				g.Expect(t).Should(BeTemporally("~", time.Now(), 3*time.Second))
+			}, EventuallyTimeout).Should(Succeed())
 		})
 	})
 })

@@ -62,7 +62,7 @@ type PromotionStrategyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Reconciling PromotionStrategy")
+	logger.Info("Reconciling PromotionStrategy")
 
 	var ps promoterv1alpha1.PromotionStrategy
 	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
@@ -121,8 +121,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// TODO: reduce reconciliation frequency by not reconciling when updates happen to CTPs, makes race easier to reason about
-		// Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
+		Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -342,9 +341,19 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha &&
 			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
+		// logger.Info("Checking if we should merge PR", "branch", environment.Branch, "activeChecksPassed", activeChecksPassed)
+		if previousEnvironmentStatus != nil {
+			logger.Info(
+				"Previous environment status",
+				"branch", environment.Branch,
+				"activeChecksPassed", activeChecksPassed,
+				"sha", previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha,
+				"time", previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time),
+				"phase", previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess))
+		}
 		commitStatusPhase := promoterv1alpha1.CommitPhasePending
 		if environmentIndex == 0 || activeChecksPassed {
-			logger.Info("Checks passed, setting previous environment check to success", "branch", environment.Branch)
+			logger.V(4).Info("Checks passed, setting previous environment check to success", "branch", environment.Branch)
 			commitStatusPhase = promoterv1alpha1.CommitPhaseSuccess
 		}
 

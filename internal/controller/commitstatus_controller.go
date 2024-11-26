@@ -19,7 +19,9 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/util/retry"
 
 	"k8s.io/client-go/tools/record"
@@ -63,6 +65,7 @@ type CommitStatusReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	logger.Info("Reconciling CommitStatus", "name", req.Name)
 
 	var cs promoterv1alpha1.CommitStatus
 	err := r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
@@ -93,6 +96,9 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)
 	}
 
+	// We need the old sha to trigger the reconcile of the change transfer policy
+	oldSha := cs.Status.Sha
+
 	// We use retry on conflict to avoid conflicts when updating the status because so many other controllers will be
 	// creating and updating commit status and the API is very simple we try to avoid conflicts to update the status as
 	// soon as possible.
@@ -120,6 +126,13 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			//nolint: wrapcheck
 			return err
 		}
+
+		err = r.triggerReconcileChangeTransferPolicy(ctx, newCs, oldSha, cs.Spec.Sha)
+		if err != nil {
+			logger.Error(err, "failed to trigger reconcile of ChangeTransferPolicy via CommitStatus")
+			return fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
+		}
+
 		return nil
 	})
 	if err != nil {
@@ -161,4 +174,79 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 	default:
 		return nil, nil
 	}
+}
+
+func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx context.Context, cs promoterv1alpha1.CommitStatus, oldSha, newSha string) error {
+	logger := log.FromContext(ctx)
+	// Get list of CTPs that have the oldSha
+	ctpListActiveOldSha := &promoterv1alpha1.ChangeTransferPolicyList{}
+	err := r.Client.List(ctx, ctpListActiveOldSha, &client.ListOptions{
+		FieldSelector: fields.SelectorFromSet(map[string]string{
+			".status.active.hydrated.sha": oldSha,
+		}),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list ChangeTransferPolicy with old sha %q: %w", oldSha, err)
+	}
+
+	// Get list of CTPs that have the newSha
+	ctpListActiveNewSha := &promoterv1alpha1.ChangeTransferPolicyList{}
+	err = r.Client.List(ctx, ctpListActiveNewSha, &client.ListOptions{
+		FieldSelector: fields.SelectorFromSet(map[string]string{
+			".status.active.hydrated.sha": newSha,
+		}),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list ChangeTransferPolicy with new sha %q: %w", newSha, err)
+	}
+
+	ctpListProposedOldSha := &promoterv1alpha1.ChangeTransferPolicyList{}
+	err = r.Client.List(ctx, ctpListProposedOldSha, &client.ListOptions{
+		FieldSelector: fields.SelectorFromSet(map[string]string{
+			".status.proposed.hydrated.sha": oldSha,
+		}),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list ChangeTransferPolicy with old sha %q: %w", oldSha, err)
+	}
+
+	// Get list of CTPs that have the newSha
+	ctpListProposedNewSha := &promoterv1alpha1.ChangeTransferPolicyList{}
+	err = r.Client.List(ctx, ctpListProposedNewSha, &client.ListOptions{
+		FieldSelector: fields.SelectorFromSet(map[string]string{
+			".status.proposed.hydrated.sha": newSha,
+		}),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list ChangeTransferPolicy with new sha %q: %w", newSha, err)
+	}
+
+	ctpList := utils.UpsertChangeTransferPolicyList(ctpListActiveOldSha.Items, ctpListActiveNewSha.Items)
+	ctpList = utils.UpsertChangeTransferPolicyList(ctpList, ctpListProposedOldSha.Items)
+	ctpList = utils.UpsertChangeTransferPolicyList(ctpList, ctpListProposedNewSha.Items)
+
+	logger.Info("ChangeTransferPolicy list", "count", len(ctpList), "oldSha", oldSha, "newSha", newSha)
+	for _, ctp := range ctpList {
+		if ctp.Annotations == nil {
+			ctp.Annotations = map[string]string{}
+		}
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			ctpUpdated := promoterv1alpha1.ChangeTransferPolicy{}
+			err = r.Client.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}, &ctpUpdated)
+			if ctpUpdated.Annotations == nil {
+				ctpUpdated.Annotations = map[string]string{}
+			}
+			ctpUpdated.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339)
+			if err != nil {
+				return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", ctp.Name, err)
+			}
+			return r.Client.Update(ctx, &ctpUpdated)
+		})
+		if err != nil {
+			return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", ctp.Name, err)
+		}
+		logger.Info("Reconcile of ChangeTransferPolicy triggered", "ChangeTransferPolicy", ctp.Name, "phase", cs.Spec.Phase)
+	}
+
+	return nil
 }

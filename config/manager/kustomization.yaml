@@ -4,3 +4,4 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - deployment.yaml
+  - webhook_service.yaml

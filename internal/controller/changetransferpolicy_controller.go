@@ -72,6 +72,7 @@ type ChangeTransferPolicyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	logger.Info("Reconciling ChangeTransferPolicy")
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
 	err := r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
@@ -98,6 +99,9 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
 	}
+
+	// TODO: could probably short circuit the clone and use an ls-remote to compare the sha's of the current ctp status,
+	// this would help with slamming the git provider with clone requests on controller restarts.
 
 	err = gitOperations.CloneRepo(ctx)
 	if err != nil {
@@ -132,8 +136,25 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
+		//nolint:forcetypeassert
+		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
+		return []string{ctp.Status.Proposed.Hydrated.Sha}
+	}); err != nil {
+		return fmt.Errorf("failed to set field index for .status.proposed.hydrated.sha: %w", err)
+	}
+
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
+		//nolint:forcetypeassert
+		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
+		return []string{ctp.Status.Active.Hydrated.Sha}
+	}); err != nil {
+		return fmt.Errorf("failed to set field index for .status.active.hydrated.sha: %w", err)
+	}
+
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ChangeTransferPolicy{}).
+		Owns(&promoterv1alpha1.PullRequest{}).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -201,6 +222,8 @@ func (e *TooManyMatchingShaError) Error() string {
 // setCommitStatusState sets the hydrated and dry SHAs and commit times for the target commit branch state and sets the
 // commit statuses.
 func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Context, targetCommitBranchState *promoterv1alpha1.CommitBranchState, commitStatuses []promoterv1alpha1.CommitStatusSelector, gitOperations *git.GitOperations, shas *git.BranchShas) error {
+	logger := log.FromContext(ctx)
+
 	targetCommitBranchState.Hydrated.Sha = shas.Hydrated
 	commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
 	if err != nil {
@@ -237,6 +260,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 				Key:   status.Key,
 				Phase: string(csList.Items[0].Status.Phase),
 			})
+			logger.Info("CommitStatus found", "key", status.Key, "sha", targetCommitBranchState.Hydrated.Sha, "phase", csList.Items[0].Status.Phase)
 		} else if len(csList.Items) > 1 {
 			// TODO: decided how to bubble up errors
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
@@ -250,6 +274,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 				Key:   status.Key,
 				Phase: string(promoterv1alpha1.CommitPhasePending),
 			})
+			logger.Info("No CommitStatus found", "key", status.Key, "sha", targetCommitBranchState.Hydrated.Sha)
 			// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
 		}
 	}
@@ -375,7 +400,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 
 	for i, status := range ctp.Status.Proposed.CommitStatuses {
 		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
-			logger.Info("Proposed commit status is not success", "key", ctp.Spec.ProposedCommitStatuses[i].Key)
+			logger.V(4).Info("Proposed commit status is not success", "key", ctp.Spec.ProposedCommitStatuses[i].Key)
 			return nil
 		}
 	}

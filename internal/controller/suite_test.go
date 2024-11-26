@@ -32,6 +32,11 @@ import (
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
+
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -66,7 +71,10 @@ var (
 	gitServerPort  string
 )
 
-const EventuallyTimeout = 90 * time.Second
+const (
+	EventuallyTimeout   = 90 * time.Second
+	WebhookReceiverPort = 3333
+)
 
 func TestControllers(t *testing.T) {
 	t.Parallel()
@@ -149,7 +157,7 @@ var _ = BeforeSuite(func() {
 		Scheme:   k8sManager.GetScheme(),
 		Recorder: k8sManager.GetEventRecorderFor("PromotionStrategy"),
 		Config: PromotionStrategyReconcilerConfig{
-			RequeueDuration: 10 * time.Second,
+			RequeueDuration: 300 * time.Second,
 		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -161,7 +169,7 @@ var _ = BeforeSuite(func() {
 		PathLookup: pathLookup,
 		Recorder:   k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
 		Config: ChangeTransferPolicyReconcilerConfig{
-			RequeueDuration: 10 * time.Second,
+			RequeueDuration: 300 * time.Second,
 		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -193,6 +201,15 @@ var _ = BeforeSuite(func() {
 		// Recorder: k8sManager.GetEventRecorderFor("GitRepository"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
+
+	webhookReceiverPort := WebhookReceiverPort + GinkgoParallelProcess()
+	whr := webhookreceiver.NewWebhookReceiver(k8sManager)
+	go func() {
+		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
+		if err != nil {
+			os.Exit(1)
+		}
+	}()
 
 	go func() {
 		defer GinkgoRecover()
@@ -458,4 +475,20 @@ func randomString(length int) string {
 	}
 
 	return string(result)
+}
+
+func simulateWebhook(ctx context.Context, k8sClient client.Client, ctp *promoterv1alpha1.ChangeTransferPolicy) {
+	Eventually(func(g Gomega) {
+		err := k8sClient.Get(ctx, types.NamespacedName{
+			Name:      ctp.Name,
+			Namespace: ctp.Namespace,
+		}, ctp)
+		g.Expect(err).To(Succeed())
+		if ctp.Annotations == nil {
+			ctp.Annotations = map[string]string{}
+		}
+		ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = metav1.Now().Format(time.RFC3339)
+		err = k8sClient.Update(ctx, ctp)
+		g.Expect(err).To(Succeed())
+	}).Should(Succeed())
 }
