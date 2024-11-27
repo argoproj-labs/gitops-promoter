@@ -104,7 +104,7 @@ var _ = BeforeSuite(func() {
 	gitServerPort, gitServer = startGitServer(gitStoragePath)
 
 	By("bootstrapping test environment")
-	useExistingCluster := false
+	useExistingCluster := true
 	testEnv = &envtest.Environment{
 		UseExistingCluster:      &useExistingCluster,
 		CRDDirectoryPaths:       []string{filepath.Join("..", "..", "config", "crd", "bases")},
