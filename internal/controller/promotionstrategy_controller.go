@@ -187,6 +187,8 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			}
 		} else {
 			pcNew.Spec.DeepCopyInto(&pc.Spec) // We keep the generation number and status so that update does not conflict
+			// TODO: don't update if the spec is the same, the hard comparison is the arrays of commit statuses, need
+			// to sort and compare them.
 			err = r.Update(ctx, &pc)
 			if err != nil {
 				return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)

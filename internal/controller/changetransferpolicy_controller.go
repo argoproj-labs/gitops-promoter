@@ -450,7 +450,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 				logger.Info("Merged pull request")
 			} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
 				// This is for the case where the PR is set to merge in k8s but something else is blocking it, like an external commit status check.
-				logger.Info("Pull request can not be merged, probably due to SCM blocking it", "pr", pullRequest.Name)
+				logger.Info("Pull request can not be merged, probably due to SCM", "pr", pullRequest.Name)
 			}
 		}
 	}
