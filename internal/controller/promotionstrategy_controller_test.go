@@ -349,7 +349,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				activeCommitStatusDevelopment.Spec.Sha = sha
 				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
-				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
+				GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
 				g.Expect(err).To(Succeed())
 
 				// Check that the proposed commit has the correct sha, aka it has reconciled at least once since adding new commits
