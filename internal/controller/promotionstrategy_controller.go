@@ -79,9 +79,9 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	ctpsByBranch := make(map[string]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
 	for _, environment := range ps.Spec.Environments {
 		var ctp *promoterv1alpha1.ChangeTransferPolicy
-		ctp, err = r.createOrGetChangeTransferPolicy(ctx, &ps, environment)
+		ctp, err = r.upsertChangeTransferPolicy(ctx, &ps, environment)
 		if err != nil {
-			logger.Error(err, "failed to create ChangeTransferPolicy")
+			logger.Error(err, "failed to upsert ChangeTransferPolicy")
 			return ctrl.Result{}, fmt.Errorf("failed to create ChangeTransferPolicy for branch %q: %w", environment.Branch, err)
 		}
 		ctpsByBranch[environment.Branch] = ctp
@@ -129,7 +129,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return nil
 }
 
-func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	logger := log.FromContext(ctx)
 
 	pcName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
@@ -181,6 +181,7 @@ func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx contex
 		}
 	} else {
 		pcNew.Spec.DeepCopyInto(&pc.Spec)
+		pc.Generation = 0
 		err = r.Update(ctx, &pc)
 		if err != nil {
 			return nil, fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)
