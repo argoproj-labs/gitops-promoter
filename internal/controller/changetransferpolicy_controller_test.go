@@ -113,7 +113,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
 				err = k8sClient.Update(ctx, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
-			})
+			}, EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				typeNamespacedNamePR := types.NamespacedName{
@@ -122,7 +122,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			})
+			}, EventuallyTimeout).Should(Succeed())
 		})
 
 		It("should successfully reconcile the resource - with a pending commit with commit status checks", func() {
@@ -197,7 +197,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
 				err = k8sClient.Update(ctx, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
-			})
+			}, EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				typeNamespacedNamePR := types.NamespacedName{
@@ -206,7 +206,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			})
+			}, EventuallyTimeout).Should(Succeed())
 		})
 
 		It("webhook should modify annotation", func() {

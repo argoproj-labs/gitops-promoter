@@ -3,6 +3,7 @@ package fake
 import (
 	"context"
 	"errors"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	v1 "k8s.io/api/core/v1"
