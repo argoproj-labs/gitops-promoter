@@ -400,7 +400,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 
 	for i, status := range ctp.Status.Proposed.CommitStatuses {
 		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
-			logger.V(4).Info("Proposed commit status is not success", "key", ctp.Spec.ProposedCommitStatuses[i].Key)
+			logger.V(4).Info("Proposed commit status is not success", "key", ctp.Spec.ProposedCommitStatuses[i].Key, "sha", ctp.Status.Proposed.Hydrated.Sha, "phase", status.Phase)
 			return nil
 		}
 	}
@@ -450,7 +450,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 				logger.Info("Merged pull request")
 			} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
 				// This is for the case where the PR is set to merge in k8s but something else is blocking it, like an external commit status check.
-				logger.Info("Pull request not ready to merge yet")
+				logger.Info("Pull request can not be merged, probably due to SCM blocking it", "pr", pullRequest.Name)
 			}
 		}
 	}

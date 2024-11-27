@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"k8s.io/client-go/util/retry"
 	"reflect"
 	"slices"
 	"time"
@@ -167,25 +168,33 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	}
 
 	pc := promoterv1alpha1.ChangeTransferPolicy{}
-	err := r.Get(ctx, client.ObjectKey{Name: pcName, Namespace: ps.Namespace}, &pc)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("ChangeTransferPolicy not found, creating")
-			err = r.Create(ctx, &pcNew)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create ChangeTransferPolicy %q: %w", pc.Name, err)
-			}
-			pcNew.DeepCopyInto(&pc)
-		} else {
-			return nil, fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", pc.Name, err)
-		}
-	} else {
-		pcNew.Spec.DeepCopyInto(&pc.Spec)
-		pc.Generation = 0
-		err = r.Update(ctx, &pc)
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		// We own the CTP so what we say is way we want, this forces our changes on the CTP even if there is conflict because
+		// we have the correct state. Server side apply would help here but controller-runtime does not support it yet.
+		// This could be a patch as well.
+		err := r.Get(ctx, client.ObjectKey{Name: pcName, Namespace: ps.Namespace}, &pc)
 		if err != nil {
-			return nil, fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)
+			if errors.IsNotFound(err) {
+				logger.Info("ChangeTransferPolicy not found, creating")
+				err = r.Create(ctx, &pcNew)
+				if err != nil {
+					return fmt.Errorf("failed to create ChangeTransferPolicy %q: %w", pc.Name, err)
+				}
+				pcNew.DeepCopyInto(&pc)
+			} else {
+				return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", pc.Name, err)
+			}
+		} else {
+			pcNew.Spec.DeepCopyInto(&pc.Spec) // We keep the generation number and status so that update does not conflict
+			err = r.Update(ctx, &pc)
+			if err != nil {
+				return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)
+			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert ChangeTransferPolicy %q: %w", pcName, err)
 	}
 
 	return &pc, nil
