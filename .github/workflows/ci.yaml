@@ -42,7 +42,7 @@ jobs:
 #          version:
 #            "v0.25.0"
       - name: Run Integration Tests
-        run: make test-parallel
+        run: make test
       - name: Generate code coverage artifacts
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
