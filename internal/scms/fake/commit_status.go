@@ -39,11 +39,11 @@ func (cs *CommitStatus) savePointer(commitStatus *promoterv1alpha1.CommitStatus)
 	if commitStatuses == nil {
 		commitStatuses = make(map[string]*promoterv1alpha1.CommitStatus)
 	}
-	if _, ok := commitStatuses[cs.getMapKey(commitStatus)]; ok {
+	if _, ok := commitStatuses[cs.getMapKey(commitStatus)]; !ok {
 		commitStatus.Status.Id = fmt.Sprintf("%d", len(commitStatuses)+1)
-		commitStatus.Status.Sha = commitStatus.Spec.Sha
-		commitStatuses[cs.getMapKey(commitStatus)] = commitStatus
 	}
+	commitStatus.Status.Sha = commitStatus.Spec.Sha
+	commitStatuses[cs.getMapKey(commitStatus)] = commitStatus
 }
 
 func (cs *CommitStatus) getMapKey(commitStatus *promoterv1alpha1.CommitStatus) string {
