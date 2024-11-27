@@ -36,11 +36,11 @@ jobs:
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
-      - name: Create k8s Kind Cluster
-        uses: helm/kind-action@v1
-        with:
-          version:
-            "v0.25.0"
+#      - name: Create k8s Kind Cluster
+#        uses: helm/kind-action@v1
+#        with:
+#          version:
+#            "v0.25.0"
       - name: Run Integration Tests
         run: make test-parallel
       - name: Generate code coverage artifacts
