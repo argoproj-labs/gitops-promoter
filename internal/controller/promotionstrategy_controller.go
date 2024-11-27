@@ -65,6 +65,7 @@ type PromotionStrategyReconciler struct {
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling PromotionStrategy")
+	startTime := time.Now()
 
 	var ps promoterv1alpha1.PromotionStrategy
 	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
@@ -104,6 +105,8 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
 	}
+
+	logger.Info("Reconciling PromotionStrategy End", "duration", time.Since(startTime))
 
 	return ctrl.Result{
 		Requeue:      true,

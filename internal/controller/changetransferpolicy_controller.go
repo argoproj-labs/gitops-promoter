@@ -73,6 +73,7 @@ type ChangeTransferPolicyReconciler struct {
 func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling ChangeTransferPolicy")
+	startTime := time.Now()
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
 	err := r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
@@ -128,6 +129,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
 	}
 
+	logger.Info("Reconciling ChangeTransferPolicy End", "duration", time.Since(startTime))
 	return ctrl.Result{
 		Requeue:      true,
 		RequeueAfter: r.Config.RequeueDuration,
