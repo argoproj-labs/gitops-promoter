@@ -358,8 +358,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the staging pull request has been merged and the production pull request is still open")
-			//simulateWebhook(ctx, k8sClient, &ctpDev)
-			//simulateWebhook(ctx, k8sClient, &ctpStaging)
 			Eventually(func(g Gomega) {
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
