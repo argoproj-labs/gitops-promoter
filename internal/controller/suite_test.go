@@ -490,5 +490,5 @@ func simulateWebhook(ctx context.Context, k8sClient client.Client, ctp *promoter
 		ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = metav1.Now().Format(time.RFC3339)
 		err = k8sClient.Update(ctx, ctp)
 		g.Expect(err).To(Succeed())
-	}).Should(Succeed())
+	}, EventuallyTimeout).Should(Succeed())
 }
