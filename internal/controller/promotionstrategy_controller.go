@@ -357,7 +357,6 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha &&
 			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
-		// logger.Info("Checking if we should merge PR", "branch", environment.Branch, "activeChecksPassed", activeChecksPassed)
 		if previousEnvironmentStatus != nil {
 			logger.Info(
 				"Previous environment status",
