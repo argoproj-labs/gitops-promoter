@@ -238,7 +238,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 			if ctpUpdated.Annotations == nil {
 				ctpUpdated.Annotations = map[string]string{}
 			}
-			ctpUpdated.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339)
+			ctpUpdated.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339Nano)
 			if err != nil {
 				return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", ctp.Name, err)
 			}

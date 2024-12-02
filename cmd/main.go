@@ -81,7 +81,7 @@ func main() {
 		"How frequently to requeue proposed commit resources for auto reconciliation")
 	opts := zap.Options{
 		Development: true,
-		TimeEncoder: zapcore.ISO8601TimeEncoder,
+		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()

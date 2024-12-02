@@ -276,7 +276,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
 
-				t, err := time.Parse(time.RFC3339, changeTransferPolicy.Annotations[promoterv1alpha1.ReconcileAtAnnotation])
+				t, err := time.Parse(time.RFC3339Nano, changeTransferPolicy.Annotations[promoterv1alpha1.ReconcileAtAnnotation])
 				g.Expect(err).To(Succeed())
 				g.Expect(t).Should(BeTemporally("~", time.Now(), 3*time.Second))
 			}, EventuallyTimeout).Should(Succeed())
