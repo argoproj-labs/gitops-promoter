@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
@@ -88,6 +89,15 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+	// Recover any panic and log using the configured logger. This ensures that panics get logged in JSON format if
+	// JSON logging is enabled.
+	defer func() {
+		if r := recover(); r != nil {
+			setupLog.Error(nil, "recovered from panic", "panic", r, "trace", string(debug.Stack()))
+			os.Exit(1)
+		}
+	}()
+
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
 	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
@@ -132,8 +142,7 @@ func main() {
 		// LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil || mgr == nil {
-		setupLog.Error(err, "unable to start manager")
-		os.Exit(1)
+		panic("unable to start manager")
 	}
 
 	pathLookup := utils.NewPathLookup()
@@ -143,30 +152,26 @@ func main() {
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("PullRequest"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PullRequest")
-		os.Exit(1)
+		panic("unable to create PullRequest controller")
 	}
 	if err = (&controller.CommitStatusReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("CommitStatus"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CommitStatus")
-		os.Exit(1)
+		panic("unable to create CommitStatus controller")
 	}
 	if err = (&controller.RevertCommitReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("RevertCommit"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "RevertCommit")
-		os.Exit(1)
+		panic("unable to create RevertCommit controller")
 	}
 
 	promotionStrategyRequeueDuration, err := time.ParseDuration(promotionStrategyRequeue)
 	if err != nil {
-		setupLog.Error(err, "failed to parse promotion strategy requeue duration")
-		os.Exit(1)
+		panic("failed to parse promotion strategy requeue duration")
 	}
 	if err = (&controller.PromotionStrategyReconciler{
 		Client:   mgr.GetClient(),
@@ -176,29 +181,25 @@ func main() {
 			RequeueDuration: promotionStrategyRequeueDuration,
 		},
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PromotionStrategy")
-		os.Exit(1)
+		panic("unable to create PromotionStrategy controller")
 	}
 	if err = (&controller.ScmProviderReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("ScmProvider"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ScmProvider")
-		os.Exit(1)
+		panic("unable to create ScmProvider controller")
 	}
 	if err = (&controller.GitRepositoryReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "GitRepository")
-		os.Exit(1)
+		panic("unable to create GitRepository controller")
 	}
 
 	ctpRequeueDuration, err := time.ParseDuration(changeTransferPolicyRequeue)
 	if err != nil {
-		setupLog.Error(err, "failed to parse proposed commit requeue duration")
-		os.Exit(1)
+		panic("failed to parse proposed commit requeue duration")
 	}
 	if err = (&controller.ChangeTransferPolicyReconciler{
 		Client:     mgr.GetClient(),
@@ -209,18 +210,15 @@ func main() {
 			RequeueDuration: ctpRequeueDuration,
 		},
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ChangeTransferPolicy")
-		os.Exit(1)
+		panic("unable to create ChangeTransferPolicy controller")
 	}
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up health check")
-		os.Exit(1)
+		panic("unable to set up health check")
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
+		panic("unable to set up ready check")
 	}
 
 	processSignals := ctrl.SetupSignalHandler()
@@ -236,8 +234,7 @@ func main() {
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(processSignals); err != nil {
-		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
+		panic("problem running manager")
 	}
 	setupLog.Info("Cleaning up cloned directories")
 
