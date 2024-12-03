@@ -225,6 +225,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	ctpList := utils.UpsertChangeTransferPolicyList(ctpListActiveOldSha.Items, ctpListActiveNewSha.Items, ctpListProposedOldSha.Items, ctpListProposedNewSha.Items)
 
 	logger.Info("ChangeTransferPolicy list", "count", len(ctpList), "oldSha", oldSha, "newSha", newSha)
+	// TODO: parallelize this loop since it contains network calls.
 	for _, ctp := range ctpList {
 		if ctp.Annotations == nil {
 			ctp.Annotations = map[string]string{}
