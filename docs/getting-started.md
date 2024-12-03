@@ -6,3 +6,15 @@ providers.
 
 ## Requirements
 
+* kubectl CLI
+* kustomize CLI
+* kubernetes cluster
+* Github or Github Enterprise Application
+
+## Installation
+
+To install the GitOps Promoter, you can use the following command:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/argoproj-labs/gitops-promoter/main/manifests/install.yaml
+```
