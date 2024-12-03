@@ -21,6 +21,7 @@ import (
 	"flag"
 	"os"
 	"runtime/debug"
+	"syscall"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
@@ -228,7 +229,10 @@ func main() {
 		err = whr.Start(processSignals, ":3333")
 		if err != nil {
 			setupLog.Error(err, "unable to start webhook receiver")
-			os.Exit(1)
+			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+			if err != nil {
+				setupLog.Error(err, "unable to kill process")
+			}
 		}
 	}()
 
