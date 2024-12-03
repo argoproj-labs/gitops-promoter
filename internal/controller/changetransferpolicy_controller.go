@@ -138,6 +138,8 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
 		//nolint:forcetypeassert
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
@@ -146,6 +148,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		return fmt.Errorf("failed to set field index for .status.proposed.hydrated.sha: %w", err)
 	}
 
+	// This gets used by the CommitStatus controller to find the ChangeTransferPolicy
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
 		//nolint:forcetypeassert
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
