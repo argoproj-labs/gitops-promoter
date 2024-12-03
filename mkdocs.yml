@@ -23,6 +23,7 @@ markdown_extensions:
 nav:
   - Overview: index.md
   - Architecture: architecture.md
+  - Installation: getting-started.md
   - CRD Specs: crd-specs.md
   - Gating Promotions: gating-promotions.md
   - Multi-Tenancy: multi-tenancy.md
