@@ -17,7 +17,7 @@ defaults:
 jobs:
   release:
     runs-on: ubuntu-20.04
-    #if: github.repository == 'argoproj-labs/gitops-promoter'
+    if: github.repository == 'argoproj-labs/gitops-promoter'
     name: Release
     steps:
       - name: Checkout
