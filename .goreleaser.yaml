@@ -64,7 +64,7 @@ archives:
 
 release:
   prerelease: auto
-  draft: false
+  draft: true
   extra_files:
     - glob: ./install.yaml
   header: |
