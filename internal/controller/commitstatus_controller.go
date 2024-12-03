@@ -130,7 +130,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 		err = r.triggerReconcileChangeTransferPolicy(ctx, newCs, oldSha, cs.Spec.Sha)
 		if err != nil {
-			logger.Error(err, "failed to trigger reconcile of ChangeTransferPolicy via CommitStatus")
 			return fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
 		}
 
