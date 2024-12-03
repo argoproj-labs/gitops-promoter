@@ -67,6 +67,7 @@ func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "must be a POST request", http.StatusMethodNotAllowed)
 		return
 	}
+	// TODO: add a configurable payload max side for DoS protection.
 	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "error reading body", http.StatusInternalServerError)

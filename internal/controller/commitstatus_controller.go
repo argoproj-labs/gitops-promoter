@@ -223,9 +223,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 		return fmt.Errorf("failed to list ChangeTransferPolicy with new sha %q: %w", newSha, err)
 	}
 
-	ctpList := utils.UpsertChangeTransferPolicyList(ctpListActiveOldSha.Items, ctpListActiveNewSha.Items)
-	ctpList = utils.UpsertChangeTransferPolicyList(ctpList, ctpListProposedOldSha.Items)
-	ctpList = utils.UpsertChangeTransferPolicyList(ctpList, ctpListProposedNewSha.Items)
+	ctpList := utils.UpsertChangeTransferPolicyList(ctpListActiveOldSha.Items, ctpListActiveNewSha.Items, ctpListProposedOldSha.Items, ctpListProposedNewSha.Items)
 
 	logger.Info("ChangeTransferPolicy list", "count", len(ctpList), "oldSha", oldSha, "newSha", newSha)
 	for _, ctp := range ctpList {

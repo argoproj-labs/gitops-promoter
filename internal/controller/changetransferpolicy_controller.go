@@ -258,12 +258,14 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 		}
 
 		found := false
+		phase := promoterv1alpha1.CommitPhasePending
 		if len(csList.Items) == 1 {
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:   status.Key,
 				Phase: string(csList.Items[0].Status.Phase),
 			})
 			found = true
+			phase = csList.Items[0].Status.Phase
 		} else if len(csList.Items) > 1 {
 			// TODO: decided how to bubble up errors
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
@@ -271,6 +273,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 				Phase: string(promoterv1alpha1.CommitPhasePending),
 			})
 			tooManyMatchingShas = true
+			phase = promoterv1alpha1.CommitPhasePending
 		} else if len(csList.Items) == 0 {
 			// TODO: decided how to bubble up errors
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
@@ -278,12 +281,13 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 				Phase: string(promoterv1alpha1.CommitPhasePending),
 			})
 			found = false
+			phase = promoterv1alpha1.CommitPhasePending
 			// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
 		}
 		logger.Info("CommitStatus State",
 			"key", status.Key,
 			"sha", targetCommitBranchState.Hydrated.Sha,
-			"phase", csList.Items[0].Status.Phase,
+			"phase", phase,
 			"found", found,
 			"toManyMatchingSha", tooManyMatchingShas,
 			"foundCount", len(csList.Items))

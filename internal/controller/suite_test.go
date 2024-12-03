@@ -206,9 +206,7 @@ var _ = BeforeSuite(func() {
 	whr := webhookreceiver.NewWebhookReceiver(k8sManager)
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
-		if err != nil {
-			os.Exit(1)
-		}
+		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
 	}()
 
 	go func() {

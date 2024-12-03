@@ -208,22 +208,24 @@ func UpsertEnvironmentStatus(slice []promoterv1alpha1.EnvironmentStatus, i promo
 	return append(slice, i)
 }
 
-func UpsertChangeTransferPolicyList(slice []promoterv1alpha1.ChangeTransferPolicy, insertList []promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.ChangeTransferPolicy {
-	for _, i := range insertList {
-		slice = UpsertChangeTransferPolicy(slice, i)
+func UpsertChangeTransferPolicyList(slice []promoterv1alpha1.ChangeTransferPolicy, insertList ...[]promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.ChangeTransferPolicy {
+	for _, policies := range insertList {
+		for _, i := range policies {
+			slice = UpsertChangeTransferPolicy(slice, i)
+		}
 	}
 	return slice
 }
 
-func UpsertChangeTransferPolicy(slice []promoterv1alpha1.ChangeTransferPolicy, i promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.ChangeTransferPolicy {
-	if len(slice) == 0 {
-		slice = append(slice, i)
-		return slice
+func UpsertChangeTransferPolicy(policies []promoterv1alpha1.ChangeTransferPolicy, policy promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.ChangeTransferPolicy {
+	if len(policies) == 0 {
+		policies = append(policies, policy)
+		return policies
 	}
-	for index, ele := range slice {
-		if ele.Name == i.Name {
-			return slices.Replace(slice, index, index+1, i)
+	for index, ele := range policies {
+		if ele.Name == policy.Name {
+			return slices.Replace(policies, index, index+1, policy)
 		}
 	}
-	return append(slice, i)
+	return append(policies, policy)
 }
