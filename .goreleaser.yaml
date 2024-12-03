@@ -34,7 +34,7 @@ builds:
 dockers:
   - image_templates:
       - quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}
-    dockerfile: Dockerfile
+    dockerfile: release.Dockerfile
     skip_push: "{{ .IsSnapshot }}"
     build_flag_templates:
       - "--pull"
