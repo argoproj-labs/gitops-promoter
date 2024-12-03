@@ -33,4 +33,4 @@ secret.yaml
 
 junit.xml
 
-dist
+./install.yaml
