@@ -1070,6 +1070,19 @@ spec:
   selector:
     control-plane: controller-manager
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: promoter-webhook-receiver
+  namespace: promoter-system
+spec:
+  ports:
+  - port: 3333
+    protocol: TCP
+    targetPort: 3333
+  selector:
+    control-plane: controller-manager
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
