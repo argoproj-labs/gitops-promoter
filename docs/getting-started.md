@@ -21,14 +21,14 @@ kubectl apply -f https://github.com/argoproj-labs/promoter/releases/download/lat
 ```
 
 ## GitHub App Configuration
+We will need to configure a GitHub App to allow the GitOps Promoter to interact with your GitHub repository.
+To configure a GitHub App, you will need to create an app in your organization. You can follow the
+instructions [here](https://docs.github.com/en/developers/apps/creating-a-github-app) to create the Github App.
 
-To configure the GitHub App, you will need to create a new GitHub App in your organization. You can follow the
-instructions [here](https://docs.github.com/en/developers/apps/creating-a-github-app) to create a new Github App.
-
-!!! note We do support configuration of a GitHub App webhook. However, we do not configure the ingress to allow Github
-to reach the GitOps Promoter. You will need to configure the ingress to allow GitHub to reach the GitOps Promoter 
-via the service [promoter-webhook-receiver]() which listens on port `3333`. If you do not use webhooks you might want to
-adjust the auto reconciliation interval to a lower value using these cli flags `--promotion-strategy-requeue-duration` and
+!!! note We do support configuration of a GitHub App webhook that triggers PR creation upon Push. However, we do not configure
+the ingress to allow Github to reach the GitOps Promoter. You will need to configure the ingress to allow GitHub to reach 
+the GitOps Promoter via the service [promoter-webhook-receiver]() which listens on port `3333`. If you do not use webhooks 
+you might want to adjust the auto reconciliation interval to a lower value using these cli flags `--promotion-strategy-requeue-duration` and
 `--change-transfer-policy-requeue-duration`.
 
 During the creation the GitHub App, you will need to configure the following settings:
@@ -37,7 +37,7 @@ During the creation the GitHub App, you will need to configure the following set
   * Commit statuses - Read & write
   * Contents - Read & write
   * Pull requests - Read & write
-* Webbhook URL (Optional)
+* Webbhook URL (Optional - but highly recommended)
   * `https://<your-promoter-webhook-receiver-service>/`
 
 The GitHub App will generate a private key that you will need to save. You will also need to get the App ID and the
