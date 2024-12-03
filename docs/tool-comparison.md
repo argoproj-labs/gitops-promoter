@@ -34,13 +34,13 @@ were introduced.
 
 ## GitOps Promoter
 
-Where other tools mostly operate on "DRY," pre-rendered manifests, GitOps Promoter doesn't touch those files.
+Where other tools mostly operate on "DRY," pre-hydrated manifests, GitOps Promoter doesn't touch those files.
 Instead, the user is expected to make a manifest change to affect all target environments (e.g. an image tag bump in a
-shared Kustomize base), and the Promoter will open PRs to environment-specific "rendered manifest" branches. The
-Promoter renders one branch per environment directory.
+shared Kustomize base or a global Helm values file), and the Promoter will open PRs to environment-specific "hydrated 
+manifest" branches.
 
-1. What to promote: rendered manifests from an environment directory
-2. How to "hold" the change: open a PR against the rendered manifest branch
+1. What to promote: hydrated manifests for each environment
+2. How to "hold" the change: open a PR against the hydrated manifest branch
 3. When to promote: when specified commit status checks pass, and when branch protection rules pass
 
 ## Home-Grown CI Solution
