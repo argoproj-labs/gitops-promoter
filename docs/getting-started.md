@@ -16,7 +16,7 @@ providers.
 To install the GitOps Promoter, you can use the following command:
 
 ```bash
-kubectl apply -f https://github.com/crenshaw-dev/promoter/releases/download/latest/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/promoter/releases/download/latest/install.yaml
 ```
 
 ## GitHub App Configuration
