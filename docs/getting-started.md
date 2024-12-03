@@ -56,3 +56,45 @@ type: Opaque
 
 !!! note This secret will need to be installed to the same namespace that you plan on creating PromotionStrategy resources in.
 
+
+We also need a GitRepository, which is a custom resource that represents a git repository. Here is an example GitRepository resource:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  name: <repo-name>
+  owner: <github-org-username>
+  scmProviderRef:
+    name: <your-secret-name> # The secret that contains the Github App configuration
+```
+
+!!! note The GitRepository also needs to be installed to the same namespace that you plan on creating PromotionStrategy 
+resources in, and it also needs to be in the same namespace of the secret it references.
+
+
+## Promotion Strategy
+
+The PromotionStrategy resource is the main resource that you will use to promote your your application to different environments.
+Here is an example PromotionStrategy resource:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: argocon-demo
+spec:
+  environments:
+  - autoMerge: false
+    branch: environments/development
+  - autoMerge: false
+    branch: environments/staging
+  - autoMerge: false
+    branch: environments/production
+  gitRepositoryRef:
+    name: <git-repository-ref-name> # The name of the GitRepository resource
+```
+
+!!! note Notice that the branches are prefixed with environments/, this is a convention that we recommend you follow.
