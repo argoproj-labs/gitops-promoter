@@ -57,9 +57,20 @@ type: Opaque
 !!! note This secret will need to be installed to the same namespace that you plan on creating PromotionStrategy resources in.
 
 
-We also need a GitRepository, which is a custom resource that represents a git repository. Here is an example GitRepository resource:
+
+We also need a GitRepository and ScmProvider, which is are custom resources that represents a git repository and a provider. 
+Here is an example of both resources:
 
 ```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  github: {}
+---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: GitRepository
 metadata:
@@ -68,16 +79,16 @@ spec:
   name: <repo-name>
   owner: <github-org-username>
   scmProviderRef:
-    name: <your-secret-name> # The secret that contains the Github App configuration
+    name: <your-scmprovider-name> # The secret that contains the Github App configuration
 ```
 
-!!! note The GitRepository also needs to be installed to the same namespace that you plan on creating PromotionStrategy 
+!!! note The GitRepository and ScmProvider also needs to be installed to the same namespace that you plan on creating PromotionStrategy 
 resources in, and it also needs to be in the same namespace of the secret it references.
 
 
 ## Promotion Strategy
 
-The PromotionStrategy resource is the main resource that you will use to promote your your application to different environments.
+The PromotionStrategy resource is the main resource that you will use to configure the promotion of your application to different environments.
 Here is an example PromotionStrategy resource:
 
 ```yaml
