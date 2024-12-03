@@ -34,4 +34,4 @@ install.yaml
 
 junit.xml
 
-dist
+./install.yaml
