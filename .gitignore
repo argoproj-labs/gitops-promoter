@@ -32,3 +32,5 @@ go.work
 secret.yaml
 
 junit.xml
+
+dist
