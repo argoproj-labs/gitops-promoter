@@ -10,6 +10,7 @@ providers.
 * kustomize CLI
 * kubernetes cluster
 * GitHub or GitHub Enterprise Application
+  * Will take PRs to add support for other SCM providers
 
 ## Installation
 
