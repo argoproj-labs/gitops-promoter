@@ -113,4 +113,6 @@ spec:
     name: <git-repository-ref-name> # The name of the GitRepository resource
 ```
 
-!!! note Notice that the branches are prefixed with environments/, this is a convention that we recommend you follow.
+!!! note 
+
+    Notice that the branches are prefixed with `environments/`. This is a convention that we recommend you follow.
