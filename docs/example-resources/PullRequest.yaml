@@ -12,8 +12,3 @@ spec:
 
   # Must be closed, merged, or open. Default is open.
   state:
-status:
-  observedGeneration:
-  id:
-  state:
-  prCreationTime:
