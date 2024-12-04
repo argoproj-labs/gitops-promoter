@@ -20,10 +20,12 @@ markdown_extensions:
   - markdown_include.include
   - codehilite:
       css_class: highlight
+  - admonition
+  - pymdownx.superfences
 nav:
   - Overview: index.md
-  - Architecture: architecture.md
   - Getting Started: getting-started.md
+  - Architecture: architecture.md
   - CRD Specs: crd-specs.md
   - Gating Promotions: gating-promotions.md
   - Multi-Tenancy: multi-tenancy.md
