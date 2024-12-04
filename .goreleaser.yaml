@@ -35,13 +35,14 @@ dockers:
       - quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}
     dockerfile: release.Dockerfile
     skip_push: "{{ .IsSnapshot }}"
+    use: buildx
     build_flag_templates:
       - "--pull"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--platform=linux/amd64"
+      - "--platform=linux/amd64,linux/arm64"
 
 archives:
   - id: binary
