@@ -22,6 +22,8 @@ markdown_extensions:
       css_class: highlight
 nav:
   - Overview: index.md
+  - Architecture: architecture.md
   - CRD Specs: crd-specs.md
   - Gating Promotions: gating-promotions.md
   - Multi-Tenancy: multi-tenancy.md
+  - Tool Comparison: tool-comparison.md

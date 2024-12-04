@@ -1,0 +1,104 @@
+# Based on: https://github.com/argoproj-labs/gitops-promoter/blob/main/.goreleaser.yaml
+
+# The lines below are called `modelines`. See `:help modeline`
+# yaml-language-server: $schema=https://raw.githubusercontent.com/goreleaser/goreleaser/v2.3.2/www/docs/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+project_name: gitops-promoter
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod download
+    - make manifests-release IMAGE_TAG={{ .Tag }}
+    - rm -rf dist
+
+builds:
+  - id: gitops-promoter
+    main: ./cmd
+    binary: gitops-promoter
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -v
+    goos:
+      - linux
+      - windows
+      - darwin
+    ldflags:
+      - -X github.com/argoproj-labs/gitops-promoter/common.version={{ .Version }}
+      - -X github.com/argoproj-labs/gitops-promoter/common.buildDate={{ .Date }}
+      - -extldflags="-static"
+
+dockers:
+  - image_templates:
+      - quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}
+    dockerfile: release.Dockerfile
+    skip_push: "{{ .IsSnapshot }}"
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--platform=linux/amd64"
+
+archives:
+  - id: binary
+    format: tar.gz
+    builds:
+      - "gitops-promoter"
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        format: zip
+
+release:
+  prerelease: auto
+  draft: true
+  extra_files:
+    - glob: ./install.yaml
+  header: |
+    ## gitops-promoter
+    {{ .Date }}
+
+    ### Container images
+
+    - quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}
+
+  footer: |
+    **Full Changelog**: https://github.com/argoproj-labs/gitops-promoter/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+changelog:
+  use:
+    github
+  sort: asc
+  abbrev: 0
+  groups: # Regex use RE2 syntax as defined here: https://github.com/google/re2/wiki/Syntax.
+    - title: 'Features'
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 100
+    - title: 'Bug fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 200
+    - title: 'Documentation'
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 300
+    - title: 'Dependency updates'
+      regexp: '^.*?(feat|fix|chore)\(deps?.+\)!?:.+$'
+      order: 400
+    - title: 'Other work'
+      order: 999
+  filters:
+    exclude:
+      - '^test:'
+      - '^.*?Bump(\([[:word:]]+\))?.+$'

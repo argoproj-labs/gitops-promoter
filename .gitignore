@@ -30,5 +30,8 @@ go.work
 # Github Certificates
 *.pem
 secret.yaml
+install.yaml
 
 junit.xml
+
+./install.yaml
