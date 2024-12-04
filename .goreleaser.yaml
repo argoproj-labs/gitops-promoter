@@ -48,6 +48,7 @@ dockers:
     dockerfile: release.Dockerfile
     skip_push: "{{ .IsSnapshot }}"
     use: buildx
+    goarch: arm64
     build_flag_templates:
       - "--pull"
       - "--label=org.opencontainers.image.created={{.Date}}"
