@@ -87,8 +87,10 @@ spec:
     name: <your-scmprovider-name> # The secret that contains the GitHub App configuration
 ```
 
-!!! note The GitRepository and ScmProvider also needs to be installed to the same namespace that you plan on creating PromotionStrategy 
-resources in, and it also needs to be in the same namespace of the secret it references.
+!!! note 
+
+    The GitRepository and ScmProvider also needs to be installed to the same namespace that you plan on creating PromotionStrategy 
+    resources in, and it also needs to be in the same namespace of the secret it references.
 
 
 ## Promotion Strategy
@@ -116,3 +118,8 @@ spec:
 !!! note 
 
     Notice that the branches are prefixed with `environments/`. This is a convention that we recommend you follow.
+
+!!! note 
+
+    The `autoMerge` field is optional and defaults to `true`. We set it to `false` here because we do not have any
+    CommitStatus checks configured. With these all set to `false` we will have to manually merge the PRs.
