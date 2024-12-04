@@ -61,10 +61,6 @@ docker_manifests:
     image_templates:
       - "quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-amd64"
       - "quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-arm64"
-  - name_template: "quay.io/argoprojlabs/gitops-promoter:latest"
-    image_templates:
-      - "quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-amd64"
-      - "quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-arm64"
 
 archives:
   - id: binary
