@@ -25,8 +25,6 @@ builds:
       - -v
     goos:
       - linux
-      - windows
-      - darwin
     ldflags:
       - -X github.com/argoproj-labs/gitops-promoter/common.version={{ .Version }}
       - -X github.com/argoproj-labs/gitops-promoter/common.buildDate={{ .Date }}
@@ -58,10 +56,6 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # use zip for windows archives
-    format_overrides:
-      - goos: windows
-        format: zip
 
 release:
   prerelease: auto
