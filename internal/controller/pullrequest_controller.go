@@ -167,7 +167,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to update PullRequest status: %w", err)
 	}
 
-	logger.Info("no known states found")
+	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
 	return ctrl.Result{}, nil
 }
 

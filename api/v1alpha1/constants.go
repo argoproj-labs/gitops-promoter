@@ -29,3 +29,6 @@ const ChangeTransferPolicyLabel = "promoter.argoproj.io/change-transfer-policy"
 
 // PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health
 const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
+
+// ReconcileAtAnnotation is the annotation used to indicate when the webhook triggered a reconcile
+const ReconcileAtAnnotation = "promoter.argoproj.io/reconcile-at"

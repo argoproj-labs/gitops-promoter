@@ -207,3 +207,25 @@ func UpsertEnvironmentStatus(slice []promoterv1alpha1.EnvironmentStatus, i promo
 	}
 	return append(slice, i)
 }
+
+func UpsertChangeTransferPolicyList(slice []promoterv1alpha1.ChangeTransferPolicy, insertList ...[]promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.ChangeTransferPolicy {
+	for _, policies := range insertList {
+		for _, p := range policies {
+			slice = UpsertChangeTransferPolicy(slice, p)
+		}
+	}
+	return slice
+}
+
+func UpsertChangeTransferPolicy(policies []promoterv1alpha1.ChangeTransferPolicy, policy promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.ChangeTransferPolicy {
+	if len(policies) == 0 {
+		policies = append(policies, policy)
+		return policies
+	}
+	for index, ele := range policies {
+		if ele.Name == policy.Name {
+			return slices.Replace(policies, index, index+1, policy)
+		}
+	}
+	return append(policies, policy)
+}

@@ -165,6 +165,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			makeChangeAndHydrateRepo(gitPath, name, name)
 
+			simulateWebhook(ctx, k8sClient, &ctpDev)
+			simulateWebhook(ctx, k8sClient, &ctpStaging)
+			simulateWebhook(ctx, k8sClient, &ctpProd)
+
 			By("Checking that the pull request for the development environment is created")
 			Eventually(func(g Gomega) {
 				// Dev PR should exist
@@ -173,6 +177,26 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
+				g.Expect(err).To(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				// Staging PR should exist
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				// Production PR should exist
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
 			}, EventuallyTimeout).Should(Succeed())
 
@@ -233,11 +257,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
 			}
 
-			By("Adding a pending commit")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name)
-
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
@@ -262,19 +281,32 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch))))
 
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
 					Namespace: typeNamespacedName.Namespace,
 				}, &ctpStaging)
 				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch))))
 
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
 					Namespace: typeNamespacedName.Namespace,
 				}, &ctpProd)
 				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch))))
+			}).Should(Succeed())
 
+			By("Adding a pending commit")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			makeChangeAndHydrateRepo(gitPath, name, name)
+			simulateWebhook(ctx, k8sClient, &ctpDev)
+			simulateWebhook(ctx, k8sClient, &ctpStaging)
+			simulateWebhook(ctx, k8sClient, &ctpProd)
+
+			Eventually(func(g Gomega) {
 				// Dev PR should be closed because it is the lowest level environment
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -313,6 +345,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
+				g.Expect(sha).To(Not(Equal("")))
+				activeCommitStatusDevelopment.Spec.Sha = sha
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
+				GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
+				g.Expect(err).To(Succeed())
+
 				// Check that the proposed commit has the correct sha, aka it has reconciled at least once since adding new commits
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
@@ -320,13 +359,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(sha))
-
-				g.Expect(sha).To(Not(Equal("")))
-				activeCommitStatusDevelopment.Spec.Sha = sha
-				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
-				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
-				g.Expect(err).To(Succeed())
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the staging pull request has been merged and the production pull request is still open")
