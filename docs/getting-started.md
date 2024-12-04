@@ -47,14 +47,14 @@ installation ID in a secret as follows:
 
 ```yaml
 apiVersion: v1
-stringData:
-  appID: <your-app-id>
-  installationID: <your-installation-id>
-  privateKey: <your-private-key>
 kind: Secret
 metadata:
   name: <your-secret-name>
 type: Opaque
+stringData:
+  appID: <your-app-id>
+  installationID: <your-installation-id>
+  privateKey: <your-private-key>
 ```
 
 !!! note 
