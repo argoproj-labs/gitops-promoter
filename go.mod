@@ -2,8 +2,6 @@ module github.com/argoproj-labs/gitops-promoter
 
 go 1.22.0
 
-toolchain go1.22.2
-
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.12.0
 	github.com/google/go-github/v61 v61.0.0
@@ -12,6 +10,7 @@ require (
 	github.com/relvacode/iso8601 v1.6.0
 	github.com/sosedoff/gitkit v0.4.0
 	github.com/stretchr/testify v1.10.0
+	github.com/tidwall/gjson v1.18.0
 	go.uber.org/zap v1.27.0
 	k8s.io/api v0.31.3
 	k8s.io/apimachinery v0.31.3
@@ -60,6 +59,8 @@ require (
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.28.0 // indirect

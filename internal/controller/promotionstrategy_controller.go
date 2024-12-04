@@ -23,6 +23,8 @@ import (
 	"slices"
 	"time"
 
+	"k8s.io/client-go/util/retry"
+
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -62,7 +64,8 @@ type PromotionStrategyReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.V(1).Info("Reconciling PromotionStrategy")
+	logger.Info("Reconciling PromotionStrategy")
+	startTime := time.Now()
 
 	var ps promoterv1alpha1.PromotionStrategy
 	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
@@ -79,9 +82,9 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	ctpsByBranch := make(map[string]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
 	for _, environment := range ps.Spec.Environments {
 		var ctp *promoterv1alpha1.ChangeTransferPolicy
-		ctp, err = r.createOrGetChangeTransferPolicy(ctx, &ps, environment)
+		ctp, err = r.upsertChangeTransferPolicy(ctx, &ps, environment)
 		if err != nil {
-			logger.Error(err, "failed to create ChangeTransferPolicy")
+			logger.Error(err, "failed to upsert ChangeTransferPolicy")
 			return ctrl.Result{}, fmt.Errorf("failed to create ChangeTransferPolicy for branch %q: %w", environment.Branch, err)
 		}
 		ctpsByBranch[environment.Branch] = ctp
@@ -103,6 +106,8 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
 	}
 
+	logger.Info("Reconciling PromotionStrategy End", "duration", time.Since(startTime))
+
 	return ctrl.Result{
 		Requeue:      true,
 		RequeueAfter: r.Config.RequeueDuration,
@@ -121,8 +126,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		// TODO: reduce reconciliation frequency by not reconciling when updates happen to CTPs, makes race easier to reason about
-		// Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
+		Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -130,7 +134,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return nil
 }
 
-func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	logger := log.FromContext(ctx)
 
 	pcName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
@@ -168,24 +172,35 @@ func (r *PromotionStrategyReconciler) createOrGetChangeTransferPolicy(ctx contex
 	}
 
 	pc := promoterv1alpha1.ChangeTransferPolicy{}
-	err := r.Get(ctx, client.ObjectKey{Name: pcName, Namespace: ps.Namespace}, &pc)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("ChangeTransferPolicy not found, creating")
-			err = r.Create(ctx, &pcNew)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create ChangeTransferPolicy %q: %w", pc.Name, err)
-			}
-			pcNew.DeepCopyInto(&pc)
-		} else {
-			return nil, fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", pc.Name, err)
-		}
-	} else {
-		pcNew.Spec.DeepCopyInto(&pc.Spec)
-		err = r.Update(ctx, &pc)
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		// We own the CTP so what we say is way we want, this forces our changes on the CTP even if there is conflict because
+		// we have the correct state. Server side apply would help here but controller-runtime does not support it yet.
+		// This could be a patch as well.
+		err := r.Get(ctx, client.ObjectKey{Name: pcName, Namespace: ps.Namespace}, &pc)
 		if err != nil {
-			return nil, fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)
+			if errors.IsNotFound(err) {
+				logger.Info("ChangeTransferPolicy not found, creating")
+				err = r.Create(ctx, &pcNew)
+				if err != nil {
+					return fmt.Errorf("failed to create ChangeTransferPolicy %q: %w", pc.Name, err)
+				}
+				pcNew.DeepCopyInto(&pc)
+			} else {
+				return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", pc.Name, err)
+			}
+		} else {
+			pcNew.Spec.DeepCopyInto(&pc.Spec) // We keep the generation number and status so that update does not conflict
+			// TODO: don't update if the spec is the same, the hard comparison is the arrays of commit statuses, need
+			// to sort and compare them.
+			err = r.Update(ctx, &pc)
+			if err != nil {
+				return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)
+			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert ChangeTransferPolicy %q: %w", pcName, err)
 	}
 
 	return &pc, nil
@@ -342,9 +357,18 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha &&
 			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
+		if previousEnvironmentStatus != nil {
+			logger.Info(
+				"Previous environment status",
+				"branch", environment.Branch,
+				"activeChecksPassed", activeChecksPassed,
+				"sha", previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha,
+				"time", previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time),
+				"phase", previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess))
+		}
 		commitStatusPhase := promoterv1alpha1.CommitPhasePending
 		if environmentIndex == 0 || activeChecksPassed {
-			logger.Info("Checks passed, setting previous environment check to success", "branch", environment.Branch)
+			logger.V(4).Info("Checks passed, setting previous environment check to success", "branch", environment.Branch)
 			commitStatusPhase = promoterv1alpha1.CommitPhaseSuccess
 		}
 
