@@ -210,8 +210,8 @@ func UpsertEnvironmentStatus(slice []promoterv1alpha1.EnvironmentStatus, i promo
 
 func UpsertChangeTransferPolicyList(slice []promoterv1alpha1.ChangeTransferPolicy, insertList ...[]promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.ChangeTransferPolicy {
 	for _, policies := range insertList {
-		for _, i := range policies {
-			slice = UpsertChangeTransferPolicy(slice, i)
+		for _, p := range policies {
+			slice = UpsertChangeTransferPolicy(slice, p)
 		}
 	}
 	return slice
