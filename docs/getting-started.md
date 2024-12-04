@@ -57,7 +57,9 @@ metadata:
 type: Opaque
 ```
 
-!!! note This secret will need to be installed to the same namespace that you plan on creating PromotionStrategy resources in.
+!!! note 
+
+    This secret will need to be installed to the same namespace that you plan on creating PromotionStrategy resources in.
 
 
 
