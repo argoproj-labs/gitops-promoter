@@ -25,7 +25,6 @@ builds:
       - -v
     goos:
       - linux
-      - darwin
     ldflags:
       - -X github.com/argoproj-labs/gitops-promoter/common.version={{ .Version }}
       - -X github.com/argoproj-labs/gitops-promoter/common.buildDate={{ .Date }}
