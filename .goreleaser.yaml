@@ -7,12 +7,13 @@
 project_name: gitops-promoter
 version: 2
 
+dist: release_dist
+
 before:
   hooks:
     - go mod tidy
     - go mod download
     - make manifests-release IMAGE_TAG={{ .Tag }}
-    - rm -rf dist
 
 builds:
   - id: gitops-promoter
