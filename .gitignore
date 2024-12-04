@@ -36,3 +36,5 @@ junit.xml
 
 ./install.yaml
 release_dist
+
+venv
