@@ -19,6 +19,9 @@ builds:
   - id: gitops-promoter
     main: ./cmd
     binary: gitops-promoter
+    goarch:
+      - amd64
+      - arm64
     env:
       - CGO_ENABLED=0
     flags:
