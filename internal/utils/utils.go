@@ -169,7 +169,7 @@ func GetPreviousEnvironmentStatusByBranch(promotionStrategy promoterv1alpha1.Pro
 	for i, environment := range environments {
 		if environment.Branch == currentBranch {
 			if i-1 >= 0 && len(environments) > 0 {
-				return i + 1, &environments[i-1]
+				return i, &environments[i-1]
 			}
 		}
 	}
