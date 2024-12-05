@@ -1,4 +1,4 @@
-FROM gcr.io/distroless/static:nonroot
+FROM golang:1.23
 
 WORKDIR /
 
