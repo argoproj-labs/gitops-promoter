@@ -29,7 +29,7 @@ spec:
           type: RuntimeDefault
       containers:
         - command:
-            - /manager
+            - /gitops-promoter
           args:
             - --leader-elect
           image: quay.io/argoprojlabs/gitops-promoter:latest
