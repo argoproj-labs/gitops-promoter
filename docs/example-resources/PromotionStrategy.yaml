@@ -5,7 +5,6 @@ metadata:
 spec:
   gitRepositoryRef:
     name: example-git-repo
-  dryBranch: main
   activeCommitStatuses:
     - key: argocd-app-health
   proposedCommitStatuses:

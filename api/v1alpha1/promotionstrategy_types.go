@@ -31,12 +31,24 @@ type PromotionStrategySpec struct {
 	// +kubebuilder:validation:Required
 	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
+	// ActiveCommitStatuses are commit statuses describing an actively running dry commit. If an active commit status
+	// is failing for an environment, subsequent environments will not deploy the failing commit.
+	//
+	// The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
+	// specify commit statuses for individual environments in the `environments` field.
 	// +kubebuilder:validation:Optional
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 
+	// ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
+	// in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
+	// be promoted to that environment.
+	//
+	// The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
+	// specify commit statuses for individual environments in the `environments` field.
 	// +kubebuilder:validation:Optional
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 
+	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
 	Environments []Environment `json:"environments"`
 }
@@ -44,15 +56,29 @@ type PromotionStrategySpec struct {
 type Environment struct {
 	// +kubebuilder:validation:Required
 	Branch string `json:"branch"`
+	// AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence.
+	// If false, the dry commit will be proposed but not merged.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=true
 	AutoMerge *bool `json:"autoMerge,omitempty"`
+	// ActiveCommitStatuses are commit statuses describing an actively running dry commit. If an active commit status
+	// is failing for an environment, subsequent environments will not deploy the failing commit.
+	//
+	// The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
+	// for all environments in the `spec.activeCommitStatuses` field.
 	// +kubebuilder:validation:Optional
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+	// ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
+	// in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
+	// be promoted to that environment.
+	//
+	// The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
+	// for all environments in the `spec.proposedCommitStatuses` field.
 	// +kubebuilder:validation:Optional
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
+// GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.
 func (e *Environment) GetAutoMerge() bool {
 	if e.AutoMerge == nil {
 		return true
