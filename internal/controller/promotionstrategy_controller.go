@@ -342,7 +342,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 	// currently processing environments proposed dry sha.
 	// We then look at the status of the current environment and if all checks have passed and the environment is set to auto merge, we merge the pull request.
 	for _, environment := range ps.Spec.Environments {
-		_, previousEnvironmentStatus := utils.GetPreviousEnvironmentStatusByBranch(*ps, environment.Branch)
+		previousEnvironmentIndex, previousEnvironmentStatus := utils.GetPreviousEnvironmentStatusByBranch(*ps, environment.Branch)
 		environmentIndex, environmentStatus := utils.GetEnvironmentStatusByBranch(*ps, environment.Branch)
 		if environmentStatus == nil {
 			return fmt.Errorf("EnvironmentStatus not found for branch %s", environment.Branch)
@@ -372,9 +372,13 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			commitStatusPhase = promoterv1alpha1.CommitPhaseSuccess
 		}
 
-		err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus)
-		if err != nil {
-			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", environment.Branch, err)
+		if len(ps.Spec.ActiveCommitStatuses) != 0 || len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0 {
+			// If there is not configured active checks we should not create a commit status for the previous environment.
+			// TODO: We should create a test for this
+			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus)
+			if err != nil {
+				return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", environment.Branch, err)
+			}
 		}
 	}
 
