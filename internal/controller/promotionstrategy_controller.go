@@ -372,7 +372,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			commitStatusPhase = promoterv1alpha1.CommitPhaseSuccess
 		}
 
-		if len(ps.Spec.ActiveCommitStatuses) != 0 || len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0 {
+		if previousEnvironmentIndex != -1 && (len(ps.Spec.ActiveCommitStatuses) != 0 || len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
 			// If there is no configured active checks we should not create a commit status for the previous environment.
 			// TODO: We should create a test for this
 			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus)
