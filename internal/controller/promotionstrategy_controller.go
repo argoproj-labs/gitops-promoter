@@ -164,11 +164,14 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		},
 	}
 
-	previousEnvironmentCommitStatusSelector := promoterv1alpha1.CommitStatusSelector{
-		Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-	}
-	if !slices.Contains(pcNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector) {
-		pcNew.Spec.ProposedCommitStatuses = append(pcNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector)
+	previousEnvironmentIndex, _ := utils.GetPreviousEnvironmentStatusByBranch(*ps, environment.Branch)
+	if previousEnvironmentIndex > 0 && (len(ps.Spec.ActiveCommitStatuses) > 0 || len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) > 0) {
+		previousEnvironmentCommitStatusSelector := promoterv1alpha1.CommitStatusSelector{
+			Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+		}
+		if !slices.Contains(pcNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector) {
+			pcNew.Spec.ProposedCommitStatuses = append(pcNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector)
+		}
 	}
 
 	pc := promoterv1alpha1.ChangeTransferPolicy{}
