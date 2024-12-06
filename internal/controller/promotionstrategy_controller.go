@@ -376,7 +376,8 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		}
 
 		if previousEnvironmentIndex != -1 && (len(ps.Spec.ActiveCommitStatuses) != 0 || len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
-			// If there is no configured active checks we should not create a commit status for the previous environment.
+			// Since there is at least one configured active check, and since this is not the first environment,
+			// we should not create a commit status for the previous environment.
 			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus)
 			if err != nil {
 				return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", environment.Branch, err)
