@@ -12,9 +12,9 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/gjson v1.18.0
 	go.uber.org/zap v1.27.0
-	k8s.io/api v0.31.3
-	k8s.io/apimachinery v0.31.3
-	k8s.io/client-go v0.31.3
+	k8s.io/api v0.31.4
+	k8s.io/apimachinery v0.31.4
+	k8s.io/client-go v0.31.4
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
 	sigs.k8s.io/controller-runtime v0.19.3
 )
