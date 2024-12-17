@@ -15,7 +15,32 @@ The main ideas behind the project are explained in ["Space Age GitOps: The Rise 
 
 A live demo is presented in ["Space Age GitOps: Lifting off with Argo Promotions"](https://www.youtube.com/watch?v=2JmLCqM1nTM).
 
+## Example
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: example-promotion-strategy
+spec:
+  gitRepositoryRef:
+    name: example-git-repo
+  activeCommitStatuses:
+    - key: argocd-app-health
+  proposedCommitStatuses:
+    - key: security-scan
+  environments:
+    - branch: environment/dev
+    - branch: environment/test
+    - branch: environment/prod
+      autoMerge: false
+      activeCommitStatuses:
+      - key: performance-test
+      proposedCommitStatuses:
+      - key: deployment-freeze
+```
+
 ## Getting Started
 
-The project does not have an initial release yet. Peruse [Makefile](Makefile) to get started tinkering and testing. To
-understand more about how the project works, check out [the documentation](https://argo-gitops-promoter.readthedocs.io/en/latest/).
+The project is currently experimental, please use with caution. See the 
+[docs site](https://argo-gitops-promoter.readthedocs.io/en/latest/getting-started/) for setup instructions.

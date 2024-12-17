@@ -10,9 +10,9 @@ spec:
   proposedCommitStatuses:
     - key: security-scan
   environments:
-    - branch: env/dev
-    - branch: env/test
-    - branch: env/prod
+    - branch: environment/dev
+    - branch: environment/test
+    - branch: environment/prod
       autoMerge: false
       activeCommitStatuses:
       - key: performance-test
@@ -20,7 +20,7 @@ spec:
       - key: deployment-freeze
 status:
   environments:
-  - branch: env/dev
+  - branch: environment/dev
     active:
       dry:
         sha:
@@ -36,7 +36,7 @@ status:
     lastHealthyDryShas:
     - sha:
       time:
-  - branch: env/test
+  - branch: environment/test
     # same fields as dev
-  - branch: env/prod
+  - branch: environment/prod
     # same fields as dev
