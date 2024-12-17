@@ -23,7 +23,9 @@ func TestTruncateString(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := TruncateString(tt.input, tt.length)
 			assert.Equal(t, tt.expected, result)
 		})
@@ -59,7 +61,9 @@ func TestUpsertEnvironmentStatus(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result := UpsertEnvironmentStatus(tt.initial, tt.insert)
 			assert.Equal(t, tt.expected, result)
 		})
