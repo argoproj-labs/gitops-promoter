@@ -8,6 +8,7 @@ import (
 )
 
 func TestTruncateString(t *testing.T) {
+	t.Parallel() // Enable parallel execution for the top-level test
 	tests := []struct {
 		name     string
 		input    string
@@ -30,6 +31,7 @@ func TestTruncateString(t *testing.T) {
 }
 
 func TestUpsertEnvironmentStatus(t *testing.T) {
+	t.Parallel() // Enable parallel execution for the top-level test
 	tests := []struct {
 		name     string
 		initial  []promoterv1alpha1.EnvironmentStatus
@@ -58,10 +60,7 @@ func TestUpsertEnvironmentStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Call the function under test
 			result := UpsertEnvironmentStatus(tt.initial, tt.insert)
-
-			// Assert the result matches the expected value using testify assert
 			assert.Equal(t, tt.expected, result)
 		})
 	}
