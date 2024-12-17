@@ -25,28 +25,28 @@ spec:
     - key: healthy
   environments:
     - branch: environment/dev
-    - branch: environment/stg
-    - branch: environment/prd
+    - branch: environment/test
+    - branch: environment/prod
       proposedCommitStatuses:
         - key: deployment-freeze
 ```
 
-In this example, the PromotionStrategy has three environments: `environment/dev`, `environment/stg`, and `environment/prd`. All environments
-have a `healthy` active commit status check. The `environment/prd` environment has an additional `deployment-freeze` proposed
+In this example, the PromotionStrategy has three environments: `environment/dev`, `environment/test`, and `environment/prod`. All environments
+have a `healthy` active commit status check. The `environment/prod` environment has an additional `deployment-freeze` proposed
 commit status check.
 
 Suppose the environment branches have been hydrated from the `main` branch and that the branches have the following
 commit SHAs:
 
-| Branch                 | SHA      |
-|------------------------|----------|
-| `main`                 | `b5d8f7` |
-| `environment/dev`      | `a1b2c3` |
-| `environment/dev-next` | `d4e5f6` |
-| `environment/stg`      | `a7b8c9` |
-| `environment/stg-next` | `d0e1f2` |
-| `environment/prd`      | `a3b4c5` |
-| `environment/prd-next` | `d6e7f8` |
+| Branch                  | SHA      |
+|-------------------------|----------|
+| `main`                  | `b5d8f7` |
+| `environment/dev`       | `a1b2c3` |
+| `environment/dev-next`  | `d4e5f6` |
+| `environment/test`      | `a7b8c9` |
+| `environment/test-next` | `d0e1f2` |
+| `environment/prod`      | `a3b4c5` |
+| `environment/prod-next` | `d6e7f8` |
 
 For a change to be promoted through all environments, the following CommitStatuses must exist:
 
@@ -64,7 +64,7 @@ metadata:
   labels:
     promoter.argoproj.io/commit-status: healthy
 spec:
-  sha: a7b8c9  # environment/stg
+  sha: a7b8c9  # environment/test
   phase: success
 ---
 kind: CommitStatus
@@ -72,7 +72,7 @@ metadata:
   labels:
     promoter.argoproj.io/commit-status: healthy
 spec:
-  sha: a3b4c5  # environment/prd
+  sha: a3b4c5  # environment/prod
   phase: success
 ---
 kind: CommitStatus
@@ -80,7 +80,7 @@ metadata:
   labels:
     promoter.argoproj.io/commit-status: deployment-freeze
 spec:
-  sha: d6e7f8  # environment/prd-next
+  sha: d6e7f8  # environment/prod-next
   phase: success
 ```
 
@@ -106,8 +106,8 @@ So for the above example, the stg environment's ChangeTransferPolicy CR will loo
 ```yaml
 kind: ChangeTransferPolicy
 spec:
-  sourceBranch: environment/stg-next
-  targetBranch: environment/stg
+  sourceBranch: environment/test-next
+  targetBranch: environment/test
   activeCommitStatuses:
     # The controller will monitor this CommitStatus for the active commit SHA, but it will not enforce it. The status 
     # will be stored on the 
@@ -126,10 +126,10 @@ metadata:
   labels:
     promoter.argoproj.io/commit-status: promoter-previous-environment
 spec:
-  sha: d0e1f2  # environment/stg-next
+  sha: d0e1f2  # environment/test-next
   phase: success
 ```
 
-Even though the CommitStatus is "about" the `environment/dev` branch, the SHA is the SHA of the `environment/stg-next` branch. This is
+Even though the CommitStatus is "about" the `environment/dev` branch, the SHA is the SHA of the `environment/test-next` branch. This is
 how the PromotionStrategy controller expresses its opinion of the proposed commit on the stg environment, i.e. that it
 is acceptable because the previous environment is healthy.
