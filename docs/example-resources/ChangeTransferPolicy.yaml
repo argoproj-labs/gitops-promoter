@@ -5,8 +5,8 @@ metadata:
 spec:
   gitRepositoryRef:
     name: example-git-repository
-  proposedBranch: env/dev-next
-  activeBranch: env/dev
+  proposedBranch: environment/dev-next
+  activeBranch: environment/dev
   activeCommitStatuses:
   - key: argocd-app-health
   proposedCommitStatuses:

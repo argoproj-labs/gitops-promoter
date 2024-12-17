@@ -30,9 +30,9 @@ spec:
   proposedCommitStatuses:
     - key: security-scan
   environments:
-    - branch: env/dev
-    - branch: env/test
-    - branch: env/prod
+    - branch: environment/dev
+    - branch: environment/test
+    - branch: environment/prod
       autoMerge: false
       activeCommitStatuses:
       - key: performance-test
