@@ -30,7 +30,7 @@ were introduced.
 | **Home-Grown CI Solution** | Whatever you want                               | Whatever you want                                     | Whatever you want                                   |
 | **Telefonistka**           | Environment directory contents                  | Automated PR (DRY branch)                             | When branch protection rules pass                   |
 | **Kargo**                  | git commits, image tags, or Helm chart versions | A variety of options (PRs, commits, out-of-sync apps) | Defined by a DAG and a variety of rules             |
-| **Codefresh Products**     | json-path-specified fields                      | Codefresh backend                                     | Manually or according to promotion rules            |
+| **Codefresh GitOps**       | json-paths in Helm/Kustomize/or other manifests | Automated PR or commit (DRY) in folder or branch      | When promotion policies are met                     |
 
 ## GitOps Promoter
 
@@ -71,14 +71,18 @@ be assembled in a DAG. You can interact with the DAG via a custom UI/CLI.
    pushing a commit, leaving "freight" as "unqualified" (represented as status fields on CRs)
 3. When to promote: defined by a DAG and a variety of rules such as manual approval or Argo CD app health
 
-## Codefresh Products
+## Codefresh GitOps
 
-This tool uses file selectors and json paths. You can structure your git repo however you want. Then you write file 
+[Codefresh GitOps](https://codefresh.io/) uses file selectors and json paths. You can structure your git repo however you want. Then you write file 
 selectors and json paths to determine which parts of the repo should be moved from file to file. For example, if your 
 app is structured as a Helm chart with environment-specific values files, you can define your promotion rules to copy 
 the .image.tag field from the values-dev.yaml file to the values-prod.yaml file.
 
-1. What to promote: json-path-specified fields from lower-env yaml files to higher-env files
-2. How to "hold" the change: Codefresh backend
-3. When to promote: manually or according to promotion rules (TODO: further research this part)
+This tool tracks the relationship between Argo CD applications by using a "product" name and then groups those products by "environment". An Environment can be any combination of clusters, namespaces, or Application annotations. Changes are coordinated by the GitOps control plane across any number of Argo instances, clusters, or applications. 
+
+Currently, diffing is limited to DRY manifests with [hydrated server-side rendered diffs planned](https://roadmap.codefresh.io/c/128-promotion-preview). 
+
+1. What to promote: json-path-specified fields from lower-env yaml files to higher-env files between Argo CD applications linked by a "product" name"
+2. How to "hold" the change: Pull Request or Commit
+3. When to promote: when promotion policies are met, for example, tests pass, approvals are given, pull request requirements are met, environment has certain tags, or manual promotion is allowed (drag and drop).
 
