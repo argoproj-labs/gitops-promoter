@@ -76,7 +76,7 @@ const (
 	WebhookReceiverPort = 3333
 )
 
-func TestControllers(t *testing.T) {
+func TestControllersGinkgo(t *testing.T) {
 	t.Parallel()
 
 	RegisterFailHandler(Fail)
