@@ -50,7 +50,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v5.3.1
         with:
-          files: cover.out, cover-go-unit.out
+          files: cover.out,cover-go-unit.out
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
