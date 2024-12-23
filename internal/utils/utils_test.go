@@ -57,6 +57,54 @@ func TestUpsertEnvironmentStatus(t *testing.T) {
 			insert:   promoterv1alpha1.EnvironmentStatus{Branch: "dev"},
 			expected: []promoterv1alpha1.EnvironmentStatus{{Branch: "main"}, {Branch: "dev"}},
 		},
+		{
+			name: "Update existing element",
+			initial: []promoterv1alpha1.EnvironmentStatus{{
+				Branch: "main",
+				Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha: "old",
+					},
+					Hydrated: promoterv1alpha1.CommitShaState{
+						Sha: "old",
+					},
+					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
+						Sha:   "old",
+						Phase: "pending",
+					},
+				},
+			}},
+			insert: promoterv1alpha1.EnvironmentStatus{
+				Branch: "main",
+				Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha: "new",
+					},
+					Hydrated: promoterv1alpha1.CommitShaState{
+						Sha: "new",
+					},
+					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
+						Sha:   "new",
+						Phase: "success",
+					},
+				},
+			},
+			expected: []promoterv1alpha1.EnvironmentStatus{{
+				Branch: "main",
+				Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha: "new",
+					},
+					Hydrated: promoterv1alpha1.CommitShaState{
+						Sha: "new",
+					},
+					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
+						Sha:   "new",
+						Phase: "success",
+					},
+				},
+			}},
+		},
 	}
 
 	for _, test := range tests {
