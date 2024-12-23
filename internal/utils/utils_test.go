@@ -22,12 +22,11 @@ func TestTruncateString(t *testing.T) {
 		{"Negative length", "abcdef", -1, ""},
 	}
 
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			result := TruncateString(tt.input, tt.length)
-			assert.Equal(t, tt.expected, result)
+			result := TruncateString(test.input, test.length)
+			assert.Equal(t, test.expected, result)
 		})
 	}
 }
@@ -60,12 +59,11 @@ func TestUpsertEnvironmentStatus(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			result := UpsertEnvironmentStatus(tt.initial, tt.insert)
-			assert.Equal(t, tt.expected, result)
+			result := UpsertEnvironmentStatus(test.initial, test.insert)
+			assert.Equal(t, test.expected, result)
 		})
 	}
 }
