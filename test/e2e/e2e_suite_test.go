@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -26,6 +27,9 @@ import (
 
 // Run e2e tests using the Ginkgo runner.
 func TestE2E(t *testing.T) {
+	if os.Getenv("NO_GINKGO") == "true" {
+		t.Skip("Skipping testing in CI environment")
+	}
 	t.Parallel()
 	RegisterFailHandler(Fail)
 
