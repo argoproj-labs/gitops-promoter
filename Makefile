@@ -84,7 +84,7 @@ test: manifests generate fmt vet envtest ## Run Ginkgo tests using go test, we p
 
 .PHONY: go-unit-test
 go-unit-test: ## Run go unit tests
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -run ^TestControllersGinkgo ./... -coverprofile cover-go-unit.out
+	NO_GINKGO="true" KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover-go-unit.out
 
 # Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
 .PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
