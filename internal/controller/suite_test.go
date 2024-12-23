@@ -77,6 +77,9 @@ const (
 )
 
 func TestControllersGinkgo(t *testing.T) {
+	if os.Getenv("NO_GINKGO") == "true" {
+		t.Skip("Skipping testing in CI environment")
+	}
 	t.Parallel()
 
 	RegisterFailHandler(Fail)
