@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"github.com/argoproj-labs/gitops-promoter/internal/commitstatusmanagers/argocd"
 	"os"
 	"runtime/debug"
 	"syscall"
@@ -147,6 +148,13 @@ func main() {
 	}
 
 	pathLookup := utils.NewPathLookup()
+
+	if err = (&argocd.ArgoCDCommitStatusManagerReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		panic("unable to create ArgoCD CommitStatus manager")
+	}
 
 	if err = (&controller.PullRequestReconciler{
 		Client:   mgr.GetClient(),
