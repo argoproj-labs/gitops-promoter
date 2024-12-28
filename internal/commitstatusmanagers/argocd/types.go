@@ -16,10 +16,9 @@ type ApplicationSpec struct {
 }
 
 type SyncStatus struct {
-	Status   SyncStatusCode `json:"status"`
-	Revision string         `json:"revision,omitempty" protobuf:"bytes,3,opt,name=revision"`
-	// Revisions contains information about the revisions of multiple sources the comparison has been performed to
-	Revisions []string `json:"revisions,omitempty" protobuf:"bytes,4,opt,name=revisions"`
+	Status    SyncStatusCode `json:"status"`
+	Revision  string         `json:"revision,omitempty"`
+	Revisions []string       `json:"revisions,omitempty"`
 }
 
 type SourceHydrator struct {
@@ -46,7 +45,7 @@ type HydrateTo struct {
 type ApplicationStatus struct {
 	Sync           SyncStatus           `json:"sync,omitempty"`
 	Health         HealthStatus         `json:"health,omitempty"`
-	SourceHydrator SourceHydratorStatus `json:"sourceHydrator,omitempty" protobuf:"bytes,14,opt,name=sourceHydrator"`
+	SourceHydrator SourceHydratorStatus `json:"sourceHydrator,omitempty"`
 }
 
 // HealthStatus contains information about the currently observed health state of an application or resource
@@ -57,28 +56,19 @@ type HealthStatus struct {
 }
 
 type SourceHydratorStatus struct {
-	// LastSuccessfulOperation holds info about the most recent successful hydration
-	LastSuccessfulOperation *SuccessfulHydrateOperation `json:"lastSuccessfulOperation,omitempty" protobuf:"bytes,1,opt,name=lastSuccessfulOperation"`
-	// CurrentOperation holds the status of the hydrate operation
-	CurrentOperation *HydrateOperation `json:"currentOperation,omitempty" protobuf:"bytes,2,opt,name=currentOperation"`
+	LastSuccessfulOperation *SuccessfulHydrateOperation `json:"lastSuccessfulOperation,omitempty"`
+	CurrentOperation        *HydrateOperation           `json:"currentOperation,omitempty"`
 }
 
 // HydrateOperation contains information about the most recent hydrate operation
 type HydrateOperation struct {
-	// StartedAt indicates when the hydrate operation started
-	StartedAt metav1.Time `json:"startedAt,omitempty" protobuf:"bytes,1,opt,name=startedAt"`
-	// FinishedAt indicates when the hydrate operation finished
-	FinishedAt *metav1.Time `json:"finishedAt,omitempty" protobuf:"bytes,2,opt,name=finishedAt"`
-	// Phase indicates the status of the hydrate operation
-	Phase HydrateOperationPhase `json:"phase" protobuf:"bytes,3,opt,name=phase"`
-	// Message contains a message describing the current status of the hydrate operation
-	Message string `json:"message" protobuf:"bytes,4,opt,name=message"`
-	// DrySHA holds the resolved revision (sha) of the dry source as of the most recent reconciliation
-	DrySHA string `json:"drySHA,omitempty" protobuf:"bytes,5,opt,name=drySHA"`
-	// HydratedSHA holds the resolved revision (sha) of the hydrated source as of the most recent reconciliation
-	HydratedSHA string `json:"hydratedSHA,omitempty" protobuf:"bytes,6,opt,name=hydratedSHA"`
-	// SourceHydrator holds the hydrator config used for the hydrate operation
-	SourceHydrator SourceHydrator `json:"sourceHydrator,omitempty" protobuf:"bytes,7,opt,name=sourceHydrator"`
+	StartedAt      metav1.Time           `json:"startedAt,omitempty"`
+	FinishedAt     *metav1.Time          `json:"finishedAt,omitempty"`
+	Phase          HydrateOperationPhase `json:"phase"`
+	Message        string                `json:"message"`
+	DrySHA         string                `json:"drySHA,omitempty"`
+	HydratedSHA    string                `json:"hydratedSHA,omitempty"`
+	SourceHydrator SourceHydrator        `json:"sourceHydrator,omitempty"`
 }
 
 type HydrateOperationPhase string
@@ -91,12 +81,9 @@ const (
 
 // SuccessfulHydrateOperation contains information about the most recent successful hydrate operation
 type SuccessfulHydrateOperation struct {
-	// DrySHA holds the resolved revision (sha) of the dry source as of the most recent reconciliation
-	DrySHA string `json:"drySHA,omitempty" protobuf:"bytes,5,opt,name=drySHA"`
-	// HydratedSHA holds the resolved revision (sha) of the hydrated source as of the most recent reconciliation
-	HydratedSHA string `json:"hydratedSHA,omitempty" protobuf:"bytes,6,opt,name=hydratedSHA"`
-	// SourceHydrator holds the hydrator config used for the hydrate operation
-	SourceHydrator SourceHydrator `json:"sourceHydrator,omitempty" protobuf:"bytes,7,opt,name=sourceHydrator"`
+	DrySHA         string         `json:"drySHA,omitempty"`
+	HydratedSHA    string         `json:"hydratedSHA,omitempty"`
+	SourceHydrator SourceHydrator `json:"sourceHydrator,omitempty"`
 }
 
 type HealthStatusCode string

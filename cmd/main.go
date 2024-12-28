@@ -19,11 +19,12 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"github.com/argoproj-labs/gitops-promoter/internal/commitstatusmanagers/argocd"
 	"os"
 	"runtime/debug"
 	"syscall"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/commitstatusmanagers/argocd"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 

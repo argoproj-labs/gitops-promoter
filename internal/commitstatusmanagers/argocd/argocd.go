@@ -3,6 +3,11 @@ package argocd
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/cespare/xxhash/v2"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
@@ -10,13 +15,10 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"os/exec"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"strconv"
-	"strings"
-	"time"
 )
 
 var gvk = schema.GroupVersionKind{
@@ -123,23 +125,23 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 		}
 
 		currentCommitStatus := v1alpha1.CommitStatus{}
-		err = r.Client.Get(context.Background(), client.ObjectKey{Namespace: "argocd", Name: resourceName}, &currentCommitStatus)
+		err = r.Client.Get(ctx, client.ObjectKey{Namespace: "argocd", Name: resourceName}, &currentCommitStatus)
 		if err != nil {
 			if client.IgnoreNotFound(err) != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus object: %w", err)
 			}
 			// Create
-			err = r.Client.Create(context.Background(), &desiredCommitStatus)
+			err = r.Client.Create(ctx, &desiredCommitStatus)
 			if err != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, fmt.Errorf("failed to create CommitStatus object: %w", err)
 			}
 			currentCommitStatus = desiredCommitStatus
 		} else {
 			// Update
 			currentCommitStatus.Spec = desiredCommitStatus.Spec
-			err = r.Client.Update(context.Background(), &currentCommitStatus)
+			err = r.Client.Update(ctx, &currentCommitStatus)
 			if err != nil {
-				return ctrl.Result{}, err
+				return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus object: %w", err)
 			}
 		}
 
@@ -178,14 +180,14 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 				if i <= 25 {
 					continue
 				} else {
-					return ctrl.Result{}, err
+					return ctrl.Result{}, fmt.Errorf("failed to resolve sha: %w", err)
 				}
 			}
 			resolvedSha = strings.Split(string(out), "\t")[0]
 			break
 		}
 
-		desc := ""
+		var desc string
 		resolvedState := v1alpha1.CommitPhasePending
 		pending := 0
 		healthy := 0
@@ -202,7 +204,7 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 			}
 		}
 
-		//Resolve state
+		// Resolve state
 		if healthy == len(aggregateItem) {
 			resolvedState = v1alpha1.CommitPhaseSuccess
 			desc = fmt.Sprintf("%d/%d apps are healthy", healthy, len(aggregateItem))
@@ -213,7 +215,7 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 			desc = fmt.Sprintf("Waiting for apps to be healthy (%d/%d healthy, %d/%d degraded, %d/%d pending)", healthy, len(aggregateItem), degraded, len(aggregateItem), pending, len(aggregateItem))
 		}
 
-		err = updateAggregatedStatus(r.Client, revision, repo, resolvedSha, resolvedState, desc)
+		err = updateAggregatedStatus(ctx, r.Client, revision, repo, resolvedSha, resolvedState, desc)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -233,7 +235,7 @@ func (r *ArgoCDCommitStatusManagerReconciler) SetupWithManager(mgr ctrl.Manager)
 	return nil
 }
 
-func updateAggregatedStatus(kubeClient client.Client, revision string, repo string, sha string, state v1alpha1.CommitStatusPhase, desc string) error {
+func updateAggregatedStatus(ctx context.Context, kubeClient client.Client, revision string, repo string, sha string, state v1alpha1.CommitStatusPhase, desc string) error {
 	commitStatusName := revision + "/health"
 	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(repo))
 
@@ -258,23 +260,23 @@ func updateAggregatedStatus(kubeClient client.Client, revision string, repo stri
 	}
 
 	currentCommitStatus := v1alpha1.CommitStatus{}
-	err := kubeClient.Get(context.Background(), client.ObjectKey{Namespace: "argocd", Name: resourceName}, &currentCommitStatus)
+	err := kubeClient.Get(ctx, client.ObjectKey{Namespace: "argocd", Name: resourceName}, &currentCommitStatus)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
-			return err
+			return fmt.Errorf("failed to get CommitStatus object: %w", err)
 		}
 		// Create
-		err = kubeClient.Create(context.Background(), &desiredCommitStatus)
+		err = kubeClient.Create(ctx, &desiredCommitStatus)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create CommitStatus object: %w", err)
 		}
 		currentCommitStatus = desiredCommitStatus
 	} else {
 		// Update
 		currentCommitStatus.Spec = desiredCommitStatus.Spec
-		err = kubeClient.Update(context.Background(), &currentCommitStatus)
+		err = kubeClient.Update(ctx, &currentCommitStatus)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to update CommitStatus object: %w", err)
 		}
 	}
 
