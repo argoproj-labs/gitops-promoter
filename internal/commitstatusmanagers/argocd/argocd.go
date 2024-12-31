@@ -3,6 +3,7 @@ package argocd
 import (
 	"context"
 	"fmt"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -94,6 +95,11 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 			application: &application,
 		}
 
+		key := objKey{
+			repo:     strings.TrimRight(application.Spec.SourceHydrator.DrySource.RepoURL, ".git"),
+			revision: application.Spec.SourceHydrator.SyncSource.TargetBranch,
+		}
+
 		state := v1alpha1.CommitPhasePending
 		if application.Status.Health.Status == HealthStatusHealthy && application.Status.Sync.Status == SyncStatusCodeSynced {
 			state = v1alpha1.CommitPhaseSuccess
@@ -107,14 +113,14 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 		desiredCommitStatus := v1alpha1.CommitStatus{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName,
-				Namespace: "argocd",
+				Namespace: application.Namespace,
 				Labels: map[string]string{
 					v1alpha1.CommitStatusLabel: "app-healthy",
 				},
 			},
 			Spec: v1alpha1.CommitStatusSpec{
 				RepositoryReference: v1alpha1.ObjectReference{
-					Name: "argocon-demo",
+					Name: utils.KubeSafeUniqueName(ctx, key.repo),
 				},
 				Sha:         application.Status.Sync.Revision,
 				Name:        commitStatusName,
@@ -125,7 +131,7 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 		}
 
 		currentCommitStatus := v1alpha1.CommitStatus{}
-		err = r.Client.Get(ctx, client.ObjectKey{Namespace: "argocd", Name: resourceName}, &currentCommitStatus)
+		err = r.Client.Get(ctx, client.ObjectKey{Namespace: application.Namespace, Name: resourceName}, &currentCommitStatus)
 		if err != nil {
 			if client.IgnoreNotFound(err) != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus object: %w", err)
@@ -138,7 +144,7 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 			currentCommitStatus = desiredCommitStatus
 		} else {
 			// Update
-			currentCommitStatus.Spec = desiredCommitStatus.Spec
+			desiredCommitStatus.Spec.DeepCopyInto(&currentCommitStatus.Spec)
 			err = r.Client.Update(ctx, &currentCommitStatus)
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus object: %w", err)
@@ -148,10 +154,6 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 		aggregateItem.commitStatus = &currentCommitStatus
 		aggregateItem.changed = true // Should check if there is a no-op
 
-		key := objKey{
-			repo:     strings.TrimRight(application.Spec.SourceHydrator.DrySource.RepoURL, ".git"),
-			revision: application.Spec.SourceHydrator.SyncSource.TargetBranch,
-		}
 		aggregates[key] = append(aggregates[key], aggregateItem)
 	}
 
@@ -242,7 +244,7 @@ func updateAggregatedStatus(ctx context.Context, kubeClient client.Client, revis
 	desiredCommitStatus := v1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      resourceName,
-			Namespace: "argocd",
+			Namespace: "", // Applications could come from multiple namespaces have to put this somewhere and avoid collisions
 			Labels: map[string]string{
 				v1alpha1.CommitStatusLabel: "healthy",
 			},

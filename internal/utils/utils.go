@@ -138,7 +138,7 @@ func KubeSafeUniqueName(ctx context.Context, name string) string {
 	return TruncateString(name, 255-len(hash)-1)
 }
 
-// KubeSafeLabel Creates a safe label buy truncating from the beginning of 'name' to a max of 63 characters, if the name starts with a hyphen it will be removed.
+// KubeSafeLabel Creates a safe label by truncating from the beginning of 'name' to a max of 63 characters, if the name starts with a hyphen it will be removed.
 // We truncate from beginning so that we can keep the unique hash at the end of the name.
 func KubeSafeLabel(ctx context.Context, name string) string {
 	if name == "" {
