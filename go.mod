@@ -7,7 +7,7 @@ toolchain go1.23.4
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.12.0
 	github.com/google/go-github/v61 v61.0.0
-	github.com/onsi/ginkgo/v2 v2.22.1
+	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
 	github.com/relvacode/iso8601 v1.6.0
 	github.com/sosedoff/gitkit v0.4.0
