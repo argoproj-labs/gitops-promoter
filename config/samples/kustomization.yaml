@@ -6,4 +6,5 @@ resources:
 - promoter_v1alpha1_scmprovider.yaml
 - promoter_v1alpha1_gitrepository.yaml
 - promoter_v1alpha1_changetransferpolicy.yaml
+- promoter_v1alpha1_argocdcommitstatus.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples
