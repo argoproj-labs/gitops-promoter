@@ -106,8 +106,9 @@ var _ = BeforeSuite(func() {
 	By("bootstrapping test environment")
 	useExistingCluster := false
 	testEnv = &envtest.Environment{
-		UseExistingCluster:      &useExistingCluster,
-		CRDDirectoryPaths:       []string{filepath.Join("..", "..", "config", "crd", "bases")},
+		UseExistingCluster: &useExistingCluster,
+		CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "test", "external_crds")},
 		ErrorIfCRDPathMissing:   true,
 		ControlPlaneStopTimeout: 1 * time.Minute,
 
@@ -199,6 +200,13 @@ var _ = BeforeSuite(func() {
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
 		// Recorder: k8sManager.GetEventRecorderFor("GitRepository"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&ArgoCDCommitStatusReconciler{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+		// Recorder: k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

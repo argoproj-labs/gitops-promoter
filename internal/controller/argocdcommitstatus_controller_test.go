@@ -51,7 +51,12 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+							Name: "test-promotion-strategy",
+						},
+						ApplicationSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
