@@ -110,6 +110,7 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 		commitStatusName := application.Name + "/health"
 		resourceName := strings.ReplaceAll(commitStatusName, "/", "-")
 
+		// TODO: drop this commit status
 		desiredCommitStatus := v1alpha1.CommitStatus{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName,
@@ -137,18 +138,18 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 				return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus object: %w", err)
 			}
 			// Create
-			err = r.Client.Create(ctx, &desiredCommitStatus)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to create CommitStatus object: %w", err)
-			}
+			//err = r.Client.Create(ctx, &desiredCommitStatus)
+			//if err != nil {
+			//	return ctrl.Result{}, fmt.Errorf("failed to create CommitStatus object: %w", err)
+			//}
 			currentCommitStatus = desiredCommitStatus
 		} else {
 			// Update
 			desiredCommitStatus.Spec.DeepCopyInto(&currentCommitStatus.Spec)
-			err = r.Client.Update(ctx, &currentCommitStatus)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus object: %w", err)
-			}
+			//err = r.Client.Update(ctx, &currentCommitStatus)
+			//if err != nil {
+			//	return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus object: %w", err)
+			//}
 		}
 
 		aggregateItem.commitStatus = &currentCommitStatus
@@ -217,7 +218,7 @@ func (r *ArgoCDCommitStatusManagerReconciler) Reconcile(ctx context.Context, req
 			desc = fmt.Sprintf("Waiting for apps to be healthy (%d/%d healthy, %d/%d degraded, %d/%d pending)", healthy, len(aggregateItem), degraded, len(aggregateItem), pending, len(aggregateItem))
 		}
 
-		err = updateAggregatedStatus(ctx, r.Client, revision, repo, resolvedSha, resolvedState, desc)
+		err = updateAggregatedCommitStatus(ctx, r.Client, revision, repo, resolvedSha, resolvedState, desc)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -237,7 +238,7 @@ func (r *ArgoCDCommitStatusManagerReconciler) SetupWithManager(mgr ctrl.Manager)
 	return nil
 }
 
-func updateAggregatedStatus(ctx context.Context, kubeClient client.Client, revision string, repo string, sha string, state v1alpha1.CommitStatusPhase, desc string) error {
+func updateAggregatedCommitStatus(ctx context.Context, kubeClient client.Client, revision string, repo string, sha string, state v1alpha1.CommitStatusPhase, desc string) error {
 	commitStatusName := revision + "/health"
 	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(repo))
 
