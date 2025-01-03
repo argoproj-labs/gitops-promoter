@@ -28,8 +28,11 @@ type ArgoCDCommitStatusSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of ArgoCDCommitStatus. Edit argocdcommitstatus_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// +kubebuilder:validation:Required
+	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef,omitempty"`
+
+	// +kubebuilder:validation:Required
+	ApplicationSelector *metav1.LabelSelector `json:"applicationSelector,omitempty"`
 }
 
 // ArgoCDCommitStatusStatus defines the observed state of ArgoCDCommitStatus.
