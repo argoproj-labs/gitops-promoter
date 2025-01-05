@@ -107,8 +107,10 @@ var _ = BeforeSuite(func() {
 	useExistingCluster := false
 	testEnv = &envtest.Environment{
 		UseExistingCluster: &useExistingCluster,
-		CRDDirectoryPaths: []string{filepath.Join("..", "..", "config", "crd", "bases"),
-			filepath.Join("..", "..", "test", "external_crds")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "test", "external_crds"),
+		},
 		ErrorIfCRDPathMissing:   true,
 		ControlPlaneStopTimeout: 1 * time.Minute,
 

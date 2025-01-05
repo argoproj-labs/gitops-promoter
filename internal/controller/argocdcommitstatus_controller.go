@@ -19,6 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/cespare/xxhash/v2"
@@ -26,10 +31,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"os/exec"
-	"strconv"
-	"strings"
-	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -77,13 +78,13 @@ type ArgoCDCommitStatusReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
 func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling ArgoCD Application")
+	logger.Info("Reconciling ArgoCDCommitStatus")
 
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 	err := r.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
-			logger.Info("Argo CD application not found")
+			logger.Info("ArgoCDCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 
@@ -165,7 +166,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 				return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus object: %w", err)
 			}
 			// Create
-			//err = r.Client.Create(ctx, &desiredCommitStatus)
+			// err = r.Client.Create(ctx, &desiredCommitStatus)
 			//if err != nil {
 			//	return ctrl.Result{}, fmt.Errorf("failed to create CommitStatus object: %w", err)
 			//}
@@ -173,7 +174,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		} else {
 			// Update
 			desiredCommitStatus.Spec.DeepCopyInto(&currentCommitStatus.Spec)
-			//err = r.Client.Update(ctx, &currentCommitStatus)
+			// err = r.Client.Update(ctx, &currentCommitStatus)
 			//if err != nil {
 			//	return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus object: %w", err)
 			//}
@@ -256,14 +257,24 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{}).
 		Complete(r)
+	if err != nil {
+		return fmt.Errorf("failed to create controller: %w", err)
+	}
+	return nil
 }
 
 func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, revision string, repo string, sha string, state promoterv1alpha1.CommitStatusPhase, desc string) error {
 	commitStatusName := revision + "/health"
 	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(repo))
+
+	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
+	err := r.Client.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy, &client.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get PromotionStrategy object: %w", err)
+	}
 
 	desiredCommitStatus := promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
@@ -274,19 +285,17 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			},
 		},
 		Spec: promoterv1alpha1.CommitStatusSpec{
-			RepositoryReference: promoterv1alpha1.ObjectReference{
-				Name: "argocon-demo",
-			},
-			Sha:         sha,
-			Name:        commitStatusName,
-			Description: desc,
-			Phase:       state,
-			Url:         "https://example.com",
+			RepositoryReference: promotionStrategy.Spec.RepositoryReference,
+			Sha:                 sha,
+			Name:                commitStatusName,
+			Description:         desc,
+			Phase:               state,
+			Url:                 "https://example.com",
 		},
 	}
 
 	currentCommitStatus := promoterv1alpha1.CommitStatus{}
-	err := r.Client.Get(ctx, client.ObjectKey{Namespace: "argocd", Name: resourceName}, &currentCommitStatus)
+	err = r.Client.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("failed to get CommitStatus object: %w", err)
@@ -311,10 +320,4 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 
 func hash(data []byte) string {
 	return strconv.FormatUint(xxhash.Sum64(data), 8)
-}
-
-func runtimeObjFromGVK(r schema.GroupVersionKind) client.Object {
-	obj := &unstructured.Unstructured{}
-	obj.SetGroupVersionKind(r)
-	return obj
 }
