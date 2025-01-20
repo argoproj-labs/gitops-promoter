@@ -172,7 +172,6 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		var resolvedSha string
 		repo, targetBranch := key.repo, key.targetBranch
 
-		//git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, ctp.Spec.RepositoryReference, &ctp, ctp.Spec.ActiveBranch)
 		gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, ps.Spec.RepositoryReference, &argoCDCommitStatus, targetBranch)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)

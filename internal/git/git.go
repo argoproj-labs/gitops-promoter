@@ -291,7 +291,7 @@ func (g *GitOperations) LsRemote(ctx context.Context, branch string) (string, er
 	}
 
 	resolvedSha := strings.Split(stdout, "\t")[0]
-	logger.Info("Listed remote", "repoUrl", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "branch", branch, "sha", resolvedSha)
+	logger.Info("ls-remote called", "repoUrl", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "branch", branch, "sha", resolvedSha)
 
 	return resolvedSha, nil
 }
