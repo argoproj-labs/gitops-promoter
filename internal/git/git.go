@@ -279,7 +279,6 @@ func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNe
 
 func (g *GitOperations) LsRemote(ctx context.Context, branch string) (string, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Listing remote", "repoUrl", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "branch", branch)
 
 	stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext),
 		"ls-remote", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), branch)
@@ -292,6 +291,7 @@ func (g *GitOperations) LsRemote(ctx context.Context, branch string) (string, er
 	}
 
 	resolvedSha := strings.Split(stdout, "\t")[0]
+	logger.Info("Listed remote", "repoUrl", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "branch", branch, "sha", resolvedSha)
 
 	return resolvedSha, nil
 }

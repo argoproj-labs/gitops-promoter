@@ -24,6 +24,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	v1 "k8s.io/api/core/v1"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -328,6 +329,10 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		return fmt.Errorf("failed to get PromotionStrategy object: %w", err)
 	}
 
+	kind := reflect.TypeOf(promoterv1alpha1.ArgoCDCommitStatus{}).Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+	controllerRef := metav1.NewControllerRef(&argoCDCommitStatus, gvk)
+
 	desiredCommitStatus := promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      resourceName,
@@ -335,6 +340,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			Labels: map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "healthy",
 			},
+			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 		},
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: promotionStrategy.Spec.RepositoryReference,
