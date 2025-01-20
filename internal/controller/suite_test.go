@@ -206,8 +206,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ArgoCDCommitStatusReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
+		Client:     k8sManager.GetClient(),
+		Scheme:     k8sManager.GetScheme(),
+		PathLookup: pathLookup,
 		// Recorder: k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
