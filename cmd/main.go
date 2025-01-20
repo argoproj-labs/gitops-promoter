@@ -214,8 +214,9 @@ func main() {
 		panic("unable to create ChangeTransferPolicy controller")
 	}
 	if err = (&controller.ArgoCDCommitStatusReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		PathLookup: pathLookup,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ArgoCDCommitStatus controller")
 	}

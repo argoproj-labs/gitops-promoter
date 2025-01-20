@@ -19,7 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
-	"os/exec"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	v1 "k8s.io/api/core/v1"
 	"strconv"
 	"strings"
 	"time"
@@ -53,14 +57,15 @@ type Aggregate struct {
 }
 
 type objKey struct {
-	repo     string
-	revision string
+	repo         string
+	targetBranch string
 }
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme     *runtime.Scheme
+	PathLookup utils.PathLookup
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -88,8 +93,8 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			return ctrl.Result{}, nil
 		}
 
-		logger.Error(err, "failed to get Argo CD application")
-		return ctrl.Result{}, fmt.Errorf("failed to get Argo CD application: %w", err)
+		logger.Error(err, "failed to get ArgoCDCommitStatus")
+		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDCommitStatus: %w", err)
 	}
 
 	aggregates := map[objKey][]*Aggregate{}
@@ -108,6 +113,21 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to list CommitStatus objects: %w", err)
 	}
 
+	ps, err := r.getPromotionStrategy(ctx, argoCDCommitStatus.GetNamespace(), argoCDCommitStatus.Spec.PromotionStrategyRef)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %s: %w", argoCDCommitStatus.Spec.PromotionStrategyRef, err)
+	}
+
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, ps.Spec.RepositoryReference, ps)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get ScmProvider and secret for ArgoCDCommitStatus %q: %w", argoCDCommitStatus.Name, err)
+	}
+
+	gitAuthProvider, err := r.getGitAuthProvider(ctx, scmProvider, secret)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.Name, err)
+	}
+
 	for _, obj := range ul.Items {
 		var application argocd.ArgoCDApplication
 		err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &application)
@@ -124,8 +144,8 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 
 		key := objKey{
-			repo:     strings.TrimRight(application.Spec.SourceHydrator.DrySource.RepoURL, ".git"),
-			revision: application.Spec.SourceHydrator.SyncSource.TargetBranch,
+			repo:         strings.TrimRight(application.Spec.SourceHydrator.DrySource.RepoURL, ".git"),
+			targetBranch: application.Spec.SourceHydrator.SyncSource.TargetBranch,
 		}
 
 		state := promoterv1alpha1.CommitPhasePending
@@ -142,14 +162,14 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		desiredCommitStatus := promoterv1alpha1.CommitStatus{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      resourceName,
-				Namespace: application.Namespace,
+				Namespace: argoCDCommitStatus.Namespace,
 				Labels: map[string]string{
 					promoterv1alpha1.CommitStatusLabel: "app-healthy",
 				},
 			},
 			Spec: promoterv1alpha1.CommitStatusSpec{
 				RepositoryReference: promoterv1alpha1.ObjectReference{
-					Name: utils.KubeSafeUniqueName(ctx, key.repo),
+					Name: ps.Spec.RepositoryReference.Name,
 				},
 				Sha:         application.Status.Sync.Revision,
 				Name:        commitStatusName,
@@ -160,24 +180,25 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 
 		currentCommitStatus := promoterv1alpha1.CommitStatus{}
-		err = r.Client.Get(ctx, client.ObjectKey{Namespace: application.Namespace, Name: resourceName}, &currentCommitStatus)
+		err = r.Client.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
 		if err != nil {
 			if client.IgnoreNotFound(err) != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus object: %w", err)
 			}
 			// Create
-			// err = r.Client.Create(ctx, &desiredCommitStatus)
-			//if err != nil {
-			//	return ctrl.Result{}, fmt.Errorf("failed to create CommitStatus object: %w", err)
-			//}
+			// TODO: lets not create this
+			err = r.Client.Create(ctx, &desiredCommitStatus)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to create CommitStatus object: %w", err)
+			}
 			currentCommitStatus = desiredCommitStatus
 		} else {
 			// Update
 			desiredCommitStatus.Spec.DeepCopyInto(&currentCommitStatus.Spec)
-			// err = r.Client.Update(ctx, &currentCommitStatus)
-			//if err != nil {
-			//	return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus object: %w", err)
-			//}
+			err = r.Client.Update(ctx, &currentCommitStatus)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus object: %w", err)
+			}
 		}
 
 		aggregateItem.commitStatus = &currentCommitStatus
@@ -199,23 +220,17 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 
 		var resolvedSha string
-		var i int
-		repo, revision := key.repo, key.revision
-		for {
-			i++
-			resolveShaCmd := exec.Command("git", "ls-remote", repo, revision)
-			out, err := resolveShaCmd.CombinedOutput()
-			if err != nil {
-				fmt.Println(string(out))
-				time.Sleep(500 * time.Millisecond)
-				if i <= 25 {
-					continue
-				} else {
-					return ctrl.Result{}, fmt.Errorf("failed to resolve sha: %w", err)
-				}
-			}
-			resolvedSha = strings.Split(string(out), "\t")[0]
-			break
+		repo, targetBranch := key.repo, key.targetBranch
+
+		//git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, ctp.Spec.RepositoryReference, &ctp, ctp.Spec.ActiveBranch)
+		gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, ps.Spec.RepositoryReference, &argoCDCommitStatus, targetBranch)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
+		}
+
+		resolvedSha, err = gitOperation.LsRemote(ctx, targetBranch)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to ls-remote sha: %w", err)
 		}
 
 		var desc string
@@ -246,19 +261,56 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			desc = fmt.Sprintf("Waiting for apps to be healthy (%d/%d healthy, %d/%d degraded, %d/%d pending)", healthy, len(aggregateItem), degraded, len(aggregateItem), pending, len(aggregateItem))
 		}
 
-		err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, revision, repo, resolvedSha, resolvedState, desc)
+		err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, repo, resolvedSha, resolvedState, desc)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil // Timer for now :(
 }
+
+//func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
+//	return func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
+//		var un unstructured.Unstructured
+//		un.SetGroupVersionKind(gvk)
+//
+//		err := c.Get(ctx, client.ObjectKey{Namespace: argoCDApplication.GetName(), Name: argoCDApplication.GetName()}, &un, &client.GetOptions{})
+//		if err != nil {
+//			return []reconcile.Request{}
+//		}
+//
+//		var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatusList
+//		err = c.List(ctx, &argoCDCommitStatus, &client.ListOptions{
+//			FieldSelector: fields.SelectorFromSet(map[string]string{
+//				".spec.l": "",
+//			}),
+//		})
+//		if err != nil {
+//			return []reconcile.Request{}
+//		}
+//
+//		return []reconcile.Request{}
+//	}
+//}
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	var ul unstructured.Unstructured
+	ul.SetGroupVersionKind(gvk)
+
+	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
+	//if err := mgr.GetFieldIndexer().IndexField(context.Background(), &ul, ".status.applications", func(rawObj client.Object) []string {
+	//	//nolint:forcetypeassert
+	//	ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
+	//	return []string{ctp.Status.Proposed.Hydrated.Sha}
+	//}); err != nil {
+	//	return fmt.Errorf("failed to set field index for .status.proposed.hydrated.sha: %w", err)
+	//}
+
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{}).
+		//Watches(&ul, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -316,6 +368,29 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	return nil
+}
+
+func (r *ArgoCDCommitStatusReconciler) getPromotionStrategy(ctx context.Context, namespace string, promotionStrategyRef promoterv1alpha1.ObjectReference) (*promoterv1alpha1.PromotionStrategy, error) {
+	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
+	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: promotionStrategyRef.Name}, &promotionStrategy, &client.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get PromotionStrategy object: %w", err)
+	}
+	return &promotionStrategy, nil
+}
+
+func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
+	logger := log.FromContext(ctx)
+	switch {
+	case scmProvider.Spec.Fake != nil:
+		logger.V(4).Info("Creating fake git authentication provider")
+		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
+	case scmProvider.Spec.GitHub != nil:
+		logger.V(4).Info("Creating GitHub git authentication provider")
+		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
+	default:
+		return nil, fmt.Errorf("no supported git authentication provider found")
+	}
 }
 
 func hash(data []byte) string {
