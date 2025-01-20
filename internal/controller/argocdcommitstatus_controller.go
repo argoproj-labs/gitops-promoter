@@ -19,15 +19,16 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	v1 "k8s.io/api/core/v1"
-	"reflect"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -54,7 +55,6 @@ var gvk = schema.GroupVersionKind{
 type Aggregate struct {
 	application  *argocd.ArgoCDApplication
 	commitStatus *promoterv1alpha1.CommitStatus
-	changed      bool
 }
 
 type objKey struct {
@@ -219,7 +219,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil // Timer for now :(
 }
 
-//func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
+// func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
 //	return func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
 //		var un unstructured.Unstructured
 //		un.SetGroupVersionKind(gvk)
@@ -249,17 +249,17 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	ul.SetGroupVersionKind(gvk)
 
 	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
-	//if err := mgr.GetFieldIndexer().IndexField(context.Background(), &ul, ".status.applications", func(rawObj client.Object) []string {
+	// if err := mgr.GetFieldIndexer().IndexField(context.Background(), &ul, ".status.applications", func(rawObj client.Object) []string {
 	//	//nolint:forcetypeassert
 	//	ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 	//	return []string{ctp.Status.Proposed.Hydrated.Sha}
-	//}); err != nil {
+	// }); err != nil {
 	//	return fmt.Errorf("failed to set field index for .status.proposed.hydrated.sha: %w", err)
 	//}
 
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{}).
-		//Watches(&ul, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
+		// Watches(&ul, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
