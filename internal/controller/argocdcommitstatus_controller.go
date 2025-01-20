@@ -156,70 +156,19 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			state = promoterv1alpha1.CommitPhaseFailure
 		}
 
-		commitStatusName := application.Name + "/health"
-		resourceName := strings.ReplaceAll(commitStatusName, "/", "-")
-
-		// TODO: drop this commit status
-		desiredCommitStatus := promoterv1alpha1.CommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      resourceName,
-				Namespace: argoCDCommitStatus.Namespace,
-				Labels: map[string]string{
-					promoterv1alpha1.CommitStatusLabel: "app-healthy",
-				},
-			},
+		// This is an in memory version of the desired CommitStatus for a single application, this will be used to figure out
+		// the aggregated state of all applications for a particular environment
+		aggregateItem.commitStatus = &promoterv1alpha1.CommitStatus{
 			Spec: promoterv1alpha1.CommitStatusSpec{
-				RepositoryReference: promoterv1alpha1.ObjectReference{
-					Name: ps.Spec.RepositoryReference.Name,
-				},
-				Sha:         application.Status.Sync.Revision,
-				Name:        commitStatusName,
-				Description: fmt.Sprintf("App %s is %s", application.Name, state),
-				Phase:       state,
-				Url:         "https://example.com",
+				Sha:   application.Status.Sync.Revision,
+				Phase: state,
 			},
 		}
-
-		currentCommitStatus := promoterv1alpha1.CommitStatus{}
-		err = r.Client.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
-		if err != nil {
-			if client.IgnoreNotFound(err) != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus object: %w", err)
-			}
-			// Create
-			// TODO: lets not create this
-			err = r.Client.Create(ctx, &desiredCommitStatus)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to create CommitStatus object: %w", err)
-			}
-			currentCommitStatus = desiredCommitStatus
-		} else {
-			// Update
-			desiredCommitStatus.Spec.DeepCopyInto(&currentCommitStatus.Spec)
-			err = r.Client.Update(ctx, &currentCommitStatus)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus object: %w", err)
-			}
-		}
-
-		aggregateItem.commitStatus = &currentCommitStatus
-		aggregateItem.changed = true // Should check if there is a no-op
 
 		aggregates[key] = append(aggregates[key], aggregateItem)
 	}
 
 	for key, aggregateItem := range aggregates {
-		update := false
-		for _, v := range aggregateItem {
-			update = update || v.changed
-			if update {
-				break
-			}
-		}
-		if !update {
-			continue
-		}
-
 		var resolvedSha string
 		repo, targetBranch := key.repo, key.targetBranch
 
