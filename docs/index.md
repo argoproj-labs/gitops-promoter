@@ -48,7 +48,7 @@ By using branches and PRs to represent environment promotion, we make it easy fo
 ### Complete SCM Integration
 
 Since all promotion operations are managed via git and your SCM, the robust tooling ecosystems of those tools are
-available to customize your promotion system. For example, you can you existing GitHub Actions to gate promotion by
+available to customize your promotion system. For example, you can use existing GitHub Actions to gate promotion by
 blocking PR merges, or you could use branch protection rules to require manual approval processes. Anything you can do
 with a git branch or a git PR, you can use to interact with the GitOps Promoter.
 
