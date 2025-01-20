@@ -53,8 +53,9 @@ var gvk = schema.GroupVersionKind{
 }
 
 type Aggregate struct {
-	application  *argocd.ArgoCDApplication
-	commitStatus *promoterv1alpha1.CommitStatus
+	application         *argocd.ArgoCDApplication
+	commitStatus        *promoterv1alpha1.CommitStatus
+	selectedApplication *promoterv1alpha1.SelectedApplications
 }
 
 type objKey struct {
@@ -114,13 +115,13 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to list CommitStatus objects: %w", err)
 	}
 
-	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.NamespacedName{}
-	for _, item := range ul.Items {
-		argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.NamespacedName{
-			Namespace: item.GetNamespace(),
-			Name:      item.GetName(),
-		})
-	}
+	//argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.SelectedApplications{}
+	//for _, item := range ul.Items {
+	//	argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.SelectedApplications{
+	//		Namespace: item.GetNamespace(),
+	//		Name:      item.GetName(),
+	//	})
+	//}
 
 	ps, err := r.getPromotionStrategy(ctx, argoCDCommitStatus.GetNamespace(), argoCDCommitStatus.Spec.PromotionStrategyRef)
 	if err != nil {
@@ -137,6 +138,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.Name, err)
 	}
 
+	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.SelectedApplications{}
 	for _, obj := range ul.Items {
 		var application argocd.ArgoCDApplication
 		err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &application)
@@ -172,6 +174,18 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 				Phase: state,
 			},
 		}
+		aggregateItem.selectedApplication = &promoterv1alpha1.SelectedApplications{}
+		aggregateItem.selectedApplication.Sate = state
+		aggregateItem.selectedApplication.Sha = application.Status.Sync.Revision
+		aggregateItem.selectedApplication.Name = application.GetName()
+		aggregateItem.selectedApplication.Namespace = application.GetNamespace()
+
+		argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.SelectedApplications{
+			Namespace: application.GetNamespace(),
+			Name:      application.GetName(),
+			Sate:      state,
+			Sha:       application.Status.Sync.Revision,
+		})
 
 		aggregates[key] = append(aggregates[key], aggregateItem)
 	}
@@ -222,6 +236,14 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+
+		//argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.SelectedApplications{}
+		//for _, item := range ul.Items {
+		//	argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.SelectedApplications{
+		//		Namespace: item.GetNamespace(),
+		//		Name:      item.GetName(),
+		//	})
+		//}
 	}
 
 	err = r.Status().Update(ctx, &argoCDCommitStatus)

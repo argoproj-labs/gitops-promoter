@@ -113,9 +113,15 @@ spec:
                       type: string
                     namespace:
                       type: string
+                    sha:
+                      type: string
+                    state:
+                      type: string
                   required:
                   - name
                   - namespace
+                  - sha
+                  - state
                   type: object
                 type: array
             type: object
