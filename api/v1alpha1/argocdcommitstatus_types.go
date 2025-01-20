@@ -36,6 +36,12 @@ type ArgoCDCommitStatusSpec struct {
 type ArgoCDCommitStatusStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+	ApplicationsSelected []NamespacedName `json:"applicationsSelected,omitempty"`
+}
+
+type NamespacedName struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
 }
 
 // +kubebuilder:object:root=true
