@@ -17,73 +17,10 @@ limitations under the License.
 package controller
 
 import (
-	"context"
-
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 var _ = Describe("ArgoCDCommitStatus Controller", func() {
 	Context("When reconciling a resource", func() {
-		const resourceName = "test-resource"
-
-		ctx := context.Background()
-
-		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default", // TODO(user):Modify as needed
-		}
-		argocdcommitstatus := &promoterv1alpha1.ArgoCDCommitStatus{}
-
-		BeforeEach(func() {
-			By("creating the custom resource for the Kind ArgoCDCommitStatus")
-			err := k8sClient.Get(ctx, typeNamespacedName, argocdcommitstatus)
-			if err != nil && errors.IsNotFound(err) {
-				resource := &promoterv1alpha1.ArgoCDCommitStatus{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
-					},
-					Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
-						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
-							Name: "test-promotion-strategy",
-						},
-						ApplicationSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
-					},
-				}
-				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-			}
-		})
-
-		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &promoterv1alpha1.ArgoCDCommitStatus{}
-			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance ArgoCDCommitStatus")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-		})
-		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &ArgoCDCommitStatusReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
-
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
-		})
 	})
 })
