@@ -115,14 +115,6 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to list CommitStatus objects: %w", err)
 	}
 
-	// argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.SelectedApplications{}
-	//for _, item := range ul.Items {
-	//	argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.SelectedApplications{
-	//		Namespace: item.GetNamespace(),
-	//		Name:      item.GetName(),
-	//	})
-	//}
-
 	ps, err := r.getPromotionStrategy(ctx, argoCDCommitStatus.GetNamespace(), argoCDCommitStatus.Spec.PromotionStrategyRef)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %s: %w", argoCDCommitStatus.Spec.PromotionStrategyRef, err)
