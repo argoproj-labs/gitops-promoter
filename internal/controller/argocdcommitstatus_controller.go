@@ -228,14 +228,6 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-
-		// argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.SelectedApplications{}
-		//for _, item := range ul.Items {
-		//	argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.SelectedApplications{
-		//		Namespace: item.GetNamespace(),
-		//		Name:      item.GetName(),
-		//	})
-		//}
 	}
 
 	err = r.Status().Update(ctx, &argoCDCommitStatus)

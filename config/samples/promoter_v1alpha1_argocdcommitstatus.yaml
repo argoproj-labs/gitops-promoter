@@ -6,4 +6,8 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: argocdcommitstatus-sample
 spec:
-  # TODO(user): Add fields here
+  promotionStrategyRef:
+    name: ps-name
+  applicationSelector:
+    matchLabels:
+      app: webservice-tier-1
