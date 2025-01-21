@@ -151,23 +151,23 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			targetBranch: application.Spec.SourceHydrator.SyncSource.TargetBranch,
 		}
 
-		state := promoterv1alpha1.CommitPhasePending
+		phase := promoterv1alpha1.CommitPhasePending
 		if application.Status.Health.Status == argocd.HealthStatusHealthy && application.Status.Sync.Status == argocd.SyncStatusCodeSynced {
-			state = promoterv1alpha1.CommitPhaseSuccess
+			phase = promoterv1alpha1.CommitPhaseSuccess
 		} else if application.Status.Health.Status == argocd.HealthStatusDegraded {
-			state = promoterv1alpha1.CommitPhaseFailure
+			phase = promoterv1alpha1.CommitPhaseFailure
 		}
 
 		// This is an in memory version of the desired CommitStatus for a single application, this will be used to figure out
-		// the aggregated state of all applications for a particular environment
+		// the aggregated phase of all applications for a particular environment
 		aggregateItem.commitStatus = &promoterv1alpha1.CommitStatus{
 			Spec: promoterv1alpha1.CommitStatusSpec{
 				Sha:   application.Status.Sync.Revision,
-				Phase: state,
+				Phase: phase,
 			},
 		}
 		aggregateItem.selectedApplication = &promoterv1alpha1.ApplicationsSelected{}
-		aggregateItem.selectedApplication.Phase = state
+		aggregateItem.selectedApplication.Phase = phase
 		aggregateItem.selectedApplication.Sha = application.Status.Sync.Revision
 		aggregateItem.selectedApplication.Name = application.GetName()
 		aggregateItem.selectedApplication.Namespace = application.GetNamespace()
@@ -175,7 +175,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.ApplicationsSelected{
 			Namespace: application.GetNamespace(),
 			Name:      application.GetName(),
-			Phase:     state,
+			Phase:     phase,
 			Sha:       application.Status.Sync.Revision,
 		})
 
