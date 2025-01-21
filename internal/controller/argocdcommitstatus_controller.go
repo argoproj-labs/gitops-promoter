@@ -55,7 +55,7 @@ var gvk = schema.GroupVersionKind{
 type Aggregate struct {
 	application         *argocd.ArgoCDApplication
 	commitStatus        *promoterv1alpha1.CommitStatus
-	selectedApplication *promoterv1alpha1.SelectedApplications
+	selectedApplication *promoterv1alpha1.ApplicationsSelected
 }
 
 type objKey struct {
@@ -130,7 +130,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.Name, err)
 	}
 
-	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.SelectedApplications{}
+	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
 	for _, obj := range ul.Items {
 		var application argocd.ArgoCDApplication
 		err = runtime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &application)
@@ -166,16 +166,16 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 				Phase: state,
 			},
 		}
-		aggregateItem.selectedApplication = &promoterv1alpha1.SelectedApplications{}
-		aggregateItem.selectedApplication.Sate = state
+		aggregateItem.selectedApplication = &promoterv1alpha1.ApplicationsSelected{}
+		aggregateItem.selectedApplication.Phase = state
 		aggregateItem.selectedApplication.Sha = application.Status.Sync.Revision
 		aggregateItem.selectedApplication.Name = application.GetName()
 		aggregateItem.selectedApplication.Namespace = application.GetNamespace()
 
-		argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.SelectedApplications{
+		argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.ApplicationsSelected{
 			Namespace: application.GetNamespace(),
 			Name:      application.GetName(),
-			Sate:      state,
+			Phase:     state,
 			Sha:       application.Status.Sync.Revision,
 		})
 
@@ -286,8 +286,8 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	return nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, revision string, repo string, sha string, state promoterv1alpha1.CommitStatusPhase, desc string) error {
-	commitStatusName := revision + "/health"
+func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, repo string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) error {
+	commitStatusName := targetBranch + "/health"
 	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(repo))
 
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
@@ -314,7 +314,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			Sha:                 sha,
 			Name:                commitStatusName,
 			Description:         desc,
-			Phase:               state,
+			Phase:               phase,
 			Url:                 "https://example.com",
 		},
 	}

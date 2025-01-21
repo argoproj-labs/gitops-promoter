@@ -113,15 +113,15 @@ spec:
                       type: string
                     namespace:
                       type: string
-                    sha:
+                    phase:
                       type: string
-                    state:
+                    sha:
                       type: string
                   required:
                   - name
                   - namespace
+                  - phase
                   - sha
-                  - state
                   type: object
                 type: array
             type: object

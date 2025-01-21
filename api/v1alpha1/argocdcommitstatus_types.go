@@ -36,13 +36,13 @@ type ArgoCDCommitStatusSpec struct {
 type ArgoCDCommitStatusStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	ApplicationsSelected []SelectedApplications `json:"applicationsSelected,omitempty"`
+	ApplicationsSelected []ApplicationsSelected `json:"applicationsSelected,omitempty"`
 }
 
-type SelectedApplications struct {
+type ApplicationsSelected struct {
 	Namespace string            `json:"namespace"`
 	Name      string            `json:"name"`
-	Sate      CommitStatusPhase `json:"state"`
+	Phase     CommitStatusPhase `json:"phase"`
 	Sha       string            `json:"sha"`
 }
 
