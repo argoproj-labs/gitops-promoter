@@ -115,7 +115,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to list CommitStatus objects: %w", err)
 	}
 
-	//argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.SelectedApplications{}
+	// argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.SelectedApplications{}
 	//for _, item := range ul.Items {
 	//	argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.SelectedApplications{
 	//		Namespace: item.GetNamespace(),
@@ -237,7 +237,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			return ctrl.Result{}, err
 		}
 
-		//argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.SelectedApplications{}
+		// argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.SelectedApplications{}
 		//for _, item := range ul.Items {
 		//	argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.SelectedApplications{
 		//		Namespace: item.GetNamespace(),
