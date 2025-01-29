@@ -28,7 +28,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
-	v1 "k8s.io/api/core/v1"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -83,7 +82,7 @@ type ArgoCDCommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
-func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) { //nolint:gocyclo
+func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling ArgoCDCommitStatus")
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
@@ -119,14 +118,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %s: %w", argoCDCommitStatus.Spec.PromotionStrategyRef, err)
 	}
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, ps.Spec.RepositoryReference, ps)
+	gitAuthProvider, err := r.getGitAuthProvider(ctx, ps)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get ScmProvider and secret for ArgoCDCommitStatus %q: %w", argoCDCommitStatus.Name, err)
-	}
-
-	gitAuthProvider, err := r.getGitAuthProvider(ctx, scmProvider, secret)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider: %w", err)
 	}
 
 	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
@@ -372,8 +366,14 @@ func (r *ArgoCDCommitStatusReconciler) getPromotionStrategy(ctx context.Context,
 	return &promotionStrategy, nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
+func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) (scms.GitOperationsProvider, error) {
 	logger := log.FromContext(ctx)
+
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, ps.Spec.RepositoryReference, ps)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ScmProvider and secret for PromotionStrategy %q: %w", ps.Name, err)
+	}
+
 	switch {
 	case scmProvider.Spec.Fake != nil:
 		logger.V(4).Info("Creating fake git authentication provider")
