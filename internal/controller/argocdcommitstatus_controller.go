@@ -83,7 +83,7 @@ type ArgoCDCommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
-func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) { //nolint:gocyclo
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling ArgoCDCommitStatus")
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
