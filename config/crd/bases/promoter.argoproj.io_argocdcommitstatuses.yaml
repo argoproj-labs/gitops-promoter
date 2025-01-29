@@ -109,6 +109,9 @@ spec:
                   Important: Run "make" to regenerate code after modifying this file
                 items:
                   properties:
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
                     name:
                       type: string
                     namespace:
@@ -118,6 +121,7 @@ spec:
                     sha:
                       type: string
                   required:
+                  - lastTransitionTime
                   - name
                   - namespace
                   - phase
