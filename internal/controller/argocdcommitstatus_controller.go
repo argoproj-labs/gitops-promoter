@@ -113,12 +113,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to list CommitStatus objects: %w", err)
 	}
 
-	ps, err := r.getPromotionStrategy(ctx, argoCDCommitStatus.GetNamespace(), argoCDCommitStatus.Spec.PromotionStrategyRef)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %s: %w", argoCDCommitStatus.Spec.PromotionStrategyRef, err)
-	}
-
-	gitAuthProvider, err := r.getGitAuthProvider(ctx, ps)
+	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, argoCDCommitStatus)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider: %w", err)
 	}
@@ -181,7 +176,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		var resolvedSha string
 		repo, targetBranch := key.repo, key.targetBranch
 
-		gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, ps.Spec.RepositoryReference, &argoCDCommitStatus, targetBranch)
+		gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, repositoryRef, &argoCDCommitStatus, targetBranch)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
 		}
@@ -366,23 +361,28 @@ func (r *ArgoCDCommitStatusReconciler) getPromotionStrategy(ctx context.Context,
 	return &promotionStrategy, nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) (scms.GitOperationsProvider, error) {
+func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus) (scms.GitOperationsProvider, promoterv1alpha1.ObjectReference, error) {
 	logger := log.FromContext(ctx)
+
+	ps, err := r.getPromotionStrategy(ctx, argoCDCommitStatus.GetNamespace(), argoCDCommitStatus.Spec.PromotionStrategyRef)
+	if err != nil {
+		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get PromotionStrategy from ArgoCDCommitStatus %s: %w", argoCDCommitStatus.Name, err)
+	}
 
 	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, ps.Spec.RepositoryReference, ps)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get ScmProvider and secret for PromotionStrategy %q: %w", ps.Name, err)
+		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get ScmProvider and secret for PromotionStrategy %q: %w", ps.Name, err)
 	}
 
 	switch {
 	case scmProvider.Spec.Fake != nil:
 		logger.V(4).Info("Creating fake git authentication provider")
-		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
+		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
 	case scmProvider.Spec.GitHub != nil:
 		logger.V(4).Info("Creating GitHub git authentication provider")
-		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
+		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
 	default:
-		return nil, fmt.Errorf("no supported git authentication provider found")
+		return nil, ps.Spec.RepositoryReference, fmt.Errorf("no supported git authentication provider found")
 	}
 }
 
