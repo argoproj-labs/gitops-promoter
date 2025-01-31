@@ -244,7 +244,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status: %w", err)
 	}
 
-	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil // Timer for now :(
+	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil // Timer for now :(
 }
 
 // func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
