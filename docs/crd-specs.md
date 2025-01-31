@@ -61,3 +61,12 @@ auth mechanism.
 ```yaml
 {!docs/example-resources/ScmProvider.yaml!}
 ```
+
+## ArgoCDCommitStatus
+
+An ArgoCDCommitStatus is a aggregation of the ArgoCD Application's that are being used in the promotion strategy. It is used
+to check the status of the ArgoCD Application's that are being used in the promotion strategy.
+
+```yaml
+{!docs/example-resources/ArgoCDCommitStatus.yaml!}
+```
