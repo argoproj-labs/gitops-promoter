@@ -64,7 +64,7 @@ auth mechanism.
 
 ## ArgoCDCommitStatus
 
-An ArgoCDCommitStatus is a aggregation of the ArgoCD Application's that are being used in the promotion strategy. It is used
+An ArgoCDCommitStatus is used as a way to aggregate all the ArgoCD Application's that are being used in the promotion strategy. It is used
 to check the status of the ArgoCD Application's that are being used in the promotion strategy.
 
 ```yaml
