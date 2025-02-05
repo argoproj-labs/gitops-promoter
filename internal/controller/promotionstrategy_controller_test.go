@@ -662,9 +662,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			ctpStaging := promoterv1alpha1.ChangeTransferPolicy{}
 			ctpProd := promoterv1alpha1.ChangeTransferPolicy{}
 
-			pullRequestDev := promoterv1alpha1.PullRequest{}
-			pullRequestStaging := promoterv1alpha1.PullRequest{}
-			pullRequestProd := promoterv1alpha1.PullRequest{}
 			By("Checking that all the ChangeTransferPolicies and PRs are created and in their proper state")
 			Eventually(func(g Gomega) {
 				// Make sure CTP's are created
@@ -698,6 +695,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
 			simulateWebhook(ctx, k8sClient, &ctpProd)
 
+			pullRequestDev := promoterv1alpha1.PullRequest{}
+			pullRequestStaging := promoterv1alpha1.PullRequest{}
+			pullRequestProd := promoterv1alpha1.PullRequest{}
 			Eventually(func(g Gomega) {
 				// Dev PR should be closed because it is the lowest level environment
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
@@ -724,20 +724,41 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("Updating the development Argo CD application to synced and health we should close staging PR")
-			err = unstructured.SetNestedField(argoCDAppStaging.Object, string(argocd.SyncStatusCodeSynced), "status", "sync", "status")
+			err = unstructured.SetNestedField(argoCDAppDev.Object, string(argocd.SyncStatusCodeSynced), "status", "sync", "status")
 			Expect(err).To(Succeed())
-			err = unstructured.SetNestedField(argoCDAppStaging.Object, string(argocd.HealthStatusHealthy), "status", "health", "status")
+			err = unstructured.SetNestedField(argoCDAppDev.Object, string(argocd.HealthStatusHealthy), "status", "health", "status")
 			Expect(err).To(Succeed())
-			err = k8sClient.Update(ctx, &argoCDAppStaging)
+			err = k8sClient.Update(ctx, &argoCDAppDev)
 			Expect(err).To(Succeed())
 			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				err = unstructured.SetNestedField(argoCDAppDev.Object, string(argocd.SyncStatusCodeSynced), "status", "sync", "status")
+				Expect(err).To(Succeed())
+				err = unstructured.SetNestedField(argoCDAppDev.Object, string(argocd.HealthStatusHealthy), "status", "health", "status")
+				Expect(err).To(Succeed())
+				err = unstructured.SetNestedField(argoCDAppDev.Object, ctpDev.Status.Active.Hydrated.Sha, "status", "sync", "revision")
+				Expect(err).To(Succeed())
+				err = k8sClient.Update(ctx, &argoCDAppDev)
+
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
-				g.Expect(err).To(Succeed())
+				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
 			}, EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
@@ -884,7 +905,7 @@ func argocdApplications(namespace string, name string) (unstructured.Unstructure
 				},
 				Health: argocd.HealthStatus{
 					Status:             argocd.HealthStatusHealthy,
-					LastTransitionTime: &metav1.Time{Time: time.Now().Add(-15 * time.Second)},
+					LastTransitionTime: &metav1.Time{Time: time.Now().Add(-(20 * time.Second))},
 				},
 			},
 		}

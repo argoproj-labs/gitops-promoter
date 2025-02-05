@@ -347,7 +347,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		// Update
 		currentCommitStatus.Spec = desiredCommitStatus.Spec
 		err = r.Client.Update(ctx, &currentCommitStatus)
-		logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name)
+		logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "sha", sha, "phase", phase, "desc", desc)
 		if err != nil {
 			return fmt.Errorf("failed to update CommitStatus object: %w", err)
 		}
