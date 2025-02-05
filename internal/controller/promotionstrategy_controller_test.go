@@ -19,12 +19,13 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 
@@ -593,7 +594,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with active commit status using ArgoCDCommitStatus", func() {
-
 		const argocdCSLabel = "argocd-health"
 		const namespace = "default"
 
@@ -629,7 +629,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				},
 			}
 
-			argoCDAppDev, argoCDAppStaging, argoCDAppProduction := argocdApplications(ctx, namespace, plainName)
+			argoCDAppDev, argoCDAppStaging, argoCDAppProduction := argocdApplications(namespace, plainName)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -745,12 +745,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Delete(ctx, &argoCDAppDev)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argoCDAppStaging)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argoCDAppProduction)).To(Succeed())
-
 		})
 	})
 })
 
-func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) {
+func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) { //nolint:unparam
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 	setupInitialTestGitRepoOnServer(name, name)
 
@@ -846,7 +845,7 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	return name, scmSecret, scmProvider, gitRepo, commitStatusDevelopment, commitStatusStaging, promotionStrategy
 }
 
-func argocdApplications(ctx context.Context, namespace string, name string) (unstructured.Unstructured, unstructured.Unstructured, unstructured.Unstructured) {
+func argocdApplications(namespace string, name string) (unstructured.Unstructured, unstructured.Unstructured, unstructured.Unstructured) {
 	environments := []string{"development", "staging", "production"}
 	unArgocdApplications := []unstructured.Unstructured{}
 	for _, environment := range environments {
@@ -885,7 +884,7 @@ func argocdApplications(ctx context.Context, namespace string, name string) (uns
 				},
 				Health: argocd.HealthStatus{
 					Status:             argocd.HealthStatusHealthy,
-					LastTransitionTime: &metav1.Time{time.Now().Add(-15 * time.Second)},
+					LastTransitionTime: &metav1.Time{Time: time.Now().Add(-15 * time.Second)},
 				},
 			},
 		}
