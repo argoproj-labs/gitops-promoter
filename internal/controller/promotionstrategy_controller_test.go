@@ -724,12 +724,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("Updating the development Argo CD application to synced and health we should close staging PR")
-			err = unstructured.SetNestedField(argoCDAppDev.Object, string(argocd.SyncStatusCodeSynced), "status", "sync", "status")
-			Expect(err).To(Succeed())
-			err = unstructured.SetNestedField(argoCDAppDev.Object, string(argocd.HealthStatusHealthy), "status", "health", "status")
-			Expect(err).To(Succeed())
-			err = k8sClient.Update(ctx, &argoCDAppDev)
-			Expect(err).To(Succeed())
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
@@ -744,6 +738,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err = unstructured.SetNestedField(argoCDAppDev.Object, ctpDev.Status.Active.Hydrated.Sha, "status", "sync", "revision")
 				Expect(err).To(Succeed())
 				err = k8sClient.Update(ctx, &argoCDAppDev)
+				Expect(err).To(Succeed())
 
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
