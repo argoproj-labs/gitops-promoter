@@ -597,7 +597,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		const argocdCSLabel = "argocd-health"
 		const namespace = "default"
 
-		FIt("should successfully reconcile the resource", func() {
+		It("should successfully reconcile the resource", func() {
 			// Skip("Skipping test because of flakiness")
 			By("Creating the resource")
 			plainName := "promotion-strategy-with-active-commit-status-argocdcommitstatus"
