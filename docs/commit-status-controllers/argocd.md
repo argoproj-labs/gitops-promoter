@@ -27,7 +27,7 @@ spec:
 
 To configure the PromotionStrategy, we need to specify the active commit statuses that are required for the promotion to proceed.
 You can see this in the example below with the `activeCommitStatuses` field, having a key of `argocd-health`. This key is the
-name that the Argo CD Commit Status when it creates its CommitStatus resources.
+same key that the Argo CD commit status controller will use when it creates its CommitStatus resources.
 
 
 ```yaml
