@@ -13,7 +13,15 @@ type ArgoCDApplication struct {
 }
 
 type ApplicationSpec struct {
-	SourceHydrator *SourceHydrator `json:"sourceHydrator,omitempty"`
+	Destination    ApplicationDestination `json:"destination"`
+	Project        string                 `json:"project"`
+	SourceHydrator *SourceHydrator        `json:"sourceHydrator,omitempty"`
+}
+
+type ApplicationDestination struct {
+	Server    string `json:"server,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	Name      string `json:"name,omitempty"`
 }
 
 type SyncStatus struct {

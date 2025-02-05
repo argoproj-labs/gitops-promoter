@@ -296,6 +296,8 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error 
 }
 
 func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, repo string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) error {
+	logger := log.FromContext(ctx)
+
 	commitStatusName := targetBranch + "/health"
 	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(repo))
 
@@ -314,7 +316,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			Name:      resourceName,
 			Namespace: argoCDCommitStatus.Namespace, // Applications could come from multiple namespaces have to put this somewhere and avoid collisions
 			Labels: map[string]string{
-				promoterv1alpha1.CommitStatusLabel: "healthy",
+				promoterv1alpha1.CommitStatusLabel: "argocd-health",
 			},
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 		},
@@ -336,6 +338,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		}
 		// Create
 		err = r.Client.Create(ctx, &desiredCommitStatus)
+		logger.Info("Created ArgoCDCommitStatus", "name", desiredCommitStatus.Name)
 		if err != nil {
 			return fmt.Errorf("failed to create CommitStatus object: %w", err)
 		}
@@ -344,6 +347,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		// Update
 		currentCommitStatus.Spec = desiredCommitStatus.Spec
 		err = r.Client.Update(ctx, &currentCommitStatus)
+		logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name)
 		if err != nil {
 			return fmt.Errorf("failed to update CommitStatus object: %w", err)
 		}

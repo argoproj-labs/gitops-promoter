@@ -111,8 +111,9 @@ var _ = BeforeSuite(func() {
 			filepath.Join("..", "..", "config", "crd", "bases"),
 			filepath.Join("..", "..", "test", "external_crds"),
 		},
-		ErrorIfCRDPathMissing:   true,
-		ControlPlaneStopTimeout: 1 * time.Minute,
+		ErrorIfCRDPathMissing:    true,
+		ControlPlaneStopTimeout:  1 * time.Minute,
+		AttachControlPlaneOutput: false,
 
 		// The BinaryAssetsDirectory is only required if you want to run the tests directly
 		// without call the makefile target test. If not informed it will look for the
