@@ -640,38 +640,21 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, &argoCDAppStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
 
-			By("Checking that the CommitStatus for each environment is created")
-			commitStatusDev := promoterv1alpha1.CommitStatus{}
-			//commitStatusStaging := promoterv1alpha1.CommitStatus{}
-			//commitStatusProd := promoterv1alpha1.CommitStatus{}
-
+			By("Checking that the CommitStatus for each environment is created from ArgoCDCommitStatus")
 			repo, _, err := unstructured.NestedString(argoCDAppDev.Object, "spec", "sourceHydrator", "drySource", "repoURL")
 			Expect(err).To(Succeed())
-			commitStatusNameDev := promotionStrategy.Spec.Environments[0].Branch + "/health"
-			resourceNameDev := strings.ReplaceAll(commitStatusNameDev, "/", "-") + "-" + hash([]byte(repo))
-			commitStatusNameStaging := promotionStrategy.Spec.Environments[1].Branch + "/health"
-			resourceNameStaging := strings.ReplaceAll(commitStatusNameStaging, "/", "-") + "-" + hash([]byte(repo))
-			commitStatusNameProd := promotionStrategy.Spec.Environments[2].Branch + "/health"
-			resourceNameProd := strings.ReplaceAll(commitStatusNameProd, "/", "-") + "-" + hash([]byte(repo))
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      resourceNameDev,
-					Namespace: argoCDAppDev.GetNamespace(),
-				}, &commitStatusDev)
-				g.Expect(err).To(Succeed())
-
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      resourceNameStaging,
-					Namespace: argoCDAppDev.GetNamespace(),
-				}, &commitStatusDev)
-				g.Expect(err).To(Succeed())
-
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      resourceNameProd,
-					Namespace: argoCDAppDev.GetNamespace(),
-				}, &commitStatusDev)
-				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			for _, environment := range promotionStrategy.Spec.Environments {
+				commitStatus := promoterv1alpha1.CommitStatus{}
+				commitStatusName := environment.Branch + "/health"
+				resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(repo))
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      resourceName,
+						Namespace: argoCDAppDev.GetNamespace(),
+					}, &commitStatus)
+					g.Expect(err).To(Succeed())
+				}, EventuallyTimeout).Should(Succeed())
+			}
 
 			// We should now get PRs created for the ChangeTransferPolicies
 			// Check that ProposedCommit are created
@@ -684,7 +667,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			pullRequestProd := promoterv1alpha1.PullRequest{}
 			By("Checking that all the ChangeTransferPolicies and PRs are created and in their proper state")
 			Eventually(func(g Gomega) {
-				// Make sure ctp's are created and the associated PRs
+				// Make sure CTP's are created
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
 					Namespace: typeNamespacedName.Namespace,
@@ -740,7 +723,22 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 			}, EventuallyTimeout).Should(Succeed())
 
-			time.Sleep(5 * time.Second)
+			By("Updating the development Argo CD application to synced and health we should close staging PR")
+			err = unstructured.SetNestedField(argoCDAppStaging.Object, string(argocd.SyncStatusCodeSynced), "status", "sync", "status")
+			Expect(err).To(Succeed())
+			err = unstructured.SetNestedField(argoCDAppStaging.Object, string(argocd.HealthStatusHealthy), "status", "health", "status")
+			Expect(err).To(Succeed())
+			err = k8sClient.Update(ctx, &argoCDAppStaging)
+			Expect(err).To(Succeed())
+			Eventually(func(g Gomega) {
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
