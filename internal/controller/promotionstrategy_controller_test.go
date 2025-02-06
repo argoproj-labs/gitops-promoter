@@ -758,7 +758,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the staging Argo CD application to synced and health we should close production PR")
 
-			//waitedForDelay := false
+			// waitedForDelay := false
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
@@ -776,7 +776,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				//	err = unstructured.SetNestedField(argoCDAppStaging.Object, metav1.Time{Time: time.Now().Add(-(6 * time.Second))}.ToUnstructured(), "status", "health", "lastTransitionTime")
 				//	Expect(err).To(Succeed())
 				//	waitedForDelay = true
-				//} else {
+				// } else {
 				//	err = unstructured.SetNestedField(argoCDAppStaging.Object, metav1.Time{Time: time.Now().Add(-(1 * time.Second))}.ToUnstructured(), "status", "health", "lastTransitionTime")
 				//	Expect(err).To(Succeed())
 				//}
