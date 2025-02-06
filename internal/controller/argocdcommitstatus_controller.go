@@ -191,7 +191,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		pending := 0
 		healthy := 0
 		degraded := 0
-		// var mostRecentLastTransitionTime *metav1.Time
+		var mostRecentLastTransitionTime *metav1.Time
 		for _, s := range aggregateItem {
 			if s.commitStatus.Spec.Sha != resolvedSha {
 				pending++
@@ -204,23 +204,23 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			}
 
 			// Find the most recent last transition time
-			// if s.selectedApplication.LastTransitionTime != nil {
-			//	if mostRecentLastTransitionTime == nil || s.selectedApplication.LastTransitionTime.Time.After(mostRecentLastTransitionTime.Time) {
-			//		mostRecentLastTransitionTime = s.selectedApplication.LastTransitionTime
-			//	}
-			//}
+			if s.selectedApplication.LastTransitionTime != nil {
+				if mostRecentLastTransitionTime == nil || s.selectedApplication.LastTransitionTime.Time.After(mostRecentLastTransitionTime.Time) {
+					mostRecentLastTransitionTime = s.selectedApplication.LastTransitionTime
+				}
+			}
 		}
 
 		// Did the mostRecentLastTransitionTime occur more than 5 seconds ago
-		// if mostRecentLastTransitionTime != nil && time.Since(mostRecentLastTransitionTime.Time) < 5*time.Second {
-		//	err = r.Status().Update(ctx, &argoCDCommitStatus)
-		//	if err != nil {
-		//		return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status during requeuing: %w", err)
-		//	}
-		//	logger.Info("Most recent last transition time is less than 5 seconds old, requeuing")
-		//	// Requeue with a delay of the time until the mostRecentLastTransitionTime occurred + 1 second
-		//	return ctrl.Result{RequeueAfter: (5*time.Second - time.Since(mostRecentLastTransitionTime.Time)) + 1*time.Second}, nil
-		//}
+		if mostRecentLastTransitionTime != nil && time.Since(mostRecentLastTransitionTime.Time) < 5*time.Second {
+			err = r.Status().Update(ctx, &argoCDCommitStatus)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status during requeuing: %w", err)
+			}
+			logger.Info("Most recent last transition time is less than 5 seconds old, requeuing")
+			// Requeue with a delay of the time until the mostRecentLastTransitionTime occurred + 1 second
+			return ctrl.Result{RequeueAfter: (5*time.Second - time.Since(mostRecentLastTransitionTime.Time)) + 1*time.Second}, nil
+		}
 
 		// Resolve state
 		if healthy == len(aggregateItem) {

@@ -597,7 +597,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		const argocdCSLabel = "argocd-health"
 		const namespace = "default"
 
-		It("should successfully reconcile the resource", func() {
+		FIt("should successfully reconcile the resource", func() {
 			// Skip("Skipping test because of flakiness")
 			By("Creating the resource")
 			plainName := "promotion-strategy-with-active-commit-status-argocdcommitstatus"
@@ -737,6 +737,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).To(Succeed())
 				err = unstructured.SetNestedField(argoCDAppDev.Object, ctpDev.Status.Active.Hydrated.Sha, "status", "sync", "revision")
 				Expect(err).To(Succeed())
+				err = unstructured.SetNestedField(argoCDAppDev.Object, metav1.Time{Time: time.Now().Add(-(6 * time.Second))}.ToUnstructured(), "status", "health", "lastTransitionTime")
+				Expect(err).To(Succeed())
 				err = k8sClient.Update(ctx, &argoCDAppDev)
 				Expect(err).To(Succeed())
 
@@ -758,7 +760,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the staging Argo CD application to synced and health we should close production PR")
 
-			// waitedForDelay := false
+			timeDelay := time.Now().Add(10 * time.Second)
+			waitedForDelay := false
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
@@ -772,14 +775,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).To(Succeed())
 				err = unstructured.SetNestedField(argoCDAppStaging.Object, ctpStaging.Status.Active.Hydrated.Sha, "status", "sync", "revision")
 				Expect(err).To(Succeed())
-				// if time.Now().After(timeDelay) {
-				//	err = unstructured.SetNestedField(argoCDAppStaging.Object, metav1.Time{Time: time.Now().Add(-(6 * time.Second))}.ToUnstructured(), "status", "health", "lastTransitionTime")
-				//	Expect(err).To(Succeed())
-				//	waitedForDelay = true
-				// } else {
-				//	err = unstructured.SetNestedField(argoCDAppStaging.Object, metav1.Time{Time: time.Now().Add(-(1 * time.Second))}.ToUnstructured(), "status", "health", "lastTransitionTime")
-				//	Expect(err).To(Succeed())
-				//}
+				if time.Now().After(timeDelay) {
+					err = unstructured.SetNestedField(argoCDAppStaging.Object, metav1.Time{Time: time.Now().Add(-(6 * time.Second))}.ToUnstructured(), "status", "health", "lastTransitionTime")
+					Expect(err).To(Succeed())
+					waitedForDelay = true
+				} else {
+					err = unstructured.SetNestedField(argoCDAppStaging.Object, metav1.Time{Time: time.Now()}.ToUnstructured(), "status", "health", "lastTransitionTime")
+					Expect(err).To(Succeed())
+				}
 				err = k8sClient.Update(ctx, &argoCDAppStaging)
 				Expect(err).To(Succeed())
 
@@ -787,11 +790,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
-				}, &pullRequestStaging)
+				}, &pullRequestProd)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, EventuallyTimeout).Should(Succeed())
-			// Expect(waitedForDelay).To(BeTrue())
+			Expect(waitedForDelay).To(BeTrue())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
@@ -937,7 +940,7 @@ func argocdApplications(namespace string, name string) (unstructured.Unstructure
 				},
 				Health: argocd.HealthStatus{
 					Status:             argocd.HealthStatusHealthy,
-					LastTransitionTime: &metav1.Time{Time: time.Now().Add(-(13 * time.Second))},
+					LastTransitionTime: &metav1.Time{Time: time.Now()},
 				},
 			},
 		}
