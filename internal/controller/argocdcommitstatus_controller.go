@@ -55,7 +55,6 @@ var gvk = schema.GroupVersionKind{
 type aggregate struct {
 	application  *argocd.ArgoCDApplication
 	commitStatus *promoterv1alpha1.CommitStatus
-	// selectedApplications *promoterv1alpha1.ApplicationsSelected
 }
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
