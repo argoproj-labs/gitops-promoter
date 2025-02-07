@@ -26,8 +26,6 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 
-	"github.com/cespare/xxhash/v2"
-
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
