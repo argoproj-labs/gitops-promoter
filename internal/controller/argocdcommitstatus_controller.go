@@ -53,9 +53,9 @@ var gvk = schema.GroupVersionKind{
 }
 
 type aggregate struct {
-	application          *argocd.ArgoCDApplication
-	commitStatus         *promoterv1alpha1.CommitStatus
-	selectedApplications *promoterv1alpha1.ApplicationsSelected
+	application  *argocd.ArgoCDApplication
+	commitStatus *promoterv1alpha1.CommitStatus
+	// selectedApplications *promoterv1alpha1.ApplicationsSelected
 }
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
@@ -189,14 +189,13 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCo
 				Phase: phase,
 			},
 		}
-		aggregateItem.selectedApplications = &promoterv1alpha1.ApplicationsSelected{
+		argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.ApplicationsSelected{
 			Namespace:          application.GetNamespace(),
 			Name:               application.GetName(),
 			Phase:              phase,
 			Sha:                application.Status.Sync.Revision,
 			LastTransitionTime: application.Status.Health.LastTransitionTime,
-		}
-		argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, *aggregateItem.selectedApplications)
+		})
 
 		aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], aggregateItem)
 	}
@@ -244,9 +243,9 @@ func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregate
 	var mostRecentLastTransitionTime *metav1.Time
 	for _, s := range aggregateItem {
 		// Find the most recent last transition time
-		if s.selectedApplications.LastTransitionTime != nil &&
-			(mostRecentLastTransitionTime == nil || s.selectedApplications.LastTransitionTime.Time.After(mostRecentLastTransitionTime.Time)) {
-			mostRecentLastTransitionTime = s.selectedApplications.LastTransitionTime
+		if s.application.Status.Health.LastTransitionTime != nil &&
+			(mostRecentLastTransitionTime == nil || s.application.Status.Health.LastTransitionTime.Time.After(mostRecentLastTransitionTime.Time)) {
+			mostRecentLastTransitionTime = s.application.Status.Health.LastTransitionTime
 		}
 	}
 	return mostRecentLastTransitionTime
@@ -331,7 +330,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			Name:                commitStatusName,
 			Description:         desc,
 			Phase:               phase,
-			Url:                 "https://example.com",
+			// Url:                 "https://example.com",
 		},
 	}
 
