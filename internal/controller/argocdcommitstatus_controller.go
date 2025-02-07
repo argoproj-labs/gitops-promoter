@@ -225,13 +225,13 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCo
 	return aggregates, nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhase(aggregateItem []*aggregate, resolvedSha string) (promoterv1alpha1.CommitStatusPhase, string) {
+func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhase(appsInEnvironment []*aggregate, resolvedSha string) (promoterv1alpha1.CommitStatusPhase, string) {
 	var desc string
 	resolvedPhase := promoterv1alpha1.CommitPhasePending
 	pending := 0
 	healthy := 0
 	degraded := 0
-	for _, s := range aggregateItem {
+	for _, s := range appsInEnvironment {
 		if s.commitStatus.Spec.Sha != resolvedSha {
 			pending++
 		} else if s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess {
@@ -244,12 +244,12 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhase(aggregateItem []
 	}
 
 	// Resolve state
-	if healthy == len(aggregateItem) {
+	if healthy == len(appsInEnvironment) {
 		resolvedPhase = promoterv1alpha1.CommitPhaseSuccess
-		desc = fmt.Sprintf("%d/%d apps are healthy", healthy, len(aggregateItem))
-	} else if degraded == len(aggregateItem) {
+		desc = fmt.Sprintf("%d/%d apps are healthy", healthy, len(appsInEnvironment))
+	} else if degraded == len(appsInEnvironment) {
 		resolvedPhase = promoterv1alpha1.CommitPhaseFailure
-		desc = fmt.Sprintf("%d/%d apps are degraded", degraded, len(aggregateItem))
+		desc = fmt.Sprintf("%d/%d apps are degraded", degraded, len(appsInEnvironment))
 	} else {
 		desc = fmt.Sprintf("Waiting for apps to be healthy (%d healthy, %d degraded, %d pending)", healthy, degraded, pending)
 	}
