@@ -8,6 +8,10 @@ PromotionStrategy.
 !!! important
     Currently this controller only works with Argo CD Applications that are configured to use the hydrator.
 
+!!! important
+    Currently the repo URL configured in the PromotionStrategy must be the same as the repo URL configured in the Argo CD Application.
+
+
 ## Example Configurations
 
 In this example we see an ArgoCDCommitStatus resource that is configured to select all Argo CD Applications
