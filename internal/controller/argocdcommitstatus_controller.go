@@ -141,9 +141,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			if err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status during requeuing: %w", err)
 			}
-			logger.Info("Most recent last transition time is less than 5 seconds old, requeuing")
-			// Requeue with a delay of the time until the mostRecentLastTransitionTime occurred + 1 second
-			return ctrl.Result{RequeueAfter: (5*time.Second - time.Since(mostRecentLastTransitionTime.Time)) + 1*time.Second}, nil
+			requeueAfter := (5*time.Second - time.Since(mostRecentLastTransitionTime.Time)) + 1*time.Second
+			logger.Info(fmt.Sprintf("Most recent last transition time is less than 5 seconds old, re-queue: %s", requeueAfter))
+			return ctrl.Result{RequeueAfter: requeueAfter}, nil
 		} else {
 			err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
 			if err != nil {
