@@ -641,12 +641,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
 
 			By("Checking that the CommitStatus for each environment is created from ArgoCDCommitStatus")
-			repo, _, err := unstructured.NestedString(argoCDAppDev.Object, "spec", "sourceHydrator", "drySource", "repoURL")
-			Expect(err).To(Succeed())
+
+			// Expect(err).To(Succeed())
 			for _, environment := range promotionStrategy.Spec.Environments {
 				commitStatus := promoterv1alpha1.CommitStatus{}
 				commitStatusName := environment.Branch + "/health"
-				resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(repo))
+				resourceName := strings.ReplaceAll(commitStatusName, "/", "-")
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      resourceName,

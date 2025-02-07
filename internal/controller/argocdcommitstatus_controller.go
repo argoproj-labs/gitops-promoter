@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
@@ -31,7 +30,6 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"github.com/cespare/xxhash/v2"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -55,14 +53,6 @@ type aggregate struct {
 	application          *argocd.ArgoCDApplication
 	commitStatus         *promoterv1alpha1.CommitStatus
 	selectedApplications *promoterv1alpha1.ApplicationsSelected
-}
-
-// groupingKey describes a unique grouping of applications based on their repo URL and their target sync branch.
-// This is effectively the key for the aggregate commit status representing a group of applications
-// syncing from the same branch.
-type groupingKey struct {
-	repo         string
-	targetBranch string
 }
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
@@ -124,9 +114,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDApplication: %w", err)
 	}
 
-	for key, appsInEnvironment := range groupedArgoCDApps {
-		repo, targetBranch := key.repo, key.targetBranch
-
+	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
 		gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, repositoryRef, &argoCDCommitStatus, targetBranch)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
@@ -144,7 +132,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		// Did the mostRecentLastTransitionTime occur more than 5 seconds ago
 		if mostRecentLastTransitionTime != nil && time.Since(mostRecentLastTransitionTime.Time) < 5*time.Second {
-			err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, repo, resolvedSha, promoterv1alpha1.CommitPhasePending, desc)
+			err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, resolvedSha, promoterv1alpha1.CommitPhasePending, desc)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -157,7 +145,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			// Requeue with a delay of the time until the mostRecentLastTransitionTime occurred + 1 second
 			return ctrl.Result{RequeueAfter: (5*time.Second - time.Since(mostRecentLastTransitionTime.Time)) + 1*time.Second}, nil
 		} else {
-			err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, repo, resolvedSha, resolvedPhase, desc)
+			err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -172,27 +160,31 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil // Timer for now :(
 }
 
-func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, ulAppList unstructured.UnstructuredList) (map[groupingKey][]*aggregate, error) {
-	aggregates := map[groupingKey][]*aggregate{}
+func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, ulAppList unstructured.UnstructuredList) (map[string][]*aggregate, error) {
+	aggregates := map[string][]*aggregate{}
 	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
+	repo := ""
+
 	for _, ulApp := range ulAppList.Items {
 		var application argocd.ArgoCDApplication
 		err := runtime.DefaultUnstructuredConverter.FromUnstructured(ulApp.Object, &application)
 		if err != nil {
-			return map[groupingKey][]*aggregate{}, fmt.Errorf("failed to cast unstructured object to typed object: %w", err)
+			return map[string][]*aggregate{}, fmt.Errorf("failed to cast unstructured object to typed object: %w", err)
 		}
 
 		if application.Spec.SourceHydrator == nil {
 			continue
 		}
 
-		aggregateItem := &aggregate{
-			application: &application,
+		// Check that all the applications are configured with the same repo
+		if repo == "" {
+			repo = application.Spec.SourceHydrator.DrySource.RepoURL
+		} else if repo != application.Spec.SourceHydrator.DrySource.RepoURL {
+			return map[string][]*aggregate{}, fmt.Errorf("all applications must have the same repo configured")
 		}
 
-		key := groupingKey{
-			repo:         strings.TrimRight(application.Spec.SourceHydrator.DrySource.RepoURL, ".git"),
-			targetBranch: application.Spec.SourceHydrator.SyncSource.TargetBranch,
+		aggregateItem := &aggregate{
+			application: &application,
 		}
 
 		phase := promoterv1alpha1.CommitPhasePending
@@ -219,7 +211,7 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCo
 		}
 		argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, *aggregateItem.selectedApplications)
 
-		aggregates[key] = append(aggregates[key], aggregateItem)
+		aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], aggregateItem)
 	}
 
 	return aggregates, nil
@@ -317,11 +309,11 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	return nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, repo string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) error {
+func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) error {
 	logger := log.FromContext(ctx)
 
 	commitStatusName := targetBranch + "/health"
-	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(repo))
+	resourceName := strings.ReplaceAll(commitStatusName, "/", "-")
 
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
 	err := r.Client.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy, &client.GetOptions{})
@@ -413,8 +405,4 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 	default:
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("no supported git authentication provider found")
 	}
-}
-
-func hash(data []byte) string {
-	return strconv.FormatUint(xxhash.Sum64(data), 8)
 }
