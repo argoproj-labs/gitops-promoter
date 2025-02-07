@@ -126,29 +126,13 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			return ctrl.Result{}, fmt.Errorf("failed to ls-remote sha: %w", err)
 		}
 
-		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha)
-
 		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
 
-		// Did the mostRecentLastTransitionTime occur more than 5 seconds ago
-		if mostRecentLastTransitionTime != nil && time.Since(mostRecentLastTransitionTime.Time) < 5*time.Second {
-			err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, resolvedSha, promoterv1alpha1.CommitPhasePending, desc)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
+		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha, mostRecentLastTransitionTime)
 
-			err = r.Status().Update(ctx, &argoCDCommitStatus)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status during requeuing: %w", err)
-			}
-			requeueAfter := (5*time.Second - time.Since(mostRecentLastTransitionTime.Time)) + 1*time.Second
-			logger.Info(fmt.Sprintf("Most recent last transition time is less than 5 seconds old, re-queue: %s", requeueAfter))
-			return ctrl.Result{RequeueAfter: requeueAfter}, nil
-		} else {
-			err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
+		err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
+		if err != nil {
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -217,7 +201,8 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCo
 	return aggregates, nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(appsInEnvironment []*aggregate, resolvedSha string) (promoterv1alpha1.CommitStatusPhase, string) {
+func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(appsInEnvironment []*aggregate, resolvedSha string, mostRecentLastTransitionTime *metav1.Time) (promoterv1alpha1.CommitStatusPhase, string) {
+
 	var desc string
 	resolvedPhase := promoterv1alpha1.CommitPhasePending
 	pending := 0
@@ -244,6 +229,10 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(ap
 		desc = fmt.Sprintf("%d/%d apps are degraded", degraded, len(appsInEnvironment))
 	} else {
 		desc = fmt.Sprintf("Waiting for apps to be healthy (%d healthy, %d degraded, %d pending)", healthy, degraded, pending)
+	}
+
+	if mostRecentLastTransitionTime != nil && time.Since(mostRecentLastTransitionTime.Time) < 5*time.Second {
+		return promoterv1alpha1.CommitPhasePending, desc
 	}
 
 	return resolvedPhase, desc
