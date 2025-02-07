@@ -105,9 +105,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to parse label selector: %w", err)
 	}
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
-	var ul unstructured.UnstructuredList
-	ul.SetGroupVersionKind(gvk)
-	err = r.Client.List(ctx, &ul, &client.ListOptions{
+	var ulArgoCDApps unstructured.UnstructuredList
+	ulArgoCDApps.SetGroupVersionKind(gvk)
+	err = r.Client.List(ctx, &ulArgoCDApps, &client.ListOptions{
 		LabelSelector: ls,
 	})
 	if err != nil {
@@ -119,12 +119,12 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider: %w", err)
 	}
 
-	aggregates, err := r.groupArgoCDApplicationsWithPhase(&argoCDCommitStatus, ul)
+	groupedArgoCDApps, err := r.groupArgoCDApplicationsWithPhase(&argoCDCommitStatus, ulArgoCDApps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDApplication: %w", err)
 	}
 
-	for key, aggregateItem := range aggregates {
+	for key, appsInEnvironment := range groupedArgoCDApps {
 		repo, targetBranch := key.repo, key.targetBranch
 
 		gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, repositoryRef, &argoCDCommitStatus, targetBranch)
@@ -138,7 +138,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			return ctrl.Result{}, fmt.Errorf("failed to ls-remote sha: %w", err)
 		}
 
-		mostRecentLastTransitionTime, resolvedPhase, desc := r.calculateAggregatedPhase(aggregateItem, resolvedSha)
+		resolvedPhase, desc := r.calculateAggregatedPhase(appsInEnvironment, resolvedSha)
+
+		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
 
 		// Did the mostRecentLastTransitionTime occur more than 5 seconds ago
 		if mostRecentLastTransitionTime != nil && time.Since(mostRecentLastTransitionTime.Time) < 5*time.Second {
@@ -223,13 +225,12 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCo
 	return aggregates, nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhase(aggregateItem []*aggregate, resolvedSha string) (*metav1.Time, promoterv1alpha1.CommitStatusPhase, string) {
+func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhase(aggregateItem []*aggregate, resolvedSha string) (promoterv1alpha1.CommitStatusPhase, string) {
 	var desc string
 	resolvedPhase := promoterv1alpha1.CommitPhasePending
 	pending := 0
 	healthy := 0
 	degraded := 0
-	var mostRecentLastTransitionTime *metav1.Time
 	for _, s := range aggregateItem {
 		if s.commitStatus.Spec.Sha != resolvedSha {
 			pending++
@@ -239,12 +240,6 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhase(aggregateItem []
 			degraded++
 		} else {
 			pending++
-		}
-
-		// Find the most recent last transition time
-		if s.selectedApplications.LastTransitionTime != nil &&
-			(mostRecentLastTransitionTime == nil || s.selectedApplications.LastTransitionTime.Time.After(mostRecentLastTransitionTime.Time)) {
-			mostRecentLastTransitionTime = s.selectedApplications.LastTransitionTime
 		}
 	}
 
@@ -259,7 +254,19 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhase(aggregateItem []
 		desc = fmt.Sprintf("Waiting for apps to be healthy (%d healthy, %d degraded, %d pending)", healthy, degraded, pending)
 	}
 
-	return mostRecentLastTransitionTime, resolvedPhase, desc
+	return resolvedPhase, desc
+}
+
+func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregateItem []*aggregate) *metav1.Time {
+	var mostRecentLastTransitionTime *metav1.Time
+	for _, s := range aggregateItem {
+		// Find the most recent last transition time
+		if s.selectedApplications.LastTransitionTime != nil &&
+			(mostRecentLastTransitionTime == nil || s.selectedApplications.LastTransitionTime.Time.After(mostRecentLastTransitionTime.Time)) {
+			mostRecentLastTransitionTime = s.selectedApplications.LastTransitionTime
+		}
+	}
+	return mostRecentLastTransitionTime
 }
 
 // func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
