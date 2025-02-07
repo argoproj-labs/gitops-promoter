@@ -215,7 +215,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			resolvedPhase = promoterv1alpha1.CommitPhaseFailure
 			desc = fmt.Sprintf("%d/%d apps are degraded", degraded, len(aggregateItem))
 		} else {
-			desc = fmt.Sprintf("Waiting for apps to be healthy (%d/%d healthy, %d/%d degraded, %d/%d pending)", healthy, len(aggregateItem), degraded, len(aggregateItem), pending, len(aggregateItem))
+			desc = fmt.Sprintf("Waiting for apps to be healthy (%d healthy, %d degraded, %d pending)", healthy, degraded, pending)
 		}
 
 		// Did the mostRecentLastTransitionTime occur more than 5 seconds ago
