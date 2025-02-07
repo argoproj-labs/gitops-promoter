@@ -51,13 +51,16 @@ var gvk = schema.GroupVersionKind{
 	Kind:    "Application",
 }
 
-type Aggregate struct {
-	application         *argocd.ArgoCDApplication
-	commitStatus        *promoterv1alpha1.CommitStatus
-	selectedApplication *promoterv1alpha1.ApplicationsSelected
+type aggregate struct {
+	application          *argocd.ArgoCDApplication
+	commitStatus         *promoterv1alpha1.CommitStatus
+	selectedApplications *promoterv1alpha1.ApplicationsSelected
 }
 
-type objKey struct {
+// groupingKey describes a unique grouping of applications based on their repo URL and their target sync branch.
+// This is effectively the key for the aggregate commit status representing a group of applications
+// syncing from the same branch.
+type groupingKey struct {
 	repo         string
 	targetBranch string
 }
@@ -97,7 +100,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDCommitStatus: %w", err)
 	}
 
-	aggregates := map[objKey][]*Aggregate{}
+	aggregates := map[groupingKey][]*aggregate{}
 
 	ls, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
 	if err != nil {
@@ -130,11 +133,11 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			continue
 		}
 
-		aggregateItem := &Aggregate{
+		aggregateItem := &aggregate{
 			application: &application,
 		}
 
-		key := objKey{
+		key := groupingKey{
 			repo:         strings.TrimRight(application.Spec.SourceHydrator.DrySource.RepoURL, ".git"),
 			targetBranch: application.Spec.SourceHydrator.SyncSource.TargetBranch,
 		}
@@ -154,26 +157,19 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 				Phase: phase,
 			},
 		}
-		aggregateItem.selectedApplication = &promoterv1alpha1.ApplicationsSelected{}
-		aggregateItem.selectedApplication.Phase = phase
-		aggregateItem.selectedApplication.Sha = application.Status.Sync.Revision
-		aggregateItem.selectedApplication.Name = application.GetName()
-		aggregateItem.selectedApplication.Namespace = application.GetNamespace()
-		aggregateItem.selectedApplication.LastTransitionTime = application.Status.Health.LastTransitionTime
-
-		argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.ApplicationsSelected{
+		aggregateItem.selectedApplications = &promoterv1alpha1.ApplicationsSelected{
 			Namespace:          application.GetNamespace(),
 			Name:               application.GetName(),
 			Phase:              phase,
 			Sha:                application.Status.Sync.Revision,
 			LastTransitionTime: application.Status.Health.LastTransitionTime,
-		})
+		}
+		argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, *aggregateItem.selectedApplications)
 
 		aggregates[key] = append(aggregates[key], aggregateItem)
 	}
 
 	for key, aggregateItem := range aggregates {
-		var resolvedSha string
 		repo, targetBranch := key.repo, key.targetBranch
 
 		gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, repositoryRef, &argoCDCommitStatus, targetBranch)
@@ -181,6 +177,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
 		}
 
+		var resolvedSha string
 		resolvedSha, err = gitOperation.LsRemote(ctx, targetBranch)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to ls-remote sha: %w", err)
@@ -204,22 +201,10 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			}
 
 			// Find the most recent last transition time
-			if s.selectedApplication.LastTransitionTime != nil {
-				if mostRecentLastTransitionTime == nil || s.selectedApplication.LastTransitionTime.Time.After(mostRecentLastTransitionTime.Time) {
-					mostRecentLastTransitionTime = s.selectedApplication.LastTransitionTime
-				}
+			if s.selectedApplications.LastTransitionTime != nil &&
+				(mostRecentLastTransitionTime == nil || s.selectedApplications.LastTransitionTime.Time.After(mostRecentLastTransitionTime.Time)) {
+				mostRecentLastTransitionTime = s.selectedApplications.LastTransitionTime
 			}
-		}
-
-		// Did the mostRecentLastTransitionTime occur more than 5 seconds ago
-		if mostRecentLastTransitionTime != nil && time.Since(mostRecentLastTransitionTime.Time) < 5*time.Second {
-			err = r.Status().Update(ctx, &argoCDCommitStatus)
-			if err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status during requeuing: %w", err)
-			}
-			logger.Info("Most recent last transition time is less than 5 seconds old, requeuing")
-			// Requeue with a delay of the time until the mostRecentLastTransitionTime occurred + 1 second
-			return ctrl.Result{RequeueAfter: (5*time.Second - time.Since(mostRecentLastTransitionTime.Time)) + 1*time.Second}, nil
 		}
 
 		// Resolve state
@@ -228,14 +213,30 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			desc = fmt.Sprintf("%d/%d apps are healthy", healthy, len(aggregateItem))
 		} else if degraded == len(aggregateItem) {
 			resolvedPhase = promoterv1alpha1.CommitPhaseFailure
-			desc = fmt.Sprintf("%d/%d apps are degraded", healthy, len(aggregateItem))
+			desc = fmt.Sprintf("%d/%d apps are degraded", degraded, len(aggregateItem))
 		} else {
 			desc = fmt.Sprintf("Waiting for apps to be healthy (%d/%d healthy, %d/%d degraded, %d/%d pending)", healthy, len(aggregateItem), degraded, len(aggregateItem), pending, len(aggregateItem))
 		}
 
-		err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, repo, resolvedSha, resolvedPhase, desc)
-		if err != nil {
-			return ctrl.Result{}, err
+		// Did the mostRecentLastTransitionTime occur more than 5 seconds ago
+		if mostRecentLastTransitionTime != nil && time.Since(mostRecentLastTransitionTime.Time) < 5*time.Second {
+			err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, repo, resolvedSha, promoterv1alpha1.CommitPhasePending, desc)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+
+			err = r.Status().Update(ctx, &argoCDCommitStatus)
+			if err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status during requeuing: %w", err)
+			}
+			logger.Info("Most recent last transition time is less than 5 seconds old, requeuing")
+			// Requeue with a delay of the time until the mostRecentLastTransitionTime occurred + 1 second
+			return ctrl.Result{RequeueAfter: (5*time.Second - time.Since(mostRecentLastTransitionTime.Time)) + 1*time.Second}, nil
+		} else {
+			err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, repo, resolvedSha, resolvedPhase, desc)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
 		}
 	}
 

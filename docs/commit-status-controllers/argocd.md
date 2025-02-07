@@ -5,6 +5,9 @@ based on Argo CD's concept of a healthy application. The controller listens for 
 Applications based on a common label on the Application resources managed by a particular 
 PromotionStrategy.
 
+!!! important
+    Currently this controller only works with Argo CD Applications that are configured to use the hydrator.
+
 ## Example Configurations
 
 In this example we see an ArgoCDCommitStatus resource that is configured to select all Argo CD Applications
