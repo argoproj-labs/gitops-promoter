@@ -20,8 +20,13 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cespare/xxhash/v2"
+
+	"github.com/cespare/xxhash/v2"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -301,7 +306,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	logger := log.FromContext(ctx)
 
 	commitStatusName := targetBranch + "/health"
-	resourceName := strings.ReplaceAll(commitStatusName, "/", "-")
+	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argoCDCommitStatus.Name))
 
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
 	err := r.Client.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy, &client.GetOptions{})
@@ -393,4 +398,8 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 	default:
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("no supported git authentication provider found")
 	}
+}
+
+func hash(data []byte) string {
+	return strconv.FormatUint(xxhash.Sum64(data), 8)
 }

@@ -646,7 +646,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			for _, environment := range promotionStrategy.Spec.Environments {
 				commitStatus := promoterv1alpha1.CommitStatus{}
 				commitStatusName := environment.Branch + "/health"
-				resourceName := strings.ReplaceAll(commitStatusName, "/", "-")
+				resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argocdCommitStatus.Name))
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      resourceName,
