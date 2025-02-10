@@ -39,6 +39,8 @@ dockers:
     dockerfile: release.Dockerfile
     skip_push: "{{ .IsSnapshot }}"
     use: buildx
+    extra_files:
+      - hack/git/promoter_askpass.sh
     build_flag_templates:
       - "--pull"
       - "--label=org.opencontainers.image.created={{.Date}}"
@@ -49,6 +51,8 @@ dockers:
   - image_templates:
       - quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-arm64
     dockerfile: release.Dockerfile
+    extra_files:
+      - hack/git/promoter_askpass.sh
     skip_push: "{{ .IsSnapshot }}"
     use: buildx
     goarch: arm64
