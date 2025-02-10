@@ -135,6 +135,10 @@ docker-push: ## Push docker image with the manager.
 goreleaser-build-local: goreleaser ## Run goreleaser build locally. Use to validate the goreleaser configuration.
 	$(GORELEASER) build --snapshot --clean --single-target --verbose
 
+.PHONY: goreleaser-release-local
+goreleaser-release-local: goreleaser ## Run goreleaser release locally. Use to validate the goreleaser configuration.
+	$(GORELEASER) release --snapshot --clean
+
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
 # - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
@@ -211,7 +215,7 @@ GOLANGCI_LINT_VERSION ?= v1.62.0
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
-GORELEASER_VERSION ?= v2.4.8
+GORELEASER_VERSION ?= v2.6.1
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
