@@ -135,6 +135,10 @@ docker-push: ## Push docker image with the manager.
 goreleaser-build-local: goreleaser ## Run goreleaser build locally. Use to validate the goreleaser configuration.
 	$(GORELEASER) build --snapshot --clean --single-target --verbose
 
+.PHONY: goreleaser-release-local
+goreleaser-release-local: goreleaser ## Run goreleaser release locally. Use to validate the goreleaser configuration.
+	$(GORELEASER) release --snapshot --clean
+
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
 # - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
