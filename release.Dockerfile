@@ -6,7 +6,7 @@ WORKDIR /
 
 COPY gitops-promoter .
 RUN mkdir /git
-COPY promoter_askpass.sh /git/promoter_askpass.sh
+COPY hack/git/promoter_askpass.sh /git/promoter_askpass.sh
 ENV PATH="${PATH}:/git"
 RUN echo "${PATH}" >> /etc/bash.bashrc
 USER 65532:65532
