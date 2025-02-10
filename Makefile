@@ -211,7 +211,7 @@ GOLANGCI_LINT_VERSION ?= v1.62.0
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
-GORELEASER_VERSION ?= v2.4.8
+GORELEASER_VERSION ?= v2.6.1
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
