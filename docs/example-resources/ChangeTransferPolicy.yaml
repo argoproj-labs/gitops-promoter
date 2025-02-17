@@ -7,6 +7,10 @@ spec:
     name: example-git-repository
   proposedBranch: environment/dev-next
   activeBranch: environment/dev
+  openPullRequestFilter:
+    paths:
+      - "*.yaml"
+      - "service-1/us-east-1/*.yaml"
   activeCommitStatuses:
   - key: argocd-app-health
   proposedCommitStatuses:

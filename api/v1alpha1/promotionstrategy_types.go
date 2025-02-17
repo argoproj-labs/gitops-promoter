@@ -51,6 +51,9 @@ type PromotionStrategySpec struct {
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
 	Environments []Environment `json:"environments"`
+
+	// +kubebuilder:validation:Optional
+	OpenPullerRequestFilter *OpenPullerRequestFilter `json:"openPullRequestFilter,omitempty"`
 }
 
 type Environment struct {
