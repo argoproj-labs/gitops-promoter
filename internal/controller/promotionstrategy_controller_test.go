@@ -21,6 +21,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -41,6 +43,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Creating the resources")
 
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
+
+			promotionStrategy.Spec.OpenPullerRequestFilter = &promoterv1alpha1.OpenPullerRequestFilter{
+				Paths: []string{"*.yaml"},
+			}
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -229,6 +235,358 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+		})
+	})
+
+	Context("When reconciling a resource with no commit statuses with path filtering", func() {
+		ctx := context.Background()
+
+		It("should successfully reconcile the resource", func() {
+			By("Creating the resources")
+
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-cs-path-filter", "default")
+
+			promotionStrategy.Spec.OpenPullerRequestFilter = &promoterv1alpha1.OpenPullerRequestFilter{
+				Paths: []string{"fail-manifest.yaml"},
+			}
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			// Check that ChangeTransferPolicy's are created
+			ctpDev := promoterv1alpha1.ChangeTransferPolicy{}
+			ctpStaging := promoterv1alpha1.ChangeTransferPolicy{}
+			ctpProd := promoterv1alpha1.ChangeTransferPolicy{}
+
+			pullRequestDev := promoterv1alpha1.PullRequest{}
+			pullRequestStaging := promoterv1alpha1.PullRequest{}
+			pullRequestProd := promoterv1alpha1.PullRequest{}
+
+			By("Checking that all the ChangeTransferPolicies are created and PRs are created and in their proper state with updated statuses and proper sha's")
+			Eventually(func(g Gomega) {
+				_ = k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestDev)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+
+				// By("Checking that the ChangeTransferPolicy for development has shas that are not empty, meaning we have reconciled the resource")
+				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
+
+				// By("Checking that the ChangeTransferPolicy for staging has shas that are not empty, meaning we have reconciled the resource")
+				g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpStaging.Status.Proposed.Hydrated.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpStaging.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
+
+				// By("Checking that the ChangeTransferPolicy for production has shas that are not empty, meaning we have reconciled the resource")
+				g.Expect(ctpProd.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpProd.Status.Active.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpProd.Status.Proposed.Hydrated.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
+
+				// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
+				g.Expect(ctpDev.Spec.ActiveBranch).To(Equal("environment/development"))
+				g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
+				// Success due to PromotionStrategy not having any CommitStatuses configured
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+				// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
+				g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal("environment/staging"))
+				g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
+				// Success due to PromotionStrategy not having any CommitStatuses configured
+				g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+				// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
+				g.Expect(ctpProd.Spec.ActiveBranch).To(Equal("environment/production"))
+				g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
+				g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
+				g.Expect(promotionStrategy.Status.Environments[2].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
+				// Success due to PromotionStrategy not having any CommitStatuses configured
+				g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+			}, EventuallyTimeout).Should(Succeed())
+
+			By("Adding a pending commit")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			makeChangeAndHydrateRepo(gitPath, name, name)
+
+			simulateWebhook(ctx, k8sClient, &ctpDev)
+			simulateWebhook(ctx, k8sClient, &ctpStaging)
+			simulateWebhook(ctx, k8sClient, &ctpProd)
+
+			Eventually(func(g Gomega) {
+				// Check that we have fully simulated a change by checking that active dry sha and proposed dry sha are different
+				_ = k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Not(Equal(ctpDev.Status.Proposed.Dry.Sha)))
+
+				_ = k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Not(Equal(ctpStaging.Status.Proposed.Dry.Sha)))
+
+				_ = k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Status.Active.Dry.Sha).To(Not(Equal(ctpProd.Status.Proposed.Dry.Sha)))
+			}).Should(Succeed())
+
+			By("Checking that the pull request for the development environment is not created")
+			Eventually(func(g Gomega) {
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestDev)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, EventuallyTimeout).Should(Succeed())
+
+			By("Checking that all the ChangeTransferPolicies are created and PRs are not created but that the CTPs have updated statuses and proper sha's")
+			Eventually(func(g Gomega) {
+				_ = k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestDev)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+
+				// By("Checking that the ChangeTransferPolicy for development has shas that are not empty, meaning we have reconciled the resource")
+				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
+
+				// By("Checking that the ChangeTransferPolicy for staging has shas that are not empty, meaning we have reconciled the resource")
+				g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpStaging.Status.Proposed.Hydrated.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpStaging.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
+
+				// By("Checking that the ChangeTransferPolicy for production has shas that are not empty, meaning we have reconciled the resource")
+				g.Expect(ctpProd.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpProd.Status.Active.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpProd.Status.Proposed.Hydrated.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
+
+				// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
+				g.Expect(ctpDev.Spec.ActiveBranch).To(Equal("environment/development"))
+				g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+				// check that we have merged the commit via git merge and not a PR
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
+				// Success due to PromotionStrategy not having any CommitStatuses configured
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+				// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
+				g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal("environment/staging"))
+				g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
+				// check that we have merged the commit via git merge and not a PR
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
+				// Success due to PromotionStrategy not having any CommitStatuses configured
+				g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+				// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
+				g.Expect(ctpProd.Spec.ActiveBranch).To(Equal("environment/production"))
+				g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
+				// check that we have merged the commit via git merge and not a PR
+				g.Expect(ctpProd.Status.Active.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
+				g.Expect(promotionStrategy.Status.Environments[2].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
+				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
+				// Success due to PromotionStrategy not having any CommitStatuses configured
+				g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+			}, EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When testing the OpenPullRequestFilter function", func() {
+		ctx := context.Background()
+		It("should successfully reconcile the resource", func() {
+			match, err := git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullerRequestFilter{
+				Paths: []string{
+					"manifest.yaml",
+					"service-a/us-east-1/*.yaml",
+				},
+			}, []string{
+				"gofile.go",
+				"manifest.yaml",
+			})
+			Expect(err).To(Succeed())
+			Expect(match).To(BeTrue())
+
+			match, err = git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullerRequestFilter{
+				Paths: []string{
+					"service-a/us-east-1/*.yaml",
+				},
+			}, []string{
+				"manifest.yaml",
+			})
+			Expect(err).To(Succeed())
+			Expect(match).To(Not(BeTrue()))
+
+			match, err = git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullerRequestFilter{
+				Paths: []string{
+					"service-a/us-east-1/*.yaml",
+				},
+			}, []string{
+				"service-a/us-east-1/manifest.yaml",
+			})
+			Expect(err).To(Succeed())
+			Expect(match).To(BeTrue())
+
+			match, err = git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullerRequestFilter{
+				Paths: []string{
+					"service-a/*/*.yaml",
+				},
+			}, []string{
+				"service-a/us-east-1/manifest.yaml",
+			})
+			Expect(err).To(Succeed())
+			Expect(match).To(BeTrue())
 		})
 	})
 
@@ -588,7 +946,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 })
 
-func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) {
+func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) { //nolint:unparam
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 	setupInitialTestGitRepoOnServer(name, name)
 
