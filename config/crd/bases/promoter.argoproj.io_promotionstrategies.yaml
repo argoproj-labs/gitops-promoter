@@ -120,6 +120,13 @@ spec:
                 required:
                 - name
                 type: object
+              openPullRequestFilter:
+                properties:
+                  paths:
+                    items:
+                      type: string
+                    type: array
+                type: object
               proposedCommitStatuses:
                 description: |-
                   ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
