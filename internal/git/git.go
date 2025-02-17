@@ -277,8 +277,14 @@ func (g *GitOperations) IsPullRequestRequired(ctx context.Context, filter *v1alp
 func OpenPullRequestFilter(ctx context.Context, filter *v1alpha1.OpenPullerRequestFilter, diffOutput []string) (bool, error) {
 	logger := log.FromContext(ctx)
 	if filter == nil {
-		// No filter, open PR
-		return true, nil
+		logger.V(1).Info("No filter provided, defaulting to checking for yaml files")
+		for _, file := range diffOutput {
+			if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
+				logger.V(4).Info("YAML file changed", "file", file)
+				return true, nil
+			}
+		}
+		return false, nil
 	}
 
 	for _, file := range diffOutput {
