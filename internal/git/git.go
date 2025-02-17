@@ -280,7 +280,7 @@ func OpenPullRequestFilter(ctx context.Context, filter *v1alpha1.OpenPullerReque
 		logger.V(1).Info("No filter provided, defaulting to checking for yaml files")
 		for _, file := range diffOutput {
 			if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
-				logger.V(4).Info("YAML file changed", "file", file)
+				logger.V(1).Info("YAML file changed", "file", file)
 				return true, nil
 			}
 		}
