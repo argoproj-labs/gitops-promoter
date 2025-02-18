@@ -233,6 +233,8 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(ap
 		desc = fmt.Sprintf("Waiting for apps to be healthy (%d healthy, %d degraded, %d pending)", healthy, degraded, pending)
 	}
 
+	// Don't consider the aggregate status healthy until 5s after the most recent transition.
+	// This helps avoid prematurely accepting a transitive healthy state.
 	if mostRecentLastTransitionTime != nil && time.Since(mostRecentLastTransitionTime.Time) < 5*time.Second {
 		return promoterv1alpha1.CommitPhasePending, desc
 	}
