@@ -161,7 +161,7 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCo
 		}
 
 		if application.Spec.SourceHydrator == nil {
-			continue
+			return map[string][]*aggregate{}, fmt.Errorf("application %s/%s does not have a SourceHydrator configured", application.GetNamespace(), application.GetName())
 		}
 
 		// Check that all the applications are configured with the same repo
