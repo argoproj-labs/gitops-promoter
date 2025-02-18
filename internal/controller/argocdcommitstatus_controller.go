@@ -122,8 +122,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 			return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
 		}
 
-		var resolvedSha string
-		resolvedSha, err = gitOperation.LsRemote(ctx, targetBranch)
+		resolvedSha, err := gitOperation.LsRemote(ctx, targetBranch)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to ls-remote sha: %w", err)
 		}
