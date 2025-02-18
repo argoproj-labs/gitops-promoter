@@ -349,7 +349,6 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		if err != nil {
 			return fmt.Errorf("failed to create CommitStatus object: %w", err)
 		}
-		currentCommitStatus = desiredCommitStatus
 	} else {
 		// Update
 		currentCommitStatus.Spec = desiredCommitStatus.Spec
