@@ -124,7 +124,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		resolvedSha, err := gitOperation.LsRemote(ctx, targetBranch)
 		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to ls-remote sha: %w", err)
+			return ctrl.Result{}, fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranch, err)
 		}
 
 		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
