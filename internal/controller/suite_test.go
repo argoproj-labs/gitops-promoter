@@ -106,10 +106,14 @@ var _ = BeforeSuite(func() {
 	By("bootstrapping test environment")
 	useExistingCluster := false
 	testEnv = &envtest.Environment{
-		UseExistingCluster:      &useExistingCluster,
-		CRDDirectoryPaths:       []string{filepath.Join("..", "..", "config", "crd", "bases")},
-		ErrorIfCRDPathMissing:   true,
-		ControlPlaneStopTimeout: 1 * time.Minute,
+		UseExistingCluster: &useExistingCluster,
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "test", "external_crds"),
+		},
+		ErrorIfCRDPathMissing:    true,
+		ControlPlaneStopTimeout:  1 * time.Minute,
+		AttachControlPlaneOutput: false,
 
 		// The BinaryAssetsDirectory is only required if you want to run the tests directly
 		// without call the makefile target test. If not informed it will look for the
@@ -199,6 +203,14 @@ var _ = BeforeSuite(func() {
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
 		// Recorder: k8sManager.GetEventRecorderFor("GitRepository"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&ArgoCDCommitStatusReconciler{
+		Client:     k8sManager.GetClient(),
+		Scheme:     k8sManager.GetScheme(),
+		PathLookup: pathLookup,
+		// Recorder: k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

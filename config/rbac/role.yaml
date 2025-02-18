@@ -15,6 +15,7 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - argocdcommitstatuses
   - changetransferpolicies
   - commitstatuses
   - gitrepositories
@@ -33,6 +34,7 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - argocdcommitstatuses/finalizers
   - changetransferpolicies/finalizers
   - commitstatuses/finalizers
   - gitrepositories/finalizers
@@ -45,6 +47,7 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
+  - argocdcommitstatuses/status
   - changetransferpolicies/status
   - commitstatuses/status
   - gitrepositories/status
