@@ -1,0 +1,23 @@
+# permissions for end users to view argocdcommitstatuses.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: argocdcommitstatus-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - argocdcommitstatuses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - argocdcommitstatuses/status
+  verbs:
+  - get
