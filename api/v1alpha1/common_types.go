@@ -12,3 +12,7 @@ type ObjectReference struct {
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 }
+
+type OpenPullRequestFilter struct {
+	Paths []string `json:"paths,omitempty"`
+}
