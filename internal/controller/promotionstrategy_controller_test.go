@@ -50,7 +50,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
 
-			promotionStrategy.Spec.OpenPullerRequestFilter = &promoterv1alpha1.OpenPullRequestFilter{
+			promotionStrategy.Spec.OpenPullRequestFilter = &promoterv1alpha1.OpenPullRequestFilter{
 				Paths: []string{"*.yaml"},
 			}
 
@@ -252,7 +252,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-cs-path-filter", "default")
 
-			promotionStrategy.Spec.OpenPullerRequestFilter = &promoterv1alpha1.OpenPullRequestFilter{
+			promotionStrategy.Spec.OpenPullRequestFilter = &promoterv1alpha1.OpenPullRequestFilter{
 				Paths: []string{"fail-manifest.yaml"},
 			}
 

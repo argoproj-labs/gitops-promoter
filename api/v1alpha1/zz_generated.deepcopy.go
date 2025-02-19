@@ -755,8 +755,8 @@ func (in *PromotionStrategySpec) DeepCopyInto(out *PromotionStrategySpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.OpenPullerRequestFilter != nil {
-		in, out := &in.OpenPullerRequestFilter, &out.OpenPullerRequestFilter
+	if in.OpenPullRequestFilter != nil {
+		in, out := &in.OpenPullRequestFilter, &out.OpenPullRequestFilter
 		*out = new(OpenPullRequestFilter)
 		(*in).DeepCopyInto(*out)
 	}

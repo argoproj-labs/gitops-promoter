@@ -161,7 +161,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			ActiveCommitStatuses:    append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...),
 			ProposedCommitStatuses:  append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...),
 			AutoMerge:               environment.AutoMerge,
-			OpenPullerRequestFilter: ps.Spec.OpenPullerRequestFilter,
+			OpenPullerRequestFilter: ps.Spec.OpenPullRequestFilter,
 		},
 	}
 
