@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bmatcuk/doublestar/v4"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -235,7 +235,7 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 
 // IsPullRequestRequired will compare the environment branch with the next environment branch and return true if a PR is required.
 // The PR is required if the diff between the two branches contain edits to yaml files.
-func (g *GitOperations) IsPullRequestRequired(ctx context.Context, filter *v1alpha1.OpenPullerRequestFilter, environmentNextBranch, environmentBranch string) (bool, error) {
+func (g *GitOperations) IsPullRequestRequired(ctx context.Context, filter *v1alpha1.OpenPullRequestFilter, environmentNextBranch, environmentBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
@@ -274,7 +274,7 @@ func (g *GitOperations) IsPullRequestRequired(ctx context.Context, filter *v1alp
 	return openPullRequest, nil
 }
 
-func OpenPullRequestFilter(ctx context.Context, filter *v1alpha1.OpenPullerRequestFilter, diffOutput []string) (bool, error) {
+func OpenPullRequestFilter(ctx context.Context, filter *v1alpha1.OpenPullRequestFilter, diffOutput []string) (bool, error) {
 	logger := log.FromContext(ctx)
 	if filter == nil {
 		logger.V(1).Info("No filter provided, defaulting to checking for yaml files")
@@ -289,7 +289,7 @@ func OpenPullRequestFilter(ctx context.Context, filter *v1alpha1.OpenPullerReque
 
 	for _, file := range diffOutput {
 		for _, pathPattern := range filter.Paths {
-			matched, err := filepath.Match(pathPattern, file)
+			matched, err := doublestar.Match(pathPattern, file)
 			if err != nil {
 				return false, fmt.Errorf("error matching pathPattern %q: %w", pathPattern, err)
 			}

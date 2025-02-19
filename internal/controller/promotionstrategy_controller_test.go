@@ -44,7 +44,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
 
-			promotionStrategy.Spec.OpenPullerRequestFilter = &promoterv1alpha1.OpenPullerRequestFilter{
+			promotionStrategy.Spec.OpenPullerRequestFilter = &promoterv1alpha1.OpenPullRequestFilter{
 				Paths: []string{"*.yaml"},
 			}
 
@@ -246,7 +246,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-cs-path-filter", "default")
 
-			promotionStrategy.Spec.OpenPullerRequestFilter = &promoterv1alpha1.OpenPullerRequestFilter{
+			promotionStrategy.Spec.OpenPullerRequestFilter = &promoterv1alpha1.OpenPullRequestFilter{
 				Paths: []string{"fail-manifest.yaml"},
 			}
 
@@ -546,7 +546,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	Context("When testing the OpenPullRequestFilter function", func() {
 		ctx := context.Background()
 		It("should successfully reconcile the resource", func() {
-			match, err := git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullerRequestFilter{
+			match, err := git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullRequestFilter{
 				Paths: []string{
 					"manifest.yaml",
 					"service-a/us-east-1/*.yaml",
@@ -558,7 +558,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).To(Succeed())
 			Expect(match).To(BeTrue())
 
-			match, err = git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullerRequestFilter{
+			match, err = git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullRequestFilter{
 				Paths: []string{
 					"service-a/us-east-1/*.yaml",
 				},
@@ -568,7 +568,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).To(Succeed())
 			Expect(match).To(Not(BeTrue()))
 
-			match, err = git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullerRequestFilter{
+			match, err = git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullRequestFilter{
 				Paths: []string{
 					"service-a/us-east-1/*.yaml",
 				},
@@ -578,12 +578,32 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).To(Succeed())
 			Expect(match).To(BeTrue())
 
-			match, err = git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullerRequestFilter{
+			match, err = git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullRequestFilter{
 				Paths: []string{
 					"service-a/*/*.yaml",
 				},
 			}, []string{
 				"service-a/us-east-1/manifest.yaml",
+			})
+			Expect(err).To(Succeed())
+			Expect(match).To(BeTrue())
+
+			match, err = git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullRequestFilter{
+				Paths: []string{
+					"service-a/**/*.yaml",
+				},
+			}, []string{
+				"service-a/us-east-1/us-east-1a/manifest.yaml",
+			})
+			Expect(err).To(Succeed())
+			Expect(match).To(BeTrue())
+
+			match, err = git.OpenPullRequestFilter(ctx, &promoterv1alpha1.OpenPullRequestFilter{
+				Paths: []string{
+					"**/*.yaml",
+				},
+			}, []string{
+				"service-a/us-east-1/us-east-1a/manifest.yaml",
 			})
 			Expect(err).To(Succeed())
 			Expect(match).To(BeTrue())

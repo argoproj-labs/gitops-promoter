@@ -53,7 +53,7 @@ type PromotionStrategySpec struct {
 	Environments []Environment `json:"environments"`
 
 	// +kubebuilder:validation:Optional
-	OpenPullerRequestFilter *OpenPullerRequestFilter `json:"openPullRequestFilter,omitempty"`
+	OpenPullerRequestFilter *OpenPullRequestFilter `json:"openPullRequestFilter,omitempty"`
 }
 
 type Environment struct {

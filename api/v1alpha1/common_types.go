@@ -13,6 +13,6 @@ type ObjectReference struct {
 	Name string `json:"name"`
 }
 
-type OpenPullerRequestFilter struct {
+type OpenPullRequestFilter struct {
 	Paths []string `json:"paths,omitempty"`
 }

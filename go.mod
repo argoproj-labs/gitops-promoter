@@ -5,6 +5,7 @@ go 1.23.0
 toolchain go1.23.4
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.13.0
 	github.com/google/go-github/v61 v61.0.0
 	github.com/onsi/ginkgo/v2 v2.22.2
