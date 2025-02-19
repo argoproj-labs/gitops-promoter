@@ -308,7 +308,7 @@ func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.C
 		return nil
 	}
 
-	prRequired, err := gitOperations.IsPullRequestRequired(ctx, ctp.Spec.OpenPullerRequestFilter, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	prRequired, err := gitOperations.IsPullRequestRequired(ctx, ctp.Spec.OpenPullRequestFilter, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	if err != nil {
 		return fmt.Errorf("failed to check whether a PR is required from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 	}

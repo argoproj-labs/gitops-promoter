@@ -155,13 +155,13 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			},
 		},
 		Spec: promoterv1alpha1.ChangeTransferPolicySpec{
-			RepositoryReference:     ps.Spec.RepositoryReference,
-			ProposedBranch:          fmt.Sprintf("%s-%s", environment.Branch, "next"),
-			ActiveBranch:            environment.Branch,
-			ActiveCommitStatuses:    append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...),
-			ProposedCommitStatuses:  append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...),
-			AutoMerge:               environment.AutoMerge,
-			OpenPullerRequestFilter: ps.Spec.OpenPullRequestFilter,
+			RepositoryReference:    ps.Spec.RepositoryReference,
+			ProposedBranch:         fmt.Sprintf("%s-%s", environment.Branch, "next"),
+			ActiveBranch:           environment.Branch,
+			ActiveCommitStatuses:   append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...),
+			ProposedCommitStatuses: append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...),
+			AutoMerge:              environment.AutoMerge,
+			OpenPullRequestFilter:  ps.Spec.OpenPullRequestFilter,
 		},
 	}
 

@@ -53,7 +53,7 @@ type ChangeTransferPolicySpec struct {
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 
 	// +kubebuilder:validation:Optional
-	OpenPullerRequestFilter *OpenPullRequestFilter `json:"openPullRequestFilter,omitempty"`
+	OpenPullRequestFilter *OpenPullRequestFilter `json:"openPullRequestFilter,omitempty"`
 }
 
 type ChangeRequestPolicyCommitStatusPhase struct {
