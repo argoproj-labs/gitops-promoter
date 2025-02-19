@@ -1,0 +1,13 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ArgoCDCommitStatus
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: argocdcommitstatus-sample
+spec:
+  promotionStrategyRef:
+    name: ps-name
+  applicationSelector:
+    matchLabels:
+      app: webservice-tier-1

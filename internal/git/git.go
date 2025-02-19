@@ -303,6 +303,25 @@ func OpenPullRequestFilter(ctx context.Context, filter *v1alpha1.OpenPullRequest
 	return false, nil
 }
 
+func (g *GitOperations) LsRemote(ctx context.Context, branch string) (string, error) {
+	logger := log.FromContext(ctx)
+
+	stdout, stderr, err := g.runCmd(ctx, g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext),
+		"ls-remote", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), branch)
+	if err != nil {
+		logger.Error(err, "could not git ls-remote", "gitError", stderr)
+		return "", err
+	}
+	if len(strings.Split(stdout, "\t")) == 0 {
+		return "", fmt.Errorf("no sha found for branch %q", branch)
+	}
+
+	resolvedSha := strings.Split(stdout, "\t")[0]
+	logger.Info("ls-remote called", "repoUrl", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "branch", branch, "sha", resolvedSha)
+
+	return resolvedSha, nil
+}
+
 func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...string) (string, string, error) {
 	user, err := g.gap.GetUser(ctx)
 	if err != nil {

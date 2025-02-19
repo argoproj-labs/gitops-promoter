@@ -61,3 +61,12 @@ auth mechanism.
 ```yaml
 {!docs/example-resources/ScmProvider.yaml!}
 ```
+
+## ArgoCDCommitStatus
+
+An ArgoCDCommitStatus is used as a way to aggregate all the Argo CD Applications that are being used in the promotion strategy. It is used
+to check the status of the Argo CD Applications that are being used in the promotion strategy.
+
+```yaml
+{!docs/example-resources/ArgoCDCommitStatus.yaml!}
+```

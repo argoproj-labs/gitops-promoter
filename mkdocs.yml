@@ -28,6 +28,8 @@ nav:
   - Architecture: architecture.md
   - CRD Specs: crd-specs.md
   - Gating Promotions: gating-promotions.md
+  - CommitStatus Controllers:
+      - Argo CD: commit-status-controllers/argocd.md
   - Multi-Tenancy: multi-tenancy.md
   - Tool Comparison: tool-comparison.md
   - FAQs: faqs.md
