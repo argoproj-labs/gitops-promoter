@@ -7,10 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bmatcuk/doublestar/v4"
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/bmatcuk/doublestar/v4"
+
+	"github.com/bmatcuk/doublestar/v4"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
