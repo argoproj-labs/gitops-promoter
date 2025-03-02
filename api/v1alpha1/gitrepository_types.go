@@ -25,10 +25,9 @@ import (
 
 // GitRepositorySpec defines the desired state of GitRepository
 type GitRepositorySpec struct {
-	// +kubebuilder:validation:Required
-	Owner string `json:"owner"`
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
+	GitHub GitHubRepo `json:"github,omitempty"`
+	GitLab GitLabRepo `json:"gitlab,omitempty"`
+	Fake   FakeRepo   `json:"fake,omitempty"`
 	// +kubebuilder:validation:Required
 	ScmProviderRef ObjectReference `json:"scmProviderRef"`
 }

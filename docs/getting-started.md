@@ -1,7 +1,7 @@
 # Getting Started
 
 This guide will help you get started installing and setting up the GitOps Promoter. We currently only support
-GitHub and GitHub Enterprise as the SCM providers. We would welcome any contributions to add support for other
+GitHub, GitHub Enterprise and GitLab as the SCM providers. We would welcome any contributions to add support for other
 providers.
 
 ## Requirements
@@ -86,8 +86,9 @@ kind: GitRepository
 metadata:
   name: <git-repository-ref-name>
 spec:
-  name: <repo-name>
-  owner: <github-org-username>
+  github:
+    name: <repo-name>
+    owner: <github-org-username>
   scmProviderRef:
     name: <your-scmprovider-name> # The secret that contains the GitHub App configuration
 ```
@@ -96,6 +97,46 @@ spec:
 
     The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy 
     resources in, and it also needs to be in the same namespace of the secret it references.
+
+## GitLab Configuration
+
+To configure the GitOps Promoter with GitLab, you will need to create a GitLab Access Token with `api` and `write_repository` scopes and configure the necessary resources to allow the promoter to interact with your repository. This Access Token should be used in a secret as follows:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  token: <your-access-token>
+```
+
+We also need a GitRepository and ScmProvider, which is are custom resources that represents a git repository and a provider. 
+Here is an example of both resources:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  gitlab: {}
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  gitlab:
+    name: <repo-name>
+    namespace: <user-or-group-with-subgroups>
+    projectId: <project-id>
+  scmProviderRef:
+    name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
+```
 
 ## Promotion Strategy
 

@@ -50,14 +50,14 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	}
 
 	pullRequestCopy := pullRequest.DeepCopy()
-	if p, ok := pullRequests[pr.getMapKey(*pullRequest, gitRepo.Spec.Owner, gitRepo.Spec.Name)]; ok {
+	if p, ok := pullRequests[pr.getMapKey(*pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]; ok {
 		logger.Info("Pull request already exists", "id", p.ID)
 	}
 	if pullRequestCopy == nil {
 		return "", errors.New("pull request is nil")
 	}
 
-	pullRequests[pr.getMapKey(*pullRequestCopy, gitRepo.Spec.Owner, gitRepo.Spec.Name)] = PullRequestProviderState{
+	pullRequests[pr.getMapKey(*pullRequestCopy, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)] = PullRequestProviderState{
 		ID:    fmt.Sprintf("%d", len(pullRequests)+1),
 		State: v1alpha1.PullRequestOpen,
 	}
@@ -78,7 +78,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Owner, gitRepo.Spec.Name)
+	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
 	}
@@ -110,7 +110,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 
 	gitServerPort := 5000 + GinkgoParallelProcess()
 	gitServerPortStr := fmt.Sprintf("%d", gitServerPort)
-	err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Owner, gitRepo.Spec.Name), ".")
+	err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name), ".")
 	if err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	}
 
 	mutexPR.Lock()
-	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Owner, gitRepo.Spec.Name)
+	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
@@ -162,7 +162,7 @@ func (pr *PullRequest) findOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 		return false
 	}
 
-	pullRequestState, ok := pullRequests[pr.getMapKey(*pullRequest, gitRepo.Spec.Owner, gitRepo.Spec.Name)]
+	pullRequestState, ok := pullRequests[pr.getMapKey(*pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
 	return ok && pullRequestState.State == v1alpha1.PullRequestOpen
 }
 

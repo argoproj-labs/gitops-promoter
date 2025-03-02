@@ -30,6 +30,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -394,6 +395,9 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 	case scmProvider.Spec.GitHub != nil:
 		logger.V(4).Info("Creating GitHub git authentication provider")
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
+	case scmProvider.Spec.GitLab != nil:
+		logger.V(4).Info("Creating GitLab git authentication provider")
+		return gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
 	default:
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("no supported git authentication provider found")
 	}

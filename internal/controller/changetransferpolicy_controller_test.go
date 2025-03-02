@@ -64,7 +64,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Owner, gitRepo.Spec.Name)
+			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name)
 
 			By("Reconciling the created resource")
 
@@ -78,7 +78,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
 				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
@@ -92,7 +92,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("Adding another pending commit")
-			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Owner, gitRepo.Spec.Name)
+			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name)
 
 			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
@@ -159,7 +159,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Owner, gitRepo.Spec.Name)
+			makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name)
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
@@ -189,7 +189,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				Expect(err).To(Succeed())
@@ -234,7 +234,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Owner, gitRepo.Spec.Name)
+			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name)
 
 			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
@@ -246,7 +246,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
 				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
@@ -316,8 +316,10 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.GitRepositorySpec{
-			Owner: name,
-			Name:  name,
+			GitHub: promoterv1alpha1.GitHubRepo{
+				Owner: name,
+				Name:  name,
+			},
 			ScmProviderRef: promoterv1alpha1.ObjectReference{
 				Name: name,
 			},

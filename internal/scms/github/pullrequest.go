@@ -50,7 +50,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	githubPullRequest, response, err := pr.client.PullRequests.Create(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, newPR)
+	githubPullRequest, response, err := pr.client.PullRequests.Create(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, newPR)
 	if err != nil {
 		return "", fmt.Errorf("failed to create pull request: %w", err)
 	}
@@ -79,7 +79,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 
 	gitRepo, _ := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 
-	_, response, err := pr.client.PullRequests.Edit(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, prNumber, newPR)
+	_, response, err := pr.client.PullRequests.Edit(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, newPR)
 	if err != nil {
 		return fmt.Errorf("failed to edit pull request: %w", err)
 	}
@@ -111,7 +111,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	_, response, err := pr.client.PullRequests.Edit(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, prNumber, newPR)
+	_, response, err := pr.client.PullRequests.Edit(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, newPR)
 	if err != nil {
 		return fmt.Errorf("failed to close pull request: %w", err)
 	}
@@ -137,8 +137,8 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 
 	_, response, err := pr.client.PullRequests.Merge(
 		ctx,
-		gitRepo.Spec.Owner,
-		gitRepo.Spec.Name,
+		gitRepo.Spec.GitHub.Owner,
+		gitRepo.Spec.GitHub.Name,
 		prNumber,
 		commitMessage,
 		&github.PullRequestOptions{
@@ -165,8 +165,9 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 
 	gitRepo, _ := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 
-	pullRequests, response, err := pr.client.PullRequests.List(ctx, gitRepo.Spec.Owner,
-		gitRepo.Spec.Name,
+	pullRequests, response, err := pr.client.PullRequests.List(
+		ctx, gitRepo.Spec.GitHub.Owner,
+		gitRepo.Spec.GitHub.Name,
 		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: pullRequest.Spec.SourceBranch, State: "open"})
 	if err != nil {
 		return false, fmt.Errorf("failed to list pull requests: %w", err)

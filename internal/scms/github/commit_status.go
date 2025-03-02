@@ -50,7 +50,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	repoStatus, response, err := cs.client.Repositories.CreateStatus(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, commitStatus.Spec.Sha, commitStatusS)
+	repoStatus, response, err := cs.client.Repositories.CreateStatus(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, commitStatus.Spec.Sha, commitStatusS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create status: %w", err)
 	}
