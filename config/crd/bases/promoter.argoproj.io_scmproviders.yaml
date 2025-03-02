@@ -51,6 +51,12 @@ spec:
                   domain:
                     type: string
                 type: object
+              gitlab:
+                description: GitLab required configuration for GitLab as the SCM provider
+                properties:
+                  domain:
+                    type: string
+                type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to
                   a specific provider

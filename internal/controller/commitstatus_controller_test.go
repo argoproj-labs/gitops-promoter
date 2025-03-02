@@ -76,8 +76,10 @@ var _ = Describe("CommitStatus Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				},
 				Spec: promoterv1alpha1.GitRepositorySpec{
-					Owner: typeNamespacedName.Name,
-					Name:  typeNamespacedName.Name,
+					GitHub: promoterv1alpha1.GitHubRepo{
+						Owner: typeNamespacedName.Name,
+						Name:  typeNamespacedName.Name,
+					},
 					ScmProviderRef: promoterv1alpha1.ObjectReference{
 						Name: typeNamespacedName.Name,
 					},
