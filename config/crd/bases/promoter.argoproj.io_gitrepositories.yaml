@@ -39,10 +39,39 @@ spec:
           spec:
             description: GitRepositorySpec defines the desired state of GitRepository
             properties:
-              name:
-                type: string
-              owner:
-                type: string
+              fake:
+                properties:
+                  name:
+                    type: string
+                  owner:
+                    type: string
+                required:
+                - name
+                - owner
+                type: object
+              github:
+                properties:
+                  name:
+                    type: string
+                  owner:
+                    type: string
+                required:
+                - name
+                - owner
+                type: object
+              gitlab:
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                  projectId:
+                    type: integer
+                required:
+                - name
+                - namespace
+                - projectId
+                type: object
               scmProviderRef:
                 properties:
                   name:
@@ -51,8 +80,6 @@ spec:
                 - name
                 type: object
             required:
-            - name
-            - owner
             - scmProviderRef
             type: object
           status:
