@@ -13,8 +13,6 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
-	"github.com/bmatcuk/doublestar/v4"
-
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
