@@ -51,6 +51,9 @@ type ChangeTransferPolicySpec struct {
 	// ProposedCommitStatuses lists the statuses to be monitored on the proposed branch
 	// +kubebuilder:validation:Optional
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+
+	// +kubebuilder:validation:Optional
+	OpenPullRequestFilter *OpenPullRequestFilter `json:"openPullRequestFilter,omitempty"`
 }
 
 type ChangeRequestPolicyCommitStatusPhase struct {

@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
+
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -234,7 +236,7 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 
 // IsPullRequestRequired will compare the environment branch with the next environment branch and return true if a PR is required.
 // The PR is required if the diff between the two branches contain edits to yaml files.
-func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNextBranch, environmentBranch string) (bool, error) {
+func (g *GitOperations) IsPullRequestRequired(ctx context.Context, filter *v1alpha1.OpenPullRequestFilter, environmentNextBranch, environmentBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	if g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
@@ -265,12 +267,37 @@ func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNe
 	}
 	logger.V(4).Info("Got diff", "diff", stdout)
 
-	// Check if the diff contains any YAML files if so we expect a manifest to have changed
-	// TODO: This is temporary check we should add some path globbing support to the specs
-	for _, file := range strings.Split(stdout, "\n") {
-		if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
-			logger.V(4).Info("YAML file changed", "file", file)
-			return true, nil
+	openPullRequest, err := OpenPullRequestFilter(ctx, filter, strings.Split(stdout, "\n"))
+	if err != nil {
+		return false, fmt.Errorf("failed to filter if we should open pull request: %w", err)
+	}
+
+	return openPullRequest, nil
+}
+
+func OpenPullRequestFilter(ctx context.Context, filter *v1alpha1.OpenPullRequestFilter, diffOutput []string) (bool, error) {
+	logger := log.FromContext(ctx)
+	if filter == nil {
+		logger.V(1).Info("No filter provided, defaulting to checking for yaml files")
+		for _, file := range diffOutput {
+			if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
+				logger.V(1).Info("YAML file changed", "file", file)
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
+	for _, file := range diffOutput {
+		for _, pathPattern := range filter.Paths {
+			matched, err := doublestar.Match(pathPattern, file)
+			if err != nil {
+				return false, fmt.Errorf("error matching pathPattern %q: %w", pathPattern, err)
+			}
+			logger.V(1).Info("Path matched", "pathPattern", pathPattern, "file", file, "matched", matched)
+			if matched {
+				return true, nil
+			}
 		}
 	}
 
