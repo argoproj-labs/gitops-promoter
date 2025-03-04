@@ -310,7 +310,7 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...st
 	cmd := exec.Command("git", args...)
 	cmd.Env = []string{
 		"GIT_ASKPASS=promoter_askpass.sh", // Needs to be on path
-		fmt.Sprintf("GIT_USER=%s", user),
+		fmt.Sprintf("GIT_USERNAME=%s", user),
 		fmt.Sprintf("GIT_PASSWORD=%s", token),
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
 		"GIT_TERMINAL_PROMPT=0",
