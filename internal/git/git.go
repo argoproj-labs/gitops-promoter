@@ -34,7 +34,7 @@ type HydratorMetadataFile struct {
 }
 
 func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, pathLookup utils.PathLookup, repoRef v1alpha1.ObjectReference, obj v1.Object, pathConext string) (*GitOperations, error) {
-	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repoRef.Name})
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repoRef.Name})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
