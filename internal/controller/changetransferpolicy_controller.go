@@ -27,6 +27,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
@@ -175,6 +176,9 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 	case scmProvider.Spec.GitHub != nil:
 		logger.V(4).Info("Creating GitHub git authentication provider")
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
+	case scmProvider.Spec.GitLab != nil:
+		logger.V(4).Info("Creating GitLab git authentication provider")
+		return gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret), nil
 	default:
 		return nil, fmt.Errorf("no supported git authentication provider found")
 	}
@@ -340,7 +344,16 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository %q: %w", ctp.Spec.RepositoryReference.Name, err)
 	}
-	prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+
+	var prName string
+	switch {
+	case gitRepo.Spec.GitHub.Name != "":
+		prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+	case gitRepo.Spec.GitLab.Name != "":
+		prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.GitLab.Namespace, gitRepo.Spec.GitLab.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+	case gitRepo.Spec.Fake.Name != "":
+		prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+	}
 
 	var pr promoterv1alpha1.PullRequest
 	err = r.Get(ctx, client.ObjectKey{
