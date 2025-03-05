@@ -45,7 +45,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 		Context:     github.String(commitStatus.Spec.Name),
 	}
 
-	gitRepo, err := utils.GetGitRepositorytFromObjectKey(ctx, cs.k8sClient, client.ObjectKey{Namespace: commitStatus.Namespace, Name: commitStatus.Spec.RepositoryReference.Name})
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, cs.k8sClient, client.ObjectKey{Namespace: commitStatus.Namespace, Name: commitStatus.Spec.RepositoryReference.Name})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}

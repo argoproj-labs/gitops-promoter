@@ -40,8 +40,8 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 	return &scmProvider, nil
 }
 
-// GetGitRepositorytFromObjectKey returns the GitRepository object from the repository reference
-func GetGitRepositorytFromObjectKey(ctx context.Context, k8sClient client.Client, objectKey client.ObjectKey) (*promoterv1alpha1.GitRepository, error) {
+// GetGitRepositoryFromObjectKey returns the GitRepository object from the repository reference
+func GetGitRepositoryFromObjectKey(ctx context.Context, k8sClient client.Client, objectKey client.ObjectKey) (*promoterv1alpha1.GitRepository, error) {
 	var gitRepo promoterv1alpha1.GitRepository
 	err := k8sClient.Get(ctx, objectKey, &gitRepo)
 	if err != nil {
@@ -53,7 +53,7 @@ func GetGitRepositorytFromObjectKey(ctx context.Context, k8sClient client.Client
 
 func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (*promoterv1alpha1.ScmProvider, *v1.Secret, error) {
 	logger := log.FromContext(ctx)
-	gitRepo, err := GetGitRepositorytFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
+	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
