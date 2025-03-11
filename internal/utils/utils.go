@@ -37,6 +37,12 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 		return nil, fmt.Errorf("failed to get ScmProvider: %w", err)
 	}
 
+	if (repositoryRef.Spec.GitHub != nil && scmProvider.Spec.GitHub == nil) ||
+		(repositoryRef.Spec.GitLab != nil && scmProvider.Spec.GitLab == nil) ||
+		(repositoryRef.Spec.Fake != nil && scmProvider.Spec.Fake == nil) {
+		return nil, fmt.Errorf("wrong ScmProvider configured for Repository")
+	}
+
 	return &scmProvider, nil
 }
 

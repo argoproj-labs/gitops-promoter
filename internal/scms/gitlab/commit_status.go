@@ -35,7 +35,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	logger := log.FromContext(ctx)
 	logger.Info("Setting Commit Phase")
 
-	repo, err := utils.GetGitRepositorytFromObjectKey(ctx, cs.k8sClient, client.ObjectKey{
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, cs.k8sClient, client.ObjectKey{
 		Namespace: commitStatus.Namespace,
 		Name:      commitStatus.Spec.RepositoryReference.Name,
 	})
@@ -50,20 +50,20 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		Description: gitlab.Ptr(commitStatus.Spec.Description),
 	}
 
-	glStatus, resp, err := cs.client.Commits.SetCommitStatus(repo.Spec.GitLab.ProjectID,
+	glStatus, resp, err := cs.client.Commits.SetCommitStatus(
+		repo.Spec.GitLab.ProjectID,
 		commitStatus.Spec.Sha,
 		commitStatusOptions,
-		gitlab.WithContext(ctx))
-
+		gitlab.WithContext(ctx),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create status: %w", err)
 	}
 
-	logger.Info("GitLab rate limits",
-		"limit", resp.Header.Get("Ratelimit-Limit"),
-		"remaining", resp.Header.Get("Ratelimit-Remaining"),
-		"reset", resp.Header.Get("Ratelimit-Reset"),
-		"url", resp.Request.URL,
+	logGitLabRatelimits(
+		logger,
+		repo.Spec.ScmProviderRef.Name,
+		resp,
 	)
 	logger.V(4).Info("github response status",
 		"status", resp.Status)
@@ -72,26 +72,4 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	commitStatus.Status.Phase = buildStateToPhase(gitlab.BuildStateValue(glStatus.Status))
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
 	return commitStatus, nil
-}
-
-func phaseToBuildState(phase v1alpha1.CommitStatusPhase) gitlab.BuildStateValue {
-	switch phase {
-	case v1alpha1.CommitPhaseSuccess:
-		return gitlab.Success
-	case v1alpha1.CommitPhasePending:
-		return gitlab.Pending
-	default:
-		return gitlab.Failed
-	}
-}
-
-func buildStateToPhase(buildState gitlab.BuildStateValue) v1alpha1.CommitStatusPhase {
-	switch buildState {
-	case gitlab.Success:
-		return v1alpha1.CommitPhaseSuccess
-	case gitlab.Pending:
-		return v1alpha1.CommitPhasePending
-	default:
-		return v1alpha1.CommitPhaseFailure
-	}
 }

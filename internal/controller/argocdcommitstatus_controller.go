@@ -397,7 +397,11 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
 	case scmProvider.Spec.GitLab != nil:
 		logger.V(4).Info("Creating GitLab git authentication provider")
-		return gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
+		gitlabClient, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
+		if err != nil {
+			return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create Git Client: %w", err)
+		}
+		return gitlabClient, ps.Spec.RepositoryReference, nil
 	default:
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("no supported git authentication provider found")
 	}

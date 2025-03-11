@@ -15,17 +15,17 @@ type GitAuthenticationProvider struct {
 	client      *gitlab.Client
 }
 
-func NewGitlabGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret *v1.Secret) GitAuthenticationProvider {
+func NewGitlabGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret *v1.Secret) (*GitAuthenticationProvider, error) {
 	client, err := GetClient(*secret, scmProvider.Spec.GitLab.Domain)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to create GitLab Client: %w", err)
 	}
 
-	return GitAuthenticationProvider{
+	return &GitAuthenticationProvider{
 		scmProvider: scmProvider,
 		secret:      secret,
 		client:      client,
-	}
+	}, nil
 }
 
 func (gl GitAuthenticationProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string {

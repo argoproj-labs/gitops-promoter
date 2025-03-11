@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -37,7 +36,7 @@ func NewGitlabPullRequestProvider(k8sClient client.Client, secret v1.Secret, dom
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc string, prObj *v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 
-	repo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
 		Namespace: prObj.Namespace,
 		Name:      prObj.Spec.RepositoryReference.Name,
 	})
@@ -60,11 +59,10 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		return "", fmt.Errorf("failed to create pull request: %w", err)
 	}
 
-	logger.Info("GitLab rate limits",
-		"limit", resp.Header.Get("Ratelimit-Limit"),
-		"remaining", resp.Header.Get("Ratelimit-Remaining"),
-		"reset", resp.Header.Get("Ratelimit-Reset"),
-		"url", resp.Request.URL,
+	logGitLabRatelimits(
+		logger,
+		prObj.Spec.RepositoryReference.Name,
+		resp,
 	)
 	logger.V(4).Info("github response status",
 		"status", resp.Status)
@@ -77,10 +75,10 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 
 	mrIID, err := strconv.Atoi(prObj.Status.ID)
 	if err != nil {
-		return fmt.Errorf("invalid merge request ID: %w", err)
+		return fmt.Errorf("failed to convert MR number to int: %w", err)
 	}
 
-	repo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
 		Namespace: prObj.Namespace,
 		Name:      prObj.Spec.RepositoryReference.Name,
 	})
@@ -103,11 +101,10 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		return fmt.Errorf("failed to update merge request: %w", err)
 	}
 
-	logger.Info("GitLab rate limits",
-		"limit", resp.Header.Get("Ratelimit-Limit"),
-		"remaining", resp.Header.Get("Ratelimit-Remaining"),
-		"reset", resp.Header.Get("Ratelimit-Reset"),
-		"url", resp.Request.URL,
+	logGitLabRatelimits(
+		logger,
+		prObj.Spec.RepositoryReference.Name,
+		resp,
 	)
 	logger.V(4).Info("github response status",
 		"status", resp.Status)
@@ -120,10 +117,10 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *v1alpha1.PullRequest) e
 
 	mrIID, err := strconv.Atoi(prObj.Status.ID)
 	if err != nil {
-		return fmt.Errorf("invalid merge request ID: %w", err)
+		return fmt.Errorf("failed to convert MR number to int: %w", err)
 	}
 
-	repo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
 		Namespace: prObj.Namespace,
 		Name:      prObj.Spec.RepositoryReference.Name,
 	})
@@ -145,11 +142,10 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *v1alpha1.PullRequest) e
 		return fmt.Errorf("failed to close merge request: %w", err)
 	}
 
-	logger.Info("GitLab rate limits",
-		"limit", resp.Header.Get("Ratelimit-Limit"),
-		"remaining", resp.Header.Get("Ratelimit-Remaining"),
-		"reset", resp.Header.Get("Ratelimit-Reset"),
-		"url", resp.Request.URL,
+	logGitLabRatelimits(
+		logger,
+		prObj.Spec.RepositoryReference.Name,
+		resp,
 	)
 	logger.V(4).Info("github response status",
 		"status", resp.Status)
@@ -162,10 +158,10 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *v
 
 	mrIID, err := strconv.Atoi(prObj.Status.ID)
 	if err != nil {
-		return fmt.Errorf("invalid merge request ID: %w", err)
+		return fmt.Errorf("failed to convert MR number to int: %w", err)
 	}
 
-	repo, err := utils.GetGitRepositorytFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
 		Namespace: prObj.Namespace,
 		Name:      prObj.Spec.RepositoryReference.Name,
 	})
@@ -190,11 +186,10 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *v
 		return fmt.Errorf("failed to merge request: %w", err)
 	}
 
-	logger.Info("GitLab rate limits",
-		"limit", resp.Header.Get("Ratelimit-Limit"),
-		"remaining", resp.Header.Get("Ratelimit-Remaining"),
-		"reset", resp.Header.Get("Ratelimit-Reset"),
-		"url", resp.Request.URL,
+	logGitLabRatelimits(
+		logger,
+		prObj.Spec.RepositoryReference.Name,
+		resp,
 	)
 	logger.V(4).Info("github response status",
 		"status", resp.Status)
@@ -217,18 +212,17 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 		return false, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
-	logger.Info("GitLab rate limits",
-		"limit", resp.Header.Get("Ratelimit-Limit"),
-		"remaining", resp.Header.Get("Ratelimit-Remaining"),
-		"reset", resp.Header.Get("Ratelimit-Reset"),
-		"url", resp.Request.URL,
+	logGitLabRatelimits(
+		logger,
+		prObj.Spec.RepositoryReference.Name,
+		resp,
 	)
 	logger.V(4).Info("github response status",
 		"status", resp.Status)
 
 	if len(mrs) > 0 {
 		prObj.Status.ID = strconv.Itoa(mrs[0].IID)
-		prObj.Status.State = v1alpha1.PullRequestState(strings.TrimSuffix(mrs[0].State, "ed"))
+		prObj.Status.State = mapMergeRequestState(mrs[0].State)
 		return true, nil
 	}
 
