@@ -178,7 +178,11 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
 	case scmProvider.Spec.GitLab != nil:
 		logger.V(4).Info("Creating GitLab git authentication provider")
-		return gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret), nil
+		provider, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Auth Provider: %w", err)
+		}
+		return provider, nil
 	default:
 		return nil, fmt.Errorf("no supported git authentication provider found")
 	}

@@ -837,7 +837,7 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.GitRepositorySpec{
-			GitHub: promoterv1alpha1.GitHubRepo{
+			GitHub: &promoterv1alpha1.GitHubRepo{
 				Owner: name,
 				Name:  name,
 			},
