@@ -221,6 +221,13 @@ spec:
                 required:
                 - name
                 type: object
+              openPullRequestFilter:
+                properties:
+                  paths:
+                    items:
+                      type: string
+                    type: array
+                type: object
               proposedBranch:
                 description: ProposedBranch staging hydrated branch
                 type: string
@@ -627,6 +634,13 @@ spec:
                     type: string
                 required:
                 - name
+                type: object
+              openPullRequestFilter:
+                properties:
+                  paths:
+                    items:
+                      type: string
+                    type: array
                 type: object
               proposedCommitStatuses:
                 description: |-
