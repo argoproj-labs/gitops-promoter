@@ -1,0 +1,3 @@
+config/crd/bases/*.yaml linguist-generated=true
+dist/install.yaml linguist-generated=true
+go.sum linguist-generated=true
