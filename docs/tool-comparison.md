@@ -50,7 +50,7 @@ Argo Workflows, etc.). It's a lot of work, and it's totally on you to make the d
 
 ## Telefonistka
 
-[Telefonistka](https://github.com/wayfair-incubator/telefonistka) relies on the opinion that all the 
+[Telefonistka](https://github.com/commercetools/telefonistka) relies on the opinion that all the 
 stuff-to-be-promoted ought to be stored in an environment-specific directory. The promotion process is a simple 
 copy/paste of the contents of one environment directory to the next environment directory, represented as an automated 
 PR. The PR may optionally be auto-merged.
