@@ -4,6 +4,11 @@
 
 GitOps Promoter facilitates environment promotion for config managed via GitOps.
 
+## Design
+
+![image](https://github.com/user-attachments/assets/1f36266b-20fd-4b55-8edd-7e7d81d0ddae)
+
+
 ## Key Features
 
 * Drift-free promotion process
