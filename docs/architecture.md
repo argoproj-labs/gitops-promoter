@@ -15,8 +15,6 @@ since they are on different branches and represent environment-specific contents
 
 # Controller Flow
 
-# Controller Flow
-
 The image illustrates the general flow of how the GitOps Promoter controller operates. The diagram 
 outlines the steps involved in promoting changes through different environments in a GitOps workflow. It shows the 
 interaction between various components such as the Git repository, the GitOps Promoter controller, and the environment-specific 
