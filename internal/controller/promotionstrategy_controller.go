@@ -285,7 +285,7 @@ func (r *PromotionStrategyReconciler) setEnvironmentCommitStatus(targetStatus *p
 	}
 }
 
-func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentStatus *promoterv1alpha1.EnvironmentStatus, previouseEnvCtp *promoterv1alpha1.ChangeTransferPolicy) error {
+func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentStatus *promoterv1alpha1.EnvironmentStatus, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) error {
 	// TODO: do we like this name proposed-<name>?
 	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
 	proposedCSObjectKey := client.ObjectKey{Namespace: ctp.Namespace, Name: csName}
@@ -300,7 +300,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	}
 
 	statusMap := make(map[string]string)
-	for _, status := range previouseEnvCtp.Status.Active.CommitStatuses {
+	for _, status := range previousCRPCSPhases {
 		statusMap[status.Key] = status.Phase
 	}
 	yamlStatusMap, err := yaml.Marshal(statusMap)
@@ -404,7 +404,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
 			// Since there is at least one configured active check, and since this is not the first environment,
 			// we should not create a commit status for the previous environment.
-			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus, ctpMap[ps.Spec.Environments[previousEnvironmentIndex].Branch])
+			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus, ctpMap[ps.Spec.Environments[previousEnvironmentIndex].Branch].Status.Active.CommitStatuses)
 			if err != nil {
 				return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", environment.Branch, err)
 			}
