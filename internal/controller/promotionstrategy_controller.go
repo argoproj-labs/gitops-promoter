@@ -302,7 +302,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	for _, status := range previouseEnvCtp.Status.Active.CommitStatuses {
 		statusMap[status.Key] = status.Phase
 	}
-	jsonString, err := yaml.Marshal(statusMap)
+	yamlStatusMap, err := yaml.Marshal(statusMap)
 	if err != nil {
 		return fmt.Errorf("failed to marshal previous environment commit statuses: %w", err)
 	}
@@ -314,7 +314,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 			},
 			Annotations: map[string]string{
-				"commitStatuses": string(jsonString),
+				"commitStatuses": string(yamlStatusMap),
 			},
 			Namespace:       proposedCSObjectKey.Namespace,
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
@@ -336,12 +336,23 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 			if err != nil {
 				return fmt.Errorf("failed to create previous environments CommitStatus: %w", err)
 			}
+			return nil
 		}
-	} else if updatedCS.Spec.Phase != phase || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha {
+		return fmt.Errorf("failed to get previous environments CommitStatus: %w", err)
+	}
+
+	updatedYamlStatusMap := make(map[string]string)
+	err = yaml.Unmarshal([]byte(updatedCS.Annotations["commitStatuses"]), &updatedYamlStatusMap)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
+	}
+
+	if updatedCS.Spec.Phase != phase || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha || !reflect.DeepEqual(statusMap, updatedYamlStatusMap) {
 		updatedCS.Spec.Phase = phase
 		updatedCS.Spec.Sha = ctp.Status.Proposed.Hydrated.Sha
 		updatedCS.Spec.Description = commitStatus.Spec.Description
 		updatedCS.Spec.Name = commitStatus.Spec.Name
+		updatedCS.Annotations["commitStatuses"] = string(yamlStatusMap)
 
 		err = r.Update(ctx, updatedCS)
 		if err != nil {
