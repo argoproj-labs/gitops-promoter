@@ -315,7 +315,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 			},
 			Annotations: map[string]string{
-				promoterv1alpha1.CommitStatusDeAggregationAnnotation: string(yamlStatusMap),
+				promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation: string(yamlStatusMap),
 			},
 			Namespace:       proposedCSObjectKey.Namespace,
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
@@ -343,9 +343,13 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	}
 
 	updatedYamlStatusMap := make(map[string]string)
-	err = yaml.Unmarshal([]byte(updatedCS.Annotations[promoterv1alpha1.CommitStatusDeAggregationAnnotation]), &updatedYamlStatusMap)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
+	if _, ok := updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]; ok {
+		err = yaml.Unmarshal([]byte(updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]), &updatedYamlStatusMap)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
+		}
+	} else {
+		return fmt.Errorf("previous environments CommitStatus does not have a de-aggregation annotation")
 	}
 
 	if updatedCS.Spec.Phase != phase || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha || !reflect.DeepEqual(statusMap, updatedYamlStatusMap) {
@@ -353,7 +357,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		updatedCS.Spec.Sha = ctp.Status.Proposed.Hydrated.Sha
 		updatedCS.Spec.Description = commitStatus.Spec.Description
 		updatedCS.Spec.Name = commitStatus.Spec.Name
-		updatedCS.Annotations[promoterv1alpha1.CommitStatusDeAggregationAnnotation] = commitStatus.Annotations[promoterv1alpha1.CommitStatusDeAggregationAnnotation]
+		updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation] = commitStatus.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]
 
 		err = r.Update(ctx, updatedCS)
 		if err != nil {
