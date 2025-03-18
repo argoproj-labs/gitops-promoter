@@ -353,7 +353,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		updatedCS.Spec.Sha = ctp.Status.Proposed.Hydrated.Sha
 		updatedCS.Spec.Description = commitStatus.Spec.Description
 		updatedCS.Spec.Name = commitStatus.Spec.Name
-		updatedCS.Annotations[promoterv1alpha1.CommitStatusDeAggregationAnnotation] = string(yamlStatusMap)
+		updatedCS.Annotations[promoterv1alpha1.CommitStatusDeAggregationAnnotation] = commitStatus.Annotations[promoterv1alpha1.CommitStatusDeAggregationAnnotation]
 
 		err = r.Update(ctx, updatedCS)
 		if err != nil {
