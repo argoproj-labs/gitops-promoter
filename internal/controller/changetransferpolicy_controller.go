@@ -353,13 +353,15 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 
 	var prName string
 	switch {
-	case gitRepo.Spec.GitHub.Name != "":
-		prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
-	case gitRepo.Spec.GitLab.Name != "":
-		prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.GitLab.Namespace, gitRepo.Spec.GitLab.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
-	case gitRepo.Spec.Fake.Name != "":
-		prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+	case gitRepo.Spec.GitHub != nil:
+		prName = utils.GetPullRequestName(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.GitLab != nil:
+		prName = utils.GetPullRequestName(ctx, gitRepo.Spec.GitLab.Namespace, gitRepo.Spec.GitLab.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.Fake != nil:
+		prName = utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	}
+
+	prName = utils.KubeSafeUniqueName(ctx, prName)
 
 	promotionConfig, err := r.SettingsMgr.GetPromotionConfiguration(ctx)
 	if err != nil {
