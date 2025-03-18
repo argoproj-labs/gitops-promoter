@@ -34,4 +34,4 @@ const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 const ReconcileAtAnnotation = "promoter.argoproj.io/reconcile-at"
 
 // CommitStatusDeAggregationAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
-const CommitStatusDeAggregationAnnotation = "promoter.argoproj.io/commit-status-de-aggregation"
+const CommitStatusDeAggregationAnnotation = "promoter.argoproj.io/previous-environment-statuses"
