@@ -19,10 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"reflect"
 	"slices"
 	"time"
+
+	"gopkg.in/yaml.v2"
 
 	"k8s.io/client-go/util/retry"
 
@@ -407,7 +408,6 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			if err != nil {
 				return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", environment.Branch, err)
 			}
-
 		}
 	}
 
