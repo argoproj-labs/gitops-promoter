@@ -315,7 +315,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 			},
 			Annotations: map[string]string{
-				"commitStatuses": string(yamlStatusMap),
+				promoterv1alpha1.CommitStatusDeAggregationLabel: string(yamlStatusMap),
 			},
 			Namespace:       proposedCSObjectKey.Namespace,
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
@@ -343,7 +343,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	}
 
 	updatedYamlStatusMap := make(map[string]string)
-	err = yaml.Unmarshal([]byte(updatedCS.Annotations["commitStatuses"]), &updatedYamlStatusMap)
+	err = yaml.Unmarshal([]byte(updatedCS.Annotations[promoterv1alpha1.CommitStatusDeAggregationLabel]), &updatedYamlStatusMap)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
 	}
@@ -353,7 +353,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		updatedCS.Spec.Sha = ctp.Status.Proposed.Hydrated.Sha
 		updatedCS.Spec.Description = commitStatus.Spec.Description
 		updatedCS.Spec.Name = commitStatus.Spec.Name
-		updatedCS.Annotations["commitStatuses"] = string(yamlStatusMap)
+		updatedCS.Annotations[promoterv1alpha1.CommitStatusDeAggregationLabel] = string(yamlStatusMap)
 
 		err = r.Update(ctx, updatedCS)
 		if err != nil {
