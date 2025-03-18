@@ -349,7 +349,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 			return fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
 		}
 	} else {
-		return fmt.Errorf("previous environments CommitStatus does not have a de-aggregation annotation")
+		return fmt.Errorf("previous environments CommitStatus does not have a previous environment annotation")
 	}
 
 	if updatedCS.Spec.Phase != phase || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha || !reflect.DeepEqual(statusMap, updatedYamlStatusMap) {
