@@ -271,7 +271,7 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 		pr.Spec.Description,
 		pr)
 	if err != nil {
-		return fmt.Errorf("failed to create pull request")
+		return fmt.Errorf("failed to create pull request: %w", err)
 	}
 
 	pr.Status.State = promoterv1alpha1.PullRequestOpen
