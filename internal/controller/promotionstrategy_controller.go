@@ -23,6 +23,8 @@ import (
 	"slices"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"k8s.io/client-go/util/retry"
 
 	"k8s.io/client-go/tools/record"
@@ -212,7 +214,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 
 func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.PromotionStrategy, ctpsByBranch map[string]*promoterv1alpha1.ChangeTransferPolicy) error {
 	for _, environment := range ps.Spec.Environments {
-		pc, ok := ctpsByBranch[environment.Branch]
+		ctp, ok := ctpsByBranch[environment.Branch]
 		if !ok {
 			return fmt.Errorf("ChangeTransferPolicy not found for branch %s", environment.Branch)
 		}
@@ -221,16 +223,16 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 			status := promoterv1alpha1.EnvironmentStatus{
 				Branch: environment.Branch,
 				Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					Dry:      promoterv1alpha1.CommitShaState{Sha: pc.Status.Active.Dry.Sha, CommitTime: pc.Status.Active.Dry.CommitTime},
-					Hydrated: promoterv1alpha1.CommitShaState{Sha: pc.Status.Active.Hydrated.Sha, CommitTime: pc.Status.Active.Hydrated.CommitTime},
+					Dry:      promoterv1alpha1.CommitShaState{Sha: ctp.Status.Active.Dry.Sha, CommitTime: ctp.Status.Active.Dry.CommitTime},
+					Hydrated: promoterv1alpha1.CommitShaState{Sha: ctp.Status.Active.Hydrated.Sha, CommitTime: ctp.Status.Active.Hydrated.CommitTime},
 					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 						Sha:   string(promoterv1alpha1.CommitPhasePending),
 					},
 				},
 				Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					Dry:      promoterv1alpha1.CommitShaState{Sha: pc.Status.Proposed.Dry.Sha, CommitTime: pc.Status.Proposed.Dry.CommitTime},
-					Hydrated: promoterv1alpha1.CommitShaState{Sha: pc.Status.Proposed.Hydrated.Sha, CommitTime: pc.Status.Proposed.Hydrated.CommitTime},
+					Dry:      promoterv1alpha1.CommitShaState{Sha: ctp.Status.Proposed.Dry.Sha, CommitTime: ctp.Status.Proposed.Dry.CommitTime},
+					Hydrated: promoterv1alpha1.CommitShaState{Sha: ctp.Status.Proposed.Hydrated.Sha, CommitTime: ctp.Status.Proposed.Hydrated.CommitTime},
 					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
 						Phase: string(promoterv1alpha1.CommitPhasePending),
 						Sha:   string(promoterv1alpha1.CommitPhasePending),
@@ -261,29 +263,29 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 }
 
 // setEnvironmentCommitStatus sets the commit status for the environment based on the configured commit statuses.
-func (r *PromotionStrategyReconciler) setEnvironmentCommitStatus(targetStatus *promoterv1alpha1.PromotionStrategyCommitStatus, statusCount int, envStatus promoterv1alpha1.CommitBranchState) {
-	if statusCount > 0 && len(envStatus.CommitStatuses) == statusCount {
+func (r *PromotionStrategyReconciler) setEnvironmentCommitStatus(targetStatus *promoterv1alpha1.PromotionStrategyCommitStatus, statusCount int, ctpEnvStatus promoterv1alpha1.CommitBranchState) {
+	if statusCount > 0 && len(ctpEnvStatus.CommitStatuses) == statusCount {
 		// We have configured active commits and our count of active commits from promotion strategy matches the count of active commit resource.
-		for _, status := range envStatus.CommitStatuses {
+		for _, status := range ctpEnvStatus.CommitStatuses {
 			targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-			targetStatus.Sha = envStatus.Hydrated.Sha
+			targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
 			if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
 				targetStatus.Phase = status.Phase
-				targetStatus.Sha = envStatus.Hydrated.Sha
+				targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
 				break
 			}
 		}
-	} else if statusCount == 0 && len(envStatus.CommitStatuses) == 0 {
+	} else if statusCount == 0 && len(ctpEnvStatus.CommitStatuses) == 0 {
 		// We have no configured active commits and our count of active commits from promotion strategy matches the count of active commit resource, should be 0 each.
 		targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-		targetStatus.Sha = envStatus.Hydrated.Sha
+		targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
 	} else {
 		targetStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
-		targetStatus.Sha = envStatus.Hydrated.Sha
+		targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
 	}
 }
 
-func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentStatus *promoterv1alpha1.EnvironmentStatus) error {
+func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentStatus *promoterv1alpha1.EnvironmentStatus, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) error {
 	// TODO: do we like this name proposed-<name>?
 	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
 	proposedCSObjectKey := client.ObjectKey{Namespace: ctp.Namespace, Name: csName}
@@ -297,11 +299,23 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		branch = previousEnvironmentStatus.Branch + " - synced and healthy"
 	}
 
+	statusMap := make(map[string]string)
+	for _, status := range previousCRPCSPhases {
+		statusMap[status.Key] = status.Phase
+	}
+	yamlStatusMap, err := yaml.Marshal(statusMap)
+	if err != nil {
+		return fmt.Errorf("failed to marshal previous environment commit statuses: %w", err)
+	}
+
 	commitStatus := &promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: proposedCSObjectKey.Name,
 			Labels: map[string]string{
 				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+			},
+			Annotations: map[string]string{
+				promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation: string(yamlStatusMap),
 			},
 			Namespace:       proposedCSObjectKey.Namespace,
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
@@ -316,19 +330,34 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		},
 	}
 	updatedCS := &promoterv1alpha1.CommitStatus{}
-	err := r.Get(ctx, proposedCSObjectKey, updatedCS)
+	err = r.Get(ctx, proposedCSObjectKey, updatedCS)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			err = r.Create(ctx, commitStatus)
 			if err != nil {
 				return fmt.Errorf("failed to create previous environments CommitStatus: %w", err)
 			}
+			return nil
 		}
-	} else if updatedCS.Spec.Phase != phase || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha {
+		return fmt.Errorf("failed to get previous environments CommitStatus: %w", err)
+	}
+
+	updatedYamlStatusMap := make(map[string]string)
+	if _, ok := updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]; ok {
+		err = yaml.Unmarshal([]byte(updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]), &updatedYamlStatusMap)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
+		}
+	} else {
+		return fmt.Errorf("previous environments CommitStatus does not have a previous environment commit statuses annotation")
+	}
+
+	if updatedCS.Spec.Phase != phase || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha || !reflect.DeepEqual(statusMap, updatedYamlStatusMap) {
 		updatedCS.Spec.Phase = phase
 		updatedCS.Spec.Sha = ctp.Status.Proposed.Hydrated.Sha
 		updatedCS.Spec.Description = commitStatus.Spec.Description
 		updatedCS.Spec.Name = commitStatus.Spec.Name
+		updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation] = commitStatus.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]
 
 		err = r.Update(ctx, updatedCS)
 		if err != nil {
@@ -379,7 +408,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
 			// Since there is at least one configured active check, and since this is not the first environment,
 			// we should not create a commit status for the previous environment.
-			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus)
+			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus, ctpMap[ps.Spec.Environments[previousEnvironmentIndex].Branch].Status.Active.CommitStatuses)
 			if err != nil {
 				return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", environment.Branch, err)
 			}

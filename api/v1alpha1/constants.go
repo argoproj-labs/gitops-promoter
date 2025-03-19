@@ -32,3 +32,6 @@ const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 
 // ReconcileAtAnnotation is the annotation used to indicate when the webhook triggered a reconcile
 const ReconcileAtAnnotation = "promoter.argoproj.io/reconcile-at"
+
+// CommitStatusPreviousEnvironmentStatusesAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
+const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/previous-environment-statuses"
