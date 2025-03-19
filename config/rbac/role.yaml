@@ -19,6 +19,7 @@ rules:
   - changetransferpolicies
   - commitstatuses
   - gitrepositories
+  - promotionconfigurations
   - promotionstrategies
   - pullrequests
   - revertcommits
@@ -38,6 +39,7 @@ rules:
   - changetransferpolicies/finalizers
   - commitstatuses/finalizers
   - gitrepositories/finalizers
+  - promotionconfigurations/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
   - revertcommits/finalizers
@@ -51,6 +53,7 @@ rules:
   - changetransferpolicies/status
   - commitstatuses/status
   - gitrepositories/status
+  - promotionconfigurations/status
   - promotionstrategies/status
   - pullrequests/status
   - revertcommits/status
