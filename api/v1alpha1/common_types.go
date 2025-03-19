@@ -25,9 +25,13 @@ type GitHubRepo struct {
 }
 
 type GitLabRepo struct {
+	// User, group or group with subgroup (e.g. group/subgroup).
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9_\-\/.]+$
 	Namespace string `json:"namespace"`
+	// Project slug of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9_\-\/.]+$
 	Name string `json:"name"`
 	// +kubebuilder:validation:Required
 	ProjectID int `json:"projectId"`

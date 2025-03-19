@@ -62,8 +62,12 @@ spec:
               gitlab:
                 properties:
                   name:
+                    description: Project slug of the repository.
+                    pattern: ^[a-zA-Z0-9_\-\/.]+$
                     type: string
                   namespace:
+                    description: User, group or group with subgroup (e.g. group/subgroup).
+                    pattern: ^[a-zA-Z0-9_\-\/.]+$
                     type: string
                   projectId:
                     type: integer

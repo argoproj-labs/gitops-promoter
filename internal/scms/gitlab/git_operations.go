@@ -3,6 +3,7 @@ package gitlab
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
@@ -29,10 +30,16 @@ func NewGitlabGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secre
 }
 
 func (gl GitAuthenticationProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string {
+	var repoUrl string
 	if gl.scmProvider.Spec.GitLab != nil && gl.scmProvider.Spec.GitLab.Domain != "" {
-		return fmt.Sprintf("https://%s/%s/%s.git", gl.scmProvider.Spec.GitLab.Domain, repo.Spec.GitLab.Namespace, repo.Spec.GitLab.Name)
+		repoUrl = fmt.Sprintf("https://%s/%s/%s.git", gl.scmProvider.Spec.GitLab.Domain, repo.Spec.GitLab.Namespace, repo.Spec.GitLab.Name)
+	} else {
+		repoUrl = fmt.Sprintf("https://gitlab.com/%s/%s.git", repo.Spec.GitLab.Namespace, repo.Spec.GitLab.Name)
 	}
-	return fmt.Sprintf("https://gitlab.com/%s/%s.git", repo.Spec.GitLab.Namespace, repo.Spec.GitLab.Name)
+	if _, err := url.Parse(repoUrl); err != nil {
+		return ""
+	}
+	return repoUrl
 }
 
 func (gl GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
