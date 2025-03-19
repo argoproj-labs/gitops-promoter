@@ -24,6 +24,19 @@ kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/downl
 You will need to [create a GitHub App](https://docs.github.com/en/developers/apps/creating-a-github-app) and configure
 it to allow the GitOps Promoter to interact with your GitHub repository.
 
+
+During the creation the GitHub App, you will need to configure the following settings:
+
+### Permissions
+
+| Action            | Permission     |
+| ----------------- | -------------- |
+| `Commit statuses` | Read and write |
+| `Contents`        | Read and write |
+| `Pull requests`   | Read and write |
+
+### Webhooks (Optional - but highly recommended)
+
 !!! note "Configure your webhook ingress"
 
     We do support configuration of a GitHub App webhook that triggers PR creation upon Push. However, we do not configure
@@ -32,14 +45,9 @@ it to allow the GitOps Promoter to interact with your GitHub repository.
     you might want to adjust the auto reconciliation interval to a lower value using these CLI flags `--promotion-strategy-requeue-duration` and
     `--change-transfer-policy-requeue-duration`.
 
-During the creation the GitHub App, you will need to configure the following settings:
+Webhook URL: `https://<your-promoter-webhook-receiver-ingress>/`
 
-* Permissions
-  * Commit statuses - Read & write
-  * Contents - Read & write
-  * Pull requests - Read & write
-* Webhook URL (Optional - but highly recommended)
-  * `https://<your-promoter-webhook-receiver-service>/`
+### Usage
 
 The GitHub App will generate a private key that you will need to save. You will also need to get the App ID and the
 installation ID in a secret as follows:
