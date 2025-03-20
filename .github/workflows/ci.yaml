@@ -36,6 +36,8 @@ jobs:
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
+      - name: Run Unit Tests
+        run: make go-unit-test
       - name: Run Integration Tests
         run: make test-parallel
       - name: Generate code coverage artifacts
@@ -43,12 +45,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: code-coverage
-          path: cover.out
+          path: cover-*.out
       - name: Upload code coverage information to codecov.io
         if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v5.4.0
         with:
-          files: cover.out
+          files: cover.out,cover-go-unit.out
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
