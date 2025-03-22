@@ -162,8 +162,7 @@ func main() {
 	}
 
 	settingsMgr := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
-		GlobalNamespace:                  controllerNamespace,
-		GlobalPromotionConfigurationName: globalPromotionConfigurationName,
+		GlobalNamespace: controllerNamespace,
 	})
 
 	pathLookup := utils.NewPathLookup()

@@ -151,8 +151,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), settings.ManagerConfig{
-		GlobalNamespace:                  "default",
-		GlobalPromotionConfigurationName: "global",
+		GlobalNamespace: "default",
 	})
 
 	err = (&CommitStatusReconciler{
@@ -230,14 +229,14 @@ var _ = BeforeSuite(func() {
 
 	promotionConfiguration := &promoterv1alpha1.PromotionConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "global",
+			Name:      "promoter-global",
 			Namespace: "default",
 		},
 		Spec: promoterv1alpha1.PromotionConfigurationSpec{
 			PullRequest: promoterv1alpha1.PullRequestConfiguration{
 				Template: promoterv1alpha1.PullRequestTemplate{
-					Title:       "Promote {{ trunc 7 .Status.Proposed.Dry.Sha }} to `{{ .Spec.ActiveBranch }}`",
-					Description: "This PR is promoting the environment branch `{{ .Spec.ActiveBranch }}` which is currently on dry sha {{ .Status.Active.Dry.Sha }} to dry sha {{ .Status.Proposed.Dry.Sha }}.",
+					Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
+					Description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}.",
 				},
 			},
 		},

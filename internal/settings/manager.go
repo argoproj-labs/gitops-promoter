@@ -8,9 +8,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	GlobalPromotionConfigurationName = "promoter-global"
+)
+
 type ManagerConfig struct {
-	GlobalNamespace                  string
-	GlobalPromotionConfigurationName string
+	GlobalNamespace string
 }
 
 type Manager struct {
@@ -20,7 +23,7 @@ type Manager struct {
 
 func (m *Manager) GetPromotionConfiguration(ctx context.Context) (*promoterv1alpha1.PromotionConfiguration, error) {
 	promotionConfig := &promoterv1alpha1.PromotionConfiguration{}
-	if err := m.client.Get(ctx, client.ObjectKey{Name: m.config.GlobalPromotionConfigurationName, Namespace: m.config.GlobalNamespace}, promotionConfig); err != nil {
+	if err := m.client.Get(ctx, client.ObjectKey{Name: GlobalPromotionConfigurationName, Namespace: m.config.GlobalNamespace}, promotionConfig); err != nil {
 		return nil, fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
 

@@ -349,7 +349,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		return fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
 
-	title, description, err := TemplatePullRequest(&promotionConfig.Spec.PullRequest, ctp)
+	title, description, err := TemplatePullRequest(&promotionConfig.Spec.PullRequest, map[string]any{"ChangeTransferPolicy": ctp})
 	if err != nil {
 		return fmt.Errorf("failed to template pull request: %w", err)
 	}
@@ -486,13 +486,13 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	return nil
 }
 
-func TemplatePullRequest(prc *promoterv1alpha1.PullRequestConfiguration, ctp *promoterv1alpha1.ChangeTransferPolicy) (string, string, error) {
-	title, err := utils.RenderStringTemplate(prc.Template.Title, ctp)
+func TemplatePullRequest(prc *promoterv1alpha1.PullRequestConfiguration, data map[string]any) (string, string, error) {
+	title, err := utils.RenderStringTemplate(prc.Template.Title, data)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to render pull request title template: %w", err)
 	}
 
-	description, err := utils.RenderStringTemplate(prc.Template.Description, ctp)
+	description, err := utils.RenderStringTemplate(prc.Template.Description, data)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to render pull request description template: %w", err)
 	}

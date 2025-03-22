@@ -8,5 +8,5 @@ metadata:
 spec:
   pullRequest:
     template:
-      title: "Promote {{ trunc 5 .Status.Proposed.Dry.Sha }} to `{{ .Spec.ActiveBranch }}`"
-      description: "This PR is promoting the environment branch `{{ .Spec.ActiveBranch }}` which is currently on dry sha {{ .Status.Active.Dry.Sha }} to dry sha {{ .Status.Proposed.Dry.Sha }}."
+      title: "Promote {{ trunc 5 .CTP.Status.Proposed.Dry.Sha }} to `{{ .CTP.Spec.ActiveBranch }}`"
+      description: "This PR is promoting the environment branch `{{ .CTP.Spec.ActiveBranch }}` which is currently on dry sha {{ .CTP.Status.Active.Dry.Sha }} to dry sha {{ .CTP.Status.Proposed.Dry.Sha }}."
