@@ -27,6 +27,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
@@ -51,10 +52,11 @@ type ChangeTransferPolicyReconcilerConfig struct {
 // ChangeTransferPolicyReconciler reconciles a ChangeTransferPolicy object
 type ChangeTransferPolicyReconciler struct {
 	client.Client
-	Scheme     *runtime.Scheme
-	PathLookup utils.PathLookup
-	Recorder   record.EventRecorder
-	Config     ChangeTransferPolicyReconcilerConfig
+	Scheme      *runtime.Scheme
+	PathLookup  utils.PathLookup
+	Recorder    record.EventRecorder
+	Config      ChangeTransferPolicyReconcilerConfig
+	SettingsMgr *settings.Manager
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -342,6 +344,16 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	}
 	prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Owner, gitRepo.Spec.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
 
+	promotionConfig, err := r.SettingsMgr.GetPromotionConfiguration(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get global promotion configuration: %w", err)
+	}
+
+	title, description, err := TemplatePullRequest(&promotionConfig.Spec.PullRequest, ctp)
+	if err != nil {
+		return fmt.Errorf("failed to template pull request: %w", err)
+	}
+
 	var pr promoterv1alpha1.PullRequest
 	err = r.Get(ctx, client.ObjectKey{
 		Namespace: ctp.Namespace,
@@ -368,10 +380,10 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 				},
 				Spec: promoterv1alpha1.PullRequestSpec{
 					RepositoryReference: ctp.Spec.RepositoryReference,
-					Title:               fmt.Sprintf("Promote %s to `%s`", ctp.Status.Proposed.DryShaShort(), ctp.Spec.ActiveBranch),
+					Title:               title,
 					TargetBranch:        ctp.Spec.ActiveBranch,
 					SourceBranch:        ctp.Spec.ProposedBranch,
-					Description:         fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", ctp.Spec.ActiveBranch, ctp.Status.Active.Dry.Sha, ctp.Status.Proposed.Dry.Sha),
+					Description:         description,
 					State:               "open",
 				},
 			}
@@ -394,10 +406,10 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 				return fmt.Errorf("failed to get PR %q: %w", pr.Name, err)
 			}
 			prUpdated.Spec.RepositoryReference = ctp.Spec.RepositoryReference
-			prUpdated.Spec.Title = fmt.Sprintf("Promote %s to `%s`", ctp.Status.Proposed.DryShaShort(), ctp.Spec.ActiveBranch)
+			prUpdated.Spec.Title = title
 			prUpdated.Spec.TargetBranch = ctp.Spec.ActiveBranch
 			prUpdated.Spec.SourceBranch = ctp.Spec.ProposedBranch
-			prUpdated.Spec.Description = fmt.Sprintf("This PR is promoting the environment branch `%s` which is currently on dry sha %s to dry sha %s.", ctp.Spec.ActiveBranch, ctp.Status.Active.Dry.Sha, ctp.Status.Proposed.Dry.Sha)
+			prUpdated.Spec.Description = description
 			return r.Update(ctx, &prUpdated)
 		})
 		if err != nil {
@@ -472,4 +484,18 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	}
 
 	return nil
+}
+
+func TemplatePullRequest(prc *promoterv1alpha1.PullRequestConfiguration, ctp *promoterv1alpha1.ChangeTransferPolicy) (string, string, error) {
+	title, err := utils.RenderStringTemplate(prc.Template.Title, ctp)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to render pull request title template: %w", err)
+	}
+
+	description, err := utils.RenderStringTemplate(prc.Template.Description, ctp)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to render pull request description template: %w", err)
+	}
+
+	return title, description, nil
 }

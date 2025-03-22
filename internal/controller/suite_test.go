@@ -35,6 +35,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -149,6 +150,11 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	settingsMgr := settings.NewManager(k8sManager.GetClient(), settings.ManagerConfig{
+		GlobalNamespace:                  "default",
+		GlobalPromotionConfigurationName: "global",
+	})
+
 	err = (&CommitStatusReconciler{
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
@@ -168,10 +174,11 @@ var _ = BeforeSuite(func() {
 
 	pathLookup := utils.NewPathLookup()
 	err = (&ChangeTransferPolicyReconciler{
-		Client:     k8sManager.GetClient(),
-		Scheme:     k8sManager.GetScheme(),
-		PathLookup: pathLookup,
-		Recorder:   k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		PathLookup:  pathLookup,
+		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
+		SettingsMgr: settingsMgr,
 		Config: ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: 300 * time.Second,
 		},
@@ -220,6 +227,22 @@ var _ = BeforeSuite(func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
 	}()
+
+	promotionConfiguration := &promoterv1alpha1.PromotionConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "global",
+			Namespace: "default",
+		},
+		Spec: promoterv1alpha1.PromotionConfigurationSpec{
+			PullRequest: promoterv1alpha1.PullRequestConfiguration{
+				Template: promoterv1alpha1.PullRequestTemplate{
+					Title:       "Promote {{ trunc 7 .Status.Proposed.Dry.Sha }} to `{{ .Spec.ActiveBranch }}`",
+					Description: "This PR is promoting the environment branch `{{ .Spec.ActiveBranch }}` which is currently on dry sha {{ .Status.Active.Dry.Sha }} to dry sha {{ .Status.Proposed.Dry.Sha }}.",
+				},
+			},
+		},
+	}
+	Expect(k8sClient.Create(ctx, promotionConfiguration)).To(Succeed())
 
 	go func() {
 		defer GinkgoRecover()
