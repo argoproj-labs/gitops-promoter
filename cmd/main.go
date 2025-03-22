@@ -71,7 +71,6 @@ func main() {
 	var enableHTTP2 bool
 	var promotionStrategyRequeue string
 	var changeTransferPolicyRequeue string
-	var globalPromotionConfigurationName string
 	var clientConfig clientcmd.ClientConfig
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
@@ -86,8 +85,6 @@ func main() {
 		"How frequently to requeue promotion strategy resources for auto reconciliation")
 	flag.StringVar(&changeTransferPolicyRequeue, "change-transfer-policy-requeue-duration", "300s",
 		"How frequently to requeue proposed commit resources for auto reconciliation")
-	flag.StringVar(&globalPromotionConfigurationName, "global-promotion-configuration-name", "promoter-global",
-		"Name of the global promotion configuration")
 	opts := zap.Options{
 		Development: true,
 		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
