@@ -142,7 +142,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branches []string) (m
 		metadataFile := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) + "/hydrator.metadata"
 		if _, err := os.Stat(metadataFile); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
-				logger.Info("dry sha does not exist", "branch", branch)
+				logger.Info("hydrator.metadata does not exist", "branch", branch)
 				continue
 			}
 		}
