@@ -18,6 +18,9 @@ spec:
       - key: performance-test
       proposedCommitStatuses:
       - key: deployment-freeze
+  openPullRequestFilter:
+    paths:
+      - "*.yaml"
 status:
   environments:
   - branch: environment/dev
