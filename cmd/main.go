@@ -19,6 +19,8 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
+	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"os"
 	"runtime/debug"
 	"syscall"
@@ -239,6 +241,32 @@ func main() {
 			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 			if err != nil {
 				setupLog.Error(err, "unable to kill process")
+			}
+		}
+	}()
+
+	ws := webserver.NewWebServer(mgr)
+	go func() {
+		err = ws.Start(processSignals, ":8088")
+		if err != nil {
+			setupLog.Error(err, "unable to start web server")
+			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+			if err != nil {
+				setupLog.Error(err, "unable to kill process")
+			}
+		}
+	}()
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				ws.Event.Message <- webserver.Message{
+					Name: "HelloType",
+					Data: fmt.Sprintf("{data: 'Hello, World!', clientCount: %d}", len(ws.Event.TotalClients)),
+				}
 			}
 		}
 	}()
