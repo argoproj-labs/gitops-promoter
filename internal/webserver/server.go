@@ -28,18 +28,20 @@ type Event struct {
 	Message chan Message
 
 	// New client connections
-	NewClients chan chan Message
+	newClients chan chan Message
 
 	// Closed client connections
-	ClosedClients chan chan Message
+	closedClients chan chan Message
 
 	// Total client connections
-	TotalClients map[chan Message]bool
+	totalClients map[chan Message]bool
 }
 
 type Message struct {
-	Name string `json:"name"`
-	Data string `json:"data"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Kind      string `json:"kind"`
+	Data      string `json:"data"`
 }
 
 // New event messages are broadcast to all registered client connection channels
@@ -48,9 +50,9 @@ type ClientChan chan Message
 func NewWebServer(mgr controllerruntime.Manager) WebServer {
 	event := &Event{
 		Message:       make(chan Message),
-		NewClients:    make(chan chan Message),
-		ClosedClients: make(chan chan Message),
-		TotalClients:  make(map[chan Message]bool),
+		newClients:    make(chan chan Message),
+		closedClients: make(chan chan Message),
+		totalClients:  make(map[chan Message]bool),
 	}
 	go event.listen()
 
@@ -81,7 +83,14 @@ func (wr *WebServer) Start(ctx context.Context, addr string) error {
 		gone := c.Stream(func(w io.Writer) bool {
 			// Stream message to client from message channel
 			if msg, ok := <-clientChan; ok {
-				c.SSEvent(msg.Name, msg.Data)
+				if msg.Namespace != "" {
+					// Filter message by namespace
+					if msg.Namespace == c.Query("namespace") {
+						c.SSEvent(msg.Name, msg.Data)
+					}
+				} else {
+					c.SSEvent(msg.Name, msg.Data)
+				}
 				return true
 			}
 			return false
@@ -89,7 +98,7 @@ func (wr *WebServer) Start(ctx context.Context, addr string) error {
 		if gone {
 			logger.Info("client gone stream")
 			// Send closed connection to event server
-			wr.Event.ClosedClients <- clientChan
+			wr.Event.closedClients <- clientChan
 		}
 
 	})
@@ -130,25 +139,25 @@ func (stream *Event) listen() {
 	for {
 		select {
 		// Add new available client
-		case client := <-stream.NewClients:
-			stream.TotalClients[client] = true
-			logger.Info("Client added.", "clientCount", len(stream.TotalClients))
+		case client := <-stream.newClients:
+			stream.totalClients[client] = true
+			logger.Info("Client added.", "clientCount", len(stream.totalClients))
 
 		// Remove closed client
-		case client := <-stream.ClosedClients:
-			delete(stream.TotalClients, client)
+		case client := <-stream.closedClients:
+			delete(stream.totalClients, client)
 			close(client)
-			logger.Info("Removed client.", "clientCount", len(stream.TotalClients))
+			logger.Info("Removed client.", "clientCount", len(stream.totalClients))
 
 		// Broadcast message to client
 		case eventMsg := <-stream.Message:
-			for clientMessageChan := range stream.TotalClients {
+			for clientMessageChan := range stream.totalClients {
 				select {
 				case clientMessageChan <- eventMsg:
 					// Message sent successfully
 				default:
 					// Failed to send, dropping message
-					logger.Info("Failed to send.", "clientCount", len(stream.TotalClients))
+					logger.Info("Failed to send.", "clientCount", len(stream.totalClients))
 				}
 			}
 		}
@@ -161,20 +170,7 @@ func (stream *Event) serveHTTP() gin.HandlerFunc {
 		clientChan := make(ClientChan)
 
 		// Send new connection to event server
-		stream.NewClients <- clientChan
-
-		//go func() {
-		//	logger.Info("close notify start")
-		//	//<-c.Writer.CloseNotify()
-		//	<-c.Request.Context().Done()
-		//
-		//	// Drain client channel so that it does not block. Server may keep sending messages to this channel
-		//	for range clientChan {
-		//	}
-		//	// Send closed connection to event server
-		//	stream.ClosedClients <- clientChan
-		//	logger.Info("close notify end")
-		//}()
+		stream.newClients <- clientChan
 
 		c.Set("clientChan", clientChan)
 

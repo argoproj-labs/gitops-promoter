@@ -19,7 +19,6 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"fmt"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"os"
 	"runtime/debug"
@@ -148,6 +147,32 @@ func main() {
 		panic("unable to start manager")
 	}
 
+	processSignals := ctrl.SetupSignalHandler()
+
+	whr := webhookreceiver.NewWebhookReceiver(mgr)
+	go func() {
+		err = whr.Start(processSignals, ":3333")
+		if err != nil {
+			setupLog.Error(err, "unable to start webhook receiver")
+			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+			if err != nil {
+				setupLog.Error(err, "unable to kill process")
+			}
+		}
+	}()
+
+	ws := webserver.NewWebServer(mgr)
+	go func() {
+		err = ws.Start(processSignals, ":8088")
+		if err != nil {
+			setupLog.Error(err, "unable to start web server")
+			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+			if err != nil {
+				setupLog.Error(err, "unable to kill process")
+			}
+		}
+	}()
+
 	pathLookup := utils.NewPathLookup()
 
 	if err = (&controller.PullRequestReconciler{
@@ -183,6 +208,7 @@ func main() {
 		Config: controller.PromotionStrategyReconcilerConfig{
 			RequeueDuration: promotionStrategyRequeueDuration,
 		},
+		WebEventStream: ws.Event,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create PromotionStrategy controller")
 	}
@@ -231,45 +257,19 @@ func main() {
 		panic("unable to set up ready check")
 	}
 
-	processSignals := ctrl.SetupSignalHandler()
-
-	whr := webhookreceiver.NewWebhookReceiver(mgr)
-	go func() {
-		err = whr.Start(processSignals, ":3333")
-		if err != nil {
-			setupLog.Error(err, "unable to start webhook receiver")
-			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-			if err != nil {
-				setupLog.Error(err, "unable to kill process")
-			}
-		}
-	}()
-
-	ws := webserver.NewWebServer(mgr)
-	go func() {
-		err = ws.Start(processSignals, ":8088")
-		if err != nil {
-			setupLog.Error(err, "unable to start web server")
-			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-			if err != nil {
-				setupLog.Error(err, "unable to kill process")
-			}
-		}
-	}()
-
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				ws.Event.Message <- webserver.Message{
-					Name: "HelloType",
-					Data: fmt.Sprintf("{data: 'Hello, World!', clientCount: %d}", len(ws.Event.TotalClients)),
-				}
-			}
-		}
-	}()
+	//ticker := time.NewTicker(10 * time.Second)
+	//defer ticker.Stop()
+	//go func() {
+	//	for {
+	//		select {
+	//		case <-ticker.C:
+	//			ws.Event.Message <- webserver.Message{
+	//				Name: "HelloType",
+	//				Data: fmt.Sprintf("{data: 'Hello, World!', clientCount: %d}", len(ws.Event.TotalClients)),
+	//			}
+	//		}
+	//	}
+	//}()
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(processSignals); err != nil {

@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"reflect"
 	"slices"
 	"time"
@@ -48,9 +50,10 @@ type PromotionStrategyReconcilerConfig struct {
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
-	Config   PromotionStrategyReconcilerConfig
+	Scheme         *runtime.Scheme
+	Recorder       record.EventRecorder
+	Config         PromotionStrategyReconcilerConfig
+	WebEventStream *webserver.Event
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
@@ -78,6 +81,18 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 		logger.Error(err, "failed to get PromotionStrategy")
 		return ctrl.Result{}, fmt.Errorf("failed to get PromitionStrategy %q: %w", req.Name, err)
+	}
+
+	jsonString, err := json.Marshal(ps)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to marshal PromotionStrategy %q for SSE: %w", req.Name, err)
+	}
+
+	r.WebEventStream.Message <- webserver.Message{
+		Name:      ps.Name,
+		Namespace: ps.Namespace,
+		Kind:      "PromotionStrategy",
+		Data:      string(jsonString),
 	}
 
 	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a map with the branch as the key.
