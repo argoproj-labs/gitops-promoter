@@ -3,12 +3,14 @@ package webserver
 import (
 	"context"
 	"errors"
+	ginlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
 	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controllerruntime "sigs.k8s.io/controller-runtime/pkg/manager"
+	"time"
 )
 
 var logger = ctrl.Log.WithName("webServer")
@@ -60,7 +62,9 @@ func NewWebServer(mgr controllerruntime.Manager) WebServer {
 }
 
 func (wr *WebServer) Start(ctx context.Context, addr string) error {
-	router := gin.Default()
+	router := gin.New()
+	router.Use(ginlogr.Ginlogr(logger, time.RFC3339, true))
+	router.Use(ginlogr.RecoveryWithLogr(logger, time.RFC3339, true, true))
 
 	router.GET("/stream", HeadersMiddleware(), wr.Event.serveHTTP(), func(c *gin.Context) {
 		v, ok := c.Get("clientChan")
