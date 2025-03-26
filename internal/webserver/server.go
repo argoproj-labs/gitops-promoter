@@ -72,18 +72,6 @@ func (wr *WebServer) Start(ctx context.Context, addr string) error {
 			return
 		}
 
-		go func() {
-			//<-c.Writer.CloseNotify()
-
-			<-c.Request.Context().Done()
-
-			// Drain client channel so that it does not block. Server may keep sending messages to this channel
-			for range clientChan {
-			}
-			// Send closed connection to event server
-			wr.Event.ClosedClients <- clientChan
-		}()
-
 		//namespace := c.Query("namespace")
 
 		gone := c.Stream(func(w io.Writer) bool {
@@ -96,6 +84,8 @@ func (wr *WebServer) Start(ctx context.Context, addr string) error {
 		})
 		if gone {
 			logger.Info("client gone stream")
+			// Send closed connection to event server
+			wr.Event.ClosedClients <- clientChan
 		}
 
 	})
@@ -152,11 +142,9 @@ func (stream *Event) listen() {
 				select {
 				case clientMessageChan <- eventMsg:
 					// Message sent successfully
-					logger.Info("Sent.", "clientCount", len(stream.TotalClients), "message", eventMsg, "clientMessageChan", clientMessageChan)
 				default:
 					// Failed to send, dropping message
 					logger.Info("Failed to send.", "clientCount", len(stream.TotalClients))
-					//stream.ClosedClients <- clientMessageChan
 				}
 			}
 		}
@@ -172,6 +160,7 @@ func (stream *Event) serveHTTP() gin.HandlerFunc {
 		stream.NewClients <- clientChan
 
 		//go func() {
+		//	logger.Info("close notify start")
 		//	//<-c.Writer.CloseNotify()
 		//	<-c.Request.Context().Done()
 		//
@@ -180,6 +169,7 @@ func (stream *Event) serveHTTP() gin.HandlerFunc {
 		//	}
 		//	// Send closed connection to event server
 		//	stream.ClosedClients <- clientChan
+		//	logger.Info("close notify end")
 		//}()
 
 		c.Set("clientChan", clientChan)
