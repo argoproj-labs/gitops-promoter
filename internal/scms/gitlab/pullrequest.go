@@ -59,7 +59,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		return "", fmt.Errorf("failed to create pull request: %w", err)
 	}
 
-	logGitLabRatelimits(
+	logGitLabRateLimitsIfAvailable(
 		logger,
 		prObj.Spec.RepositoryReference.Name,
 		resp,
@@ -101,7 +101,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		return fmt.Errorf("failed to update merge request: %w", err)
 	}
 
-	logGitLabRatelimits(
+	logGitLabRateLimitsIfAvailable(
 		logger,
 		prObj.Spec.RepositoryReference.Name,
 		resp,
@@ -142,7 +142,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *v1alpha1.PullRequest) e
 		return fmt.Errorf("failed to close merge request: %w", err)
 	}
 
-	logGitLabRatelimits(
+	logGitLabRateLimitsIfAvailable(
 		logger,
 		prObj.Spec.RepositoryReference.Name,
 		resp,
@@ -186,7 +186,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *v
 		return fmt.Errorf("failed to merge request: %w", err)
 	}
 
-	logGitLabRatelimits(
+	logGitLabRateLimitsIfAvailable(
 		logger,
 		prObj.Spec.RepositoryReference.Name,
 		resp,
@@ -212,7 +212,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 		return false, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
-	logGitLabRatelimits(
+	logGitLabRateLimitsIfAvailable(
 		logger,
 		prObj.Spec.RepositoryReference.Name,
 		resp,

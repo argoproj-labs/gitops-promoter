@@ -60,7 +60,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		return nil, fmt.Errorf("failed to create status: %w", err)
 	}
 
-	logGitLabRatelimits(
+	logGitLabRateLimitsIfAvailable(
 		logger,
 		repo.Spec.ScmProviderRef.Name,
 		resp,

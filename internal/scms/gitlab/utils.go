@@ -6,18 +6,24 @@ import (
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
-func logGitLabRatelimits(
+func logGitLabRateLimitsIfAvailable(
 	logger logr.Logger,
 	scmProvider string,
 	resp *gitlab.Response,
 ) {
-	logger.Info("GitLab rate limits",
-		"scmProvider", scmProvider,
-		"limit", resp.Header.Get("Ratelimit-Limit"),
-		"remaining", resp.Header.Get("Ratelimit-Remaining"),
-		"reset", resp.Header.Get("Ratelimit-Reset"),
-		"url", resp.Request.URL,
-	)
+	limit := resp.Header.Get("Ratelimit-Limit")
+	remaining := resp.Header.Get("Ratelimit-Remaining")
+	reset := resp.Header.Get("Ratelimit-Reset")
+
+	if limit != "" || remaining != "" || reset != "" {
+		logger.Info("GitLab rate limits",
+			"scmProvider", scmProvider,
+			"limit", limit,
+			"remaining", remaining,
+			"reset", reset,
+			"url", resp.Request.URL.String(),
+		)
+	}
 }
 
 func mapMergeRequestState(gl string) v1alpha1.PullRequestState {
