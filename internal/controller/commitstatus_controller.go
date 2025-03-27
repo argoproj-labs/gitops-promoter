@@ -33,6 +33,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -167,6 +168,13 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		p, err = github.NewGithubCommitStatusProvider(r.Client, *secret, scmProvider.Spec.GitHub.Domain)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get GitHub provider for domain %q with secret %q: %w", scmProvider.Spec.GitHub.Domain, secret.Name, err)
+		}
+		return p, nil
+	case scmProvider.Spec.GitLab != nil:
+		var p *gitlab.CommitStatus
+		p, err = gitlab.NewGitlabCommitStatusProvider(r.Client, *secret, scmProvider.Spec.GitLab.Domain)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get GitLab provider for domain %q with secret %q: %w", scmProvider.Spec.GitLab.Domain, secret.Name, err)
 		}
 		return p, nil
 	case scmProvider.Spec.Fake != nil:

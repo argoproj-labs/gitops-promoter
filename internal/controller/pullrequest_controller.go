@@ -26,6 +26,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -194,6 +195,13 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 		p, err = github.NewGithubPullRequestProvider(r.Client, *secret, scmProvider.Spec.GitHub.Domain)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get GitHub provider for domain %q and secret %q: %w", scmProvider.Spec.GitHub.Domain, secret.Name, err)
+		}
+		return p, nil
+	case scmProvider.Spec.GitLab != nil:
+		var p *gitlab.PullRequest
+		p, err = gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.Spec.GitLab.Domain)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get GitLab provider for domain %q and secret %q: %w", scmProvider.Spec.GitLab.Domain, secret.Name, err)
 		}
 		return p, nil
 	case scmProvider.Spec.Fake != nil:
