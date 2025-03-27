@@ -80,7 +80,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			var pr promoterv1alpha1.PullRequest
 			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
-				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
+				typeNamespacedNamePR := types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
 					Namespace: "default",
 				}
@@ -248,7 +248,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			var pr promoterv1alpha1.PullRequest
 			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
-				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
+				typeNamespacedNamePR := types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
 					Namespace: "default",
 				}

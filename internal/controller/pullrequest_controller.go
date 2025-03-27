@@ -217,7 +217,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 
 	var err error
 	// examine DeletionTimestamp to determine if object is under deletion
-	if pr.ObjectMeta.DeletionTimestamp.IsZero() {
+	if pr.DeletionTimestamp.IsZero() {
 		// The object is not being deleted, so if it does not have our finalizer,
 		// then lets add the finalizer and update the object. This is equivalent
 		// to registering our finalizer.

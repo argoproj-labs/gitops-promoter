@@ -12,7 +12,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
-	. "github.com/onsi/ginkgo/v2"
+	ginkgov2 "github.com/onsi/ginkgo/v2"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -108,7 +108,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	gitServerPort := 5000 + GinkgoParallelProcess()
+	gitServerPort := 5000 + ginkgov2.GinkgoParallelProcess()
 	gitServerPortStr := fmt.Sprintf("%d", gitServerPort)
 	err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name), ".")
 	if err != nil {

@@ -100,7 +100,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
 	var ulArgoCDApps unstructured.UnstructuredList
 	ulArgoCDApps.SetGroupVersionKind(gvk)
-	err = r.Client.List(ctx, &ulArgoCDApps, &client.ListOptions{
+	err = r.List(ctx, &ulArgoCDApps, &client.ListOptions{
 		LabelSelector: ls,
 	})
 	if err != nil {
@@ -248,7 +248,7 @@ func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregate
 	for _, s := range aggregateItem {
 		// Find the most recent last transition time
 		if s.application.Status.Health.LastTransitionTime != nil &&
-			(mostRecentLastTransitionTime == nil || s.application.Status.Health.LastTransitionTime.Time.After(mostRecentLastTransitionTime.Time)) {
+			(mostRecentLastTransitionTime == nil || s.application.Status.Health.LastTransitionTime.After(mostRecentLastTransitionTime.Time)) {
 			mostRecentLastTransitionTime = s.application.Status.Health.LastTransitionTime
 		}
 	}
@@ -310,7 +310,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argoCDCommitStatus.Name))
 
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
-	err := r.Client.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy, &client.GetOptions{})
+	err := r.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy, &client.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to get PromotionStrategy object: %w", err)
 	}
@@ -339,13 +339,13 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	currentCommitStatus := promoterv1alpha1.CommitStatus{}
-	err = r.Client.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
+	err = r.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("failed to get CommitStatus object: %w", err)
 		}
 		// Create
-		err = r.Client.Create(ctx, &desiredCommitStatus)
+		err = r.Create(ctx, &desiredCommitStatus)
 		logger.Info("Created ArgoCDCommitStatus", "name", desiredCommitStatus.Name)
 		if err != nil {
 			return fmt.Errorf("failed to create CommitStatus object: %w", err)
@@ -353,7 +353,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	} else {
 		// Update
 		currentCommitStatus.Spec = desiredCommitStatus.Spec
-		err = r.Client.Update(ctx, &currentCommitStatus)
+		err = r.Update(ctx, &currentCommitStatus)
 		logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "sha", sha, "phase", phase, "desc", desc)
 		if err != nil {
 			return fmt.Errorf("failed to update CommitStatus object: %w", err)
