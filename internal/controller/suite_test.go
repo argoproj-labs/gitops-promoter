@@ -20,8 +20,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
-	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"log"
 	"math/rand"
 	"net/http"
@@ -33,6 +31,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
+	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -161,8 +162,8 @@ var _ = BeforeSuite(func() {
 	go func() {
 		err = ws.Start(ctx, ":8088")
 		Expect(err).ToNot(HaveOccurred(), "failed to start webserver")
-		//err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-		//Expect(err).ToNot(HaveOccurred(), "failed to start webserver")
+		// err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		// Expect(err).ToNot(HaveOccurred(), "failed to start webserver")
 	}()
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), settings.ManagerConfig{
