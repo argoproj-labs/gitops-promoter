@@ -106,7 +106,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		newCs := promoterv1alpha1.CommitStatus{}
 		// TODO: consider skipping Get on the initial attempt. The object we already got might be up to date.
-		err = r.Client.Get(ctx, req.NamespacedName, &newCs, &client.GetOptions{})
+		err = r.Get(ctx, req.NamespacedName, &newCs, &client.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
 		}
@@ -181,7 +181,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	logger := log.FromContext(ctx)
 	// Get list of CTPs that have the oldSha
 	ctpListActiveOldSha := &promoterv1alpha1.ChangeTransferPolicyList{}
-	err := r.Client.List(ctx, ctpListActiveOldSha, &client.ListOptions{
+	err := r.List(ctx, ctpListActiveOldSha, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
 			".status.active.hydrated.sha": oldSha,
 		}),
@@ -192,7 +192,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 
 	// Get list of CTPs that have the newSha
 	ctpListActiveNewSha := &promoterv1alpha1.ChangeTransferPolicyList{}
-	err = r.Client.List(ctx, ctpListActiveNewSha, &client.ListOptions{
+	err = r.List(ctx, ctpListActiveNewSha, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
 			".status.active.hydrated.sha": newSha,
 		}),
@@ -202,7 +202,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	}
 
 	ctpListProposedOldSha := &promoterv1alpha1.ChangeTransferPolicyList{}
-	err = r.Client.List(ctx, ctpListProposedOldSha, &client.ListOptions{
+	err = r.List(ctx, ctpListProposedOldSha, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
 			".status.proposed.hydrated.sha": oldSha,
 		}),
@@ -213,7 +213,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 
 	// Get list of CTPs that have the newSha
 	ctpListProposedNewSha := &promoterv1alpha1.ChangeTransferPolicyList{}
-	err = r.Client.List(ctx, ctpListProposedNewSha, &client.ListOptions{
+	err = r.List(ctx, ctpListProposedNewSha, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
 			".status.proposed.hydrated.sha": newSha,
 		}),
@@ -232,7 +232,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 		}
 		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			ctpUpdated := promoterv1alpha1.ChangeTransferPolicy{}
-			err = r.Client.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}, &ctpUpdated)
+			err = r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}, &ctpUpdated)
 			if ctpUpdated.Annotations == nil {
 				ctpUpdated.Annotations = map[string]string{}
 			}
@@ -240,7 +240,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 			if err != nil {
 				return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", ctp.Name, err)
 			}
-			return r.Client.Update(ctx, &ctpUpdated)
+			return r.Update(ctx, &ctpUpdated)
 		})
 		if err != nil {
 			return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", ctp.Name, err)
