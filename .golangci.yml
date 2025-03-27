@@ -49,10 +49,7 @@ linters:
       disabled-checks:
         - assignOp
         - ifElseChain
-    testifylint:
-      enable-all: true
   exclusions:
-    generated: lax
     rules:
       - linters:
           - lll
@@ -73,8 +70,6 @@ issues:
 formatters:
   enable:
     - gofmt
-    - gofumpt
-    - goimports
   exclusions:
     generated: lax
     paths:
