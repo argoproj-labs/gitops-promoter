@@ -1,25 +1,6 @@
+version: "2"
 run:
-  timeout: 5m
   allow-parallel-runners: true
-
-issues:
-  max-issues-per-linter: 0
-  max-same-issues: 0
-  # don't skip warning about doc comments
-  # don't exclude the default set of lint
-  exclude-use-default: false
-  # restore some of the defaults
-  # (fill in the rest as needed)
-  exclude-rules:
-    - path: "api/.*"
-      linters:
-        - lll
-    - path: "internal/.*"
-      linters:
-        - lll
-    - path: ".*_test.go"
-      linters:
-        - dupl
 linters:
   enable:
     - bodyclose
@@ -29,22 +10,15 @@ linters:
     - copyloopvar
     - dupl
     - durationcheck
-    - errcheck
     - errchkjson
     - errname
     - errorlint
     - fatcontext
     - forcetypeassert
     - gocheckcompilerdirectives
-    - gocritic
     - goconst
+    - gocritic
     - gocyclo
-    - gofmt
-    - gofumpt
-    - goimports
-    - gosimple
-    - govet
-    - ineffassign
     - lll
     - loggercheck
     - makezero
@@ -57,27 +31,53 @@ linters:
     - paralleltest
     - prealloc
     - promlinter
-    - staticcheck
-    - tenv
     - testifylint
     - thelper
     - tparallel
-    - typecheck
     - unconvert
     - unparam
-    - unused
     - usestdlibvars
     - wastedassign
     - whitespace
     - wrapcheck
-linters-settings:
-  copyloopvar:
-    check-alias: true
-  goconst:
-    ignore-strings: "true"
-  gocritic:
-    disabled-checks:
-      - assignOp  # Keep it disabled for readability
-      - ifElseChain
-  testifylint:
-    enable-all: true
+  settings:
+    copyloopvar:
+      check-alias: true
+    goconst:
+      ignore-strings: "true"
+    gocritic:
+      disabled-checks:
+        - assignOp
+        - ifElseChain
+    testifylint:
+      enable-all: true
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - lll
+        path: api/.*
+      - linters:
+          - lll
+        path: internal/.*
+      - linters:
+          - dupl
+        path: .*_test.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
