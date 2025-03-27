@@ -26,7 +26,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
+	"github.com/spf13/pflag"
 
 	"go.uber.org/zap/zapcore"
 
@@ -35,6 +37,7 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -70,6 +73,7 @@ func main() {
 	var enableHTTP2 bool
 	var promotionStrategyRequeue string
 	var changeTransferPolicyRequeue string
+	var clientConfig clientcmd.ClientConfig
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -91,6 +95,14 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	clientConfig = addKubectlFlags(pflag.CommandLine)
+
+	controllerNamespace, _, err := clientConfig.Namespace()
+	if err != nil {
+		setupLog.Error(err, "failed to get namespace")
+		os.Exit(1)
+	}
 
 	// Recover any panic and log using the configured logger. This ensures that panics get logged in JSON format if
 	// JSON logging is enabled.
@@ -174,6 +186,10 @@ func main() {
 		}
 	}()
 
+	settingsMgr := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
+		GlobalNamespace: controllerNamespace,
+	})
+
 	pathLookup := utils.NewPathLookup()
 
 	if err = (&controller.PullRequestReconciler{
@@ -232,10 +248,11 @@ func main() {
 		panic("failed to parse proposed commit requeue duration")
 	}
 	if err = (&controller.ChangeTransferPolicyReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		PathLookup: pathLookup,
-		Recorder:   mgr.GetEventRecorderFor("ChangeTransferPolicy"),
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		PathLookup:  pathLookup,
+		Recorder:    mgr.GetEventRecorderFor("ChangeTransferPolicy"),
+		SettingsMgr: settingsMgr,
 		Config: controller.ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: ctpRequeueDuration,
 		},
@@ -249,6 +266,12 @@ func main() {
 		PathLookup: pathLookup,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ArgoCDCommitStatus controller")
+	}
+	if err = (&controller.PromotionConfigurationReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		panic("unable to create PromotionConfiguration controller")
 	}
 	//+kubebuilder:scaffold:builder
 
@@ -286,4 +309,14 @@ func main() {
 		}
 		setupLog.Info("cleaning directory", "directory", path)
 	}
+}
+
+func addKubectlFlags(flags *pflag.FlagSet) clientcmd.ClientConfig {
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
+	overrides := clientcmd.ConfigOverrides{}
+	kflags := clientcmd.RecommendedConfigOverrideFlags("")
+	flags.StringVar(&loadingRules.ExplicitPath, "kubeconfig", "", "Path to a kube config. Only required if out-of-cluster")
+	clientcmd.BindOverrideFlags(&overrides, flags, kflags)
+	return clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, &overrides, os.Stdin)
 }
