@@ -100,7 +100,7 @@ spec:
 
 ## GitLab Configuration
 
-To configure the GitOps Promoter with GitLab, you will need to create a GitLab Access Token with `api` and `write_repository` scopes and configure the necessary resources to allow the promoter to interact with your repository. This Access Token should be used in a secret as follows:
+To configure the GitOps Promoter with GitLab, you will need to create a GitLab Access Token under the "Developer" role with `api` and `write_repository` scopes and configure the necessary resources to allow the promoter to interact with your repository. This Access Token should be used in a secret as follows:
 
 ```yaml
 apiVersion: v1

@@ -53,7 +53,7 @@ func (gl GitAuthenticationProvider) GetUser(ctx context.Context) (string, error)
 func GetClient(secret v1.Secret, domain string) (*gitlab.Client, error) {
 	token := string(secret.Data["token"])
 	if token == "" {
-		return nil, fmt.Errorf("GitLab token is required")
+		return nil, fmt.Errorf("secret %q is missing required data key 'token'", secret.Name)
 	}
 
 	opts := []gitlab.ClientOptionFunc{}

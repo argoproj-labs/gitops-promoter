@@ -75,7 +75,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 
 	mrIID, err := strconv.Atoi(prObj.Status.ID)
 	if err != nil {
-		return fmt.Errorf("failed to convert MR number to int: %w", err)
+		return fmt.Errorf("failed to convert MR ID %q to int: %w", prObj.Status.ID, err)
 	}
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
@@ -117,7 +117,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *v1alpha1.PullRequest) e
 
 	mrIID, err := strconv.Atoi(prObj.Status.ID)
 	if err != nil {
-		return fmt.Errorf("failed to convert MR number to int: %w", err)
+		return fmt.Errorf("failed to convert MR ID %q to int: %w", prObj.Status.ID, err)
 	}
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
