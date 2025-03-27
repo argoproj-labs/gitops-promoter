@@ -3,15 +3,17 @@ package webserver
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"time"
+
 	ginlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-	"io"
-	"net/http"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controllerruntime "sigs.k8s.io/controller-runtime/pkg/manager"
-	"time"
 )
 
 var logger = ctrl.Log.WithName("webServer")
@@ -100,7 +102,6 @@ func (wr *WebServer) Start(ctx context.Context, addr string) error {
 			// Send closed connection to event server
 			wr.Event.closedClients <- clientChan
 		}
-
 	})
 
 	// Parse Static files
@@ -184,7 +185,7 @@ func HeadersMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Connection", "keep-alive")
 		c.Writer.Header().Set("Transfer-Encoding", "chunked")
-		//c.Writer.Header().Set("Content-Encoding", "deflate")
+		// c.Writer.Header().Set("Content-Encoding", "deflate")
 		c.Next()
 	}
 }

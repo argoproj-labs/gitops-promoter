@@ -19,12 +19,12 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"os"
 	"runtime/debug"
 	"syscall"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
@@ -285,13 +285,10 @@ func main() {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				ws.Event.Message <- webserver.Message{
-					Name: "HelloType",
-					Data: fmt.Sprintf("{data: 'Hello, World!'}"),
-				}
+		for range ticker.C {
+			ws.Event.Message <- webserver.Message{
+				Name: "HelloType",
+				Data: "{data: 'Hello, World!'}",
 			}
 		}
 	}()

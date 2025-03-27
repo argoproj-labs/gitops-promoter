@@ -20,10 +20,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"reflect"
 	"slices"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	"gopkg.in/yaml.v3"
 

@@ -21,9 +21,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"reflect"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
