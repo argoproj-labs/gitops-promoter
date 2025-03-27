@@ -115,8 +115,8 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	logger.Info("Reconciling PromotionStrategy End", "duration", time.Since(startTime))
 
 	psCopy := ps.DeepCopy()
-	delete(psCopy.ObjectMeta.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
-	psCopy.ObjectMeta.ManagedFields = nil
+	delete(psCopy.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
+	psCopy.ManagedFields = nil
 	jsonString, err := json.Marshal(psCopy)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to marshal PromotionStrategy %q for SSE: %w", req.Name, err)

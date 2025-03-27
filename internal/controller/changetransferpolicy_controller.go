@@ -138,8 +138,8 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	logger.Info("Reconciling ChangeTransferPolicy End", "duration", time.Since(startTime))
 
 	ctpCopy := ctp.DeepCopy()
-	delete(ctpCopy.ObjectMeta.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
-	ctpCopy.ObjectMeta.ManagedFields = nil
+	delete(ctpCopy.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
+	ctpCopy.ManagedFields = nil
 	jsonString, err := json.Marshal(ctpCopy)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to marshal PromotionStrategy %q for SSE: %w", req.Name, err)
