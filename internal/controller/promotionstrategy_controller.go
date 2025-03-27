@@ -83,18 +83,6 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get PromitionStrategy %q: %w", req.Name, err)
 	}
 
-	jsonString, err := json.Marshal(ps)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to marshal PromotionStrategy %q for SSE: %w", req.Name, err)
-	}
-
-	r.WebEventStream.Message <- webserver.Message{
-		Name:      ps.Name,
-		Namespace: ps.Namespace,
-		Kind:      "PromotionStrategy",
-		Data:      string(jsonString),
-	}
-
 	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a map with the branch as the key.
 	ctpsByBranch := make(map[string]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
 	for _, environment := range ps.Spec.Environments {
@@ -124,6 +112,20 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	logger.Info("Reconciling PromotionStrategy End", "duration", time.Since(startTime))
+
+	psCopy := ps.DeepCopy()
+	delete(psCopy.ObjectMeta.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
+	psCopy.ObjectMeta.ManagedFields = nil
+	jsonString, err := json.Marshal(psCopy)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to marshal PromotionStrategy %q for SSE: %w", req.Name, err)
+	}
+	r.WebEventStream.Message <- webserver.Message{
+		Name:      psCopy.Name,
+		Namespace: psCopy.Namespace,
+		Kind:      psCopy.Kind,
+		Data:      string(jsonString),
+	}
 
 	return ctrl.Result{
 		Requeue:      true,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	ginlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
@@ -49,7 +50,7 @@ type ClientChan chan Message
 
 func NewWebServer(mgr controllerruntime.Manager) WebServer {
 	event := &Event{
-		Message:       make(chan Message),
+		Message:       make(chan Message, 100),
 		newClients:    make(chan chan Message),
 		closedClients: make(chan chan Message),
 		totalClients:  make(map[chan Message]bool),
@@ -67,6 +68,7 @@ func (wr *WebServer) Start(ctx context.Context, addr string) error {
 	router := gin.New()
 	router.Use(ginlogr.Ginlogr(logger, time.RFC3339, true))
 	router.Use(ginlogr.RecoveryWithLogr(logger, time.RFC3339, true, true))
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	router.GET("/stream", HeadersMiddleware(), wr.Event.serveHTTP(), func(c *gin.Context) {
 		v, ok := c.Get("clientChan")
@@ -78,18 +80,16 @@ func (wr *WebServer) Start(ctx context.Context, addr string) error {
 			return
 		}
 
-		//namespace := c.Query("namespace")
-
 		gone := c.Stream(func(w io.Writer) bool {
 			// Stream message to client from message channel
 			if msg, ok := <-clientChan; ok {
-				if msg.Namespace != "" {
+				if c.Query("namespace") != "" {
 					// Filter message by namespace
 					if msg.Namespace == c.Query("namespace") {
-						c.SSEvent(msg.Name, msg.Data)
+						c.SSEvent(msg.Kind, msg.Data)
 					}
 				} else {
-					c.SSEvent(msg.Name, msg.Data)
+					c.SSEvent(msg.Kind, msg.Data)
 				}
 				return true
 			}
@@ -184,6 +184,7 @@ func HeadersMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Connection", "keep-alive")
 		c.Writer.Header().Set("Transfer-Encoding", "chunked")
+		//c.Writer.Header().Set("Content-Encoding", "deflate")
 		c.Next()
 	}
 }

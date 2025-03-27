@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"os"
 	"runtime/debug"
@@ -238,6 +239,7 @@ func main() {
 		Config: controller.ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: ctpRequeueDuration,
 		},
+		WebEventStream: ws.Event,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ChangeTransferPolicy controller")
 	}
@@ -257,19 +259,19 @@ func main() {
 		panic("unable to set up ready check")
 	}
 
-	//ticker := time.NewTicker(10 * time.Second)
-	//defer ticker.Stop()
-	//go func() {
-	//	for {
-	//		select {
-	//		case <-ticker.C:
-	//			ws.Event.Message <- webserver.Message{
-	//				Name: "HelloType",
-	//				Data: fmt.Sprintf("{data: 'Hello, World!', clientCount: %d}", len(ws.Event.TotalClients)),
-	//			}
-	//		}
-	//	}
-	//}()
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				ws.Event.Message <- webserver.Message{
+					Name: "HelloType",
+					Data: fmt.Sprintf("{data: 'Hello, World!'}"),
+				}
+			}
+		}
+	}()
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(processSignals); err != nil {
