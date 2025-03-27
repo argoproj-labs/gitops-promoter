@@ -73,7 +73,6 @@ formatters:
     - gofumpt
     - goimports
   exclusions:
-    generated: lax
     paths:
       - third_party$
       - builtin$
