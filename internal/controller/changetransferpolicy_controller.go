@@ -249,12 +249,14 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 	}
 	targetCommitBranchState.Hydrated.CommitTime = commitTime
 
-	targetCommitBranchState.Dry.Sha = shas.Dry
-	commitTime, err = gitOperations.GetShaTime(ctx, shas.Dry)
-	if err != nil {
-		return fmt.Errorf("failed to get dry SHA %q on: %w", shas.Dry, err)
+	if shas.Dry != "" {
+		targetCommitBranchState.Dry.Sha = shas.Dry
+		commitTime, err = gitOperations.GetShaTime(ctx, shas.Dry)
+		if err != nil {
+			return fmt.Errorf("failed to get dry SHA %q on: %w", shas.Dry, err)
+		}
+		targetCommitBranchState.Dry.CommitTime = commitTime
 	}
-	targetCommitBranchState.Dry.CommitTime = commitTime
 
 	commitStatusesState := []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
 	var tooManyMatchingShas bool
