@@ -18,10 +18,13 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"slices"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	"gopkg.in/yaml.v3"
 
@@ -48,9 +51,10 @@ type PromotionStrategyReconcilerConfig struct {
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
-	Config   PromotionStrategyReconcilerConfig
+	Scheme         *runtime.Scheme
+	Recorder       record.EventRecorder
+	Config         PromotionStrategyReconcilerConfig
+	WebEventStream *webserver.Event
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
@@ -109,6 +113,20 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	logger.Info("Reconciling PromotionStrategy End", "duration", time.Since(startTime))
+
+	psCopy := ps.DeepCopy()
+	delete(psCopy.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
+	psCopy.ManagedFields = nil
+	jsonString, err := json.Marshal(psCopy)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to marshal PromotionStrategy %q for SSE: %w", req.Name, err)
+	}
+	r.WebEventStream.Message <- webserver.Message{
+		Name:      psCopy.Name,
+		Namespace: psCopy.Namespace,
+		Kind:      psCopy.Kind,
+		Data:      string(jsonString),
+	}
 
 	return ctrl.Result{
 		Requeue:      true,
