@@ -92,12 +92,13 @@ func (r *WebServer) sendEvent(e client.Object) {
 		logger.Error(err, "failed to marshal for SSE", "name", e.GetName(), "kind", e.GetObjectKind().GroupVersionKind().Kind)
 		return
 	}
-	r.Event.Message <- Message{
+	m := Message{
 		Name:      e.GetName(),
 		Namespace: e.GetNamespace(),
 		Kind:      e.GetObjectKind().GroupVersionKind().Kind,
 		Data:      string(jsonString),
 	}
+	r.Event.Message <- m
 }
 
 func (r *WebServer) sendDeleteEvent(e client.Object) {
@@ -112,14 +113,33 @@ func (r *WebServer) sendDeleteEvent(e client.Object) {
 func (r *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		Named("webServer").
-		Watches(&promoterv1alpha1.PromotionStrategy{}, handler.Funcs{
+		Watches(&promoterv1alpha1.PromotionStrategy{}, handler.Funcs{ //nolint:dupl
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ctp, ok := e.Object.(*promoterv1alpha1.PromotionStrategy); ok {
+				if ps, ok := e.Object.(*promoterv1alpha1.PromotionStrategy); ok {
+					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
+					r.sendEvent(ps)
+				}
+			},
+			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+				if ps, ok := e.ObjectNew.(*promoterv1alpha1.PromotionStrategy); ok {
+					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
+					r.sendEvent(ps)
+				}
+			},
+			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+				r.sendDeleteEvent(e.Object)
+			},
+		}).
+		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, handler.Funcs{ //nolint:dupl
+			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+				if ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy); ok {
+					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
 					r.sendEvent(ctp)
 				}
 			},
 			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ctp, ok := e.ObjectNew.(*promoterv1alpha1.PromotionStrategy); ok {
+				if ctp, ok := e.ObjectNew.(*promoterv1alpha1.ChangeTransferPolicy); ok {
+					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
 					r.sendEvent(ctp)
 				}
 			},
@@ -127,15 +147,34 @@ func (r *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 				r.sendDeleteEvent(e.Object)
 			},
 		}).
-		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, handler.Funcs{
+		Watches(&promoterv1alpha1.PullRequest{}, handler.Funcs{ //nolint:dupl
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy); ok {
-					r.sendEvent(ctp)
+				if pr, ok := e.Object.(*promoterv1alpha1.PullRequest); ok {
+					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
+					r.sendEvent(pr)
 				}
 			},
 			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				if ctp, ok := e.ObjectNew.(*promoterv1alpha1.ChangeTransferPolicy); ok {
-					r.sendEvent(ctp)
+				if pr, ok := e.ObjectNew.(*promoterv1alpha1.PullRequest); ok {
+					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
+					r.sendEvent(pr)
+				}
+			},
+			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+				r.sendDeleteEvent(e.Object)
+			},
+		}).
+		Watches(&promoterv1alpha1.CommitStatus{}, handler.Funcs{ //nolint:dupl
+			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+				if cs, ok := e.Object.(*promoterv1alpha1.CommitStatus); ok {
+					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
+					r.sendEvent(cs)
+				}
+			},
+			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+				if cs, ok := e.ObjectNew.(*promoterv1alpha1.CommitStatus); ok {
+					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
+					r.sendEvent(cs)
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
@@ -268,7 +307,6 @@ func HeadersMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Connection", "keep-alive")
 		c.Writer.Header().Set("Transfer-Encoding", "chunked")
-		// c.Writer.Header().Set("Content-Encoding", "deflate")
 		c.Next()
 	}
 }

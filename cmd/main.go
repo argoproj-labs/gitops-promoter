@@ -283,17 +283,6 @@ func main() {
 		panic("unable to set up ready check")
 	}
 
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	go func() {
-		for range ticker.C {
-			ws.Event.Message <- webserver.Message{
-				Name: "HelloType",
-				Data: "{data: 'Hello, World!'}",
-			}
-		}
-	}()
-
 	setupLog.Info("starting manager")
 	if err := mgr.Start(processSignals); err != nil {
 		panic("problem running manager")
