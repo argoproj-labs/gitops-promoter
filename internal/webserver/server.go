@@ -106,7 +106,7 @@ func (r *WebServer) sendDeleteEvent(e client.Object) {
 		Name:      e.GetName(),
 		Namespace: e.GetNamespace(),
 		Kind:      e.GetObjectKind().GroupVersionKind().Kind,
-		Data:      "Deleted",
+		Data:      "{action: \"delete\", name: \"" + e.GetName() + "\", namespace: \"" + e.GetNamespace() + "\"}",
 	}
 }
 
@@ -127,7 +127,10 @@ func (r *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				r.sendDeleteEvent(e.Object)
+				if ps, ok := e.Object.(*promoterv1alpha1.PromotionStrategy); ok {
+					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
+					r.sendDeleteEvent(ps)
+				}
 			},
 		}).
 		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, handler.Funcs{ //nolint:dupl
@@ -144,7 +147,10 @@ func (r *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				r.sendDeleteEvent(e.Object)
+				if ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy); ok {
+					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
+					r.sendDeleteEvent(ctp)
+				}
 			},
 		}).
 		Watches(&promoterv1alpha1.PullRequest{}, handler.Funcs{ //nolint:dupl
@@ -161,7 +167,10 @@ func (r *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				r.sendDeleteEvent(e.Object)
+				if pr, ok := e.Object.(*promoterv1alpha1.PullRequest); ok {
+					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
+					r.sendDeleteEvent(pr)
+				}
 			},
 		}).
 		Watches(&promoterv1alpha1.CommitStatus{}, handler.Funcs{ //nolint:dupl
@@ -178,7 +187,10 @@ func (r *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
-				r.sendDeleteEvent(e.Object)
+				if cs, ok := e.Object.(*promoterv1alpha1.CommitStatus); ok {
+					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
+					r.sendDeleteEvent(cs)
+				}
 			},
 		}).
 		Complete(r)
