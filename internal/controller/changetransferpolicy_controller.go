@@ -18,13 +18,10 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"time"
-
-	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -56,12 +53,11 @@ type ChangeTransferPolicyReconcilerConfig struct {
 // ChangeTransferPolicyReconciler reconciles a ChangeTransferPolicy object
 type ChangeTransferPolicyReconciler struct {
 	client.Client
-	Scheme         *runtime.Scheme
-	PathLookup     utils.PathLookup
-	Recorder       record.EventRecorder
-	Config         ChangeTransferPolicyReconcilerConfig
-	SettingsMgr    *settings.Manager
-	WebEventStream *webserver.Event
+	Scheme      *runtime.Scheme
+	PathLookup  utils.PathLookup
+	Recorder    record.EventRecorder
+	Config      ChangeTransferPolicyReconcilerConfig
+	SettingsMgr *settings.Manager
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -137,20 +133,6 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	logger.Info("Reconciling ChangeTransferPolicy End", "duration", time.Since(startTime))
-
-	ctpCopy := ctp.DeepCopy()
-	delete(ctpCopy.Annotations, "kubectl.kubernetes.io/last-applied-configuration")
-	ctpCopy.ManagedFields = nil
-	jsonString, err := json.Marshal(ctpCopy)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to marshal PromotionStrategy %q for SSE: %w", req.Name, err)
-	}
-	r.WebEventStream.Message <- webserver.Message{
-		Name:      ctpCopy.Name,
-		Namespace: ctpCopy.Namespace,
-		Kind:      ctpCopy.Kind,
-		Data:      string(jsonString),
-	}
 
 	return ctrl.Result{
 		Requeue:      true,

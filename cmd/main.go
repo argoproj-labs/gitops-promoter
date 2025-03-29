@@ -185,6 +185,9 @@ func main() {
 			}
 		}
 	}()
+	if err = ws.SetupWithManager(mgr); err != nil {
+		panic("unable to create WebServer controller")
+	}
 
 	settingsMgr := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
 		GlobalNamespace: controllerNamespace,
@@ -225,7 +228,6 @@ func main() {
 		Config: controller.PromotionStrategyReconcilerConfig{
 			RequeueDuration: promotionStrategyRequeueDuration,
 		},
-		WebEventStream: ws.Event,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create PromotionStrategy controller")
 	}
@@ -256,7 +258,6 @@ func main() {
 		Config: controller.ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: ctpRequeueDuration,
 		},
-		WebEventStream: ws.Event,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ChangeTransferPolicy controller")
 	}

@@ -165,6 +165,8 @@ var _ = BeforeSuite(func() {
 		// err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 		// Expect(err).ToNot(HaveOccurred(), "failed to start webserver")
 	}()
+	err = ws.SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), settings.ManagerConfig{
 		GlobalNamespace: "default",
@@ -184,7 +186,6 @@ var _ = BeforeSuite(func() {
 		Config: PromotionStrategyReconcilerConfig{
 			RequeueDuration: 300 * time.Second,
 		},
-		WebEventStream: ws.Event,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -198,7 +199,6 @@ var _ = BeforeSuite(func() {
 		Config: ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: 300 * time.Second,
 		},
-		WebEventStream: ws.Event,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
