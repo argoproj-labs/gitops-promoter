@@ -62,7 +62,7 @@ func (r *ControllerConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) e
 		Named("controllerconfiguration").
 		Complete(r)
 	if err != nil {
-		return fmt.Errorf("unable to create controller: %w", err)
+		return fmt.Errorf("failed to create controller: %w", err)
 	}
 
 	return nil
