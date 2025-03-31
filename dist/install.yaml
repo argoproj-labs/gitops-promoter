@@ -447,6 +447,75 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.3
+  name: controllerconfigurations.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: ControllerConfiguration
+    listKind: ControllerConfigurationList
+    plural: controllerconfigurations
+    singular: controllerconfiguration
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ControllerConfiguration is the Schema for the controllerconfigurations
+          API.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ControllerConfigurationSpec defines the desired state of
+              ControllerConfiguration.
+            properties:
+              pullRequest:
+                properties:
+                  template:
+                    properties:
+                      description:
+                        description: |-
+                          Template used to generate the description of the pull request.
+                          Uses Go template syntax and Sprig functions are available.
+                        type: string
+                      title:
+                        description: |-
+                          Template used to generate the title of the pull request.
+                          Uses Go template syntax and Sprig functions are available.
+                        type: string
+                    type: object
+                type: object
+            type: object
+          status:
+            description: ControllerConfigurationStatus defines the observed state
+              of ControllerConfiguration.
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.3
   name: gitrepositories.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -531,74 +600,6 @@ spec:
             type: object
           status:
             description: GitRepositoryStatus defines the observed state of GitRepository
-            type: object
-        type: object
-    served: true
-    storage: true
-    subresources:
-      status: {}
----
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  annotations:
-    controller-gen.kubebuilder.io/version: v0.16.3
-  name: promotionconfigurations.promoter.argoproj.io
-spec:
-  group: promoter.argoproj.io
-  names:
-    kind: PromotionConfiguration
-    listKind: PromotionConfigurationList
-    plural: promotionconfigurations
-    singular: promotionconfiguration
-  scope: Namespaced
-  versions:
-  - name: v1alpha1
-    schema:
-      openAPIV3Schema:
-        description: PromotionConfiguration is the Schema for the promotionconfigurations
-          API.
-        properties:
-          apiVersion:
-            description: |-
-              APIVersion defines the versioned schema of this representation of an object.
-              Servers should convert recognized schemas to the latest internal value, and
-              may reject unrecognized values.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
-            type: string
-          kind:
-            description: |-
-              Kind is a string value representing the REST resource this object represents.
-              Servers may infer this from the endpoint the client submits requests to.
-              Cannot be updated.
-              In CamelCase.
-              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
-            type: string
-          metadata:
-            type: object
-          spec:
-            description: PromotionConfigurationSpec defines the desired state of PromotionConfiguration.
-            properties:
-              pullRequest:
-                properties:
-                  template:
-                    properties:
-                      description:
-                        description: |-
-                          Template used to generate the description of the pull request.
-                          Uses Go template syntax and Sprig functions are available.
-                        type: string
-                      title:
-                        description: |-
-                          Template used to generate the title of the pull request.
-                          Uses Go template syntax and Sprig functions are available.
-                        type: string
-                    type: object
-                type: object
-            type: object
-          status:
-            description: PromotionConfigurationStatus defines the observed state of
-              PromotionConfiguration.
             type: object
         type: object
     served: true
@@ -1216,6 +1217,77 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
+  name: promoter-controllerconfiguration-admin-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - controllerconfigurations
+  verbs:
+  - '*'
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - controllerconfigurations/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
+  name: promoter-controllerconfiguration-editor-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - controllerconfigurations
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - controllerconfigurations/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: promoter
+  name: promoter-controllerconfiguration-viewer-role
+rules:
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - controllerconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - promoter.argoproj.io
+  resources:
+  - controllerconfigurations/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
   name: promoter-manager-role
 rules:
 - apiGroups:
@@ -1232,8 +1304,8 @@ rules:
   - argocdcommitstatuses
   - changetransferpolicies
   - commitstatuses
+  - controllerconfigurations
   - gitrepositories
-  - promotionconfigurations
   - promotionstrategies
   - pullrequests
   - revertcommits
@@ -1252,8 +1324,8 @@ rules:
   - argocdcommitstatuses/finalizers
   - changetransferpolicies/finalizers
   - commitstatuses/finalizers
+  - controllerconfigurations/finalizers
   - gitrepositories/finalizers
-  - promotionconfigurations/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
   - revertcommits/finalizers
@@ -1266,8 +1338,8 @@ rules:
   - argocdcommitstatuses/status
   - changetransferpolicies/status
   - commitstatuses/status
+  - controllerconfigurations/status
   - gitrepositories/status
-  - promotionconfigurations/status
   - promotionstrategies/status
   - pullrequests/status
   - revertcommits/status
@@ -1590,13 +1662,13 @@ spec:
       terminationGracePeriodSeconds: 10
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: PromotionConfiguration
+kind: ControllerConfiguration
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
     app.kubernetes.io/part-of: promoter
-  name: promoter-global
+  name: promoter-controller-configuration
   namespace: promoter-system
 spec:
   pullRequest:

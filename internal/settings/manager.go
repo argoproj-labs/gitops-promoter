@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	GlobalPromotionConfigurationName = "promoter-global"
+	GlobalPromotionConfigurationName = "controller-configuration"
 )
 
 type ManagerConfig struct {
