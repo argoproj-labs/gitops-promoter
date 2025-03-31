@@ -363,7 +363,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 
 	prName = utils.KubeSafeUniqueName(ctx, prName)
 
-	promotionConfig, err := r.SettingsMgr.GetPromotionConfiguration(ctx)
+	promotionConfig, err := r.SettingsMgr.GetControllerConfiguration(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
