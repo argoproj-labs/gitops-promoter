@@ -229,7 +229,7 @@ var _ = BeforeSuite(func() {
 
 	promotionConfiguration := &promoterv1alpha1.ControllerConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "controller-configuration",
+			Name:      "promoter-controller-configuration",
 			Namespace: "default",
 		},
 		Spec: promoterv1alpha1.ControllerConfigurationSpec{

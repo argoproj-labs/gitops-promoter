@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	ControllerConfigurationName = "controller-configuration"
+	ControllerConfigurationName = "promoter-controller-configuration"
 )
 
 type ManagerConfig struct {
