@@ -1,5 +1,5 @@
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: PromotionConfiguration
+kind: ControllerConfiguration
 metadata:
   labels:
     app.kubernetes.io/name: promoter

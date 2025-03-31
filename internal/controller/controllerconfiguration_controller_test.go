@@ -30,7 +30,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-var _ = Describe("PromotionConfiguration Controller", func() {
+var _ = Describe("ControllerConfiguration Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 
@@ -40,13 +40,13 @@ var _ = Describe("PromotionConfiguration Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		promotionconfiguration := &promoterv1alpha1.PromotionConfiguration{}
+		controllerconfiguration := &promoterv1alpha1.ControllerConfiguration{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind PromotionConfiguration")
-			err := k8sClient.Get(ctx, typeNamespacedName, promotionconfiguration)
+			By("creating the custom resource for the Kind ControllerConfiguration")
+			err := k8sClient.Get(ctx, typeNamespacedName, controllerconfiguration)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &promoterv1alpha1.PromotionConfiguration{
+				resource := &promoterv1alpha1.ControllerConfiguration{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -59,16 +59,16 @@ var _ = Describe("PromotionConfiguration Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &promoterv1alpha1.PromotionConfiguration{}
+			resource := &promoterv1alpha1.ControllerConfiguration{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance PromotionConfiguration")
+			By("Cleanup the specific resource instance ControllerConfiguration")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &PromotionConfigurationReconciler{
+			controllerReconciler := &ControllerConfigurationReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}

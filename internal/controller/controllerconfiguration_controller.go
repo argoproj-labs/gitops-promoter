@@ -28,26 +28,26 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// PromotionConfigurationReconciler reconciles a PromotionConfiguration object
-type PromotionConfigurationReconciler struct {
+// ControllerConfigurationReconciler reconciles a ControllerConfiguration object
+type ControllerConfigurationReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionconfigurations,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionconfigurations/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionconfigurations/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=controllerconfigurations/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the PromotionConfiguration object against the actual cluster state, and then
+// the ControllerConfiguration object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.4/pkg/reconcile
-func (r *PromotionConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.2/pkg/reconcile
+func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
@@ -56,13 +56,14 @@ func (r *PromotionConfigurationReconciler) Reconcile(ctx context.Context, req ct
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *PromotionConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ControllerConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.PromotionConfiguration{}).
-		Named("promotionconfiguration").
+		For(&promoterv1alpha1.ControllerConfiguration{}).
+		Named("controllerconfiguration").
 		Complete(r)
 	if err != nil {
-		return fmt.Errorf("failed to create controller: %w", err)
+		return fmt.Errorf("unable to create controller: %w", err)
 	}
+
 	return nil
 }

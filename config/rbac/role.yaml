@@ -18,6 +18,7 @@ rules:
   - argocdcommitstatuses
   - changetransferpolicies
   - commitstatuses
+  - controllerconfigurations
   - gitrepositories
   - promotionconfigurations
   - promotionstrategies
@@ -38,6 +39,7 @@ rules:
   - argocdcommitstatuses/finalizers
   - changetransferpolicies/finalizers
   - commitstatuses/finalizers
+  - controllerconfigurations/finalizers
   - gitrepositories/finalizers
   - promotionconfigurations/finalizers
   - promotionstrategies/finalizers
@@ -52,6 +54,7 @@ rules:
   - argocdcommitstatuses/status
   - changetransferpolicies/status
   - commitstatuses/status
+  - controllerconfigurations/status
   - gitrepositories/status
   - promotionconfigurations/status
   - promotionstrategies/status
