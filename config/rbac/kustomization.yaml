@@ -30,6 +30,3 @@ resources:
 - controllerconfiguration_admin_role.yaml
 - controllerconfiguration_editor_role.yaml
 - controllerconfiguration_viewer_role.yaml
-- promotionconfiguration_admin_role.yaml
-- promotionconfiguration_editor_role.yaml
-- promotionconfiguration_viewer_role.yaml
