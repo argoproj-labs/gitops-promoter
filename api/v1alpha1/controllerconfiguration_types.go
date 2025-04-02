@@ -23,8 +23,8 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// PromotionConfigurationSpec defines the desired state of PromotionConfiguration.
-type PromotionConfigurationSpec struct {
+// ControllerConfigurationSpec defines the desired state of ControllerConfiguration.
+type ControllerConfigurationSpec struct {
 	PullRequest PullRequestConfiguration `json:"pullRequest,omitempty"`
 }
 
@@ -41,8 +41,8 @@ type PullRequestTemplate struct {
 	Description string `json:"description,omitempty"`
 }
 
-// PromotionConfigurationStatus defines the observed state of PromotionConfiguration.
-type PromotionConfigurationStatus struct {
+// ControllerConfigurationStatus defines the observed state of ControllerConfiguration.
+type ControllerConfigurationStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 }
@@ -50,24 +50,24 @@ type PromotionConfigurationStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// PromotionConfiguration is the Schema for the promotionconfigurations API.
-type PromotionConfiguration struct {
+// ControllerConfiguration is the Schema for the controllerconfigurations API.
+type ControllerConfiguration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   PromotionConfigurationSpec   `json:"spec,omitempty"`
-	Status PromotionConfigurationStatus `json:"status,omitempty"`
+	Spec   ControllerConfigurationSpec   `json:"spec,omitempty"`
+	Status ControllerConfigurationStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// PromotionConfigurationList contains a list of PromotionConfiguration.
-type PromotionConfigurationList struct {
+// ControllerConfigurationList contains a list of ControllerConfiguration.
+type ControllerConfigurationList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []PromotionConfiguration `json:"items"`
+	Items           []ControllerConfiguration `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&PromotionConfiguration{}, &PromotionConfigurationList{})
+	SchemeBuilder.Register(&ControllerConfiguration{}, &ControllerConfigurationList{})
 }

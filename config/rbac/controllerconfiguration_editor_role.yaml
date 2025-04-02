@@ -11,12 +11,12 @@ metadata:
   labels:
     app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: promotionconfiguration-editor-role
+  name: controllerconfiguration-editor-role
 rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - promotionconfigurations
+  - controllerconfigurations
   verbs:
   - create
   - delete
@@ -28,6 +28,6 @@ rules:
 - apiGroups:
   - promoter.argoproj.io
   resources:
-  - promotionconfigurations/status
+  - controllerconfigurations/status
   verbs:
   - get

@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	GlobalPromotionConfigurationName = "promoter-global"
+	ControllerConfigurationName = "promoter-controller-configuration"
 )
 
 type ManagerConfig struct {
@@ -21,9 +21,9 @@ type Manager struct {
 	config ManagerConfig
 }
 
-func (m *Manager) GetPromotionConfiguration(ctx context.Context) (*promoterv1alpha1.PromotionConfiguration, error) {
-	promotionConfig := &promoterv1alpha1.PromotionConfiguration{}
-	if err := m.client.Get(ctx, client.ObjectKey{Name: GlobalPromotionConfigurationName, Namespace: m.config.GlobalNamespace}, promotionConfig); err != nil {
+func (m *Manager) GetControllerConfiguration(ctx context.Context) (*promoterv1alpha1.ControllerConfiguration, error) {
+	promotionConfig := &promoterv1alpha1.ControllerConfiguration{}
+	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.GlobalNamespace}, promotionConfig); err != nil {
 		return nil, fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
 
