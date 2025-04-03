@@ -35,6 +35,9 @@ type ScmProviderSpec struct {
 	// GitHub required configuration for GitHub as the SCM provider
 	GitHub *GitHub `json:"github,omitempty"`
 
+	// GitLab required configuration for GitLab as the SCM provider
+	GitLab *GitLab `json:"gitlab,omitempty"`
+
 	// Fake required configuration for Fake as the SCM provider
 	Fake *Fake `json:"fake,omitempty"`
 }

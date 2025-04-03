@@ -24,9 +24,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/pflag"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
-	"github.com/spf13/pflag"
 
 	"go.uber.org/zap/zapcore"
 
@@ -237,11 +238,11 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ArgoCDCommitStatus controller")
 	}
-	if err = (&controller.PromotionConfigurationReconciler{
+	if err = (&controller.ControllerConfigurationReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		panic("unable to create PromotionConfiguration controller")
+		panic("unable to create ControllerConfiguration controller")
 	}
 	//+kubebuilder:scaffold:builder
 

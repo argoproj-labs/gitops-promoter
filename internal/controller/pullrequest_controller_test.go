@@ -150,8 +150,10 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.GitRepositorySpec{
-			Owner: name,
-			Name:  name,
+			Fake: &promoterv1alpha1.FakeRepo{
+				Owner: name,
+				Name:  name,
+			},
 			ScmProviderRef: promoterv1alpha1.ObjectReference{
 				Name: name,
 			},
