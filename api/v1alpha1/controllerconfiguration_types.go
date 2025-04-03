@@ -26,6 +26,14 @@ import (
 // ControllerConfigurationSpec defines the desired state of ControllerConfiguration.
 type ControllerConfigurationSpec struct {
 	PullRequest PullRequestConfiguration `json:"pullRequest,omitempty"`
+	// ActiveCommitStatuses lists the statuses to be monitored on the active branch
+	// +kubebuilder:validation:Optional
+	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+}
+
+type CommitStatusSelector struct {
+	// +kubebuilder:validation:Pattern:=(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+	Key string `json:"key"`
 }
 
 type PullRequestConfiguration struct {
