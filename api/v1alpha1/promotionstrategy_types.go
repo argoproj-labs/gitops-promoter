@@ -37,7 +37,7 @@ type PromotionStrategySpec struct {
 	// The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
 	// specify commit statuses for individual environments in the `environments` field.
 	// +kubebuilder:validation:Optional
-	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+	// ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 
 	// ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
 	// in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
@@ -46,7 +46,10 @@ type PromotionStrategySpec struct {
 	// The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
 	// specify commit statuses for individual environments in the `environments` field.
 	// +kubebuilder:validation:Optional
-	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+	// ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+
+	// +kubebuilder:validation:Optional
+	Checks []CommitStatusSelector `json:"checks"`
 
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
@@ -67,7 +70,7 @@ type Environment struct {
 	// The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
 	// for all environments in the `spec.activeCommitStatuses` field.
 	// +kubebuilder:validation:Optional
-	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+	// []CommitStatusSelector `json:"activeCommitStatuses"`
 	// ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
 	// in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
 	// be promoted to that environment.
@@ -75,7 +78,10 @@ type Environment struct {
 	// The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
 	// for all environments in the `spec.proposedCommitStatuses` field.
 	// +kubebuilder:validation:Optional
-	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+	// ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+
+	// +kubebuilder:validation:Optional
+	Checks []CommitStatusSelector `json:"checks"`
 }
 
 // GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.
@@ -84,11 +90,6 @@ func (e *Environment) GetAutoMerge() bool {
 		return true
 	}
 	return *e.AutoMerge
-}
-
-type CommitStatusSelector struct {
-	// +kubebuilder:validation:Pattern:=(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
-	Key string `json:"key"`
 }
 
 // PromotionStrategyStatus defines the observed state of PromotionStrategy
