@@ -8,16 +8,14 @@ metadata:
 spec:
   gitRepositoryRef:
     name: promoter-testing
-  activeCommitStatuses:
+  checks:
     - key: healthy
     - key: healthy-load
-#  proposedCommitStatuses:
-#    - key: healthy-lint
   environments:
     - branch: environment/development
       autoMerge: true
     - branch: environment/staging
     - branch: environment/production
-      activeCommitStatuses:
+      checks:
         - key: healthy
         - key: healthy-load
