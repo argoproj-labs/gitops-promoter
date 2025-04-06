@@ -235,3 +235,22 @@ func UpsertChangeTransferPolicy(policies []promoterv1alpha1.ChangeTransferPolicy
 	}
 	return append(policies, policy)
 }
+
+func UpsertCommitStatusSelector(slice []promoterv1alpha1.CommitStatusSelector, newItem promoterv1alpha1.CommitStatusSelector) []promoterv1alpha1.CommitStatusSelector {
+	compare := func(item promoterv1alpha1.CommitStatusSelector, newItem promoterv1alpha1.CommitStatusSelector) bool {
+		return item.Key == newItem.Key
+	}
+
+	updated := false
+	for i, item := range slice {
+		if compare(item, newItem) {
+			slice[i] = newItem
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		slice = append(slice, newItem)
+	}
+	return slice
+}

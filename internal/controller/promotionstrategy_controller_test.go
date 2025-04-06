@@ -268,9 +268,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			controllerConfig := &promoterv1alpha1.ControllerConfiguration{}
 			err := k8sClient.Get(ctx, types.NamespacedName{Name: settings.ControllerConfigurationName, Namespace: "default"}, controllerConfig)
 			Expect(err).To(Succeed())
-			controllerConfig.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: healthCheckCSKey},
-			}
+			controllerConfig.Spec.ActiveCommitStatuses = utils.UpsertCommitStatusSelector(controllerConfig.Spec.ActiveCommitStatuses, promoterv1alpha1.CommitStatusSelector{Key: healthCheckCSKey})
 			Expect(k8sClient.Update(ctx, controllerConfig)).To(Succeed())
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -627,9 +625,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			controllerConfig := &promoterv1alpha1.ControllerConfiguration{}
 			err := k8sClient.Get(ctx, types.NamespacedName{Name: settings.ControllerConfigurationName, Namespace: "default"}, controllerConfig)
 			Expect(err).To(Succeed())
-			controllerConfig.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: argocdCSLabel},
-			}
+			controllerConfig.Spec.ActiveCommitStatuses = utils.UpsertCommitStatusSelector(controllerConfig.Spec.ActiveCommitStatuses, promoterv1alpha1.CommitStatusSelector{Key: argocdCSLabel})
 			Expect(k8sClient.Update(ctx, controllerConfig)).To(Succeed())
 
 			argocdCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{
