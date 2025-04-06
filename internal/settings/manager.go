@@ -24,7 +24,7 @@ type Manager struct {
 func (m *Manager) GetControllerConfiguration(ctx context.Context) (*promoterv1alpha1.ControllerConfiguration, error) {
 	promotionConfig := &promoterv1alpha1.ControllerConfiguration{}
 	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.GlobalNamespace}, promotionConfig); err != nil {
-		return nil, fmt.Errorf("failed to get global promotion configuration: %w", err)
+		return nil, fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 
 	return promotionConfig, nil

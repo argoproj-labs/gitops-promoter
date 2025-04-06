@@ -230,8 +230,13 @@ func (in *ChangeTransferPolicySpec) DeepCopyInto(out *ChangeTransferPolicySpec) 
 		*out = new(bool)
 		**out = **in
 	}
-	if in.Checks != nil {
-		in, out := &in.Checks, &out.Checks
+	if in.ActiveCommitStatuses != nil {
+		in, out := &in.ActiveCommitStatuses, &out.ActiveCommitStatuses
+		*out = make([]CommitStatusSelector, len(*in))
+		copy(*out, *in)
+	}
+	if in.ProposedCommitStatuses != nil {
+		in, out := &in.ProposedCommitStatuses, &out.ProposedCommitStatuses
 		*out = make([]CommitStatusSelector, len(*in))
 		copy(*out, *in)
 	}

@@ -168,16 +168,17 @@ var _ = BeforeSuite(func() {
 		Config: PromotionStrategyReconcilerConfig{
 			RequeueDuration: 300 * time.Second,
 		},
+		SettingsManager: settingsMgr,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	pathLookup := utils.NewPathLookup()
 	err = (&ChangeTransferPolicyReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		PathLookup:  pathLookup,
-		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
-		SettingsMgr: settingsMgr,
+		Client:          k8sManager.GetClient(),
+		Scheme:          k8sManager.GetScheme(),
+		PathLookup:      pathLookup,
+		Recorder:        k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
+		SettingsManager: settingsMgr,
 		Config: ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: 300 * time.Second,
 		},
@@ -229,7 +230,7 @@ var _ = BeforeSuite(func() {
 
 	promotionConfiguration := &promoterv1alpha1.ControllerConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "promoter-controller-configuration",
+			Name:      settings.ControllerConfigurationName,
 			Namespace: "default",
 		},
 		Spec: promoterv1alpha1.ControllerConfigurationSpec{

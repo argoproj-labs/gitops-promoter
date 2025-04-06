@@ -46,14 +46,11 @@ type ChangeTransferPolicySpec struct {
 
 	// ActiveCommitStatuses lists the statuses to be monitored on the active branch
 	// +kubebuilder:validation:Optional
-	//ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 
 	// ProposedCommitStatuses lists the statuses to be monitored on the proposed branch
 	// +kubebuilder:validation:Optional
-	//ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
-
-	// +kubebuilder:validation:Optional
-	Checks []CommitStatusSelector `json:"checks"`
+	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
 type ChangeRequestPolicyCommitStatusPhase struct {

@@ -198,6 +198,7 @@ func main() {
 		Config: controller.PromotionStrategyReconcilerConfig{
 			RequeueDuration: promotionStrategyRequeueDuration,
 		},
+		SettingsManager: settingsMgr,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create PromotionStrategy controller")
 	}
@@ -220,11 +221,11 @@ func main() {
 		panic("failed to parse proposed commit requeue duration")
 	}
 	if err = (&controller.ChangeTransferPolicyReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		PathLookup:  pathLookup,
-		Recorder:    mgr.GetEventRecorderFor("ChangeTransferPolicy"),
-		SettingsMgr: settingsMgr,
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		PathLookup:      pathLookup,
+		Recorder:        mgr.GetEventRecorderFor("ChangeTransferPolicy"),
+		SettingsManager: settingsMgr,
 		Config: controller.ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: ctpRequeueDuration,
 		},

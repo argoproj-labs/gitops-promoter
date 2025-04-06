@@ -46,13 +46,7 @@ spec:
           spec:
             description: PromotionStrategySpec defines the desired state of PromotionStrategy
             properties:
-              activeCommitStatuses:
-                description: |-
-                  ActiveCommitStatuses are commit statuses describing an actively running dry commit. If an active commit status
-                  is failing for an environment, subsequent environments will not deploy the failing commit.
-
-                  The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
-                  specify commit statuses for individual environments in the `environments` field.
+              checks:
                 items:
                   properties:
                     key:
@@ -67,22 +61,6 @@ spec:
                   commit will be promoted through.
                 items:
                   properties:
-                    activeCommitStatuses:
-                      description: |-
-                        ActiveCommitStatuses are commit statuses describing an actively running dry commit. If an active commit status
-                        is failing for an environment, subsequent environments will not deploy the failing commit.
-
-                        The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
-                        for all environments in the `spec.activeCommitStatuses` field.
-                      items:
-                        properties:
-                          key:
-                            pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
-                            type: string
-                        required:
-                        - key
-                        type: object
-                      type: array
                     autoMerge:
                       default: true
                       description: |-
@@ -91,14 +69,7 @@ spec:
                       type: boolean
                     branch:
                       type: string
-                    proposedCommitStatuses:
-                      description: |-
-                        ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
-                        in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
-                        be promoted to that environment.
-
-                        The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
-                        for all environments in the `spec.proposedCommitStatuses` field.
+                    checks:
                       items:
                         properties:
                           key:
@@ -120,23 +91,6 @@ spec:
                 required:
                 - name
                 type: object
-              proposedCommitStatuses:
-                description: |-
-                  ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
-                  in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
-                  be promoted to that environment.
-
-                  The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
-                  specify commit statuses for individual environments in the `environments` field.
-                items:
-                  properties:
-                    key:
-                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
-                      type: string
-                  required:
-                  - key
-                  type: object
-                type: array
             required:
             - environments
             - gitRepositoryRef
