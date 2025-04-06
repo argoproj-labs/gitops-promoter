@@ -19,10 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"

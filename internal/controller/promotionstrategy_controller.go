@@ -19,11 +19,12 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
-	"gopkg.in/yaml.v3"
 	"reflect"
 	"slices"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"gopkg.in/yaml.v3"
 
 	"k8s.io/client-go/util/retry"
 
