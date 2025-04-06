@@ -667,6 +667,8 @@ spec:
             description: PromotionStrategySpec defines the desired state of PromotionStrategy
             properties:
               checks:
+                description: Checks are commit statuses that should be checked before
+                  a dry commit is promoted to the next environment.
                 items:
                   properties:
                     key:
@@ -690,6 +692,8 @@ spec:
                     branch:
                       type: string
                     checks:
+                      description: Checks are commit statuses that should be checked
+                        before a dry commit is promoted to the next environment.
                       items:
                         properties:
                           key:

@@ -48,22 +48,8 @@ type Environment struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=true
 	AutoMerge *bool `json:"autoMerge,omitempty"`
-	// ActiveCommitStatuses are commit statuses describing an actively running dry commit. If an active commit status
-	// is failing for an environment, subsequent environments will not deploy the failing commit.
-	//
-	// The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
-	// for all environments in the `spec.activeCommitStatuses` field.
-	// +kubebuilder:validation:Optional
-	// []CommitStatusSelector `json:"activeCommitStatuses"`
-	// ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
-	// in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
-	// be promoted to that environment.
-	//
-	// The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
-	// for all environments in the `spec.proposedCommitStatuses` field.
-	// +kubebuilder:validation:Optional
-	// ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 
+	// Checks are commit statuses that should be checked before a dry commit is promoted to the next environment.
 	// +kubebuilder:validation:Optional
 	Checks []CommitStatusSelector `json:"checks"`
 }
