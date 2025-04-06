@@ -451,7 +451,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, controllerConfig)).To(Succeed())
 		})
 	})
 
