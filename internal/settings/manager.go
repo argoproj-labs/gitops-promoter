@@ -13,7 +13,7 @@ const (
 )
 
 type ManagerConfig struct {
-	GlobalNamespace string
+	ControllerConfigurationNamespace string
 }
 
 type Manager struct {
@@ -23,7 +23,7 @@ type Manager struct {
 
 func (m *Manager) GetControllerConfiguration(ctx context.Context) (*promoterv1alpha1.ControllerConfiguration, error) {
 	promotionConfig := &promoterv1alpha1.ControllerConfiguration{}
-	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.GlobalNamespace}, promotionConfig); err != nil {
+	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.ControllerConfigurationNamespace}, promotionConfig); err != nil {
 		return nil, fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 

@@ -151,7 +151,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), settings.ManagerConfig{
-		GlobalNamespace: "default",
+		ControllerConfigurationNamespace: "default",
 	})
 
 	err = (&CommitStatusReconciler{

@@ -160,7 +160,7 @@ func main() {
 	}
 
 	settingsMgr := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
-		GlobalNamespace: controllerNamespace,
+		ControllerConfigurationNamespace: controllerNamespace,
 	})
 
 	pathLookup := utils.NewPathLookup()
