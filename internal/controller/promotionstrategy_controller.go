@@ -178,7 +178,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 
 	previousEnvironmentCommitStatusSelector := []promoterv1alpha1.CommitStatusSelector{}
 	if previousEnvironmentIndex >= 0 {
-		previousEnvironmentCommitStatusSelector, _, err = r.getActiveAndProposedCommitStatues(ctx, ps.Spec.Environments[previousEnvironmentIndex].Checks)
+		previousEnvironmentCommitStatusSelector, _, err = r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, ps.Spec.Environments[previousEnvironmentIndex].Checks...))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get active and proposed commit statuses of previous environment: %w", err)
 		}
@@ -270,7 +270,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *p
 			return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while calculating activeCommitStatus", environment.Branch)
 		}
 
-		activeCommitStatuses, proposedCommitStatuses, err := r.getActiveAndProposedCommitStatues(ctx, ps.Spec.Checks)
+		activeCommitStatuses, proposedCommitStatuses, err := r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, environment.Checks...))
 		if err != nil {
 			return fmt.Errorf("failed to get active and proposed commit statuses: %w", err)
 		}
@@ -447,14 +447,14 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			commitStatusPhase = promoterv1alpha1.CommitPhaseSuccess
 		}
 
-		activeCommitStatuses, _, err := r.getActiveAndProposedCommitStatues(ctx, ps.Spec.Checks)
+		activeCommitStatuses, _, err := r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, environment.Checks...))
 		if err != nil {
 			return fmt.Errorf("failed to get active and proposed commit statuses: %w", err)
 		}
 
 		previousEnvironmentActiveCommitStatuses := []promoterv1alpha1.CommitStatusSelector{}
 		if previousEnvironmentIndex >= 0 {
-			previousEnvironmentActiveCommitStatuses, _, err = r.getActiveAndProposedCommitStatues(ctx, ps.Spec.Environments[previousEnvironmentIndex].Checks)
+			previousEnvironmentActiveCommitStatuses, _, err = r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, ps.Spec.Environments[previousEnvironmentIndex].Checks...))
 			if err != nil {
 				return fmt.Errorf("failed to get active and proposed commit statuses: %w", err)
 			}
