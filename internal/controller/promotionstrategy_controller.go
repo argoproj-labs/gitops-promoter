@@ -141,7 +141,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	logger := log.FromContext(ctx)
 
-	activeCommitStatuses, proposedCommitStatuses, err := r.getActiveAndProposedCommitStatues(ctx, ps.Spec.Checks)
+	activeCommitStatuses, proposedCommitStatuses, err := r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, environment.Checks...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get active and proposed commit statuses: %w", err)
 	}
