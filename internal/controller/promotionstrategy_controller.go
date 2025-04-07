@@ -153,7 +153,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 	controllerRef := metav1.NewControllerRef(ps, gvk)
 
-	pcNew := promoterv1alpha1.ChangeTransferPolicy{
+	ctpNew := promoterv1alpha1.ChangeTransferPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            pcName,
 			Namespace:       ps.Namespace,
@@ -187,8 +187,8 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		previousEnvironmentCommitStatusSelector := promoterv1alpha1.CommitStatusSelector{
 			Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 		}
-		if !slices.Contains(pcNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector) {
-			pcNew.Spec.ProposedCommitStatuses = append(pcNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector)
+		if !slices.Contains(ctpNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector) {
+			ctpNew.Spec.ProposedCommitStatuses = append(ctpNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector)
 		}
 	}
 
@@ -201,21 +201,21 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		if err != nil {
 			if errors.IsNotFound(err) {
 				logger.Info("ChangeTransferPolicy not found, creating")
-				err = r.Create(ctx, &pcNew)
+				err = r.Create(ctx, &ctpNew)
 				if err != nil {
 					return fmt.Errorf("failed to create ChangeTransferPolicy %q: %w", pc.Name, err)
 				}
-				pcNew.DeepCopyInto(&pc)
+				ctpNew.DeepCopyInto(&pc)
 			} else {
 				return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", pc.Name, err)
 			}
 		} else {
-			pcNew.Spec.DeepCopyInto(&pc.Spec) // We keep the generation number and status so that update does not conflict
+			ctpNew.Spec.DeepCopyInto(&pc.Spec) // We keep the generation number and status so that update does not conflict
 			// TODO: don't update if the spec is the same, the hard comparison is the arrays of commit statuses, need
 			// to sort and compare them.
 			err = r.Update(ctx, &pc)
 			if err != nil {
-				return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)
+				return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", ctpNew.Name, err)
 			}
 		}
 		return nil
