@@ -173,17 +173,8 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		},
 	}
 
-	previousEnvironmentIndex, _ := utils.GetPreviousEnvironmentStatusByBranch(*ps, environment.Branch)
 	environmentIndex, _ := utils.GetEnvironmentByBranch(*ps, environment.Branch)
-
-	previousEnvironmentCommitStatusSelector := []promoterv1alpha1.CommitStatusSelector{}
-	if previousEnvironmentIndex >= 0 {
-		previousEnvironmentCommitStatusSelector, _, err = r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, ps.Spec.Environments[previousEnvironmentIndex].Checks...))
-		if err != nil {
-			return nil, fmt.Errorf("failed to get active and proposed commit statuses of previous environment: %w", err)
-		}
-	}
-	if environmentIndex > 0 && len(activeCommitStatuses) != 0 || len(previousEnvironmentCommitStatusSelector) != 0 {
+	if environmentIndex > 0 && len(activeCommitStatuses) != 0 {
 		previousEnvironmentCommitStatusSelector := promoterv1alpha1.CommitStatusSelector{
 			Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 		}
@@ -452,15 +443,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			return fmt.Errorf("failed to get active and proposed commit statuses: %w", err)
 		}
 
-		previousEnvironmentActiveCommitStatuses := []promoterv1alpha1.CommitStatusSelector{}
-		if previousEnvironmentIndex >= 0 {
-			previousEnvironmentActiveCommitStatuses, _, err = r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, ps.Spec.Environments[previousEnvironmentIndex].Checks...))
-			if err != nil {
-				return fmt.Errorf("failed to get active and proposed commit statuses: %w", err)
-			}
-		}
-
-		if environmentIndex > 0 && len(activeCommitStatuses) != 0 || len(previousEnvironmentActiveCommitStatuses) != 0 {
+		if environmentIndex > 0 && len(activeCommitStatuses) != 0 {
 			// Since there is at least one configured active check, and since this is not the first environment,
 			// we should not create a commit status for the previous environment.
 			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus, ctpMap[ps.Spec.Environments[previousEnvironmentIndex].Branch].Status.Active.CommitStatuses)
