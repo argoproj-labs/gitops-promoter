@@ -363,12 +363,12 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 
 	prName = utils.KubeSafeUniqueName(ctx, prName)
 
-	promotionConfig, err := r.SettingsMgr.GetControllerConfiguration(ctx)
+	controllerConfiguration, err := r.SettingsMgr.GetControllerConfiguration(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
 
-	title, description, err := TemplatePullRequest(&promotionConfig.Spec.PullRequest, map[string]any{"ChangeTransferPolicy": ctp})
+	title, description, err := TemplatePullRequest(&controllerConfiguration.Spec.PullRequest, map[string]any{"ChangeTransferPolicy": ctp})
 	if err != nil {
 		return fmt.Errorf("failed to template pull request: %w", err)
 	}
