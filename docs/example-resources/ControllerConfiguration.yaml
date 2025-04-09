@@ -1,9 +1,7 @@
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: PromotionConfiguration
+kind: ControllerConfiguration
 metadata:
-  name: example-promotion-configuration
-spec:
-apiVersion: promoter.argoproj.io/v1alpha1
+  name: example-controller-configuration
 spec:
   pullRequest:
     template:
