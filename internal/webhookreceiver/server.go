@@ -20,23 +20,18 @@ import (
 
 var logger = ctrl.Log.WithName("webhookReceiver")
 
-const (
-	defaultMaxWebhookPayloadSize = int64(25) * 1024 * 1024
-)
-
 type webhookReceiver struct {
-	mgr            controllerruntime.Manager
-	k8sClient      client.Client
-	maxPayloadSize int64
+	mgr                        controllerruntime.Manager
+	k8sClient                  client.Client
+	maxWebhookPayloadSizeBytes uint32
 }
 
 type Option func(*webhookReceiver)
 
 func NewWebhookReceiver(mgr controllerruntime.Manager, opts ...Option) webhookReceiver {
 	wr := webhookReceiver{
-		mgr:            mgr,
-		k8sClient:      mgr.GetClient(),
-		maxPayloadSize: defaultMaxWebhookPayloadSize,
+		mgr:       mgr,
+		k8sClient: mgr.GetClient(),
 	}
 
 	for _, opt := range opts {
@@ -46,9 +41,9 @@ func NewWebhookReceiver(mgr controllerruntime.Manager, opts ...Option) webhookRe
 	return wr
 }
 
-func WithMaxPayloadSize(size int64) Option {
+func WithMaxPayloadSize(size uint32) Option {
 	return func(wr *webhookReceiver) {
-		wr.maxPayloadSize = size
+		wr.maxWebhookPayloadSizeBytes = size
 	}
 }
 
@@ -87,12 +82,14 @@ func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "must be a POST request", http.StatusMethodNotAllowed)
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, wr.maxPayloadSize)
+	if wr.maxWebhookPayloadSizeBytes != 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, int64(wr.maxWebhookPayloadSizeBytes))
+	}
 	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
-			http.Error(w, "error reading body", http.StatusRequestEntityTooLarge)
+			http.Error(w, "payload size exceeds limit", http.StatusRequestEntityTooLarge)
 			return
 		}
 

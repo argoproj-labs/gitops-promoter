@@ -4,54 +4,66 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
-	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
+	controllerruntime "sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-func TestPostRootMaxPayload(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name           string
-		payloadSize    int
-		maxPayloadSize int64
-		wantStatus     int
-	}{
-		{
-			name:           "payload exceeds max size",
-			payloadSize:    2,
-			maxPayloadSize: 1,
-			wantStatus:     http.StatusRequestEntityTooLarge,
-		},
-		{
-			name:           "valid size but invalid payload",
-			payloadSize:    1,
-			maxPayloadSize: 1,
-			wantStatus:     http.StatusInternalServerError,
-		},
-	}
+var _ = Describe("WebhookReceiver", func() {
+	var k8sManager controllerruntime.Manager
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			k8sManager, err := ctrl.NewManager(&rest.Config{}, ctrl.Options{})
-			require.NoError(t, err)
+	BeforeEach(func() {
+		var err error
+		k8sManager, err = ctrl.NewManager(&rest.Config{}, ctrl.Options{})
+		Expect(err).NotTo(HaveOccurred())
+	})
 
-			wr := NewWebhookReceiver(
-				k8sManager,
-				WithMaxPayloadSize(tt.maxPayloadSize),
-			)
+	Describe("test max payload", func() {
+		tests := []struct {
+			name           string
+			payloadSize    int
+			maxPayloadSize uint32
+			wantStatus     int
+		}{
+			{
+				name:           "with payload which exceeds max size",
+				payloadSize:    2,
+				maxPayloadSize: 1,
+				wantStatus:     http.StatusRequestEntityTooLarge,
+			},
+			{
+				name:           "with valid size but invalid payload",
+				payloadSize:    1,
+				maxPayloadSize: 1,
+				wantStatus:     http.StatusInternalServerError,
+			},
+			{
+				name:           "with max set to zero",
+				payloadSize:    1,
+				maxPayloadSize: 0,
+				wantStatus:     http.StatusInternalServerError,
+			},
+		}
 
-			body := bytes.Repeat([]byte("a"), tt.payloadSize)
-			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
-			resp := httptest.NewRecorder()
+		for _, tt := range tests {
+			It(tt.name, func() {
+				wr := NewWebhookReceiver(
+					k8sManager,
+					WithMaxPayloadSize(tt.maxPayloadSize),
+				)
 
-			wr.postRoot(resp, req)
+				Expect(tt.maxPayloadSize).To(Equal(wr.maxWebhookPayloadSizeBytes))
 
-			assert.Equal(t, tt.wantStatus, resp.Code)
-		})
-	}
-}
+				body := bytes.Repeat([]byte("a"), tt.payloadSize)
+				req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
+				resp := httptest.NewRecorder()
+
+				wr.postRoot(resp, req)
+				Expect(tt.wantStatus).To(Equal(resp.Code))
+			})
+		}
+	})
+})

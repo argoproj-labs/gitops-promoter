@@ -26,6 +26,7 @@ import (
 // ControllerConfigurationSpec defines the desired state of ControllerConfiguration.
 type ControllerConfigurationSpec struct {
 	PullRequest PullRequestConfiguration `json:"pullRequest,omitempty"`
+	Webhook     WebhookConfiguration     `json:"webhook,omitempty"`
 }
 
 type PullRequestConfiguration struct {
@@ -39,6 +40,14 @@ type PullRequestTemplate struct {
 	// Template used to generate the description of the pull request.
 	// Uses Go template syntax and Sprig functions are available.
 	Description string `json:"description,omitempty"`
+}
+
+type WebhookConfiguration struct {
+	// Maximum allowed payload size in bytes.
+	// The default value is 26214400 (25 MB).
+	// Set to 0 for no limit on the payload size.
+	// +kubebuilder:default=26214400
+	MaxPayloadSizeBytes uint32 `json:"maxPayloadSizeBytes,omitempty"`
 }
 
 // ControllerConfigurationStatus defines the observed state of ControllerConfiguration.
