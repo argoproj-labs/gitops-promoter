@@ -228,7 +228,7 @@ var _ = BeforeSuite(func() {
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
 	}()
 
-	promotionConfiguration := &promoterv1alpha1.ControllerConfiguration{
+	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      settings.ControllerConfigurationName,
 			Namespace: "default",
@@ -242,7 +242,7 @@ var _ = BeforeSuite(func() {
 			},
 		},
 	}
-	Expect(k8sClient.Create(ctx, promotionConfiguration)).To(Succeed())
+	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
 
 	go func() {
 		defer GinkgoRecover()
