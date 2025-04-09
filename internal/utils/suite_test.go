@@ -14,7 +14,7 @@ func TestInternalUtils(t *testing.T) {
 
 	c, _ := GinkgoConfiguration()
 
-	RunSpecs(t, "Template Suite", c)
+	RunSpecs(t, "Internal Utils Suite", c)
 }
 
 var _ = BeforeSuite(func() {
