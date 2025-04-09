@@ -76,6 +76,7 @@ var (
 const (
 	EventuallyTimeout   = 90 * time.Second
 	WebhookReceiverPort = 3333
+	ApiServerPort       = 8088
 )
 
 func TestControllers(t *testing.T) {
@@ -158,9 +159,10 @@ var _ = BeforeSuite(func() {
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
 	}()
 
+	apiServerPort := ApiServerPort + GinkgoParallelProcess()
 	ws := webserver.NewWebServer(k8sManager)
 	go func() {
-		err = ws.Start(ctx, ":8088")
+		err = ws.Start(ctx, fmt.Sprintf(":%d", apiServerPort))
 		Expect(err).ToNot(HaveOccurred(), "failed to start webserver")
 		// err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 		// Expect(err).ToNot(HaveOccurred(), "failed to start webserver")
