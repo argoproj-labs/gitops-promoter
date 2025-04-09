@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.3
-  name: promotionconfigurations.promoter.argoproj.io
+  name: controllerconfigurations.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: PromotionConfiguration
-    listKind: PromotionConfigurationList
-    plural: promotionconfigurations
-    singular: promotionconfiguration
+    kind: ControllerConfiguration
+    listKind: ControllerConfigurationList
+    plural: controllerconfigurations
+    singular: controllerconfiguration
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PromotionConfiguration is the Schema for the promotionconfigurations
+        description: ControllerConfiguration is the Schema for the controllerconfigurations
           API.
         properties:
           apiVersion:
@@ -38,7 +38,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: PromotionConfigurationSpec defines the desired state of PromotionConfiguration.
+            description: ControllerConfigurationSpec defines the desired state of
+              ControllerConfiguration.
             properties:
               pullRequest:
                 properties:
@@ -58,8 +59,8 @@ spec:
                 type: object
             type: object
           status:
-            description: PromotionConfigurationStatus defines the observed state of
-              PromotionConfiguration.
+            description: ControllerConfigurationStatus defines the observed state
+              of ControllerConfiguration.
             type: object
         type: object
     served: true

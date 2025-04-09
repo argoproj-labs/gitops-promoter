@@ -15,6 +15,8 @@ The main ideas behind the project are explained in ["Space Age GitOps: The Rise 
 
 A live demo is presented in ["Space Age GitOps: Lifting off with Argo Promotions"](https://www.youtube.com/watch?v=2JmLCqM1nTM).
 
+The promotion gating system is detailed in ["No More Pipelines: Reconciling Environment Promotion Via Commit Statuses"](https://www.youtube.com/watch?v=Usi38ly1pe0).
+
 ## Example
 
 ```yaml

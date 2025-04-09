@@ -238,12 +238,12 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	promotionConfiguration := &promoterv1alpha1.PromotionConfiguration{
+	promotionConfiguration := &promoterv1alpha1.ControllerConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "promoter-global",
+			Name:      "promoter-controller-configuration",
 			Namespace: "default",
 		},
-		Spec: promoterv1alpha1.PromotionConfigurationSpec{
+		Spec: promoterv1alpha1.ControllerConfigurationSpec{
 			PullRequest: promoterv1alpha1.PullRequestConfiguration{
 				Template: promoterv1alpha1.PullRequestTemplate{
 					Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
