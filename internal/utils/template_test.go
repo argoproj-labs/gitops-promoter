@@ -1,15 +1,12 @@
 package utils_test
 
 import (
-	"testing"
-
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-func TestRenderStringTemplate(t *testing.T) {
-	t.Parallel()
+var _ = Describe("test rendering a template", func() {
 	tests := map[string]struct {
 		template string
 		data     any
@@ -37,15 +34,14 @@ func TestRenderStringTemplate(t *testing.T) {
 	}
 
 	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+		It(name, func() {
 			result, err := utils.RenderStringTemplate(test.template, test.data)
 			if test.wantErr {
-				require.Error(t, err)
+				Expect(err).To(HaveOccurred())
 			} else {
-				require.NoError(t, err)
+				Expect(err).ToNot(HaveOccurred())
 			}
-			assert.Equal(t, test.expected, result)
+			Expect(result).To(Equal(test.expected))
 		})
 	}
-}
+})

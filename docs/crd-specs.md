@@ -70,12 +70,12 @@ to check the status of the Argo CD Applications that are being used in the promo
 ```yaml
 {!docs/example-resources/ArgoCDCommitStatus.yaml!}
 ```
-## PromotionConfiguration
+## ControllerConfiguration
 
-A PromotionConfiguration is used to configure the behavior of the promoter.
+A ControllerConfiguration is used to configure the behavior of the promoter.
 
-By default, a global PromotionConfiguration is deployed alongside the controller and applies to all promotions.
+A global ControllerConfiguration is deployed alongside the controller and applies to all promotions.
 
 ```yaml
-{!docs/example-resources/PromotionConfiguration.yaml!}
+{!docs/example-resources/ControllerConfiguration.yaml!}
 ```
