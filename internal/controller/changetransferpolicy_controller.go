@@ -193,35 +193,39 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.GitOperations) error {
 	logger := log.FromContext(ctx)
 
-	branchShas, err := gitOperations.GetBranchShas(ctx, []string{ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch})
+	// TODO: consider parallelizing parts of this function that are network-bound work.
+
+	proposedShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ProposedBranch)
 	if err != nil {
-		return fmt.Errorf("failed to get SHAs for branches %q and %q: %w", ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch, err)
+		return fmt.Errorf("failed to get SHAs for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
-	logger.Info("Branch SHAs", "branchShas", branchShas)
 
-	// TODO: consider parallelizing this loop since there's network-bound work.
-	for branch, shas := range branchShas {
-		if branch == ctp.Spec.ActiveBranch {
-			err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses, gitOperations, shas)
-			if err != nil {
-				var tooManyMatchingShaError *TooManyMatchingShaError
-				if errors.As(err, &tooManyMatchingShaError) {
-					r.Recorder.Event(ctp, "Warning", "TooManyMatchingSha", "There are to many matching SHAs for the active commit status")
-				}
-				return fmt.Errorf("failed to set active commit status state: %w", err)
-			}
-		}
+	activeShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ActiveBranch)
+	if err != nil {
+		return fmt.Errorf("failed to get SHAs for active branch %q: %w", ctp.Spec.ActiveBranch, err)
+	}
 
-		if branch == ctp.Spec.ProposedBranch {
-			err = r.setCommitStatusState(ctx, &ctp.Status.Proposed, ctp.Spec.ProposedCommitStatuses, gitOperations, shas)
-			if err != nil {
-				var tooManyMatchingShaError *TooManyMatchingShaError
-				if errors.As(err, &tooManyMatchingShaError) {
-					r.Recorder.Event(ctp, "Warning", "TooManyMatchingSha", "There are to many matching SHAs for the proposed commit status")
-				}
-				return fmt.Errorf("failed to set proposed commit status state: %w", err)
-			}
+	logger.Info("Branch SHAs", "branchShas", map[string]git.BranchShas{
+		ctp.Spec.ActiveBranch:   activeShas,
+		ctp.Spec.ProposedBranch: proposedShas,
+	})
+
+	err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses, gitOperations, activeShas)
+	if err != nil {
+		var tooManyMatchingShaError *TooManyMatchingShaError
+		if errors.As(err, &tooManyMatchingShaError) {
+			r.Recorder.Event(ctp, "Warning", "TooManyMatchingSha", "There are to many matching SHAs for the active commit status")
 		}
+		return fmt.Errorf("failed to set active commit status state: %w", err)
+	}
+
+	err = r.setCommitStatusState(ctx, &ctp.Status.Proposed, ctp.Spec.ProposedCommitStatuses, gitOperations, proposedShas)
+	if err != nil {
+		var tooManyMatchingShaError *TooManyMatchingShaError
+		if errors.As(err, &tooManyMatchingShaError) {
+			r.Recorder.Event(ctp, "Warning", "TooManyMatchingSha", "There are to many matching SHAs for the proposed commit status")
+		}
+		return fmt.Errorf("failed to set proposed commit status state: %w", err)
 	}
 
 	return nil
@@ -235,7 +239,7 @@ func (e *TooManyMatchingShaError) Error() string {
 
 // setCommitStatusState sets the hydrated and dry SHAs and commit times for the target commit branch state and sets the
 // commit statuses.
-func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Context, targetCommitBranchState *promoterv1alpha1.CommitBranchState, commitStatuses []promoterv1alpha1.CommitStatusSelector, gitOperations *git.GitOperations, shas *git.BranchShas) error {
+func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Context, targetCommitBranchState *promoterv1alpha1.CommitBranchState, commitStatuses []promoterv1alpha1.CommitStatusSelector, gitOperations *git.GitOperations, shas git.BranchShas) error {
 	logger := log.FromContext(ctx)
 
 	targetCommitBranchState.Hydrated.Sha = shas.Hydrated
