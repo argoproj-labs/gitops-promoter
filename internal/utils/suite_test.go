@@ -1,9 +1,10 @@
 package utils
 
 import (
+	"testing"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"testing"
 )
 
 func TestInternalUtils(t *testing.T) {
@@ -17,9 +18,7 @@ func TestInternalUtils(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-
 })
 
 var _ = AfterSuite(func() {
-
 })
