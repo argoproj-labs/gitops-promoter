@@ -1,39 +1,36 @@
 package utils
 
 import (
-	"maps"
 	"sync"
 )
 
-var mutex sync.RWMutex
-
 type PathLookup struct {
-	storage map[string]string
+	storage sync.Map
 }
 
 func NewPathLookup() PathLookup {
 	return PathLookup{
-		storage: make(map[string]string),
+		storage: sync.Map{},
 	}
 }
 
 func (pl *PathLookup) Get(key string) string {
-	mutex.RLock()
-	defer mutex.RUnlock()
-	return pl.storage[key]
+	v, ok := pl.storage.Load(key)
+	if !ok {
+		return ""
+	}
+	return v.(string)
 }
 
 func (pl *PathLookup) GetAll() map[string]string {
-	mutex.RLock()
-	defer mutex.RUnlock()
-	return maps.Clone(pl.storage)
+	result := make(map[string]string)
+	pl.storage.Range(func(key, value interface{}) bool {
+		result[key.(string)] = value.(string)
+		return true
+	})
+	return result
 }
 
 func (pl *PathLookup) Set(key string, value string) {
-	mutex.Lock()
-	defer mutex.Unlock()
-	if pl.storage == nil {
-		pl.storage = make(map[string]string)
-	}
-	pl.storage[key] = value
+	pl.storage.Store(key, value)
 }
