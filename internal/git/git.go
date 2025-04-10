@@ -56,41 +56,44 @@ func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.Git
 
 // CloneRepo clones the gitRepo to a temporary directory if needed does nothing if the repo is already cloned.
 func (g *GitOperations) CloneRepo(ctx context.Context) error {
-	logger := log.FromContext(ctx)
-	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
-		path, err := os.MkdirTemp("", "*")
-		if err != nil {
-			return fmt.Errorf("failed to create temp directory: %w", err)
-		}
-		logger.V(4).Info("Created directory", "directory", path)
-
-		stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), path)
-		if err != nil {
-			logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "stdout", stdout, "stderr", stderr)
-			return err
-		}
-
-		stdout, stderr, err = g.runCmd(ctx, path, "config", "pull.rebase", "false")
-		if err != nil {
-			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
-			return err
-		}
-		stdout, stderr, err = g.runCmd(ctx, path, "config", "user.name", "GitOps Promoter")
-		if err != nil {
-			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
-			return err
-		}
-
-		stdout, stderr, err = g.runCmd(ctx, path, "config", "user.email", "GitOpsPromoter@argoproj.io")
-		if err != nil {
-			logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
-			return err
-		}
-
-		logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
-
-		gitpaths.Set(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext, path)
+	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) != "" {
+		// Already cloned
+		return nil
 	}
+
+	logger := log.FromContext(ctx)
+	path, err := os.MkdirTemp("", "*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	logger.V(4).Info("Created directory", "directory", path)
+
+	stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), path)
+	if err != nil {
+		logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "stdout", stdout, "stderr", stderr)
+		return err
+	}
+
+	stdout, stderr, err = g.runCmd(ctx, path, "config", "pull.rebase", "false")
+	if err != nil {
+		logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
+		return err
+	}
+	stdout, stderr, err = g.runCmd(ctx, path, "config", "user.name", "GitOps Promoter")
+	if err != nil {
+		logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
+		return err
+	}
+
+	stdout, stderr, err = g.runCmd(ctx, path, "config", "user.email", "GitOpsPromoter@argoproj.io")
+	if err != nil {
+		logger.Error(err, "could not set git config", "stdout", stdout, "stderr", stderr)
+		return err
+	}
+
+	logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
+
+	gitpaths.Set(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext, path)
 
 	return nil
 }
