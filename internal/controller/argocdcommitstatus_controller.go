@@ -61,8 +61,7 @@ type aggregate struct {
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
 	client.Client
-	Scheme     *runtime.Scheme
-	PathLookup utils.PathLookup
+	Scheme *runtime.Scheme
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -118,7 +117,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
-		gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, repositoryRef, &argoCDCommitStatus, targetBranch)
+		gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, repositoryRef, &argoCDCommitStatus, targetBranch)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
 		}
