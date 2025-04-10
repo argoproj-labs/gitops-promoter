@@ -54,7 +54,6 @@ type ChangeTransferPolicyReconcilerConfig struct {
 type ChangeTransferPolicyReconciler struct {
 	client.Client
 	Scheme          *runtime.Scheme
-	PathLookup      utils.PathLookup
 	Recorder        record.EventRecorder
 	Config          ChangeTransferPolicyReconcilerConfig
 	SettingsManager *settings.Manager
@@ -99,7 +98,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.Name, err)
 	}
-	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, r.PathLookup, ctp.Spec.RepositoryReference, &ctp, ctp.Spec.ActiveBranch)
+	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, ctp.Spec.RepositoryReference, &ctp, ctp.Spec.ActiveBranch)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
 	}
