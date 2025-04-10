@@ -150,7 +150,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), settings.ManagerConfig{
-		GlobalNamespace: "default",
+		ControllerConfigurationNamespace: "default",
 	})
 
 	err = (&CommitStatusReconciler{
@@ -167,14 +167,15 @@ var _ = BeforeSuite(func() {
 		Config: PromotionStrategyReconcilerConfig{
 			RequeueDuration: 300 * time.Second,
 		},
+		SettingsManager: settingsMgr,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ChangeTransferPolicyReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
-		SettingsMgr: settingsMgr,
+		Client:          k8sManager.GetClient(),
+		Scheme:          k8sManager.GetScheme(),
+		Recorder:        k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
+		SettingsManager: settingsMgr,
 		Config: ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: 300 * time.Second,
 		},
@@ -225,7 +226,7 @@ var _ = BeforeSuite(func() {
 
 	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "promoter-controller-configuration",
+			Name:      settings.ControllerConfigurationName,
 			Namespace: "default",
 		},
 		Spec: promoterv1alpha1.ControllerConfigurationSpec{

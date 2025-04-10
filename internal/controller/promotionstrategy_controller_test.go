@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -249,7 +251,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Namespace: "default",
 			}
 
-			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			promotionStrategy.Spec.Checks = []promoterv1alpha1.CommitStatusSelector{
 				{
 					Key: healthCheckCSKey,
 				},
@@ -262,6 +264,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			activeCommitStatusStaging.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
 			}
+
+			controllerConfig := &promoterv1alpha1.ControllerConfiguration{}
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: settings.ControllerConfigurationName, Namespace: "default"}, controllerConfig)
+			Expect(err).To(Succeed())
+			controllerConfig.Spec.ActiveCommitStatuses = utils.UpsertCommitStatusSelector(controllerConfig.Spec.ActiveCommitStatuses, promoterv1alpha1.CommitStatusSelector{Key: healthCheckCSKey})
+			Expect(k8sClient.Update(ctx, controllerConfig)).To(Succeed())
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -455,7 +463,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Namespace: "default",
 			}
 
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			promotionStrategy.Spec.Checks = []promoterv1alpha1.CommitStatusSelector{
 				{
 					Key: "no-deployments-allowed",
 				},
@@ -608,11 +616,17 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Namespace: "default",
 			}
 
-			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			promotionStrategy.Spec.Checks = []promoterv1alpha1.CommitStatusSelector{
 				{
 					Key: argocdCSLabel,
 				},
 			}
+
+			controllerConfig := &promoterv1alpha1.ControllerConfiguration{}
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: settings.ControllerConfigurationName, Namespace: "default"}, controllerConfig)
+			Expect(err).To(Succeed())
+			controllerConfig.Spec.ActiveCommitStatuses = utils.UpsertCommitStatusSelector(controllerConfig.Spec.ActiveCommitStatuses, promoterv1alpha1.CommitStatusSelector{Key: argocdCSLabel})
+			Expect(k8sClient.Update(ctx, controllerConfig)).To(Succeed())
 
 			argocdCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{

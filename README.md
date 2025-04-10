@@ -27,18 +27,17 @@ metadata:
 spec:
   gitRepositoryRef:
     name: example-git-repo
-  activeCommitStatuses:
+  checks:
     - key: argocd-app-health
-  proposedCommitStatuses:
     - key: security-scan
   environments:
     - branch: environment/dev
     - branch: environment/test
+      checks:
+        - key: performance-test
     - branch: environment/prod
       autoMerge: false
-      activeCommitStatuses:
-      - key: performance-test
-      proposedCommitStatuses:
+      checks:
       - key: deployment-freeze
 ```
 

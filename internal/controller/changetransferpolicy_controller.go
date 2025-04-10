@@ -53,10 +53,10 @@ type ChangeTransferPolicyReconcilerConfig struct {
 // ChangeTransferPolicyReconciler reconciles a ChangeTransferPolicy object
 type ChangeTransferPolicyReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
-	Config      ChangeTransferPolicyReconcilerConfig
-	SettingsMgr *settings.Manager
+	Scheme          *runtime.Scheme
+	Recorder        record.EventRecorder
+	Config          ChangeTransferPolicyReconcilerConfig
+	SettingsManager *settings.Manager
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -366,7 +366,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 
 	prName = utils.KubeSafeUniqueName(ctx, prName)
 
-	controllerConfiguration, err := r.SettingsMgr.GetControllerConfiguration(ctx)
+	controllerConfiguration, err := r.SettingsManager.GetControllerConfiguration(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}

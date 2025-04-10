@@ -157,8 +157,8 @@ func main() {
 		panic("unable to start manager")
 	}
 
-	settingsMgr := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
-		GlobalNamespace: controllerNamespace,
+	settingsManager := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
+		ControllerConfigurationNamespace: controllerNamespace,
 	})
 
 	if err = (&controller.PullRequestReconciler{
@@ -194,6 +194,7 @@ func main() {
 		Config: controller.PromotionStrategyReconcilerConfig{
 			RequeueDuration: promotionStrategyRequeueDuration,
 		},
+		SettingsManager: settingsManager,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create PromotionStrategy controller")
 	}
@@ -216,10 +217,10 @@ func main() {
 		panic("failed to parse proposed commit requeue duration")
 	}
 	if err = (&controller.ChangeTransferPolicyReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("ChangeTransferPolicy"),
-		SettingsMgr: settingsMgr,
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Recorder:        mgr.GetEventRecorderFor("ChangeTransferPolicy"),
+		SettingsManager: settingsManager,
 		Config: controller.ChangeTransferPolicyReconcilerConfig{
 			RequeueDuration: ctpRequeueDuration,
 		},

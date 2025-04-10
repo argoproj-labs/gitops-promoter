@@ -23,6 +23,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"gopkg.in/yaml.v3"
 
 	"k8s.io/client-go/util/retry"
@@ -48,9 +49,10 @@ type PromotionStrategyReconcilerConfig struct {
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
-	Config   PromotionStrategyReconcilerConfig
+	Scheme          *runtime.Scheme
+	Recorder        record.EventRecorder
+	Config          PromotionStrategyReconcilerConfig
+	SettingsManager *settings.Manager
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
@@ -93,7 +95,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Calculate the status of the PromotionStrategy
-	err = r.calculateStatus(&ps, ctpsByBranch)
+	err = r.calculateStatus(ctx, &ps, ctpsByBranch)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to calculate PromotionStrategy status: %w", err)
 	}
@@ -139,6 +141,11 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	logger := log.FromContext(ctx)
 
+	activeCommitStatuses, proposedCommitStatuses, err := r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, environment.Checks...))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active and proposed commit statuses: %w", err)
+	}
+
 	pcName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
 
 	// The code below sets the ownership for the Release Object
@@ -146,7 +153,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 	controllerRef := metav1.NewControllerRef(ps, gvk)
 
-	pcNew := promoterv1alpha1.ChangeTransferPolicy{
+	ctpNew := promoterv1alpha1.ChangeTransferPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            pcName,
 			Namespace:       ps.Namespace,
@@ -160,25 +167,33 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			RepositoryReference:    ps.Spec.RepositoryReference,
 			ProposedBranch:         fmt.Sprintf("%s-%s", environment.Branch, "next"),
 			ActiveBranch:           environment.Branch,
-			ActiveCommitStatuses:   append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...),
-			ProposedCommitStatuses: append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...),
+			ActiveCommitStatuses:   activeCommitStatuses,
+			ProposedCommitStatuses: proposedCommitStatuses,
 			AutoMerge:              environment.AutoMerge,
 		},
 	}
 
 	previousEnvironmentIndex, _ := utils.GetPreviousEnvironmentStatusByBranch(*ps, environment.Branch)
 	environmentIndex, _ := utils.GetEnvironmentByBranch(*ps, environment.Branch)
-	if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
+
+	previousEnvironmentCommitStatusSelector := []promoterv1alpha1.CommitStatusSelector{}
+	if previousEnvironmentIndex >= 0 {
+		previousEnvironmentCommitStatusSelector, _, err = r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, ps.Spec.Environments[previousEnvironmentIndex].Checks...))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get active and proposed commit statuses of previous environment: %w", err)
+		}
+	}
+	if environmentIndex > 0 && len(activeCommitStatuses) != 0 || len(previousEnvironmentCommitStatusSelector) != 0 {
 		previousEnvironmentCommitStatusSelector := promoterv1alpha1.CommitStatusSelector{
 			Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 		}
-		if !slices.Contains(pcNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector) {
-			pcNew.Spec.ProposedCommitStatuses = append(pcNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector)
+		if !slices.Contains(ctpNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector) {
+			ctpNew.Spec.ProposedCommitStatuses = append(ctpNew.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector)
 		}
 	}
 
 	pc := promoterv1alpha1.ChangeTransferPolicy{}
-	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+	err = retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		// We own the CTP so what we say is way we want, this forces our changes on the CTP even if there is conflict because
 		// we have the correct state. Server side apply would help here but controller-runtime does not support it yet.
 		// This could be a patch as well.
@@ -186,21 +201,21 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		if err != nil {
 			if errors.IsNotFound(err) {
 				logger.Info("ChangeTransferPolicy not found, creating")
-				err = r.Create(ctx, &pcNew)
+				err = r.Create(ctx, &ctpNew)
 				if err != nil {
 					return fmt.Errorf("failed to create ChangeTransferPolicy %q: %w", pc.Name, err)
 				}
-				pcNew.DeepCopyInto(&pc)
+				ctpNew.DeepCopyInto(&pc)
 			} else {
 				return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", pc.Name, err)
 			}
 		} else {
-			pcNew.Spec.DeepCopyInto(&pc.Spec) // We keep the generation number and status so that update does not conflict
+			ctpNew.Spec.DeepCopyInto(&pc.Spec) // We keep the generation number and status so that update does not conflict
 			// TODO: don't update if the spec is the same, the hard comparison is the arrays of commit statuses, need
 			// to sort and compare them.
 			err = r.Update(ctx, &pc)
 			if err != nil {
-				return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)
+				return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", ctpNew.Name, err)
 			}
 		}
 		return nil
@@ -212,7 +227,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	return &pc, nil
 }
 
-func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.PromotionStrategy, ctpsByBranch map[string]*promoterv1alpha1.ChangeTransferPolicy) error {
+func (r *PromotionStrategyReconciler) calculateStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctpsByBranch map[string]*promoterv1alpha1.ChangeTransferPolicy) error {
 	for _, environment := range ps.Spec.Environments {
 		ctp, ok := ctpsByBranch[environment.Branch]
 		if !ok {
@@ -254,10 +269,16 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 		if ctpsByBranch[environment.Branch] == nil {
 			return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while calculating activeCommitStatus", environment.Branch)
 		}
+
+		activeCommitStatuses, proposedCommitStatuses, err := r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, environment.Checks...))
+		if err != nil {
+			return fmt.Errorf("failed to get active and proposed commit statuses: %w", err)
+		}
+
 		activeEnvStatus := ctpsByBranch[environment.Branch].Status.Active
-		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Active.CommitStatus, len(environment.ActiveCommitStatuses)+len(ps.Spec.ActiveCommitStatuses), activeEnvStatus)
+		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Active.CommitStatus, len(activeCommitStatuses), activeEnvStatus)
 		proposedEnvStatus := ctpsByBranch[environment.Branch].Status.Proposed
-		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Proposed.CommitStatus, len(environment.ProposedCommitStatuses)+len(ps.Spec.ProposedCommitStatuses), proposedEnvStatus)
+		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Proposed.CommitStatus, len(proposedCommitStatuses), proposedEnvStatus)
 	}
 	return nil
 }
@@ -283,6 +304,27 @@ func (r *PromotionStrategyReconciler) setEnvironmentCommitStatus(targetStatus *p
 		targetStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
 		targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
 	}
+}
+
+func (r *PromotionStrategyReconciler) getActiveAndProposedCommitStatues(ctx context.Context, specChecksSelectors []promoterv1alpha1.CommitStatusSelector) ([]promoterv1alpha1.CommitStatusSelector, []promoterv1alpha1.CommitStatusSelector, error) {
+	controllerConfig, err := r.SettingsManager.GetControllerConfiguration(ctx)
+	if err != nil {
+		return []promoterv1alpha1.CommitStatusSelector{}, []promoterv1alpha1.CommitStatusSelector{}, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	activeCommitStatuses := []promoterv1alpha1.CommitStatusSelector{}
+	proposedCommitStatuses := []promoterv1alpha1.CommitStatusSelector{}
+	for _, check := range specChecksSelectors {
+		if slices.ContainsFunc(controllerConfig.Spec.ActiveCommitStatuses, func(configSelector promoterv1alpha1.CommitStatusSelector) bool {
+			return configSelector.Key == check.Key
+		}) {
+			activeCommitStatuses = append(activeCommitStatuses, check)
+		} else {
+			proposedCommitStatuses = append(proposedCommitStatuses, check)
+		}
+	}
+
+	return activeCommitStatuses, proposedCommitStatuses, nil
 }
 
 func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentStatus *promoterv1alpha1.EnvironmentStatus, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) error {
@@ -405,7 +447,20 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			commitStatusPhase = promoterv1alpha1.CommitPhaseSuccess
 		}
 
-		if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
+		activeCommitStatuses, _, err := r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, environment.Checks...))
+		if err != nil {
+			return fmt.Errorf("failed to get active and proposed commit statuses: %w", err)
+		}
+
+		previousEnvironmentActiveCommitStatuses := []promoterv1alpha1.CommitStatusSelector{}
+		if previousEnvironmentIndex >= 0 {
+			previousEnvironmentActiveCommitStatuses, _, err = r.getActiveAndProposedCommitStatues(ctx, append(ps.Spec.Checks, ps.Spec.Environments[previousEnvironmentIndex].Checks...))
+			if err != nil {
+				return fmt.Errorf("failed to get active and proposed commit statuses: %w", err)
+			}
+		}
+
+		if environmentIndex > 0 && len(activeCommitStatuses) != 0 || len(previousEnvironmentActiveCommitStatuses) != 0 {
 			// Since there is at least one configured active check, and since this is not the first environment,
 			// we should not create a commit status for the previous environment.
 			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus, ctpMap[ps.Spec.Environments[previousEnvironmentIndex].Branch].Status.Active.CommitStatuses)
