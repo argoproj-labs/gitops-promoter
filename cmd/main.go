@@ -25,13 +25,11 @@ import (
 	"time"
 
 	"github.com/spf13/pflag"
-
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
-	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
-
 	"go.uber.org/zap/zapcore"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
+	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -163,8 +161,6 @@ func main() {
 		GlobalNamespace: controllerNamespace,
 	})
 
-	pathLookup := utils.NewPathLookup()
-
 	if err = (&controller.PullRequestReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
@@ -222,7 +218,6 @@ func main() {
 	if err = (&controller.ChangeTransferPolicyReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
-		PathLookup:  pathLookup,
 		Recorder:    mgr.GetEventRecorderFor("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
 		Config: controller.ChangeTransferPolicyReconcilerConfig{
@@ -232,9 +227,8 @@ func main() {
 		panic("unable to create ChangeTransferPolicy controller")
 	}
 	if err = (&controller.ArgoCDCommitStatusReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		PathLookup: pathLookup,
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ArgoCDCommitStatus controller")
 	}
@@ -273,7 +267,7 @@ func main() {
 	}
 	setupLog.Info("Cleaning up cloned directories")
 
-	for _, path := range pathLookup.GetAll() {
+	for _, path := range gitpaths.GetValues() {
 		err := os.RemoveAll(path)
 		if err != nil {
 			setupLog.Error(err, "failed to cleanup directory")
