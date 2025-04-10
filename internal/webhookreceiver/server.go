@@ -21,14 +21,29 @@ import (
 var logger = ctrl.Log.WithName("webhookReceiver")
 
 type webhookReceiver struct {
-	mgr       controllerruntime.Manager
-	k8sClient client.Client
+	mgr                        controllerruntime.Manager
+	k8sClient                  client.Client
+	maxWebhookPayloadSizeBytes uint32
 }
 
-func NewWebhookReceiver(mgr controllerruntime.Manager) webhookReceiver {
-	return webhookReceiver{
+type Option func(*webhookReceiver)
+
+func NewWebhookReceiver(mgr controllerruntime.Manager, opts ...Option) webhookReceiver {
+	wr := webhookReceiver{
 		mgr:       mgr,
 		k8sClient: mgr.GetClient(),
+	}
+
+	for _, opt := range opts {
+		opt(&wr)
+	}
+
+	return wr
+}
+
+func WithMaxPayloadSize(size uint32) Option {
+	return func(wr *webhookReceiver) {
+		wr.maxWebhookPayloadSizeBytes = size
 	}
 }
 
@@ -67,9 +82,17 @@ func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "must be a POST request", http.StatusMethodNotAllowed)
 		return
 	}
-	// TODO: add a configurable payload max side for DoS protection.
+	if wr.maxWebhookPayloadSizeBytes != 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, int64(wr.maxWebhookPayloadSizeBytes))
+	}
 	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "payload size exceeds limit", http.StatusRequestEntityTooLarge)
+			return
+		}
+
 		http.Error(w, "error reading body", http.StatusInternalServerError)
 		return
 	}
@@ -110,7 +133,7 @@ func (wr *webhookReceiver) findChangeTransferPolicy(ctx context.Context, jsonByt
 
 	if beforeSha == "" {
 		logger.V(4).Info("unable to match provider payload, might not be a pull request event or is malformed")
-		return nil, nil
+		return nil, errors.New("payload did not match expected format")
 	}
 
 	err := wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
