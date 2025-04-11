@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
+	"strings"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -77,11 +79,11 @@ func NewWebServer(mgr controllerruntime.Manager) WebServer {
 	}
 }
 
-func (r *WebServer) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (ws *WebServer) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	return ctrl.Result{}, nil
 }
 
-func (r *WebServer) sendEvent(e client.Object) {
+func (ws *WebServer) sendEvent(e client.Object) {
 	annotations := e.GetAnnotations()
 	delete(annotations, "kubectl.kubernetes.io/last-applied-configuration")
 	e.SetAnnotations(annotations)
@@ -98,11 +100,11 @@ func (r *WebServer) sendEvent(e client.Object) {
 		Kind:      e.GetObjectKind().GroupVersionKind().Kind,
 		Data:      string(jsonString),
 	}
-	r.Event.Message <- m
+	ws.Event.Message <- m
 }
 
-func (r *WebServer) sendDeleteEvent(e client.Object) {
-	r.Event.Message <- Message{
+func (ws *WebServer) sendDeleteEvent(e client.Object) {
+	ws.Event.Message <- Message{
 		Name:      e.GetName(),
 		Namespace: e.GetNamespace(),
 		Kind:      e.GetObjectKind().GroupVersionKind().Kind,
@@ -110,26 +112,26 @@ func (r *WebServer) sendDeleteEvent(e client.Object) {
 	}
 }
 
-func (r *WebServer) SetupWithManager(mgr ctrl.Manager) error {
+func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		Named("webServer").
 		Watches(&promoterv1alpha1.PromotionStrategy{}, handler.Funcs{ //nolint:dupl
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if ps, ok := e.Object.(*promoterv1alpha1.PromotionStrategy); ok {
 					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
-					r.sendEvent(ps)
+					ws.sendEvent(ps)
 				}
 			},
 			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if ps, ok := e.ObjectNew.(*promoterv1alpha1.PromotionStrategy); ok {
 					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
-					r.sendEvent(ps)
+					ws.sendEvent(ps)
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if ps, ok := e.Object.(*promoterv1alpha1.PromotionStrategy); ok {
 					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
-					r.sendDeleteEvent(ps)
+					ws.sendDeleteEvent(ps)
 				}
 			},
 		}).
@@ -137,19 +139,19 @@ func (r *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy); ok {
 					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
-					r.sendEvent(ctp)
+					ws.sendEvent(ctp)
 				}
 			},
 			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if ctp, ok := e.ObjectNew.(*promoterv1alpha1.ChangeTransferPolicy); ok {
 					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
-					r.sendEvent(ctp)
+					ws.sendEvent(ctp)
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy); ok {
 					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
-					r.sendDeleteEvent(ctp)
+					ws.sendDeleteEvent(ctp)
 				}
 			},
 		}).
@@ -157,19 +159,19 @@ func (r *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if pr, ok := e.Object.(*promoterv1alpha1.PullRequest); ok {
 					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
-					r.sendEvent(pr)
+					ws.sendEvent(pr)
 				}
 			},
 			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if pr, ok := e.ObjectNew.(*promoterv1alpha1.PullRequest); ok {
 					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
-					r.sendEvent(pr)
+					ws.sendEvent(pr)
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if pr, ok := e.Object.(*promoterv1alpha1.PullRequest); ok {
 					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
-					r.sendDeleteEvent(pr)
+					ws.sendDeleteEvent(pr)
 				}
 			},
 		}).
@@ -177,36 +179,36 @@ func (r *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if cs, ok := e.Object.(*promoterv1alpha1.CommitStatus); ok {
 					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
-					r.sendEvent(cs)
+					ws.sendEvent(cs)
 				}
 			},
 			UpdateFunc: func(ctx context.Context, e event.TypedUpdateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if cs, ok := e.ObjectNew.(*promoterv1alpha1.CommitStatus); ok {
 					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
-					r.sendEvent(cs)
+					ws.sendEvent(cs)
 				}
 			},
 			DeleteFunc: func(ctx context.Context, e event.TypedDeleteEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if cs, ok := e.Object.(*promoterv1alpha1.CommitStatus); ok {
 					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
-					r.sendDeleteEvent(cs)
+					ws.sendDeleteEvent(cs)
 				}
 			},
 		}).
-		Complete(r)
+		Complete(ws)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
 }
 
-func (wr *WebServer) Start(ctx context.Context, addr string) error {
+func (ws *WebServer) Start(ctx context.Context, addr string) error {
 	router := gin.New()
 	router.Use(ginlogr.Ginlogr(logger, time.RFC3339, true))
 	router.Use(ginlogr.RecoveryWithLogr(logger, time.RFC3339, true, true))
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
-	router.GET("/stream", HeadersMiddleware(), wr.Event.serveHTTP(), func(c *gin.Context) {
+	router.GET("/watch", WatchHeadersMiddleware(), ws.Event.serveHTTP(), func(c *gin.Context) {
 		v, ok := c.Get("clientChan")
 		if !ok {
 			return
@@ -219,14 +221,16 @@ func (wr *WebServer) Start(ctx context.Context, addr string) error {
 		gone := c.Stream(func(w io.Writer) bool {
 			// Stream message to client from message channel
 			if msg, ok := <-clientChan; ok {
-				if c.Query("namespace") != "" {
-					// Filter message by namespace
-					if msg.Namespace == c.Query("namespace") {
-						c.SSEvent(msg.Kind, msg.Data)
-					}
-				} else {
+				match, err := filter(msg, c)
+				if err != nil {
+					logger.Error(err, "failed to filter message", "name", msg.Name, "kind", msg.Kind)
+					return false
+				}
+
+				if match {
 					c.SSEvent(msg.Kind, msg.Data)
 				}
+
 				return true
 			}
 			return false
@@ -234,10 +238,90 @@ func (wr *WebServer) Start(ctx context.Context, addr string) error {
 		if gone {
 			logger.Info("client gone stream")
 			// Send closed connection to event server
-			wr.Event.closedClients <- clientChan
+			ws.Event.closedClients <- clientChan
 		}
 	})
 
+	router.GET("/list", func(c *gin.Context) { //nolint:contextcheck
+		if c.Query("kind") == "" {
+			c.JSON(http.StatusBadRequest, "kind is required")
+			return
+		}
+		kind := strings.ToLower(c.Query("kind"))
+		listOptions := &client.ListOptions{}
+		if c.Query("namespace") != "" {
+			listOptions = &client.ListOptions{Namespace: c.Query("namespace")}
+		}
+
+		switch kind {
+		case "promotionstrategy":
+			psl := &promoterv1alpha1.PromotionStrategyList{}
+			err := ws.List(c, psl, listOptions)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, err.Error())
+				return
+			}
+			c.JSON(http.StatusOK, psl.Items)
+
+		case "changetransferpolicy":
+			ctpl := &promoterv1alpha1.ChangeTransferPolicyList{}
+			err := ws.List(c, ctpl, listOptions)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, err.Error())
+				return
+			}
+			c.JSON(http.StatusOK, ctpl.Items)
+
+		case "pullrequest":
+			prl := &promoterv1alpha1.PullRequestList{}
+			err := ws.List(c, prl, listOptions)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, err.Error())
+				return
+			}
+			c.JSON(http.StatusOK, prl.Items)
+
+		case "commitstatus":
+			csl := &promoterv1alpha1.CommitStatusList{}
+			err := ws.List(c, csl, listOptions)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, err.Error())
+				return
+			}
+			c.JSON(http.StatusOK, csl.Items)
+
+		case "namespaces":
+			if c.Query("namespace") != "" {
+				c.JSON(http.StatusBadRequest, "namespace is not valid for listing namespaces")
+				return
+			}
+
+			m := make(map[string]bool)
+			var namespaces []string
+
+			psl := &promoterv1alpha1.PromotionStrategyList{}
+			err := ws.List(c, psl, &client.ListOptions{})
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, err.Error())
+				return
+			}
+			for _, ps := range psl.Items {
+				ns := ps.Namespace
+				if !m[ns] {
+					m[ns] = true
+					namespaces = append(namespaces, ns)
+				}
+			}
+			c.JSON(http.StatusOK, namespaces)
+
+		default:
+			c.JSON(http.StatusBadRequest, "invalid kind")
+		}
+	})
+
+	router.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, "ok")
+	})
 	// Parse Static files
 	router.StaticFile("/", "./public/index.html")
 
@@ -313,7 +397,7 @@ func (stream *Event) serveHTTP() gin.HandlerFunc {
 	}
 }
 
-func HeadersMiddleware() gin.HandlerFunc {
+func WatchHeadersMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Content-Type", "text/event-stream")
 		c.Writer.Header().Set("Cache-Control", "no-cache")
@@ -321,4 +405,25 @@ func HeadersMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("Transfer-Encoding", "chunked")
 		c.Next()
 	}
+}
+
+func filter(msg Message, c *gin.Context) (bool, error) {
+	msgKey := fmt.Sprintf("%s/%s/%s", msg.Kind, msg.Namespace, msg.Name)
+	var kindQuery, namespaceQuery, nameQuery string
+	if kindQuery = c.Query("kind"); kindQuery == "" {
+		kindQuery = "*"
+	}
+	if namespaceQuery = c.Query("namespace"); namespaceQuery == "" {
+		namespaceQuery = "*"
+	}
+	if nameQuery = c.Query("name"); nameQuery == "" {
+		nameQuery = "*"
+	}
+	queryKey := fmt.Sprintf("%s/%s/%s", kindQuery, namespaceQuery, nameQuery)
+
+	match, err := path.Match(queryKey, msgKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to match path: %w", err)
+	}
+	return match, nil
 }

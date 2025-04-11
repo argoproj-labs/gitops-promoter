@@ -1,5 +1,7 @@
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
+github.com/bmatcuk/doublestar/v4 v4.8.1 h1:54Bopc5c2cAvhLRAzqOGCYHYyhcDHsFF4wWIR5wKP38=
+github.com/bmatcuk/doublestar/v4 v4.8.1/go.mod h1:xBQ8jztBU6kakFMg+8WGxn0c6z1fTSPVIjEY1Wr7jzc=
 github.com/bradleyfalzon/ghinstallation/v2 v2.14.0 h1:0D4vKCHOvYrDU8u61TnE2JfNT4VRrBLphmxtqazTO+M=
 github.com/bradleyfalzon/ghinstallation/v2 v2.14.0/go.mod h1:LOVmdZYVZ8jqdr4n9wWm1ocDiMz9IfMGfRkaYC1a52A=
 github.com/bytedance/sonic v1.12.7 h1:CQU8pxOy9HToxhndH0Kx/S1qU/CuS9GnKYrGioDcU1Q=

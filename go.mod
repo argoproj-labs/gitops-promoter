@@ -5,6 +5,7 @@ go 1.23.0
 toolchain go1.24.1
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.14.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/gin-contrib/gzip v1.2.2
