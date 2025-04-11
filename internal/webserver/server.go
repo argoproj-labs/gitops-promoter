@@ -290,7 +290,7 @@ func (ws *WebServer) Start(ctx context.Context, addr string) error {
 			}
 			c.JSON(http.StatusOK, csl.Items)
 
-		case "namespaces":
+		case "namespace":
 			if c.Query("namespace") != "" {
 				c.JSON(http.StatusBadRequest, "namespace is not valid for listing namespaces")
 				return
