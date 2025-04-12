@@ -53,7 +53,9 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	start := time.Now()
 	githubPullRequest, response, err := pr.client.PullRequests.Create(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, newPR)
-	metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, response.StatusCode, time.Since(start))
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, response.StatusCode, time.Since(start))
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to create pull request: %w", err)
 	}
@@ -84,7 +86,9 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 
 	start := time.Now()
 	_, response, err := pr.client.PullRequests.Edit(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, newPR)
-	metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, response.StatusCode, time.Since(start))
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, response.StatusCode, time.Since(start))
+	}
 	if err != nil {
 		return fmt.Errorf("failed to edit pull request: %w", err)
 	}
@@ -118,7 +122,9 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 
 	start := time.Now()
 	_, response, err := pr.client.PullRequests.Edit(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, newPR)
-	metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, response.StatusCode, time.Since(start))
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, response.StatusCode, time.Since(start))
+	}
 	if err != nil {
 		return fmt.Errorf("failed to close pull request: %w", err)
 	}
@@ -153,7 +159,9 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 			MergeMethod:        "merge",
 			DontDefaultIfBlank: false,
 		})
-	metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, response.StatusCode, time.Since(start))
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, response.StatusCode, time.Since(start))
+	}
 	if err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
@@ -179,7 +187,9 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 		ctx, gitRepo.Spec.GitHub.Owner,
 		gitRepo.Spec.GitHub.Name,
 		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: pullRequest.Spec.SourceBranch, State: "open"})
-	metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, response.StatusCode, time.Since(start))
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, response.StatusCode, time.Since(start))
+	}
 	if err != nil {
 		return false, fmt.Errorf("failed to list pull requests: %w", err)
 	}

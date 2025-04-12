@@ -59,7 +59,9 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		commitStatusOptions,
 		gitlab.WithContext(ctx),
 	)
-	metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start))
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create status: %w", err)
 	}
