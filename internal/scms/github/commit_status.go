@@ -55,7 +55,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	start := time.Now()
 	repoStatus, response, err := cs.client.Repositories.CreateStatus(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, commitStatus.Spec.Sha, commitStatusS)
 	if response != nil {
-		metrics.RecordSCMCall(gitRepo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, response.StatusCode, time.Since(start))
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create status: %w", err)

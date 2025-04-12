@@ -4,9 +4,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 type GitOperation string
@@ -50,13 +51,29 @@ const (
 	SCMOperationList   SCMOperation = "list"
 )
 
+type RateLimit struct {
+	Limit          int
+	Remaining      int
+	ResetRemaining time.Duration
+}
+
 var (
+	// Labels for git_operations metrics
+	gitOperationLabels = []string{"git_repository", "scm_provider", "operation", "result"}
+
+	// Labels for scm_calls metrics
+	scmCallLabels = []string{"git_repository", "scm_provider", "api", "operation", "response_code"}
+
+	// Labels for scm_calls_rate_limit metrics
+	scmCallRateLimitLabels = []string{"scm_provider"}
+
+	// git_operations_total
 	gitOperationsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "git_operations_total",
 			Help: "A counter of git clone operations.",
 		},
-		[]string{"git_repository", "scm_provider", "operation", "result"},
+		gitOperationLabels,
 	)
 
 	gitOperationsDurationSeconds = prometheus.NewHistogramVec(
@@ -65,7 +82,7 @@ var (
 			Help:    "A histogram of the duration of git clone operations.",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"git_repository", "scm_provider", "operation", "result"},
+		gitOperationLabels,
 	)
 
 	scmCallsTotal = prometheus.NewCounterVec(
@@ -73,7 +90,7 @@ var (
 			Name: "scm_calls_total",
 			Help: "A counter of SCM API calls.",
 		},
-		[]string{"git_repository", "scm_provider", "api", "operation", "response_code"},
+		scmCallLabels,
 	)
 
 	scmCallsDurationSeconds = prometheus.NewHistogramVec(
@@ -82,10 +99,32 @@ var (
 			Help:    "A histogram of the duration of SCM API calls.",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"git_repository", "scm_provider", "api", "operation", "response_code"},
+		scmCallLabels,
 	)
 
-	// IMPORTANT: If you add or update metrics, also update metrics.md.
+	scmCallsRateLimitLimit = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "scm_calls_rate_limit_limit",
+			Help: "A gauge for the rate limit of SCM API calls.",
+		},
+		scmCallRateLimitLabels,
+	)
+
+	scmCallsRateLimitRemaining = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "scm_calls_rate_limit_remaining",
+			Help: "A gauge for the remaining rate limit of SCM API calls.",
+		},
+		scmCallRateLimitLabels,
+	)
+
+	scmCallsRateLimitResetRemainingSeconds = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "scm_calls_rate_limit_reset_remaining_seconds",
+			Help: "A gauge for the remaining seconds until the SCM API rate limit resets.",
+		},
+		scmCallRateLimitLabels,
+	)
 )
 
 func init() {
@@ -95,6 +134,9 @@ func init() {
 		gitOperationsDurationSeconds,
 		scmCallsTotal,
 		scmCallsDurationSeconds,
+		scmCallsRateLimitLimit,
+		scmCallsRateLimitRemaining,
+		scmCallsRateLimitResetRemainingSeconds,
 	)
 }
 
@@ -110,8 +152,8 @@ func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation,
 	gitOperationsDurationSeconds.With(labels).Observe(duration.Seconds())
 }
 
-// RecordSCMCall records both the increment and observation for SCM API calls.
-func RecordSCMCall(gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOperation, responseCode int, duration time.Duration) {
+// RecordSCMCall records both the increment and observation for SCM API calls, and optionally observes rate limit metrics.
+func RecordSCMCall(gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOperation, responseCode int, duration time.Duration, rateLimit *RateLimit) {
 	labels := prometheus.Labels{
 		"git_repository": gitRepo.Name,
 		"scm_provider":   gitRepo.Spec.ScmProviderRef.Name,
@@ -121,4 +163,14 @@ func RecordSCMCall(gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOpe
 	}
 	scmCallsTotal.With(labels).Inc()
 	scmCallsDurationSeconds.With(labels).Observe(duration.Seconds())
+
+	if rateLimit != nil {
+		rateLimitLabels := prometheus.Labels{
+			"scm_provider": gitRepo.Spec.ScmProviderRef.Name,
+		}
+
+		scmCallsRateLimitLimit.With(rateLimitLabels).Set(float64(rateLimit.Limit))
+		scmCallsRateLimitRemaining.With(rateLimitLabels).Set(float64(rateLimit.Remaining))
+		scmCallsRateLimitResetRemainingSeconds.With(rateLimitLabels).Set(rateLimit.ResetRemaining.Seconds())
+	}
 }

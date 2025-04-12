@@ -60,7 +60,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		options,
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start))
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return "", fmt.Errorf("failed to create pull request: %w", err)
@@ -106,7 +106,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		gitlab.WithContext(ctx),
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, resp.StatusCode, time.Since(start))
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to update merge request: %w", err)
@@ -151,7 +151,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *v1alpha1.PullRequest) e
 		gitlab.WithContext(ctx),
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, resp.StatusCode, time.Since(start))
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to close merge request: %w", err)
@@ -199,7 +199,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *v
 		gitlab.WithContext(ctx),
 	)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start))
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to merge request: %w", err)
@@ -237,7 +237,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 	start := time.Now()
 	mrs, resp, err := pr.client.MergeRequests.ListMergeRequests(options)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start))
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return false, fmt.Errorf("failed to list pull requests: %w", err)

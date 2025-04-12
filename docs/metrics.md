@@ -50,3 +50,33 @@ Labels:
   * For CommitStatus, this is always create.
   * For PullRequest, this is create, update, merge, close, or list.
 * `response_code`: The HTTP response code.
+
+## scm_calls_rate_limit_limit
+
+A counter for the rate limit of SCM API calls.
+
+This metric is currently only produced for GitHub.
+
+Labels:
+
+* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+
+## scm_calls_rate_limit_remaining
+
+A counter for the remaining rate limit of SCM API calls.
+
+This metric is currently only produced for GitHub.
+
+Labels:
+
+* `scm_provider`: The name of the ScmProvider resource associated with the operation.
+
+## scm_calls_rate_limit_reset_remaining_seconds
+
+A gauge for the remaining seconds until the SCM API rate limit resets.
+
+This metric is currently only produced for GitHub.
+
+Labels:
+
+* `scm_provider`: The name of the ScmProvider resource associated with the operation.
