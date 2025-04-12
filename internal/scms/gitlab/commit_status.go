@@ -65,7 +65,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		repo.Spec.ScmProviderRef.Name,
 		resp,
 	)
-	logger.V(4).Info("github response status",
+	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
 	commitStatus.Status.Id = strconv.Itoa(glStatus.ID)
