@@ -48,8 +48,19 @@ spec:
               github:
                 description: GitHub required configuration for GitHub as the SCM provider
                 properties:
+                  appID:
+                    description: AppID is the GitHub App ID.
+                    format: int64
+                    type: integer
                   domain:
                     type: string
+                  installationID:
+                    description: InstallationID is the GitHub App Installation ID.
+                    format: int64
+                    type: integer
+                required:
+                - appID
+                - installationID
                 type: object
               gitlab:
                 description: GitLab required configuration for GitLab as the SCM provider
