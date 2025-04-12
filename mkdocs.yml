@@ -31,5 +31,6 @@ nav:
   - CommitStatus Controllers:
       - Argo CD: commit-status-controllers/argocd.md
   - Multi-Tenancy: multi-tenancy.md
+  - Metrics: metrics.md
   - Tool Comparison: tool-comparison.md
   - FAQs: faqs.md
