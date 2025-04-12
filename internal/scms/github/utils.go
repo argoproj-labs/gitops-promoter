@@ -3,7 +3,7 @@ package github
 import (
 	"time"
 
-	"github.com/google/go-github/v61/github"
+	"github.com/google/go-github/v71/github"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 )
