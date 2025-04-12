@@ -56,7 +56,7 @@ var (
 			Name: "git_operations_total",
 			Help: "A counter of git clone operations.",
 		},
-		[]string{"repository", "scm_provider", "operation", "result"},
+		[]string{"git_repository", "scm_provider", "operation", "result"},
 	)
 
 	gitOperationsDurationSeconds = prometheus.NewHistogramVec(
@@ -65,7 +65,7 @@ var (
 			Help:    "A histogram of the duration of git clone operations.",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"repository", "scm_provider", "operation", "result"},
+		[]string{"git_repository", "scm_provider", "operation", "result"},
 	)
 
 	scmCallsTotal = prometheus.NewCounterVec(
@@ -73,7 +73,7 @@ var (
 			Name: "scm_calls_total",
 			Help: "A counter of SCM API calls.",
 		},
-		[]string{"repository", "scm_provider", "api", "operation", "response_code"},
+		[]string{"git_repository", "scm_provider", "api", "operation", "response_code"},
 	)
 
 	scmCallsDurationSeconds = prometheus.NewHistogramVec(
@@ -82,7 +82,7 @@ var (
 			Help:    "A histogram of the duration of SCM API calls.",
 			Buckets: prometheus.DefBuckets,
 		},
-		[]string{"repository", "scm_provider", "api", "operation", "response_code"},
+		[]string{"git_repository", "scm_provider", "api", "operation", "response_code"},
 	)
 
 	// IMPORTANT: If you add or update metrics, also update metrics.md.
@@ -101,10 +101,10 @@ func init() {
 // RecordGitOperation records both the increment and observation for git operations.
 func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation, result GitOperationResult, duration time.Duration) {
 	labels := prometheus.Labels{
-		"repository":   gitRepo.Name,
-		"scm_provider": gitRepo.Spec.ScmProviderRef.Name,
-		"operation":    string(operation),
-		"result":       string(result),
+		"git_repository": gitRepo.Name,
+		"scm_provider":   gitRepo.Spec.ScmProviderRef.Name,
+		"operation":      string(operation),
+		"result":         string(result),
 	}
 	gitOperationsTotal.With(labels).Inc()
 	gitOperationsDurationSeconds.With(labels).Observe(duration.Seconds())
@@ -113,11 +113,11 @@ func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation,
 // RecordSCMCall records both the increment and observation for SCM API calls.
 func RecordSCMCall(gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOperation, responseCode int, duration time.Duration) {
 	labels := prometheus.Labels{
-		"repository":    gitRepo.Name,
-		"scm_provider":  gitRepo.Spec.ScmProviderRef.Name,
-		"api":           string(api),
-		"operation":     string(operation),
-		"response_code": strconv.Itoa(responseCode),
+		"git_repository": gitRepo.Name,
+		"scm_provider":   gitRepo.Spec.ScmProviderRef.Name,
+		"api":            string(api),
+		"operation":      string(operation),
+		"response_code":  strconv.Itoa(responseCode),
 	}
 	scmCallsTotal.With(labels).Inc()
 	scmCallsDurationSeconds.With(labels).Observe(duration.Seconds())

@@ -8,7 +8,7 @@ A counter of git clone operations.
 
 Labels:
 
-* `repository`: The name of the GitRepository resource associated with the operation.
+* `git_repository`: The name of the GitRepository resource associated with the operation.
 * `scm_provider`: The name of the ScmProvider resource associated with the operation.
 * `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
 * `result`: Whether the operation succeeded (success, failure).
@@ -19,7 +19,7 @@ A histogram of the duration of git clone operations.
 
 Labels:
 
-* `repository`: The name of the GitRepository resource associated with the operation.
+* `git_repository`: The name of the GitRepository resource associated with the operation.
 * `scm_provider`: The name of the ScmProvider resource associated with the operation.
 * `operation`: The type of git operation (clone, fetch, pull, push, ls-remote).
 * `result`: Whether the operation succeeded (success, failure).
@@ -30,7 +30,7 @@ A counter of SCM API calls.
 
 Labels:
 
-* `repository`: The name of the GitRepository resource associated with the operation.
+* `git_repository`: The name of the GitRepository resource associated with the operation.
 * `scm_provider`: The name of the ScmProvider resource associated with the operation.
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
@@ -44,7 +44,7 @@ A histogram of the duration of SCM API calls.
 
 Labels:
 
-* `repository`: The name of the GitRepository resource associated with the operation.
+* `git_repository`: The name of the GitRepository resource associated with the operation.
 * `api`: The SCM API being called (CommitStatus, PullRequest)
 * `operation`: The type of SCM operation.
   * For CommitStatus, this is always create.
