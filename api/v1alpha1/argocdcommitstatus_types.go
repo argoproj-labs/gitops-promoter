@@ -40,11 +40,12 @@ type ArgoCDCommitStatusStatus struct {
 }
 
 type ApplicationsSelected struct {
-	Namespace          string            `json:"namespace"`
-	Name               string            `json:"name"`
-	Phase              CommitStatusPhase `json:"phase"`
-	Sha                string            `json:"sha"`
-	LastTransitionTime *metav1.Time      `json:"lastTransitionTime"`
+	Namespace string            `json:"namespace"`
+	Name      string            `json:"name"`
+	Phase     CommitStatusPhase `json:"phase"`
+	Sha       string            `json:"sha"`
+	// +kubebuilder:validation:Optional
+	LastTransitionTime *metav1.Time `json:"lastTransitionTime"`
 }
 
 // +kubebuilder:object:root=true

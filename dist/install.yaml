@@ -133,7 +133,6 @@ spec:
                     sha:
                       type: string
                   required:
-                  - lastTransitionTime
                   - name
                   - namespace
                   - phase
