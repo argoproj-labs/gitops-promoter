@@ -291,8 +291,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Namespace: "default", // TODO(user):Modify as needed
 			}
 
-			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next" //nolint:goconst
-			changeTransferPolicy.Spec.ActiveBranch = "environment/development"        //nolint:goconst
+			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
+			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
 			// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
@@ -321,7 +321,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			var pr promoterv1alpha1.PullRequest
 			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
-				var typeNamespacedNamePR types.NamespacedName = types.NamespacedName{
+				typeNamespacedNamePR := types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
 					Namespace: "default",
 				}
