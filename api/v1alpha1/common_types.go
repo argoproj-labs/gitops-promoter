@@ -2,6 +2,12 @@ package v1alpha1
 
 type GitHub struct {
 	Domain string `json:"domain,omitempty"`
+	// AppID is the GitHub App ID.
+	// +kubebuilder:validation:Required
+	AppID int64 `json:"appID"`
+	// InstallationID is the GitHub App Installation ID.
+	// +kubebuilder:validation:Required
+	InstallationID int64 `json:"installationID"`
 }
 
 type GitLab struct {
