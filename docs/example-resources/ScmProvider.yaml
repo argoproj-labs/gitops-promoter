@@ -5,5 +5,14 @@ metadata:
 spec:
   secretRef:
     name: example-scm-provider-secret
+
+  # You must specify either github or gitlab. Both are provided here as examples.
+  # If you do not need to specify any sub-fields, just set the field to {}.
+
   github:
-    domain: github.com
+    domain: github.com # Optional
+    appID: <your-app-id>
+    installationID: <your-installation-id>
+
+  gitlab:
+    domain: gitlab.com # Optional
