@@ -866,7 +866,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Key: "no-deployments-allowed",
 				},
 			}
-			proposedCommitStatusDevelopment.Spec.Name = "no-deployments-allowed" // nolint:goconst
+			proposedCommitStatusDevelopment.Spec.Name = "no-deployments-allowed" //nolint:goconst
 			proposedCommitStatusDevelopment.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "no-deployments-allowed",
 			}
