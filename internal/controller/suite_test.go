@@ -309,6 +309,73 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	return gitServerPortStr, server
 }
 
+func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
+	gitPath, err := os.MkdirTemp("", "*")
+	if err != nil {
+		panic("could not make temp dir for repo server")
+	}
+	defer func() {
+		err := os.RemoveAll(gitPath)
+		if err != nil {
+			fmt.Println(err, "failed to remove temp dir")
+		}
+	}()
+
+	_, err = runGitCmd(gitPath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, owner, name), ".")
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(gitPath, "config", "user.name", "testuser")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "config", "user.email", "testemail@test.com")
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(gitPath, "commit", "--allow-empty", "-m", "init commit")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "push")
+	Expect(err).NotTo(HaveOccurred())
+
+	defaultBranch, err := runGitCmd(gitPath, "rev-parse", "--abbrev-ref", "HEAD")
+	Expect(err).NotTo(HaveOccurred())
+	defaultBranch = strings.TrimSpace(defaultBranch)
+
+	sha, err := runGitCmd(gitPath, "rev-parse", defaultBranch)
+	Expect(err).NotTo(HaveOccurred())
+
+	// "environment/development-next", "environment/staging-next", "environment/production-next"
+	for _, environment := range []string{"environment/development", "environment/staging", "environment/production"} {
+		_, err = runGitCmd(gitPath, "checkout", "--orphan", environment)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "rm", "-rf", "--ignore-unmatch", ".")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "commit", "--allow-empty", "-m", "initial commit")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Sleep one seconds to differentiate the commits to prevent same hash
+		time.Sleep(1 * time.Second)
+
+		_, err = runGitCmd(gitPath, "checkout", "-b", environment+"-next")
+		Expect(err).NotTo(HaveOccurred())
+		f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
+		Expect(err).NotTo(HaveOccurred())
+		str := fmt.Sprintf("{\"drySHA\": \"%s\"}", strings.TrimSpace(sha))
+		_, err = f.WriteString(str)
+		Expect(err).NotTo(HaveOccurred())
+		err = f.Close()
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "add", "hydrator.metadata")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "commit", "-m", "initial commit next")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment+"-next")
+		Expect(err).NotTo(HaveOccurred())
+
+		// Sleep one seconds to differentiate the commits to prevent same hash
+		time.Sleep(1 * time.Second)
+	}
+}
+
 func setupInitialTestGitRepoOnServer(owner string, name string) {
 	gitPath, err := os.MkdirTemp("", "*")
 	if err != nil {

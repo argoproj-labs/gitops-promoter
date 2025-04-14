@@ -375,6 +375,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 	// currently processing environments proposed dry sha.
 	// We then look at the status of the current environment and if all checks have passed and the environment is set to auto merge, we merge the pull request.
 	for _, environment := range ps.Spec.Environments {
+		logger.Info("Checking environment for merge", "branch", environment.Branch)
 		previousEnvironmentIndex, previousEnvironmentStatus := utils.GetPreviousEnvironmentStatusByBranch(*ps, environment.Branch)
 		environmentIndex, environmentStatus := utils.GetEnvironmentStatusByBranch(*ps, environment.Branch)
 		if environmentStatus == nil {
@@ -398,6 +399,8 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 				"sha", previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha,
 				"time", previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time),
 				"phase", previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess))
+		} else {
+			logger.Info("Previous environment status was nil")
 		}
 		commitStatusPhase := promoterv1alpha1.CommitPhasePending
 		if environmentIndex == 0 || activeChecksPassed {

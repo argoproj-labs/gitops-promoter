@@ -5,6 +5,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -136,6 +137,10 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (Branc
 	metadataFile := g.pathLookup.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) + "/hydrator.metadata"
 	jsonFile, err := os.Open(metadataFile)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			logger.Info("hydrator.metadata file not found", "file", metadataFile)
+			return shas, nil
+		}
 		return BranchShas{}, fmt.Errorf("could not open metadata file: %w", err)
 	}
 
