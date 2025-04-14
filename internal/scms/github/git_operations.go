@@ -11,7 +11,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	"github.com/google/go-github/v61/github"
+	"github.com/google/go-github/v71/github"
 )
 
 type GitAuthenticationProvider struct {

@@ -40,7 +40,6 @@ import (
 
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -171,11 +170,9 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	pathLookup := utils.NewPathLookup()
 	err = (&ChangeTransferPolicyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		PathLookup:  pathLookup,
 		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
 		Config: ChangeTransferPolicyReconcilerConfig{
@@ -213,9 +210,8 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ArgoCDCommitStatusReconciler{
-		Client:     k8sManager.GetClient(),
-		Scheme:     k8sManager.GetScheme(),
-		PathLookup: pathLookup,
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
 		// Recorder: k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())

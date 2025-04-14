@@ -64,7 +64,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(4).Info("github response status",
+	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
 	return strconv.Itoa(mr.IID), nil
@@ -106,7 +106,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(4).Info("github response status",
+	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
 	return nil
@@ -147,7 +147,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *v1alpha1.PullRequest) e
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(4).Info("github response status",
+	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
 	return nil
@@ -191,7 +191,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *v
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(4).Info("github response status",
+	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
 	return nil
@@ -217,7 +217,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 		prObj.Spec.RepositoryReference.Name,
 		resp,
 	)
-	logger.V(4).Info("github response status",
+	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
 	if len(mrs) > 0 {
