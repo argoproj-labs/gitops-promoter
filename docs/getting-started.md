@@ -59,8 +59,6 @@ metadata:
   name: <your-secret-name>
 type: Opaque
 stringData:
-  appID: <your-app-id>
-  installationID: <your-installation-id>
   privateKey: <your-private-key>
 ```
 
@@ -79,7 +77,9 @@ metadata:
 spec:
   secretRef:
     name: <your-secret-name>
-  github: {}
+  github:
+    appID: <your-app-id>
+    installationID: <your-installation-id>
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: GitRepository

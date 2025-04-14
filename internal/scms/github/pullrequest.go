@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/google/go-github/v61/github"
+	"github.com/google/go-github/v71/github"
 )
 
 type PullRequest struct {
@@ -23,8 +23,8 @@ type PullRequest struct {
 
 var _ scms.PullRequestProvider = &PullRequest{}
 
-func NewGithubPullRequestProvider(k8sClient client.Client, secret v1.Secret, domain string) (*PullRequest, error) {
-	client, err := GetClient(secret, domain)
+func NewGithubPullRequestProvider(k8sClient client.Client, scmProvider *v1alpha1.ScmProvider, secret v1.Secret) (*PullRequest, error) {
+	client, err := GetClient(scmProvider, secret)
 	if err != nil {
 		return nil, err
 	}
@@ -39,10 +39,10 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	logger := log.FromContext(ctx)
 
 	newPR := &github.NewPullRequest{
-		Title: github.String(title),
-		Head:  github.String(head),
-		Base:  github.String(base),
-		Body:  github.String(description),
+		Title: github.Ptr(title),
+		Head:  github.Ptr(head),
+		Base:  github.Ptr(base),
+		Body:  github.Ptr(description),
 	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
@@ -68,8 +68,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 	logger := log.FromContext(ctx)
 
 	newPR := &github.PullRequest{
-		Title: github.String(title),
-		Body:  github.String(description),
+		Title: github.Ptr(title),
+		Body:  github.Ptr(description),
 	}
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
@@ -98,7 +98,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 	logger := log.FromContext(ctx)
 
 	newPR := &github.PullRequest{
-		State: github.String("closed"),
+		State: github.Ptr("closed"),
 	}
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)

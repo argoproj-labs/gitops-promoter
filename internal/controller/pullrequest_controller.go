@@ -192,7 +192,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	switch {
 	case scmProvider.Spec.GitHub != nil:
 		var p *github.PullRequest
-		p, err = github.NewGithubPullRequestProvider(r.Client, *secret, scmProvider.Spec.GitHub.Domain)
+		p, err = github.NewGithubPullRequestProvider(r.Client, scmProvider, *secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get GitHub provider for domain %q and secret %q: %w", scmProvider.Spec.GitHub.Domain, secret.Name, err)
 		}

@@ -409,6 +409,7 @@ func WatchHeadersMiddleware() gin.HandlerFunc {
 
 func filter(msg Message, c *gin.Context) (bool, error) {
 	msgKey := fmt.Sprintf("%s/%s/%s", msg.Kind, msg.Namespace, msg.Name)
+	msgKey = strings.ToLower(msgKey)
 	var kindQuery, namespaceQuery, nameQuery string
 	if kindQuery = c.Query("kind"); kindQuery == "" {
 		kindQuery = "*"
@@ -419,9 +420,10 @@ func filter(msg Message, c *gin.Context) (bool, error) {
 	if nameQuery = c.Query("name"); nameQuery == "" {
 		nameQuery = "*"
 	}
-	queryKey := fmt.Sprintf("%s/%s/%s", kindQuery, namespaceQuery, nameQuery)
+	queryKey := fmt.Sprintf("%s/%s/%s", strings.ToLower(kindQuery), strings.ToLower(namespaceQuery), strings.ToLower(nameQuery))
 
 	match, err := path.Match(queryKey, msgKey)
+	logger.V(1).Info("filter", "msgKey", msgKey, "queryKey", queryKey, "match", match)
 	if err != nil {
 		return false, fmt.Errorf("failed to match path: %w", err)
 	}

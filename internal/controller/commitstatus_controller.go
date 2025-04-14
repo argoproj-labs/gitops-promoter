@@ -165,7 +165,7 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 	switch {
 	case scmProvider.Spec.GitHub != nil:
 		var p *github.CommitStatus
-		p, err = github.NewGithubCommitStatusProvider(r.Client, *secret, scmProvider.Spec.GitHub.Domain)
+		p, err = github.NewGithubCommitStatusProvider(r.Client, scmProvider, *secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get GitHub provider for domain %q with secret %q: %w", scmProvider.Spec.GitHub.Domain, secret.Name, err)
 		}
