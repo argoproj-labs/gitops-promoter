@@ -176,12 +176,7 @@ export function ChangeTransferPoliciesListUpdate() {
     fetchPolicies();
 
     const eventSource = new EventSource("/watch?kind=changetransferpolicy");
-
-
-    eventSource.addEventListener("ChangeTransferPolicy", e => {
-      console.log("ChangeTransferPolicy", e)
-    })
-
+    
     // Define event handlers before attaching them
     eventSource.addEventListener("ChangeTransferPolicy", event => {
       try {
