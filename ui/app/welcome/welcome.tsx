@@ -175,13 +175,14 @@ export function ChangeTransferPoliciesListUpdate() {
 
     fetchPolicies();
 
-    // Set up SSE connection for real-time updates
     const eventSource = new EventSource("/watch?kind=changetransferpolicy");
 
-    eventSource.onmessage = (event) => {
+    // Define event handlers before attaching them
+    eventSource.onmessage  = (event) => {
+      console.log("Received SSE message:", event.data);
+
       try {
         const message = JSON.parse(event.data);
-        console.log("Received SSE message:", event);
 
         setPolicies((currentPolicies) => {
           // Find if the policy already exists in our list
@@ -208,15 +209,21 @@ export function ChangeTransferPoliciesListUpdate() {
       }
     };
 
-    eventSource.onerror = (err) => {
-      console.error("SSE connection error:", err);
-      setError("Error in real-time connection. Retrying...");
+    // Add error and open handlers to help debug connection issues
+    eventSource.onerror = (error) => {
+      console.error("EventSource error:", error);
     };
 
-    // Clean up the SSE connection when the component unmounts
+    eventSource.onopen = () => {
+      console.log("EventSource connection opened");
+    };
+
+    // Clean up function to properly close connection when component unmounts
     return () => {
+      console.log("Closing EventSource connection");
       eventSource.close();
     };
+
   }, []);
 
   if (error) {
@@ -243,19 +250,19 @@ export function ChangeTransferPoliciesListUpdate() {
                   Auto Merge: {policy.spec.autoMerge === false ? "No" : "Yes"}
                 </p>
                 <p className="text-gray-600">
-                  Annotations: {policy.metadata.annotations ?
+                  Annotations: <br />{policy.metadata.annotations ?
                     Object.entries(policy.metadata.annotations).map(([key, value]) =>
-                        <div key={key} className="ml-4">
-                          •  {key}: {value}
-                        </div>
+                        <span key={key} className="ml-4">
+                          •  {key}: {value} <br />
+                        </span>
                     ) : 'None'}
                 </p>
                 <p className="text-gray-600">
-                  Labels: {policy.metadata.labels ?
+                  Labels: <br />{policy.metadata.labels ?
                     Object.entries(policy.metadata.labels).map(([key, value]) =>
-                    <div key={key} className="ml-4">
-                      •  {key}: {value}
-                    </div>
+                    <span key={key} className="ml-4">
+                      •  {key}: {value} <br />
+                    </span>
                     ) : 'None'}
                 </p>
                 {policy.status && (
@@ -314,10 +321,10 @@ export function PromotionStrategiesList() {
                   Environment Count: {strategy.spec.environments.length}
                 </p>
                 <p className="text-gray-600">
-                  Environments: {strategy.spec.environments.map((env, index) => (
-                    <div key={index} className="ml-4">
-                      • {env.branch} {env.autoMerge ? "(Auto Merge)" : ""}
-                    </div>
+                  Environments: <br />{strategy.spec.environments.map((env, index) => (
+                    <span key={index} className="ml-4">
+                      • {env.branch} {env.autoMerge ? "(Auto Merge)" : ""}<br />
+                    </span>
                 ))}
                 </p>
               </li>
