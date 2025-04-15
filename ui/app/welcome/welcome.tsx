@@ -177,12 +177,16 @@ export function ChangeTransferPoliciesListUpdate() {
 
     const eventSource = new EventSource("/watch?kind=changetransferpolicy");
 
-    // Define event handlers before attaching them
-    eventSource.onmessage  = (event) => {
-      console.log("Received SSE message:", event.data);
 
+    eventSource.addEventListener("ChangeTransferPolicy", e => {
+      console.log("ChangeTransferPolicy", e)
+    })
+
+    // Define event handlers before attaching them
+    eventSource.addEventListener("ChangeTransferPolicy", event => {
       try {
         const message = JSON.parse(event.data);
+        console.log("Received SSE message:", message);
 
         setPolicies((currentPolicies) => {
           // Find if the policy already exists in our list
@@ -207,7 +211,7 @@ export function ChangeTransferPoliciesListUpdate() {
       } catch (err: any) {
         console.error("Error processing SSE message:", err);
       }
-    };
+    });
 
     // Add error and open handlers to help debug connection issues
     eventSource.onerror = (error) => {
