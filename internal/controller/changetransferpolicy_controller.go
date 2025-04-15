@@ -132,6 +132,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	logger.Info("Reconciling ChangeTransferPolicy End", "duration", time.Since(startTime))
+
 	return ctrl.Result{
 		Requeue:      true,
 		RequeueAfter: r.Config.RequeueDuration,
