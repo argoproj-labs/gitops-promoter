@@ -57,6 +57,17 @@ spec:
                         type: string
                     type: object
                 type: object
+              webhook:
+                properties:
+                  maxPayloadSizeBytes:
+                    default: 26214400
+                    description: |-
+                      Maximum allowed payload size in bytes.
+                      The default value is 26214400 (25 MB).
+                      Set to 0 for no limit on the payload size.
+                    format: int32
+                    type: integer
+                type: object
             type: object
           status:
             description: ControllerConfigurationStatus defines the observed state

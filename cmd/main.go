@@ -40,6 +40,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -249,7 +250,19 @@ func main() {
 
 	processSignals := ctrl.SetupSignalHandler()
 
-	whr := webhookreceiver.NewWebhookReceiver(mgr)
+	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{}
+	err = mgr.GetAPIReader().Get(
+		processSignals,
+		client.ObjectKey{Name: settings.ControllerConfigurationName, Namespace: controllerNamespace},
+		controllerConfiguration)
+	if err != nil {
+		panic("unable to retrieve ControllerConfiguration")
+	}
+
+	whr := webhookreceiver.NewWebhookReceiver(
+		mgr,
+		webhookreceiver.WithMaxPayloadSize(controllerConfiguration.Spec.Webhook.MaxPayloadSizeBytes),
+	)
 	go func() {
 		err = whr.Start(processSignals, ":3333")
 		if err != nil {
