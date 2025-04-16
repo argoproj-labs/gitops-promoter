@@ -2,17 +2,102 @@ import logoDark from "./logo-dark.svg";
 import logoLight from "./logo-light.svg";
 import {MyCounter} from '../../../component-lib/src/components/MyCounter';
 import {
-  PromotionStrategiesListUpdate
+  PromotionStrategy,
 } from "../../../component-lib/src/components/TestPromotionStrategy";
+import {useEffect, useState} from "react";
+import type {PromotionStrategyType} from "../../../component-lib/src/models/promotionstrategy";
 
 export function Welcome() {
+
+  const [promotionStrategy, setPromotionStrategy] = useState<PromotionStrategyType | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/get?kind=promotionstrategy&namespace=default&name=argocon-demo")
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((data) => setPromotionStrategy(data))
+        .catch((err) => setError(err.message));
+  }, []);
+
+  if (error) {
+    return <div>Error: {error}</div>;
+  }
+
+  if (!promotionStrategy) {
+    return <div>Loading...</div>;
+  }
+
+
   return (
       <main className="flex items-center justify-center pt-16 pb-4">
         <div className="flex-1 flex flex-col items-center gap-16 min-h-0">
           <header className="flex flex-col items-center gap-9">
           </header>
           <MyCounter />
-          <PromotionStrategiesListUpdate />
+          <PromotionStrategy
+              ps={{
+                metadata: {
+                  namespace: "example-namespace",
+                  name: "example-name",
+                },
+                spec: {
+                  gitRepositoryRef: {
+                    name: "example-repo",
+                  },
+                  environments: [
+                    { branch: "main", autoMerge: true },
+                    { branch: "dev", autoMerge: false },
+                  ],
+                },
+                status: {
+                  environments: [
+                    {
+                      branch: "main",
+                      active: {
+                        dry: { sha: "abc123" },
+                        hydrated: { sha: "abc123" },
+                        commitStatus: {
+                          phase: "success",
+                          sha: "abc123",
+                        },
+                      },
+                      proposed: {
+                        dry: { sha: "def456" },
+                        hydrated: { sha: "def456" },
+                        commitStatus: {
+                          phase: "pending",
+                          sha: "def456",
+                        },
+                      },
+                    },
+                    {
+                      branch: "dev",
+                      active: {
+                        dry: { sha: "ghi789" },
+                        hydrated: { sha: "ghi789" },
+                        commitStatus: {
+                          phase: "pending",
+                          sha: "ghi789",
+                        },
+                      },
+                      proposed: {
+                        dry: { sha: "jkl012" },
+                        hydrated: { sha: "jkl012" },
+                        commitStatus: {
+                          phase: "pending",
+                          sha: "jkl012",
+                        },
+                      },
+                    },
+                  ],
+                },
+              }}
+          />
         </div>
       </main>
   );

@@ -319,6 +319,65 @@ func (ws *WebServer) Start(ctx context.Context, addr string) error {
 		}
 	})
 
+	router.GET("/get", func(c *gin.Context) {
+		if c.Query("kind") == "" {
+			c.JSON(http.StatusBadRequest, "kind is required")
+			return
+		}
+		if c.Query("namespace") == "" {
+			c.JSON(http.StatusBadRequest, "namespace is required")
+			return
+		}
+		if c.Query("name") == "" {
+			c.JSON(http.StatusBadRequest, "name is required")
+			return
+		}
+		kind := strings.ToLower(c.Query("kind"))
+		namespace := strings.ToLower(c.Query("namespace"))
+		name := strings.ToLower(c.Query("name"))
+
+		switch kind {
+		case "promotionstrategy":
+			ps := &promoterv1alpha1.PromotionStrategy{}
+			err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, ps)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, err.Error())
+				return
+			}
+			c.JSON(http.StatusOK, ps)
+
+		case "changetransferpolicy":
+			ctps := &promoterv1alpha1.ChangeTransferPolicy{}
+			err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, ctps)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, err.Error())
+				return
+			}
+			c.JSON(http.StatusOK, ctps)
+
+		case "pullrequest":
+			pr := &promoterv1alpha1.PullRequest{}
+			err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, pr)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, err.Error())
+				return
+			}
+			c.JSON(http.StatusOK, pr)
+
+		case "commitstatus":
+			cs := &promoterv1alpha1.CommitStatus{}
+			err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, cs)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, err.Error())
+				return
+			}
+			c.JSON(http.StatusOK, cs)
+
+		default:
+			c.JSON(http.StatusBadRequest, "invalid kind")
+		}
+	})
+
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "ok")
 	})

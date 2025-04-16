@@ -12,6 +12,11 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      "/get": {
+        target: "http://localhost:8088",
+        changeOrigin: true,
+        secure: false,
+      },
       "/watch": {
         target: "http://localhost:8088",
         changeOrigin: true,
