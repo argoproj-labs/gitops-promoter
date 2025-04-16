@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/bradleyfalzon/ghinstallation/v2"
+	"github.com/google/go-github/v71/github"
 	v1 "k8s.io/api/core/v1"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/bradleyfalzon/ghinstallation/v2"
-	"github.com/google/go-github/v71/github"
 )
 
 type GitAuthenticationProvider struct {

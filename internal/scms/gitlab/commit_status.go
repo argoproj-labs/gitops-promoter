@@ -4,15 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
+
+	gitlab "gitlab.com/gitlab-org/api/client-go"
+	v1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	v1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 type CommitStatus struct {
@@ -50,12 +52,16 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		Description: gitlab.Ptr(commitStatus.Spec.Description),
 	}
 
+	start := time.Now()
 	glStatus, resp, err := cs.client.Commits.SetCommitStatus(
 		repo.Spec.GitLab.ProjectID,
 		commitStatus.Spec.Sha,
 		commitStatusOptions,
 		gitlab.WithContext(ctx),
 	)
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create status: %w", err)
 	}

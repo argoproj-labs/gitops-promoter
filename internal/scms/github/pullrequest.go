@@ -4,16 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/google/go-github/v71/github"
 	v1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/google/go-github/v71/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 type PullRequest struct {
@@ -50,7 +51,11 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
+	start := time.Now()
 	githubPullRequest, response, err := pr.client.PullRequests.Create(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, newPR)
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to create pull request: %w", err)
 	}
@@ -79,7 +84,11 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 
 	gitRepo, _ := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 
+	start := time.Now()
 	_, response, err := pr.client.PullRequests.Edit(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, newPR)
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
 	if err != nil {
 		return fmt.Errorf("failed to edit pull request: %w", err)
 	}
@@ -111,7 +120,11 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
+	start := time.Now()
 	_, response, err := pr.client.PullRequests.Edit(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber, newPR)
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
 	if err != nil {
 		return fmt.Errorf("failed to close pull request: %w", err)
 	}
@@ -135,6 +148,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	}
 	gitRepo, _ := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 
+	start := time.Now()
 	_, response, err := pr.client.PullRequests.Merge(
 		ctx,
 		gitRepo.Spec.GitHub.Owner,
@@ -145,6 +159,9 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 			MergeMethod:        "merge",
 			DontDefaultIfBlank: false,
 		})
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
 	if err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
@@ -165,10 +182,14 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 
 	gitRepo, _ := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 
+	start := time.Now()
 	pullRequests, response, err := pr.client.PullRequests.List(
 		ctx, gitRepo.Spec.GitHub.Owner,
 		gitRepo.Spec.GitHub.Name,
 		&github.PullRequestListOptions{Base: pullRequest.Spec.TargetBranch, Head: pullRequest.Spec.SourceBranch, State: "open"})
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
 	if err != nil {
 		return false, fmt.Errorf("failed to list pull requests: %w", err)
 	}
