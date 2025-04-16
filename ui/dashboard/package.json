@@ -11,6 +11,7 @@
   "dependencies": {
     "@react-router/node": "^7.5.0",
     "@react-router/serve": "^7.5.0",
+    "gitops-promoter-ui-components": "file:../component-lib",
     "isbot": "^5.1.17",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

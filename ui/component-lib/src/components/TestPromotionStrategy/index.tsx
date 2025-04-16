@@ -39,7 +39,7 @@ interface PromotionStrategy {
     };
 }
 
-export function PromotionStrategiesList() {
+export function PromotionStrategiesListUpdate() {
     const [strategies, setStrategies] = useState<PromotionStrategy[]>([]);
     const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +58,55 @@ export function PromotionStrategiesList() {
         }
 
         fetchStrategies();
+
+        const eventSource = new EventSource("/watch?kind=promotionstrategy");
+
+        // Define event handlers before attaching them
+        eventSource.addEventListener("PromotionStrategy", event => {
+            try {
+                const message = JSON.parse(event.data);
+                console.log("Received SSE message:", message);
+
+                setStrategies((currentStrategies: any[]) => {
+                    // Find if the policy already exists in our list
+                    const index = currentStrategies.findIndex(
+                        (p) =>
+                            p.metadata.name === message.metadata.name &&
+                            p.metadata.namespace === message.metadata.namespace
+                    );
+
+                    // Create a new array to trigger a re-render
+                    const updatedStrategies = [...currentStrategies];
+
+                    // Add or update the policy
+                    if (index >= 0) {
+                        updatedStrategies[index] = message;
+                    } else {
+                        updatedStrategies.push(message);
+                    }
+
+                    return updatedStrategies;
+                });
+            } catch (err: any) {
+                console.error("Error processing SSE message:", err);
+            }
+        });
+
+        // Add error and open handlers to help debug connection issues
+        eventSource.onerror = (error) => {
+            console.error("EventSource error:", error);
+        };
+
+        eventSource.onopen = () => {
+            console.log("EventSource connection opened");
+        };
+
+        // Clean up function to properly close connection when component unmounts
+        return () => {
+            console.log("Closing EventSource connection");
+            eventSource.close();
+        };
+
     }, []);
 
     if (error) {
@@ -83,6 +132,19 @@ export function PromotionStrategiesList() {
                       • {env.branch} {env.autoMerge ? "(Auto Merge)" : ""}<br />
                     </span>
                         ))}
+                        </p>
+                        <p className="text-gray-600">
+                            Status: <br /> {strategy.status?.environments ? strategy.status.environments.map((env, index) => (
+                            <span key={index} className="ml-4">
+                      • {env.branch}:{env.proposed.dry.sha == env.active.dry.sha ? "(closed pr)" : "(open pr)"}  <br/>
+                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;• Active: {env.active.commitStatus.phase} <br/>
+                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;• sha: {env.active.commitStatus.sha} <br/>
+                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;• dry sha: {env.active.dry.sha} <br/>
+                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;• Proposed: {env.proposed.commitStatus.phase} <br/>
+                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;• sha: {env.proposed.commitStatus.sha} <br/>
+                                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;• dry sha: {env.proposed.dry.sha}  <br/><br/>
+                    </span>
+                        )) : 'No status available'}
                         </p>
                     </li>
                 ))}
