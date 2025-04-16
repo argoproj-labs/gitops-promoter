@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v71/github"
@@ -20,17 +19,7 @@ type GitAuthenticationProvider struct {
 }
 
 func NewGithubGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret *v1.Secret) GitAuthenticationProvider {
-	appID, err := strconv.ParseInt(string(secret.Data["appID"]), 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	installationID, err := strconv.ParseInt(string(secret.Data["installationID"]), 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	itr, err := ghinstallation.New(http.DefaultTransport, appID, installationID, secret.Data["privateKey"])
+	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.Spec.GitHub.AppID, scmProvider.Spec.GitHub.InstallationID, secret.Data["privateKey"])
 	if err != nil {
 		panic(err)
 	}
@@ -65,29 +54,19 @@ func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error)
 	return "git", nil
 }
 
-func GetClient(secret v1.Secret, domain string) (*github.Client, error) {
-	appID, err := strconv.ParseInt(string(secret.Data["appID"]), 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse appID: %w", err)
-	}
-
-	installationID, err := strconv.ParseInt(string(secret.Data["installationID"]), 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse installationID: %w", err)
-	}
-
-	itr, err := ghinstallation.New(http.DefaultTransport, appID, installationID, secret.Data["privateKey"])
+func GetClient(scmProvider *v1alpha1.ScmProvider, secret v1.Secret) (*github.Client, error) {
+	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.Spec.GitHub.AppID, scmProvider.Spec.GitHub.InstallationID, secret.Data["privateKey"])
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GitHub installation transport: %w", err)
 	}
 
 	var client *github.Client
-	if domain == "" {
+	if scmProvider.Spec.GitHub.Domain == "" {
 		client = github.NewClient(&http.Client{Transport: itr})
 	} else {
-		baseURL := fmt.Sprintf("https://%s/api/v3", domain)
+		baseURL := fmt.Sprintf("https://%s/api/v3", scmProvider.Spec.GitHub.Domain)
 		itr.BaseURL = baseURL
-		uploadsURL := fmt.Sprintf("https://%s/api/uploads", domain)
+		uploadsURL := fmt.Sprintf("https://%s/api/uploads", scmProvider.Spec.GitHub.Domain)
 		client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseURL, uploadsURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
