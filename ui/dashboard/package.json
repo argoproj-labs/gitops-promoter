@@ -12,10 +12,12 @@
     "@react-router/node": "^7.5.0",
     "@react-router/serve": "^7.5.0",
     "gitops-promoter-ui-components": "file:../component-lib",
+    "immer": "^10.1.1",
     "isbot": "^5.1.17",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router": "^7.5.0"
+    "react-router": "^7.5.0",
+    "zustand": "^5.0.3"
   },
   "devDependencies": {
     "@react-router/dev": "^7.5.0",
