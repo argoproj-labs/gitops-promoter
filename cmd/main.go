@@ -19,11 +19,12 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"github.com/spf13/pflag"
-	"go.uber.org/zap/zapcore"
 	"os"
 	"runtime/debug"
 	"syscall"
+
+	"github.com/spf13/pflag"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
