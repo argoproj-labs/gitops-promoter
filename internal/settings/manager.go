@@ -3,6 +3,7 @@ package settings
 import (
 	"context"
 	"fmt"
+	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -10,6 +11,9 @@ import (
 
 const (
 	ControllerConfigurationName = "promoter-controller-configuration"
+
+	defaultPromotionStrategyRequeueDuration    = "5m"
+	defaultChangeTransferPolicyRequeueDuration = "5m"
 )
 
 type ManagerConfig struct {
@@ -28,6 +32,42 @@ func (m *Manager) GetControllerConfiguration(ctx context.Context) (*promoterv1al
 	}
 
 	return controllerConfiguration, nil
+}
+
+func (m *Manager) GetPromotionStrategyRequeueDuration(ctx context.Context) (time.Duration, error) {
+	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
+	if err != nil {
+		return time.Duration(0), fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	if controllerConfiguration.Spec.PromotionStrategyRequeueDuration == "" {
+		controllerConfiguration.Spec.PromotionStrategyRequeueDuration = defaultPromotionStrategyRequeueDuration
+	}
+
+	duration, err := time.ParseDuration(controllerConfiguration.Spec.PromotionStrategyRequeueDuration)
+	if err != nil {
+		return time.Duration(0), fmt.Errorf("failed to parse requeue duration: %w", err)
+	}
+
+	return duration, nil
+}
+
+func (m *Manager) GetChangeTransferPolicyRequeueDuration(ctx context.Context) (time.Duration, error) {
+	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
+	if err != nil {
+		return time.Duration(0), fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	if controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration == "" {
+		controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration = defaultChangeTransferPolicyRequeueDuration
+	}
+
+	duration, err := time.ParseDuration(controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration)
+	if err != nil {
+		return time.Duration(0), fmt.Errorf("failed to parse change transfer policy requeue duration: %w", err)
+	}
+
+	return duration, nil
 }
 
 func NewManager(client client.Client, config ManagerConfig) *Manager {

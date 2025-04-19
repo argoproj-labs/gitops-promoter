@@ -55,7 +55,6 @@ type ChangeTransferPolicyReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
 	Recorder    record.EventRecorder
-	Config      ChangeTransferPolicyReconcilerConfig
 	SettingsMgr *settings.Manager
 }
 
@@ -132,9 +131,15 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	logger.Info("Reconciling ChangeTransferPolicy End", "duration", time.Since(startTime))
+
+	requeueDuration, err := r.SettingsMgr.GetChangeTransferPolicyRequeueDuration(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
+	}
+
 	return ctrl.Result{
 		Requeue:      true,
-		RequeueAfter: r.Config.RequeueDuration,
+		RequeueAfter: requeueDuration,
 	}, nil
 }
 

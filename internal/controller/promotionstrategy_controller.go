@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"reflect"
 	"slices"
 	"time"
@@ -41,16 +42,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type PromotionStrategyReconcilerConfig struct {
-	RequeueDuration time.Duration
-}
-
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
-	Config   PromotionStrategyReconcilerConfig
+	Scheme      *runtime.Scheme
+	Recorder    record.EventRecorder
+	SettingsMgr *settings.Manager
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
@@ -110,9 +107,14 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	logger.Info("Reconciling PromotionStrategy End", "duration", time.Since(startTime))
 
+	requeueDuration, err := r.SettingsMgr.GetPromotionStrategyRequeueDuration(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for PromotionStrategy %q: %w", ps.Name, err)
+	}
+
 	return ctrl.Result{
 		Requeue:      true,
-		RequeueAfter: r.Config.RequeueDuration,
+		RequeueAfter: requeueDuration,
 	}, nil
 }
 
