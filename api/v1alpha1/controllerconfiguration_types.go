@@ -26,6 +26,16 @@ import (
 // ControllerConfigurationSpec defines the desired state of ControllerConfiguration.
 type ControllerConfigurationSpec struct {
 	PullRequest PullRequestConfiguration `json:"pullRequest,omitempty"`
+
+	// How frequently to requeue promotion strategy resources for auto reconciliation. Default: "5m".
+	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
+	// +optional
+	PromotionStrategyRequeueDuration string `json:"promotionStrategyRequeueDuration,omitempty"`
+
+	// How frequently to requeue proposed commit resources for auto reconciliation. Default: "5m".
+	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
+	// +optional
+	ChangeTransferPolicyRequeueDuration string `json:"changeTransferPolicyRequeueDuration,omitempty"`
 }
 
 type PullRequestConfiguration struct {

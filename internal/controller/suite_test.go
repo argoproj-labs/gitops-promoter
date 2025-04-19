@@ -161,12 +161,10 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&PromotionStrategyReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("PromotionStrategy"),
-		Config: PromotionStrategyReconcilerConfig{
-			RequeueDuration: 300 * time.Second,
-		},
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorderFor("PromotionStrategy"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -175,9 +173,6 @@ var _ = BeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
-		Config: ChangeTransferPolicyReconcilerConfig{
-			RequeueDuration: 300 * time.Second,
-		},
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
