@@ -38,20 +38,6 @@ type ControllerConfigurationSpec struct {
 	ChangeTransferPolicyRequeueDuration string `json:"changeTransferPolicyRequeueDuration,omitempty"`
 }
 
-type MetricsConfig struct {
-	// The address the metric endpoint binds to. Default: ":9080".
-	// +optional
-	Address string `json:"metricsBindAddress,omitempty"`
-
-	// If set, the metrics endpoint is served securely. Default: false.
-	// +optional
-	Secure bool `json:"metricsSecure,omitempty"`
-
-	// If set, HTTP/2 will be enabled for the metrics and webhook servers. Default: false.
-	// +optional
-	EnableHTTP2 bool `json:"enableHttp2,omitempty"`
-}
-
 type PullRequestConfiguration struct {
 	Template PullRequestTemplate `json:"template,omitempty"`
 }
