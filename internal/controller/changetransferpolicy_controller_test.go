@@ -281,9 +281,94 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(t).Should(BeTemporally("~", time.Now(), 3*time.Second))
 			}, EventuallyTimeout).Should(Succeed())
 		})
+
+		// Happens if the active branch does not have a hydrator.metadata such as when the branch was just created
+		It("should successfully reconcile the resource - with unknown dry sha", func() {
+			name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy := changeTransferPolicyResources(ctx, "ctp-without-dry-sha", "default")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default", // TODO(user):Modify as needed
+			}
+
+			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
+			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
+			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Adding a pending commit")
+			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+
+			By("Reconciling the created resource")
+
+			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
+			Eventually(func(g Gomega) {
+				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+				g.Expect(err).To(Succeed())
+				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
+				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).ToNot(Equal(""))
+				g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).ToNot(Equal(""))
+			}, EventuallyTimeout).Should(Succeed())
+
+			var pr promoterv1alpha1.PullRequest
+			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+			Eventually(func(g Gomega) {
+				typeNamespacedNamePR := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, prName),
+					Namespace: "default",
+				}
+				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
+				g.Expect(err).To(Succeed())
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
+			}, EventuallyTimeout).Should(Succeed())
+
+			By("Adding another pending commit")
+			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+
+			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, prName),
+					Namespace: "default",
+				}, &pr)
+				g.Expect(err).To(Succeed())
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
+			}, EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+				Expect(err).To(Succeed())
+				// We now have a PR so we can set it to true and then check that it gets merged
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
+				err = k8sClient.Update(ctx, changeTransferPolicy)
+				g.Expect(err).To(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				typeNamespacedNamePR := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, prName),
+					Namespace: "default",
+				}
+				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, EventuallyTimeout).Should(Succeed())
+		})
 	})
 })
 
+//nolint:unparam
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 	setupInitialTestGitRepoOnServer(name, name)
