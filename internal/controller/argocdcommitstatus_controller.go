@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"reflect"
 	"strconv"
 	"strings"
@@ -61,7 +62,8 @@ type aggregate struct {
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme      *runtime.Scheme
+	SettingsMgr *settings.Manager
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -142,7 +144,12 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status: %w", err)
 	}
 
-	return ctrl.Result{RequeueAfter: 15 * time.Second}, nil // Timer for now :(
+	requeueDuration, err := r.SettingsMgr.GetArgoCDCommitStatusRequeueDuration(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDCommitStatus requeue duration: %w", err)
+	}
+
+	return ctrl.Result{RequeueAfter: requeueDuration}, nil // Timer for now :(
 }
 
 // groupArgoCDApplicationsWithPhase returns a map. The key is a branch name. The value is a list of apps configured for that target branch, along with the commit status for that one app.

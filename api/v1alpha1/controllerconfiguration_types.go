@@ -36,6 +36,11 @@ type ControllerConfigurationSpec struct {
 	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
 	// +optional
 	ChangeTransferPolicyRequeueDuration string `json:"changeTransferPolicyRequeueDuration,omitempty"`
+
+	// How frequently to requeue commit status resources for auto reconciliation. Default: "15s".
+	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
+	// +optional
+	ArgoCDCommitStatusRequeueDuration string `json:"argocdCommitStatusRequeueDuration,omitempty"`
 }
 
 type PullRequestConfiguration struct {

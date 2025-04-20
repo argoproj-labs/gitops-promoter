@@ -14,6 +14,7 @@ const (
 
 	defaultPromotionStrategyRequeueDuration    = "5m"
 	defaultChangeTransferPolicyRequeueDuration = "5m"
+	defaultArgoCDCommitStatusRequeueDuration   = "15s"
 )
 
 type ManagerConfig struct {
@@ -65,6 +66,24 @@ func (m *Manager) GetChangeTransferPolicyRequeueDuration(ctx context.Context) (t
 	duration, err := time.ParseDuration(controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration)
 	if err != nil {
 		return time.Duration(0), fmt.Errorf("failed to parse change transfer policy requeue duration: %w", err)
+	}
+
+	return duration, nil
+}
+
+func (m *Manager) GetArgoCDCommitStatusRequeueDuration(ctx context.Context) (time.Duration, error) {
+	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
+	if err != nil {
+		return time.Duration(0), fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	if controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration == "" {
+		controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration = defaultArgoCDCommitStatusRequeueDuration
+	}
+
+	duration, err := time.ParseDuration(controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration)
+	if err != nil {
+		return time.Duration(0), fmt.Errorf("failed to parse ArgoCD commit status requeue duration: %w", err)
 	}
 
 	return duration, nil
