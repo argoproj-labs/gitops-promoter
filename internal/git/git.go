@@ -10,16 +10,18 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-
-	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
+	"time"
 
 	"github.com/relvacode/iso8601"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 )
 
 type GitOperations struct {
@@ -63,13 +65,16 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 	}
 
 	logger := log.FromContext(ctx)
+
 	path, err := os.MkdirTemp("", "*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
 	logger.V(4).Info("Created directory", "directory", path)
 
+	start := time.Now()
 	stdout, stderr, err := g.runCmd(ctx, path, "clone", "--verbose", "--progress", "--filter=blob:none", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), path)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationClone, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "Cloned repo failed", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), "stdout", stdout, "stderr", stderr)
 		return err
@@ -119,7 +124,9 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (Branc
 	}
 	logger.V(4).Info("Checked out branch", "branch", branch)
 
+	start := time.Now()
 	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "pull", "--progress")
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not git pull", "gitError", stderr)
 		return BranchShas{}, err
@@ -189,7 +196,9 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
+	start := time.Now()
 	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "fetch", "origin")
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not fetch origin", "gitError", stderr)
 		return err
@@ -210,14 +219,18 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 	// }
 	// logger.V(4).Info("Pulled branch", "branch", environmentBranch)
 
+	start = time.Now()
 	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "pull", "--progress", "origin", environmentNextBranch)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not git pull", "gitError", stderr)
 		return err
 	}
 	logger.V(4).Info("Pulled branch", "branch", environmentNextBranch)
 
+	start = time.Now()
 	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "push", "--progress", "origin", environmentBranch)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPush, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not git pull", "gitError", stderr)
 		return err
@@ -245,7 +258,9 @@ func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNe
 	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
 
 	// Fetch the next environment branch
+	start := time.Now()
 	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "fetch", "origin", environmentNextBranch)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not fetch branch", "gitError", stderr)
 		return false, err
@@ -275,8 +290,10 @@ func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNe
 func (g *GitOperations) LsRemote(ctx context.Context, branch string) (string, error) {
 	logger := log.FromContext(ctx)
 
+	start := time.Now()
 	stdout, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext),
 		"ls-remote", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), branch)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationLsRemote, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not git ls-remote", "gitError", stderr)
 		return "", err
