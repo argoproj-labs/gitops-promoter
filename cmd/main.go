@@ -22,7 +22,6 @@ import (
 	"os"
 	"runtime/debug"
 	"syscall"
-	"time"
 
 	"github.com/spf13/pflag"
 	"go.uber.org/zap/zapcore"
@@ -68,8 +67,6 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	var promotionStrategyRequeue string
-	var changeTransferPolicyRequeue string
 	var clientConfig clientcmd.ClientConfig
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
@@ -80,10 +77,6 @@ func main() {
 		"If set the metrics endpoint is served securely")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&promotionStrategyRequeue, "promotion-strategy-requeue-duration", "300s",
-		"How frequently to requeue promotion strategy resources for auto reconciliation")
-	flag.StringVar(&changeTransferPolicyRequeue, "change-transfer-policy-requeue-duration", "300s",
-		"How frequently to requeue proposed commit resources for auto reconciliation")
 	opts := zap.Options{
 		Development: true,
 		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
@@ -183,17 +176,11 @@ func main() {
 		panic("unable to create RevertCommit controller")
 	}
 
-	promotionStrategyRequeueDuration, err := time.ParseDuration(promotionStrategyRequeue)
-	if err != nil {
-		panic("failed to parse promotion strategy requeue duration")
-	}
 	if err = (&controller.PromotionStrategyReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("PromotionStrategy"),
-		Config: controller.PromotionStrategyReconcilerConfig{
-			RequeueDuration: promotionStrategyRequeueDuration,
-		},
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Recorder:    mgr.GetEventRecorderFor("PromotionStrategy"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create PromotionStrategy controller")
 	}
@@ -211,7 +198,6 @@ func main() {
 		panic("unable to create GitRepository controller")
 	}
 
-	ctpRequeueDuration, err := time.ParseDuration(changeTransferPolicyRequeue)
 	if err != nil {
 		panic("failed to parse proposed commit requeue duration")
 	}
@@ -220,15 +206,13 @@ func main() {
 		Scheme:      mgr.GetScheme(),
 		Recorder:    mgr.GetEventRecorderFor("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
-		Config: controller.ChangeTransferPolicyReconcilerConfig{
-			RequeueDuration: ctpRequeueDuration,
-		},
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ChangeTransferPolicy controller")
 	}
 	if err = (&controller.ArgoCDCommitStatusReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ArgoCDCommitStatus controller")
 	}

@@ -483,6 +483,21 @@ spec:
             description: ControllerConfigurationSpec defines the desired state of
               ControllerConfiguration.
             properties:
+              argocdCommitStatusRequeueDuration:
+                description: |-
+                  How frequently to requeue commit status resources for auto reconciliation. Default: "15s".
+                  Format is go's time.Duration, e.g. "5m" for 5 minutes.
+                type: string
+              changeTransferPolicyRequeueDuration:
+                description: |-
+                  How frequently to requeue proposed commit resources for auto reconciliation. Default: "5m".
+                  Format is go's time.Duration, e.g. "5m" for 5 minutes.
+                type: string
+              promotionStrategyRequeueDuration:
+                description: |-
+                  How frequently to requeue promotion strategy resources for auto reconciliation. Default: "5m".
+                  Format is go's time.Duration, e.g. "5m" for 5 minutes.
+                type: string
               pullRequest:
                 properties:
                   template:
