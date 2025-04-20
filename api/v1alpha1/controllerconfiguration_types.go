@@ -30,17 +30,17 @@ type ControllerConfigurationSpec struct {
 	// How frequently to requeue promotion strategy resources for auto reconciliation. Default: "5m".
 	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
 	// +optional
-	PromotionStrategyRequeueDuration string `json:"promotionStrategyRequeueDuration,omitempty"`
+	PromotionStrategyRequeueDuration *metav1.Duration `json:"promotionStrategyRequeueDuration,omitempty"`
 
 	// How frequently to requeue proposed commit resources for auto reconciliation. Default: "5m".
 	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
 	// +optional
-	ChangeTransferPolicyRequeueDuration string `json:"changeTransferPolicyRequeueDuration,omitempty"`
+	ChangeTransferPolicyRequeueDuration *metav1.Duration `json:"changeTransferPolicyRequeueDuration,omitempty"`
 
 	// How frequently to requeue commit status resources for auto reconciliation. Default: "15s".
 	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
 	// +optional
-	ArgoCDCommitStatusRequeueDuration string `json:"argocdCommitStatusRequeueDuration,omitempty"`
+	ArgoCDCommitStatusRequeueDuration *metav1.Duration `json:"argocdCommitStatusRequeueDuration,omitempty"`
 }
 
 type PullRequestConfiguration struct {

@@ -12,9 +12,9 @@ import (
 const (
 	ControllerConfigurationName = "promoter-controller-configuration"
 
-	defaultPromotionStrategyRequeueDuration    = "5m"
-	defaultChangeTransferPolicyRequeueDuration = "5m"
-	defaultArgoCDCommitStatusRequeueDuration   = "15s"
+	defaultPromotionStrategyRequeueDuration    = 5 * time.Minute
+	defaultChangeTransferPolicyRequeueDuration = 5 * time.Minute
+	defaultArgoCDCommitStatusRequeueDuration   = 15 * time.Second
 )
 
 type ManagerConfig struct {
@@ -41,16 +41,11 @@ func (m *Manager) GetPromotionStrategyRequeueDuration(ctx context.Context) (time
 		return time.Duration(0), fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 
-	if controllerConfiguration.Spec.PromotionStrategyRequeueDuration == "" {
-		controllerConfiguration.Spec.PromotionStrategyRequeueDuration = defaultPromotionStrategyRequeueDuration
+	if controllerConfiguration.Spec.PromotionStrategyRequeueDuration == nil {
+		return defaultPromotionStrategyRequeueDuration, nil
 	}
 
-	duration, err := time.ParseDuration(controllerConfiguration.Spec.PromotionStrategyRequeueDuration)
-	if err != nil {
-		return time.Duration(0), fmt.Errorf("failed to parse requeue duration: %w", err)
-	}
-
-	return duration, nil
+	return controllerConfiguration.Spec.PromotionStrategyRequeueDuration.Duration, nil
 }
 
 func (m *Manager) GetChangeTransferPolicyRequeueDuration(ctx context.Context) (time.Duration, error) {
@@ -59,16 +54,11 @@ func (m *Manager) GetChangeTransferPolicyRequeueDuration(ctx context.Context) (t
 		return time.Duration(0), fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 
-	if controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration == "" {
-		controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration = defaultChangeTransferPolicyRequeueDuration
+	if controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration == nil {
+		return defaultChangeTransferPolicyRequeueDuration, nil
 	}
 
-	duration, err := time.ParseDuration(controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration)
-	if err != nil {
-		return time.Duration(0), fmt.Errorf("failed to parse change transfer policy requeue duration: %w", err)
-	}
-
-	return duration, nil
+	return controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration.Duration, nil
 }
 
 func (m *Manager) GetArgoCDCommitStatusRequeueDuration(ctx context.Context) (time.Duration, error) {
@@ -77,16 +67,11 @@ func (m *Manager) GetArgoCDCommitStatusRequeueDuration(ctx context.Context) (tim
 		return time.Duration(0), fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 
-	if controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration == "" {
-		controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration = defaultArgoCDCommitStatusRequeueDuration
+	if controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration == nil {
+		return defaultArgoCDCommitStatusRequeueDuration, nil
 	}
 
-	duration, err := time.ParseDuration(controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration)
-	if err != nil {
-		return time.Duration(0), fmt.Errorf("failed to parse ArgoCD commit status requeue duration: %w", err)
-	}
-
-	return duration, nil
+	return controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration.Duration, nil
 }
 
 func NewManager(client client.Client, config ManagerConfig) *Manager {
