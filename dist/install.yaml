@@ -1555,7 +1555,7 @@ spec:
       containers:
       - args:
         - --secure-listen-address=0.0.0.0:8443
-        - --upstream=http://127.0.0.1:8080/
+        - --upstream=http://127.0.0.1:9080/
         - --logtostderr=true
         - --v=0
         image: quay.io/brancz/kube-rbac-proxy:v0.17.0
