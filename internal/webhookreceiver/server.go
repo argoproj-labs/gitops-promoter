@@ -76,8 +76,8 @@ func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	ctp, err := wr.findChangeTransferPolicy(r.Context(), jsonBytes)
 	if err != nil {
-		logger.Info("could not find any matching ChangeTransferPolicies", "error", err)
-		http.Error(w, "could not find any matching ChangeTransferPolicies", http.StatusInternalServerError)
+		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	if ctp == nil {
