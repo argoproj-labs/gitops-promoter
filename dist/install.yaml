@@ -1324,6 +1324,14 @@ rules:
   - list
   - watch
 - apiGroups:
+  - argoproj.io
+  resources:
+  - applications
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - promoter.argoproj.io
   resources:
   - argocdcommitstatuses
