@@ -13,6 +13,12 @@ rules:
   - list
   - watch
 - apiGroups:
+  - applications.argoproj.io
+  resources:
+  - applications
+  verbs:
+  - list
+- apiGroups:
   - promoter.argoproj.io
   resources:
   - argocdcommitstatuses
