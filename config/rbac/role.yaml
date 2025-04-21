@@ -13,7 +13,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - applications.argoproj.io
+  - argoproj.io
   resources:
   - applications
   verbs:
