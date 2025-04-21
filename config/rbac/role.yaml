@@ -17,7 +17,9 @@ rules:
   resources:
   - applications
   verbs:
+  - get
   - list
+  - watch
 - apiGroups:
   - promoter.argoproj.io
   resources:
