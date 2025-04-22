@@ -76,8 +76,8 @@ func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	ctp, err := wr.findChangeTransferPolicy(r.Context(), jsonBytes)
 	if err != nil {
-		logger.Info("could not find any matching ChangeTransferPolicies", "error", err)
-		http.Error(w, "could not find any matching ChangeTransferPolicies", http.StatusInternalServerError)
+		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	if ctp == nil {
@@ -94,6 +94,8 @@ func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not cause reconcile of ChangeTransferPolicy", http.StatusInternalServerError)
 	}
 	logger.Info("Triggered reconcile via webhook", "ChangeTransferPolicy", ctp.Namespace+"/"+ctp.Name)
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (wr *webhookReceiver) findChangeTransferPolicy(ctx context.Context, jsonBytes []byte) (*promoterv1alpha1.ChangeTransferPolicy, error) {

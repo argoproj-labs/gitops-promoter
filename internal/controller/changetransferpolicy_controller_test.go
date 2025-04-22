@@ -267,7 +267,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			client := &http.Client{}
 			resp, err := client.Do(req)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(200))
+			Expect(resp.StatusCode).To(Equal(204))
 			err = resp.Body.Close()
 			Expect(err).To(Succeed())
 
