@@ -399,7 +399,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 				"branch", environment.Branch,
 				"activeChecksPassed", activeChecksPassed,
 				"sha", previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha,
-				"time", previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time),
+				"time", previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time) || previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: environmentStatus.Active.Dry.CommitTime.Time}),
 				"phase", previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess))
 		}
 
