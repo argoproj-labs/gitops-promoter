@@ -18,9 +18,7 @@ const (
 	defaultArgoCDCommitStatusRequeueDuration   = 15 * time.Second
 )
 
-var (
-	defaultWebhookMaxPayloadSize = resource.MustParse("25Mi")
-)
+var defaultWebhookMaxPayloadSize = resource.MustParse("25Mi")
 
 type ManagerConfig struct {
 	GlobalNamespace string

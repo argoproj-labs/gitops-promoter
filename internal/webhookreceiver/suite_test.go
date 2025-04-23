@@ -77,7 +77,6 @@ var _ = BeforeSuite(func() {
 	Expect(k8sClient).NotTo(BeNil())
 
 	var ctx context.Context
-	//nolint:fatcontext
 	ctx, cancel = context.WithCancel(context.Background())
 	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
