@@ -390,7 +390,8 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		activeChecksPassed := previousEnvironmentStatus != nil &&
 			previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
 			previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha &&
-			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
+			(previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time) ||
+				previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{environmentStatus.Active.Dry.CommitTime.Time}))
 
 		if previousEnvironmentStatus != nil {
 			logger.Info(
@@ -401,6 +402,10 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 				"time", previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time),
 				"phase", previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess))
 		}
+
+		// TODO: we should add some error stats instead of only defaulting to pending, one such example is if this
+		// is false `previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)` it should
+		// be an error and not pending.
 		commitStatusPhase := promoterv1alpha1.CommitPhasePending
 		if environmentIndex == 0 || activeChecksPassed {
 			logger.V(4).Info("Checks passed, setting previous environment check to success", "branch", environment.Branch)
