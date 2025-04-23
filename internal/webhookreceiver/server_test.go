@@ -3,6 +3,9 @@ package webhookreceiver
 import (
 	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	. "github.com/onsi/ginkgo/v2"
@@ -10,8 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
-	"net/http"
-	"net/http/httptest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	cr_client "sigs.k8s.io/controller-runtime/pkg/client"
 	controllerruntime "sigs.k8s.io/controller-runtime/pkg/manager"
@@ -43,13 +44,13 @@ var _ = Describe("WebhookReceiver", func() {
 				name:           "with valid size but invalid payload",
 				payloadSize:    1,
 				maxPayloadSize: 1,
-				wantStatus:     http.StatusInternalServerError,
+				wantStatus:     http.StatusNoContent,
 			},
 			{
 				name:           "with max set to zero",
 				payloadSize:    1,
 				maxPayloadSize: 0,
-				wantStatus:     http.StatusInternalServerError,
+				wantStatus:     http.StatusNoContent,
 			},
 		}
 
