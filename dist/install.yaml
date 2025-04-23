@@ -1654,4 +1654,4 @@ spec:
       title: Promote {{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to
         `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`
   webhook:
-    maxPayloadSizeBytes: 26214400
+    maxPayloadSize: 26214400
