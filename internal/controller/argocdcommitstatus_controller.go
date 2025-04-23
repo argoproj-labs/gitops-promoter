@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -132,7 +133,14 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha, mostRecentLastTransitionTime)
 
-		err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
+		var apps []*argocd.ArgoCDApplication
+		for _, s := range appsInEnvironment {
+			if s.application != nil {
+				apps = append(apps, s.application)
+			}
+		}
+
+		err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc, apps)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -308,7 +316,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	return nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) error {
+func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string, apps []*argocd.ArgoCDApplication) error {
 	logger := log.FromContext(ctx)
 
 	commitStatusName := targetBranch + "/health"
@@ -323,6 +331,17 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	kind := reflect.TypeOf(promoterv1alpha1.ArgoCDCommitStatus{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 	controllerRef := metav1.NewControllerRef(&argoCDCommitStatus, gvk)
+
+	sw := &strings.Builder{}
+	t, err := template.New("url").Parse(argoCDCommitStatus.Spec.URLTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL template: %w", err)
+	}
+	err = t.Execute(sw, map[string]any{"apps": apps})
+	if err != nil {
+		return fmt.Errorf("failed to execute URL template: %w", err)
+	}
+	url := sw.String()
 
 	desiredCommitStatus := promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
@@ -339,7 +358,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			Name:                commitStatusName,
 			Description:         desc,
 			Phase:               phase,
-			// Url:                 "https://example.com",
+			Url:                 url,
 		},
 	}
 
