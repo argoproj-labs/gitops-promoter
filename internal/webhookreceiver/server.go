@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"io"
 	"net/http"
 	"time"
@@ -21,30 +22,19 @@ import (
 var logger = ctrl.Log.WithName("webhookReceiver")
 
 type webhookReceiver struct {
-	mgr                        controllerruntime.Manager
-	k8sClient                  client.Client
-	maxWebhookPayloadSizeBytes uint32
+	mgr         controllerruntime.Manager
+	k8sClient   client.Client
+	settingsMgr *settings.Manager
 }
 
-type Option func(*webhookReceiver)
-
-func NewWebhookReceiver(mgr controllerruntime.Manager, opts ...Option) webhookReceiver {
+func NewWebhookReceiver(mgr controllerruntime.Manager, settingsMgr *settings.Manager) webhookReceiver {
 	wr := webhookReceiver{
-		mgr:       mgr,
-		k8sClient: mgr.GetClient(),
-	}
-
-	for _, opt := range opts {
-		opt(&wr)
+		mgr:         mgr,
+		k8sClient:   mgr.GetClient(),
+		settingsMgr: settingsMgr,
 	}
 
 	return wr
-}
-
-func WithMaxPayloadSize(size uint32) Option {
-	return func(wr *webhookReceiver) {
-		wr.maxWebhookPayloadSizeBytes = size
-	}
 }
 
 func (wr *webhookReceiver) Start(ctx context.Context, addr string) error {
@@ -82,8 +72,14 @@ func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "must be a POST request", http.StatusMethodNotAllowed)
 		return
 	}
-	if wr.maxWebhookPayloadSizeBytes != 0 {
-		r.Body = http.MaxBytesReader(w, r.Body, int64(wr.maxWebhookPayloadSizeBytes))
+	maxWebhookPayloadSize, err := wr.settingsMgr.GetWebhookMaxPayloadSize(r.Context())
+	if err != nil {
+		logger.Error(err, "failed to get webhook max payload size from settings manager")
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !maxWebhookPayloadSize.IsZero() {
+		r.Body = http.MaxBytesReader(w, r.Body, maxWebhookPayloadSize.Value())
 	}
 	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {

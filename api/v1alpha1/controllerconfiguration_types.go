@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -59,10 +60,9 @@ type PullRequestTemplate struct {
 
 type WebhookConfiguration struct {
 	// Maximum allowed payload size in bytes.
-	// The default value is 26214400 (25 MB).
+	// The default value is 25Mi.
 	// Set to 0 for no limit on the payload size.
-	// +kubebuilder:default=26214400
-	MaxPayloadSizeBytes uint32 `json:"maxPayloadSizeBytes,omitempty"`
+	MaxPayloadSize *resource.Quantity `json:"maxPayloadSize,omitempty"`
 }
 
 // ControllerConfigurationStatus defines the observed state of ControllerConfiguration.

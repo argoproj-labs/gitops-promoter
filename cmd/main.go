@@ -245,7 +245,7 @@ func main() {
 
 	whr := webhookreceiver.NewWebhookReceiver(
 		mgr,
-		webhookreceiver.WithMaxPayloadSize(controllerConfiguration.Spec.Webhook.MaxPayloadSizeBytes),
+		settingsMgr,
 	)
 	go func() {
 		err = whr.Start(processSignals, ":3333")

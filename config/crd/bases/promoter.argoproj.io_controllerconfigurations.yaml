@@ -74,14 +74,16 @@ spec:
                 type: object
               webhook:
                 properties:
-                  maxPayloadSizeBytes:
-                    default: 26214400
+                  maxPayloadSize:
+                    anyOf:
+                    - type: integer
+                    - type: string
                     description: |-
                       Maximum allowed payload size in bytes.
-                      The default value is 26214400 (25 MB).
+                      The default value is 25Mi.
                       Set to 0 for no limit on the payload size.
-                    format: int32
-                    type: integer
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
                 type: object
             type: object
           status:
