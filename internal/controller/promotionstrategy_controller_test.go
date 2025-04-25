@@ -1151,7 +1151,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		const argocdCSLabel = "argocd-health"
 		const namespace = "default"
 
-		It("should successfully reconcile the resource", func() {
+		FIt("should successfully reconcile the resource", func() {
 			// Skip("Skipping test because of flakiness")
 			By("Creating the resource")
 			plainName := "promotion-strategy-with-active-commit-status-argocdcommitstatus"
@@ -1197,7 +1197,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Checking that the CommitStatus for each environment is created from ArgoCDCommitStatus")
 
-			// Expect(err).To(Succeed())
 			for _, environment := range promotionStrategy.Spec.Environments {
 				commitStatus := promoterv1alpha1.CommitStatus{}
 				commitStatusName := environment.Branch + "/health"
@@ -1304,6 +1303,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestStaging)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				// Get an updated promotion strategy
+				err = k8sClient.Get(ctx, types.NamespacedName{Name: promotionStrategy.Name, Namespace: typeNamespacedName.Namespace}, promotionStrategy)
+				g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{

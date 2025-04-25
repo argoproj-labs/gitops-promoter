@@ -377,9 +377,9 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 	// currently processing environments proposed dry sha.
 	// We then look at the status of the current environment and if all checks have passed and the environment is set to auto merge, we merge the pull request.
 	for _, environment := range ps.Spec.Environments {
-		previousEnvironmentIndex, previousEnvironmentStatus := utils.GetPreviousEnvironmentStatusByBranch(*ps, environment.Branch)
-		environmentIndex, environmentStatus := utils.GetEnvironmentStatusByBranch(*ps, environment.Branch)
-		if environmentStatus == nil {
+		previousEnvironmentIndex, previousEnvironmentPsStatus := utils.GetPreviousEnvironmentStatusByBranch(*ps, environment.Branch)
+		environmentIndex, environmentPsStatus := utils.GetEnvironmentStatusByBranch(*ps, environment.Branch)
+		if environmentPsStatus == nil {
 			return fmt.Errorf("EnvironmentStatus not found for branch %s", environment.Branch)
 		}
 
@@ -387,24 +387,26 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while merging pull requests", environment.Branch)
 		}
 
-		activeChecksPassed := previousEnvironmentStatus != nil &&
-			previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
-			previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha &&
-			(previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time) ||
-				previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: environmentStatus.Active.Dry.CommitTime.Time}))
+		activeChecksPassed := previousEnvironmentPsStatus != nil &&
+			previousEnvironmentPsStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
+			previousEnvironmentPsStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha &&
+			(previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time) ||
+				previousEnvironmentPsStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: environmentPsStatus.Active.Dry.CommitTime.Time}))
 
-		if previousEnvironmentStatus != nil {
+		if previousEnvironmentPsStatus != nil {
 			logger.Info(
 				"Previous environment status",
 				"branch", environment.Branch,
 				"activeChecksPassed", activeChecksPassed,
-				"sha", previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha,
-				"time", previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time) || previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: environmentStatus.Active.Dry.CommitTime.Time}),
-				"phase", previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess))
+				"sha", previousEnvironmentPsStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha,
+				"time", previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time),
+				//"time", previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time) || previousEnvironmentPsStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: environmentPsStatus.Active.Dry.CommitTime.Time}),
+				"phase", previousEnvironmentPsStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess))
 		}
+		//"time", previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time) || previousEnvironmentPsStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: environmentPsStatus.Active.Dry.CommitTime.Time}),
 
 		// TODO: we should add some error stats instead of only defaulting to pending, one such example is if this
-		// is false `previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)` it should
+		// is false `previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time)` it should
 		// be an error and not pending.
 		commitStatusPhase := promoterv1alpha1.CommitPhasePending
 		if environmentIndex == 0 || activeChecksPassed {
@@ -415,7 +417,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
 			// Since there is at least one configured active check, and since this is not the first environment,
 			// we should not create a commit status for the previous environment.
-			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus, ctpMap[ps.Spec.Environments[previousEnvironmentIndex].Branch].Status.Active.CommitStatuses)
+			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentPsStatus, ctpMap[ps.Spec.Environments[previousEnvironmentIndex].Branch].Status.Active.CommitStatuses)
 			if err != nil {
 				return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", environment.Branch, err)
 			}
