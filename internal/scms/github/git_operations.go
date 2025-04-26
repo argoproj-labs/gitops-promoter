@@ -12,6 +12,11 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+const (
+	// githubAppPrivateKeySecretKey is the key in the secret that contains the private key for the GitHub App.
+	githubAppPrivateKeySecretKey = "githubAppPrivateKey"
+)
+
 type GitAuthenticationProvider struct {
 	scmProvider *v1alpha1.ScmProvider
 	secret      *v1.Secret
@@ -19,7 +24,7 @@ type GitAuthenticationProvider struct {
 }
 
 func NewGithubGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret *v1.Secret) GitAuthenticationProvider {
-	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.Spec.GitHub.AppID, scmProvider.Spec.GitHub.InstallationID, secret.Data["privateKey"])
+	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.Spec.GitHub.AppID, scmProvider.Spec.GitHub.InstallationID, secret.Data[githubAppPrivateKeySecretKey])
 	if err != nil {
 		panic(err)
 	}
@@ -55,7 +60,7 @@ func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error)
 }
 
 func GetClient(scmProvider *v1alpha1.ScmProvider, secret v1.Secret) (*github.Client, error) {
-	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.Spec.GitHub.AppID, scmProvider.Spec.GitHub.InstallationID, secret.Data["privateKey"])
+	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.Spec.GitHub.AppID, scmProvider.Spec.GitHub.InstallationID, secret.Data[githubAppPrivateKeySecretKey])
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GitHub installation transport: %w", err)
 	}

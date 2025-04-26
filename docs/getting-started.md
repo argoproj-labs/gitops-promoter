@@ -59,7 +59,7 @@ metadata:
   name: <your-secret-name>
 type: Opaque
 stringData:
-  privateKey: <your-private-key>
+  githubAppPrivateKey: <your-private-key>
 ```
 
 !!! note 
