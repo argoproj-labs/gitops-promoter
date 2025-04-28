@@ -76,6 +76,8 @@ A ControllerConfiguration is used to configure the behavior of the promoter.
 
 A global ControllerConfiguration is deployed alongside the controller and applies to all promotions.
 
+All fields are required, but defaults are provided in the installation manifests.
+
 ```yaml
 {!docs/example-resources/ControllerConfiguration.yaml!}
 ```

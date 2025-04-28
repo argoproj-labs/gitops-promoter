@@ -514,6 +514,10 @@ spec:
                         type: string
                     type: object
                 type: object
+            required:
+            - argocdCommitStatusRequeueDuration
+            - changeTransferPolicyRequeueDuration
+            - promotionStrategyRequeueDuration
             type: object
           status:
             description: ControllerConfigurationStatus defines the observed state
@@ -1633,6 +1637,9 @@ metadata:
   name: promoter-controller-configuration
   namespace: promoter-system
 spec:
+  argocdCommitStatusRequeueDuration: 15s
+  changeTransferPolicyRequeueDuration: 5m
+  promotionStrategyRequeueDuration: 5m
   pullRequest:
     template:
       description: This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch
