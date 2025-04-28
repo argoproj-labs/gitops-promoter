@@ -47,6 +47,32 @@ During the creation the GitHub App, you will need to configure the following set
 
 Webhook URL: `https://<your-promoter-webhook-receiver-ingress>/`
 
+Here is an example Ingress configuration for the webhook receiver:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: promoter-webhook-receiver
+  namespace: promoter-system
+  annotations:
+    # Add any necessary annotations for your ingress controller
+    # For example, if using nginx-ingress:
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  rules:
+  - host: argo-github-app-webhook.com  # Replace with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: promoter-webhook-receiver
+            port:
+              number: 3333
+```
+
 ### Usage
 
 The GitHub App will generate a private key that you will need to save. You will also need to get the App ID and the
@@ -76,7 +102,7 @@ metadata:
   name: <your-scmprovider-name>
 spec:
   secretRef:
-    name: <your-secret-name>
+    name: <your-secret-name> # The secret that contains the GitHub App configuration
   github:
     appID: <your-app-id>
     installationID: <your-installation-id>
@@ -90,7 +116,7 @@ spec:
     name: <repo-name>
     owner: <github-org-username>
   scmProviderRef:
-    name: <your-scmprovider-name> # The secret that contains the GitHub App configuration
+    name: <your-scmprovider-name>
 ```
 
 !!! note 
