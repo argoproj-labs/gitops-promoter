@@ -512,12 +512,18 @@ spec:
                           Template used to generate the title of the pull request.
                           Uses Go template syntax and Sprig functions are available.
                         type: string
+                    required:
+                    - description
+                    - title
                     type: object
+                required:
+                - template
                 type: object
             required:
             - argocdCommitStatusRequeueDuration
             - changeTransferPolicyRequeueDuration
             - promotionStrategyRequeueDuration
+            - pullRequest
             type: object
           status:
             description: ControllerConfigurationStatus defines the observed state
