@@ -25,6 +25,8 @@ import (
 
 // ControllerConfigurationSpec defines the desired state of ControllerConfiguration.
 type ControllerConfigurationSpec struct {
+	// All fields in this struct should be required. Defaults should be set in manifests, not in code.
+
 	// +required
 	PullRequest PullRequestConfiguration `json:"pullRequest,omitempty"`
 
