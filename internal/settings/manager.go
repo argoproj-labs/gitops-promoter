@@ -11,10 +11,6 @@ import (
 
 const (
 	ControllerConfigurationName = "promoter-controller-configuration"
-
-	defaultPromotionStrategyRequeueDuration    = 5 * time.Minute
-	defaultChangeTransferPolicyRequeueDuration = 5 * time.Minute
-	defaultArgoCDCommitStatusRequeueDuration   = 15 * time.Second
 )
 
 type ManagerConfig struct {
@@ -41,10 +37,6 @@ func (m *Manager) GetPromotionStrategyRequeueDuration(ctx context.Context) (time
 		return time.Duration(0), fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 
-	if controllerConfiguration.Spec.PromotionStrategyRequeueDuration == nil {
-		return defaultPromotionStrategyRequeueDuration, nil
-	}
-
 	return controllerConfiguration.Spec.PromotionStrategyRequeueDuration.Duration, nil
 }
 
@@ -54,10 +46,6 @@ func (m *Manager) GetChangeTransferPolicyRequeueDuration(ctx context.Context) (t
 		return time.Duration(0), fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 
-	if controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration == nil {
-		return defaultChangeTransferPolicyRequeueDuration, nil
-	}
-
 	return controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration.Duration, nil
 }
 
@@ -65,10 +53,6 @@ func (m *Manager) GetArgoCDCommitStatusRequeueDuration(ctx context.Context) (tim
 	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
 	if err != nil {
 		return time.Duration(0), fmt.Errorf("failed to get controller configuration: %w", err)
-	}
-
-	if controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration == nil {
-		return defaultArgoCDCommitStatusRequeueDuration, nil
 	}
 
 	return controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration.Duration, nil

@@ -25,34 +25,40 @@ import (
 
 // ControllerConfigurationSpec defines the desired state of ControllerConfiguration.
 type ControllerConfigurationSpec struct {
+	// All fields in this struct should be required. Defaults should be set in manifests, not in code.
+
+	// +required
 	PullRequest PullRequestConfiguration `json:"pullRequest,omitempty"`
 
 	// How frequently to requeue promotion strategy resources for auto reconciliation. Default: "5m".
 	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
-	// +optional
-	PromotionStrategyRequeueDuration *metav1.Duration `json:"promotionStrategyRequeueDuration,omitempty"`
+	// +required
+	PromotionStrategyRequeueDuration metav1.Duration `json:"promotionStrategyRequeueDuration,omitempty"`
 
 	// How frequently to requeue proposed commit resources for auto reconciliation. Default: "5m".
 	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
-	// +optional
-	ChangeTransferPolicyRequeueDuration *metav1.Duration `json:"changeTransferPolicyRequeueDuration,omitempty"`
+	// +required
+	ChangeTransferPolicyRequeueDuration metav1.Duration `json:"changeTransferPolicyRequeueDuration,omitempty"`
 
 	// How frequently to requeue commit status resources for auto reconciliation. Default: "15s".
 	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
-	// +optional
-	ArgoCDCommitStatusRequeueDuration *metav1.Duration `json:"argocdCommitStatusRequeueDuration,omitempty"`
+	// +required
+	ArgoCDCommitStatusRequeueDuration metav1.Duration `json:"argocdCommitStatusRequeueDuration,omitempty"`
 }
 
 type PullRequestConfiguration struct {
+	// +required
 	Template PullRequestTemplate `json:"template,omitempty"`
 }
 
 type PullRequestTemplate struct {
 	// Template used to generate the title of the pull request.
 	// Uses Go template syntax and Sprig functions are available.
+	// +required
 	Title string `json:"title,omitempty"`
 	// Template used to generate the description of the pull request.
 	// Uses Go template syntax and Sprig functions are available.
+	// +required
 	Description string `json:"description,omitempty"`
 }
 

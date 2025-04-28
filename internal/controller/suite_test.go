@@ -231,6 +231,9 @@ var _ = BeforeSuite(func() {
 					Description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}.",
 				},
 			},
+			PromotionStrategyRequeueDuration:    metav1.Duration{Duration: 5 * time.Minute},
+			ChangeTransferPolicyRequeueDuration: metav1.Duration{Duration: 5 * time.Minute},
+			ArgoCDCommitStatusRequeueDuration:   metav1.Duration{Duration: 15 * time.Second},
 		},
 	}
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
