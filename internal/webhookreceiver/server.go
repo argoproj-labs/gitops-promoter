@@ -9,10 +9,9 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/tidwall/gjson"
-
 	"k8s.io/apimachinery/pkg/fields"
-
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controllerruntime "sigs.k8s.io/controller-runtime/pkg/manager"
@@ -21,15 +20,19 @@ import (
 var logger = ctrl.Log.WithName("webhookReceiver")
 
 type webhookReceiver struct {
-	mgr       controllerruntime.Manager
-	k8sClient client.Client
+	mgr         controllerruntime.Manager
+	k8sClient   client.Client
+	settingsMgr *settings.Manager
 }
 
-func NewWebhookReceiver(mgr controllerruntime.Manager) webhookReceiver {
-	return webhookReceiver{
-		mgr:       mgr,
-		k8sClient: mgr.GetClient(),
+func NewWebhookReceiver(mgr controllerruntime.Manager, settingsMgr *settings.Manager) webhookReceiver {
+	wr := webhookReceiver{
+		mgr:         mgr,
+		k8sClient:   mgr.GetClient(),
+		settingsMgr: settingsMgr,
 	}
+
+	return wr
 }
 
 func (wr *webhookReceiver) Start(ctx context.Context, addr string) error {
@@ -67,9 +70,23 @@ func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "must be a POST request", http.StatusMethodNotAllowed)
 		return
 	}
-	// TODO: add a configurable payload max side for DoS protection.
+	maxWebhookPayloadSize, err := wr.settingsMgr.GetWebhookMaxPayloadSize(r.Context())
+	if err != nil {
+		logger.Error(err, "failed to get webhook max payload size from settings manager")
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !maxWebhookPayloadSize.IsZero() {
+		r.Body = http.MaxBytesReader(w, r.Body, maxWebhookPayloadSize.Value())
+	}
 	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "payload size exceeds limit", http.StatusRequestEntityTooLarge)
+			return
+		}
+
 		http.Error(w, "error reading body", http.StatusInternalServerError)
 		return
 	}
@@ -112,7 +129,7 @@ func (wr *webhookReceiver) findChangeTransferPolicy(ctx context.Context, jsonByt
 
 	if beforeSha == "" {
 		logger.V(4).Info("unable to match provider payload, might not be a pull request event or is malformed")
-		return nil, nil
+		return nil, errors.New("payload did not match expected format")
 	}
 
 	err := wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{

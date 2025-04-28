@@ -6,6 +6,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -16,6 +17,8 @@ const (
 	defaultChangeTransferPolicyRequeueDuration = 5 * time.Minute
 	defaultArgoCDCommitStatusRequeueDuration   = 15 * time.Second
 )
+
+var defaultWebhookMaxPayloadSize = resource.MustParse("25Mi")
 
 type ManagerConfig struct {
 	GlobalNamespace string
@@ -72,6 +75,19 @@ func (m *Manager) GetArgoCDCommitStatusRequeueDuration(ctx context.Context) (tim
 	}
 
 	return controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration.Duration, nil
+}
+
+func (m *Manager) GetWebhookMaxPayloadSize(ctx context.Context) (resource.Quantity, error) {
+	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
+	if err != nil {
+		return resource.Quantity{}, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	if controllerConfiguration.Spec.Webhook.MaxPayloadSize == nil {
+		return defaultWebhookMaxPayloadSize, nil
+	}
+
+	return *controllerConfiguration.Spec.Webhook.MaxPayloadSize, nil
 }
 
 func NewManager(client client.Client, config ManagerConfig) *Manager {
