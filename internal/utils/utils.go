@@ -158,40 +158,6 @@ func KubeSafeLabel(ctx context.Context, name string) string {
 	return name
 }
 
-func GetEnvironmentsFromStatusInOrder(promotionStrategy promoterv1alpha1.PromotionStrategy) []promoterv1alpha1.EnvironmentStatus {
-	environments := []promoterv1alpha1.EnvironmentStatus{}
-	for _, specEnvironment := range promotionStrategy.Spec.Environments {
-		for _, statusEvents := range promotionStrategy.Status.Environments {
-			if specEnvironment.Branch == statusEvents.Branch {
-				environments = append(environments, statusEvents)
-			}
-		}
-	}
-	return environments
-}
-
-func GetPreviousEnvironmentStatusByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy, currentBranch string) (int, *promoterv1alpha1.EnvironmentStatus) {
-	environments := GetEnvironmentsFromStatusInOrder(promotionStrategy)
-	for i, environment := range environments {
-		if environment.Branch == currentBranch {
-			if i-1 >= 0 && len(environments) > 0 {
-				return i - 1, &environments[i-1]
-			}
-		}
-	}
-	return -1, nil
-}
-
-func GetEnvironmentStatusByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy, branch string) (int, *promoterv1alpha1.EnvironmentStatus) {
-	environments := GetEnvironmentsFromStatusInOrder(promotionStrategy)
-	for i, environment := range environments {
-		if environment.Branch == branch {
-			return i, &environment
-		}
-	}
-	return -1, nil
-}
-
 func GetEnvironmentByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy, branch string) (int, *promoterv1alpha1.Environment) {
 	for i, environment := range promotionStrategy.Spec.Environments {
 		if environment.Branch == branch {
@@ -199,19 +165,6 @@ func GetEnvironmentByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy
 		}
 	}
 	return -1, nil
-}
-
-func UpsertEnvironmentStatus(slice []promoterv1alpha1.EnvironmentStatus, i promoterv1alpha1.EnvironmentStatus) []promoterv1alpha1.EnvironmentStatus {
-	if len(slice) == 0 {
-		slice = append(slice, i)
-		return slice
-	}
-	for index, ele := range slice {
-		if ele.Branch == i.Branch {
-			return slices.Replace(slice, index, index+1, i)
-		}
-	}
-	return append(slice, i)
 }
 
 func UpsertChangeTransferPolicyList(slice []promoterv1alpha1.ChangeTransferPolicy, insertList ...[]promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.ChangeTransferPolicy {
