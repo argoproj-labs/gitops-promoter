@@ -223,6 +223,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 		for _, environmentStatus := range ps.Status.Environments {
 			if environmentStatus.Branch == environment.Branch {
 				environmentStatuses[i] = environmentStatus
+				break
 			}
 		}
 	}
