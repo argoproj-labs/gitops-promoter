@@ -78,22 +78,19 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a map with the branch as the key.
-	var ctps []*promoterv1alpha1.ChangeTransferPolicy
-	for _, environment := range ps.Spec.Environments {
+	ctps := make([]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
+	for i, environment := range ps.Spec.Environments {
 		var ctp *promoterv1alpha1.ChangeTransferPolicy
 		ctp, err = r.upsertChangeTransferPolicy(ctx, &ps, environment)
 		if err != nil {
 			logger.Error(err, "failed to upsert ChangeTransferPolicy")
 			return ctrl.Result{}, fmt.Errorf("failed to create ChangeTransferPolicy for branch %q: %w", environment.Branch, err)
 		}
-		ctps = append(ctps, ctp)
+		ctps[i] = ctp
 	}
 
-	// Calculate the status of the PromotionStrategy
-	err = r.calculateStatus(&ps, ctps)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to calculate PromotionStrategy status: %w", err)
-	}
+	// Calculate the status of the PromotionStrategy. Updates ps in place.
+	r.calculateStatus(&ps, ctps)
 
 	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctps)
 	if err != nil {
@@ -217,7 +214,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 // calculateStatus calculates the status of the PromotionStrategy based on the ChangeTransferPolicies.
 // ps.Spec.Environments must be the same length and in the same order as ctps.
 // This function updates ps.Status.Environments to be the same length and order as ps.Spec.Environments.
-func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.PromotionStrategy, ctps []*promoterv1alpha1.ChangeTransferPolicy) error {
+func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.PromotionStrategy, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
 	// Reconstruct current environment state based on ps.Environments order. Dropped environments will effectively be
 	// deleted, and new environments will be added as empty statuses. Those new environments will be populated in the
 	// ctp loop.
@@ -261,7 +258,6 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Active.CommitStatus, len(environment.ActiveCommitStatuses)+len(ps.Spec.ActiveCommitStatuses), ctp.Status.Active)
 		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Proposed.CommitStatus, len(environment.ProposedCommitStatuses)+len(ps.Spec.ProposedCommitStatuses), ctp.Status.Proposed)
 	}
-	return nil
 }
 
 // setEnvironmentCommitStatus sets the commit status for the environment based on the configured commit statuses.
@@ -391,10 +387,9 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		previousEnvironmentStatus := ps.Status.Environments[i-1]
 		environmentStatus := ps.Status.Environments[i]
 
-		activeChecksPassed :=
-			previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
-				previousEnvironmentStatus.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha &&
-				previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
+		activeChecksPassed := previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
+			previousEnvironmentStatus.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha &&
+			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
 
 		commitStatusPhase := promoterv1alpha1.CommitPhasePending
 		if activeChecksPassed {
