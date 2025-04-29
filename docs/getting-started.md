@@ -176,11 +176,14 @@ metadata:
   name: demo
 spec:
   environments:
-  - autoMerge: false
+  - mergePolicy:
+      autoMerge: Never
     branch: environment/development
-  - autoMerge: false
+  - mergePolicy:
+      autoMerge: Never
     branch: environment/staging
-  - autoMerge: false
+  - mergePolicy:
+      autoMerge: Never
     branch: environment/production
   gitRepositoryRef:
     name: <git-repository-ref-name> # The name of the GitRepository resource

@@ -35,7 +35,8 @@ spec:
     - branch: environment/dev
     - branch: environment/test
     - branch: environment/prod
-      autoMerge: false
+      mergePolicy:
+        autoMerge: Never
       activeCommitStatuses:
       - key: performance-test
       proposedCommitStatuses:

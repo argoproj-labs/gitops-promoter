@@ -209,9 +209,6 @@ spec:
                   - key
                   type: object
                 type: array
-              autoMerge:
-                default: true
-                type: boolean
               gitRepositoryRef:
                 description: RepositoryReference what repository to open the PR on.
                 properties:
@@ -219,6 +216,17 @@ spec:
                     type: string
                 required:
                 - name
+                type: object
+              mergePolicy:
+                properties:
+                  autoMerge:
+                    description: AutoMerge determines whether the dry commit should
+                      be automatically merged into the next branch in the sequence.
+                    enum:
+                    - ""
+                    - OnCommitStatusSuccess
+                    - Never
+                    type: string
                 type: object
               proposedBranch:
                 description: ProposedBranch staging hydrated branch
@@ -715,14 +723,24 @@ spec:
                         - key
                         type: object
                       type: array
-                    autoMerge:
+                    branch:
+                      type: string
+                    mergePolicy:
                       default: true
                       description: |-
                         AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence.
                         If false, the dry commit will be proposed but not merged.
-                      type: boolean
-                    branch:
-                      type: string
+                      properties:
+                        autoMerge:
+                          description: AutoMerge determines whether the dry commit
+                            should be automatically merged into the next branch in
+                            the sequence.
+                          enum:
+                          - ""
+                          - OnCommitStatusSuccess
+                          - Never
+                          type: string
+                      type: object
                     proposedCommitStatuses:
                       description: |-
                         ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running

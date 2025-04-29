@@ -62,9 +62,6 @@ spec:
                   - key
                   type: object
                 type: array
-              autoMerge:
-                default: true
-                type: boolean
               gitRepositoryRef:
                 description: RepositoryReference what repository to open the PR on.
                 properties:
@@ -72,6 +69,17 @@ spec:
                     type: string
                 required:
                 - name
+                type: object
+              mergePolicy:
+                properties:
+                  autoMerge:
+                    description: AutoMerge determines whether the dry commit should
+                      be automatically merged into the next branch in the sequence.
+                    enum:
+                    - ""
+                    - OnCommitStatusSuccess
+                    - Never
+                    type: string
                 type: object
               proposedBranch:
                 description: ProposedBranch staging hydrated branch
