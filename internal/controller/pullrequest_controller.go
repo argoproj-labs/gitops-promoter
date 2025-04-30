@@ -70,7 +70,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	provider, err := r.getPullRequestProvider(ctx, pr)
-	if err != nil || provider == nil {
+	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}
 
@@ -165,7 +165,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	case scmProvider.Spec.Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:
-		return nil, nil
+		return nil, fmt.Errorf("unsupported SCM provider: %s", scmProvider.Name)
 	}
 }
 
