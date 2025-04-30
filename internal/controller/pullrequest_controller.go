@@ -122,8 +122,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			// We do not need to update status here because we close the PR on the SCM but we requeue the reconcile to
 			// clean up the PullRequest object
 			return ctrl.Result{Requeue: true}, nil
-		default:
-			return ctrl.Result{}, fmt.Errorf("unknown pull request state: %s", pr.Spec.State)
 		}
 	}
 
