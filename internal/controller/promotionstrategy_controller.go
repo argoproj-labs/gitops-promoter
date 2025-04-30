@@ -287,7 +287,7 @@ func (r *PromotionStrategyReconciler) setEnvironmentCommitStatus(targetStatus *p
 	}
 }
 
-func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentStatus *promoterv1alpha1.EnvironmentStatus, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) error {
+func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentStatus *promoterv1alpha1.EnvironmentStatus, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, previousCRPCSSha string) error {
 	// TODO: do we like this name proposed-<name>?
 	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
 	proposedCSObjectKey := client.ObjectKey{Namespace: ctp.Namespace, Name: csName}
@@ -390,8 +390,9 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		activeChecksPassed := previousEnvironmentPsStatus != nil &&
 			previousEnvironmentPsStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
 			previousEnvironmentPsStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha &&
-			(previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time) ||
-				previousEnvironmentPsStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: environmentPsStatus.Active.Dry.CommitTime.Time}))
+			previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time)
+		//(previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time) ||
+		//previousEnvironmentPsStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: environmentPsStatus.Active.Dry.CommitTime.Time}))
 
 		if previousEnvironmentPsStatus != nil {
 			logger.Info(
@@ -399,8 +400,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 				"branch", environment.Branch,
 				"activeChecksPassed", activeChecksPassed,
 				"sha", previousEnvironmentPsStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha,
-				"time", previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time),
-				//"time", previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time) || previousEnvironmentPsStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: environmentPsStatus.Active.Dry.CommitTime.Time}),
+				"time", previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time) || previousEnvironmentPsStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: environmentPsStatus.Active.Dry.CommitTime.Time}),
 				"phase", previousEnvironmentPsStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess))
 		}
 		//"time", previousEnvironmentPsStatus.Active.Dry.CommitTime.After(environmentPsStatus.Active.Dry.CommitTime.Time) || previousEnvironmentPsStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: environmentPsStatus.Active.Dry.CommitTime.Time}),
@@ -417,7 +417,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
 			// Since there is at least one configured active check, and since this is not the first environment,
 			// we should not create a commit status for the previous environment.
-			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentPsStatus, ctpMap[ps.Spec.Environments[previousEnvironmentIndex].Branch].Status.Active.CommitStatuses)
+			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentPsStatus, ctpMap[ps.Spec.Environments[previousEnvironmentIndex].Branch].Status.Active.CommitStatuses, ctpMap[ps.Spec.Environments[previousEnvironmentIndex].Branch].Status.Active.Hydrated.Sha)
 			if err != nil {
 				return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", environment.Branch, err)
 			}
