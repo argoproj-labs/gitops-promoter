@@ -263,24 +263,19 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 
 // setEnvironmentCommitStatus sets the commit status for the environment based on the configured commit statuses.
 func (r *PromotionStrategyReconciler) setEnvironmentCommitStatus(targetStatus *promoterv1alpha1.PromotionStrategyCommitStatus, statusCount int, ctpEnvStatus promoterv1alpha1.CommitBranchState) {
-	if statusCount > 0 && len(ctpEnvStatus.CommitStatuses) == statusCount {
-		// We have configured active commits and our count of active commits from promotion strategy matches the count of active commit resource.
+	// Default to pending phase
+	targetStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
+	targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
+
+	if statusCount == len(ctpEnvStatus.CommitStatuses) {
+		// Assume success unless a failure is found
+		targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
 		for _, status := range ctpEnvStatus.CommitStatuses {
-			targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-			targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
 			if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
 				targetStatus.Phase = status.Phase
-				targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
-				break
+				return
 			}
 		}
-	} else if statusCount == 0 && len(ctpEnvStatus.CommitStatuses) == 0 {
-		// We have no configured active commits and our count of active commits from promotion strategy matches the count of active commit resource, should be 0 each.
-		targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-		targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
-	} else {
-		targetStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
-		targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
 	}
 }
 
