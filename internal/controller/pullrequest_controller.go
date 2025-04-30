@@ -104,7 +104,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if pr.Status.State != promoterv1alpha1.PullRequestOpen {
 			logger.Info("Creating PullRequest")
 			if err := r.createPullRequest(ctx, &pr, provider); err != nil {
-				logger.Error(err, "Failed to create pull request")
 				return ctrl.Result{}, fmt.Errorf("failed to create pull request: %w", err)
 			}
 		}
@@ -114,6 +113,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			if err := r.mergePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to merge pull request: %w", err)
 			}
+			// We do not need to update status here because we close the PR on the SCM but we requeue the reconcile to
+			// clean up the PullRequest object
 			return ctrl.Result{Requeue: true}, nil
 		}
 	case promoterv1alpha1.PullRequestClosed:
@@ -122,6 +123,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			if err := r.closePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err)
 			}
+			// We do not need to update status here because we close the PR on the SCM but we requeue the reconcile to
+			// clean up the PullRequest object
 			return ctrl.Result{Requeue: true}, nil
 		}
 	}
