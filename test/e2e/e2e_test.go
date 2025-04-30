@@ -62,15 +62,15 @@ var _ = Describe("controller", Ordered, func() {
 			// projectimage stores the name of the image used in the example
 			var (
 				imageTag     = "0.0.0-test-e2e"
-				projectimage = fmt.Sprintf("quay.io/argoprojlabs/gitops-promoter:%s", imageTag)
+				projectimage = "quay.io/argoprojlabs/gitops-promoter:" + imageTag
 			)
 
 			By("building the manager(Operator) image")
-			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMAGE_TAG=%s", imageTag))
+			cmd := exec.Command("make", "docker-build", "IMAGE_TAG="+imageTag)
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-			By("loading the the manager(Operator) image on Kind")
+			By("loading the manager(Operator) image on Kind")
 			err = utils.LoadImageToKindClusterWithName(projectimage)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
@@ -80,7 +80,7 @@ var _ = Describe("controller", Ordered, func() {
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("deploying the controller-manager")
-			cmd = exec.Command("make", "deploy", fmt.Sprintf("IMAGE_TAG=%s", imageTag))
+			cmd = exec.Command("make", "deploy", "IMAGE_TAG="+imageTag)
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 

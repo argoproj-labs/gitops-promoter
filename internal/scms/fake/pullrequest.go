@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -37,7 +38,7 @@ func NewFakePullRequestProvider(k8sClient client.Client) *PullRequest {
 	return &PullRequest{k8sClient: k8sClient}
 }
 
-func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (id string, err error) {
+func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 	mutexPR.Lock()
 	if pullRequests == nil {
@@ -58,12 +59,12 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	}
 
 	pullRequests[pr.getMapKey(*pullRequestCopy, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)] = PullRequestProviderState{
-		ID:    fmt.Sprintf("%d", len(pullRequests)+1),
+		ID:    strconv.Itoa(len(pullRequests) + 1),
 		State: v1alpha1.PullRequestOpen,
 	}
 
 	mutexPR.Unlock()
-	return id, nil
+	return "", nil
 }
 
 func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest *v1alpha1.PullRequest) error {
@@ -109,7 +110,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	}
 
 	gitServerPort := 5000 + ginkgov2.GinkgoParallelProcess()
-	gitServerPortStr := fmt.Sprintf("%d", gitServerPort)
+	gitServerPortStr := strconv.Itoa(gitServerPort)
 	err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name), ".")
 	if err != nil {
 		return err

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"k8s.io/client-go/tools/record"
@@ -28,7 +29,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
@@ -62,7 +63,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	var pr promoterv1alpha1.PullRequest
 	err := r.Get(ctx, req.NamespacedName, &pr, &client.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("PullRequest not found", "namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -76,7 +77,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}
 	if pullRequestProvider == nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil")
+		return ctrl.Result{}, errors.New("failed to get pull request provider, pullRequestProvider is nil")
 	}
 
 	deleted, err := r.handleFinalizer(ctx, &pr, pullRequestProvider)
@@ -98,7 +99,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		logger.Info("Deleting Pull Request, because no open PR found on provider")
 		err = r.Delete(ctx, &pr)
 		if err != nil {
-			if errors.IsNotFound(err) {
+			if k8serrors.IsNotFound(err) {
 				return ctrl.Result{}, nil
 			}
 			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
@@ -207,7 +208,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	case scmProvider.Spec.Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:
-		return nil, nil
+		return nil, errors.New("SCM provider for PullRequest is invalid")
 	}
 }
 
@@ -217,50 +218,48 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 
 	var err error
 	// examine DeletionTimestamp to determine if object is under deletion
-	if pr.DeletionTimestamp.IsZero() {
+	if pr.DeletionTimestamp.IsZero() && !controllerutil.ContainsFinalizer(pr, finalizerName) {
 		// The object is not being deleted, so if it does not have our finalizer,
 		// then lets add the finalizer and update the object. This is equivalent
 		// to registering our finalizer.
-		if !controllerutil.ContainsFinalizer(pr, finalizerName) {
-			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-				// TODO: consider skipping the Get on the initial attempt, the object may already be up to date.
-				err = r.Get(ctx, client.ObjectKeyFromObject(pr), pr)
-				if err != nil {
-					return fmt.Errorf("failed to get PullRequest %q: %w", pr.Name, err)
-				}
-				updated := controllerutil.AddFinalizer(pr, finalizerName)
-				if !updated {
-					// Nothing to update.
-					return nil
-				}
-				// No need to wrap the error, we'll wrap it outside the retry.
-				return r.Update(ctx, pr)
-			})
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			// TODO: consider skipping the Get on the initial attempt, the object may already be up to date.
+			err = r.Get(ctx, client.ObjectKeyFromObject(pr), pr)
 			if err != nil {
-				return false, fmt.Errorf("failed to add finalizer: %w", err)
+				return fmt.Errorf("failed to get PullRequest %q: %w", pr.Name, err)
 			}
-		}
-	} else {
-		// The object is being deleted
-		if controllerutil.ContainsFinalizer(pr, finalizerName) {
-			// our finalizer is present, so lets handle any external dependency
-			err = r.closePullRequest(ctx, pr, pullRequestProvider)
-			if err != nil {
-				// if fail to delete the external dependency here, return with error
-				// so that it can be retried.
-				return false, fmt.Errorf("failed to close pull request %q: %w", pr.Status.ID, err)
+			updated := controllerutil.AddFinalizer(pr, finalizerName)
+			if !updated {
+				// Nothing to update.
+				return nil
 			}
-
-			// remove our finalizer from the list and update it.
-			controllerutil.RemoveFinalizer(pr, finalizerName)
-			if err = r.Update(ctx, pr); err != nil {
-				return true, fmt.Errorf("failed to remove finalizer: %w", err)
-			}
-			return true, nil
+			// No need to wrap the error, we'll wrap it outside the retry.
+			return r.Update(ctx, pr)
+		})
+		if err != nil {
+			return false, fmt.Errorf("failed to add finalizer: %w", err)
 		}
 	}
 
-	return false, nil
+	if !controllerutil.ContainsFinalizer(pr, finalizerName) {
+		// Not deleting.
+		return false, nil
+	}
+
+	// our finalizer is present, so lets handle any external dependency
+	err = r.closePullRequest(ctx, pr, pullRequestProvider)
+	if err != nil {
+		// if fail to delete the external dependency here, return with error
+		// so that it can be retried.
+		return false, fmt.Errorf("failed to close pull request %q: %w", pr.Status.ID, err)
+	}
+
+	// remove our finalizer from the list and update it.
+	controllerutil.RemoveFinalizer(pr, finalizerName)
+	if err = r.Update(ctx, pr); err != nil {
+		return true, fmt.Errorf("failed to remove finalizer: %w", err)
+	}
+	return true, nil
 }
 
 func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
@@ -268,7 +267,7 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 	logger.Info("Opening Pull Request")
 
 	if pr == nil {
-		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in createPullRequest")
+		return errors.New("failed to get pull request provider, pullRequestProvider is nil in createPullRequest")
 	}
 
 	id, err := pullRequestProvider.Create(
@@ -293,7 +292,7 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 	logger.Info("Updating Pull Request")
 
 	if pullRequestProvider == nil {
-		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in updatePullRequest")
+		return errors.New("failed to get pull request provider, pullRequestProvider is nil in updatePullRequest")
 	}
 
 	err := pullRequestProvider.Update(ctx, pr.Spec.Title, pr.Spec.Description, &pr)
@@ -309,7 +308,7 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 	logger := log.FromContext(ctx)
 
 	if pullRequestProvider == nil {
-		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in mergePullRequest")
+		return errors.New("failed to get pull request provider, pullRequestProvider is nil in mergePullRequest")
 	}
 
 	logger.Info("Merging Pull Request", "namespace", pr.Namespace, "name", pr.Name)
@@ -327,7 +326,7 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 	logger := log.FromContext(ctx)
 
 	if pullRequestProvider == nil {
-		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in closePullRequest")
+		return errors.New("failed to get pull request provider, pullRequestProvider is nil in closePullRequest")
 	}
 
 	if pr.Status.State == promoterv1alpha1.PullRequestMerged {

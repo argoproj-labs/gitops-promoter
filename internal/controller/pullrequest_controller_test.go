@@ -55,19 +55,19 @@ var _ = Describe("PullRequest Controller", func() {
 			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-			}, EventuallyTimeout)
+			}, EventuallyTimeout).Should(Succeed())
 
 			By("Reconciling updating of the PullRequest")
 			Eventually(func(g Gomega) {
 				_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				pullRequest.Spec.Title = "Updated Title"
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
-			}, EventuallyTimeout)
+			}, EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Spec.Title).To(Equal("Updated Title"))
-			}, EventuallyTimeout)
+			}, EventuallyTimeout).Should(Succeed())
 
 			By("Reconciling merging of the PullRequest")
 			Eventually(func(g Gomega) {
@@ -80,7 +80,7 @@ var _ = Describe("PullRequest Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
-			}, EventuallyTimeout)
+			}, EventuallyTimeout).Should(Succeed())
 		})
 		It("should successfully reconcile the resource when closing", func() {
 			By("Reconciling the created resource")

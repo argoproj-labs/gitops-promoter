@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -36,7 +37,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
-	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -84,7 +85,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 	err := r.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
-		if k8s_errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("ArgoCDCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
@@ -174,7 +175,7 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCo
 		if repo == "" {
 			repo = application.Spec.SourceHydrator.DrySource.RepoURL
 		} else if repo != application.Spec.SourceHydrator.DrySource.RepoURL {
-			return map[string][]*aggregate{}, fmt.Errorf("all applications must have the same repo configured")
+			return map[string][]*aggregate{}, errors.New("all applications must have the same repo configured")
 		}
 
 		aggregateItem := &aggregate{
@@ -408,7 +409,7 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 		}
 		return gitlabClient, ps.Spec.RepositoryReference, nil
 	default:
-		return nil, ps.Spec.RepositoryReference, fmt.Errorf("no supported git authentication provider found")
+		return nil, ps.Spec.RepositoryReference, errors.New("no supported git authentication provider found")
 	}
 }
 

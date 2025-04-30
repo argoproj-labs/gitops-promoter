@@ -61,6 +61,7 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 }
 
+//nolint:cyclop
 func main() {
 	var metricsAddr string
 	var enableLeaderElection bool

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -35,7 +36,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -72,7 +73,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	var cs promoterv1alpha1.CommitStatus
 	err := r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("CommitStatus not found")
 			return ctrl.Result{}, nil
 		}
@@ -121,7 +122,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		newCs.Status.ObservedGeneration = newCs.Generation
 		err = r.Status().Update(ctx, &newCs)
 		if err != nil {
-			if errors.IsConflict(err) {
+			if k8serrors.IsConflict(err) {
 				logger.Info("Conflict while updating CommitStatus status. Retrying")
 			}
 			// Don't wrap this error, it'll be wrapped one level up.
@@ -181,7 +182,7 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		//nolint: wrapcheck
 		return fake.NewFakeCommitStatusProvider(*secret)
 	default:
-		return nil, nil
+		return nil, errors.New("SCM provider for CommitStatus is invalid")
 	}
 }
 

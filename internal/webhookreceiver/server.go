@@ -39,6 +39,9 @@ func (wr *webhookReceiver) Start(ctx context.Context, addr string) error {
 	server := http.Server{
 		Addr:    addr,
 		Handler: mux,
+
+		// Mitigate slowloris attacks. 5s should be plenty for any real use case.
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
@@ -112,7 +115,7 @@ func (wr *webhookReceiver) findChangeTransferPolicy(ctx context.Context, jsonByt
 
 	if beforeSha == "" {
 		logger.V(4).Info("unable to match provider payload, might not be a pull request event or is malformed")
-		return nil, nil
+		return nil, errors.New("unable to match provider payload, might not be a pull request event or is malformed")
 	}
 
 	err := wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
