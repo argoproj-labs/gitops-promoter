@@ -85,7 +85,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if !found && pr.Status.State != "" {
-		logger.Info("Deleting Pull Request, no open PR found on provider")
+		logger.Info("Deleting PullRequest - the corresponding SCM PR was previously identified but is no longer open", "pullRequestID", pr.Status.ID)
 		if err := r.Delete(ctx, &pr); err != nil && !errors.IsNotFound(err) {
 			logger.Error(err, "Failed to delete PullRequest")
 			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
