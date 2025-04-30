@@ -58,6 +58,7 @@ type PullRequestReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	logger.Info("Reconciling PullRequest")
 
 	var pr promoterv1alpha1.PullRequest
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
@@ -77,6 +78,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	logger.Info("Checking for open PR on provider")
 	found, err := provider.FindOpen(ctx, &pr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
@@ -85,6 +87,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if !found && pr.Status.State != "" {
 		logger.Info("Deleting Pull Request, no open PR found on provider")
 		if err := r.Delete(ctx, &pr); err != nil && !errors.IsNotFound(err) {
+			logger.Error(err, "Failed to delete PullRequest")
 			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 		}
 		return ctrl.Result{}, nil
@@ -95,15 +98,19 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
+	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
 	switch pr.Spec.State {
 	case promoterv1alpha1.PullRequestOpen:
 		if pr.Status.State != promoterv1alpha1.PullRequestOpen {
+			logger.Info("Creating PullRequest")
 			if err := r.createPullRequest(ctx, &pr, provider); err != nil {
+				logger.Error(err, "Failed to create pull request")
 				return ctrl.Result{}, fmt.Errorf("failed to create pull request: %w", err)
 			}
 		}
 	case promoterv1alpha1.PullRequestMerged:
 		if pr.Status.State != promoterv1alpha1.PullRequestMerged {
+			logger.Info("Merging PullRequest")
 			if err := r.mergePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to merge pull request: %w", err)
 			}
@@ -111,6 +118,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	case promoterv1alpha1.PullRequestClosed:
 		if pr.Status.State != promoterv1alpha1.PullRequestClosed {
+			logger.Info("Closing PullRequest")
 			if err := r.closePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err)
 			}
