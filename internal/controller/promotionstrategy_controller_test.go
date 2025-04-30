@@ -1275,9 +1275,17 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
+
 			}, EventuallyTimeout).Should(Succeed())
 
+			// Get an commit for staging
+			stagingCS := promoterv1alpha1.CommitStatus{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Namespace: typeNamespacedName.Namespace, Name: utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpStaging.Name)}, &stagingCS)
+			Expect(err).To(Succeed())
+			stagingShaBeforeMerge := stagingCS.Spec.Sha
+
 			By("Updating the development Argo CD application to synced and health we should close staging PR")
+			f := false
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
@@ -1304,9 +1312,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-				// Get an updated promotion strategy
-				err = k8sClient.Get(ctx, types.NamespacedName{Name: promotionStrategy.Name, Namespace: typeNamespacedName.Namespace}, promotionStrategy)
-				g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				// Make sure that we do not flip the commit status to pending on the old commit.
+				stagingCS := promoterv1alpha1.CommitStatus{}
+				err = k8sClient.Get(ctx, types.NamespacedName{Namespace: typeNamespacedName.Namespace, Name: utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpStaging.Name)}, &stagingCS)
+				g.Expect(err).To(Succeed())
+				if f == false {
+					f = stagingCS.Spec.Phase == promoterv1alpha1.CommitPhasePending && stagingCS.Spec.Sha == stagingShaBeforeMerge
+				}
+				g.Expect(f).To(Not(Equal(true)))
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
