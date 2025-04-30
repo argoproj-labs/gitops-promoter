@@ -269,7 +269,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 		// Find all the replicasets that match the commit status configured name and the sha of the hydrated commit
 		err = r.List(ctx, &csList, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
-				promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(ctx, status.Key),
+				promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(status.Key),
 			}),
 			FieldSelector: fields.SelectorFromSet(map[string]string{
 				".spec.sha": targetCommitBranchState.Hydrated.Sha,
@@ -364,11 +364,11 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	var prName string
 	switch {
 	case gitRepo.Spec.GitHub != nil:
-		prName = utils.GetPullRequestName(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+		prName = utils.GetPullRequestName(gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.GitLab != nil:
-		prName = utils.GetPullRequestName(ctx, gitRepo.Spec.GitLab.Namespace, gitRepo.Spec.GitLab.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+		prName = utils.GetPullRequestName(gitRepo.Spec.GitLab.Namespace, gitRepo.Spec.GitLab.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.Fake != nil:
-		prName = utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+		prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	}
 
 	prName = utils.KubeSafeUniqueName(ctx, prName)
@@ -402,9 +402,9 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 					Namespace:       ctp.Namespace,
 					OwnerReferences: []metav1.OwnerReference{*controllerRef},
 					Labels: map[string]string{
-						promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctx, ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-						promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctx, ctp.Name),
-						promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctx, ctp.Spec.ActiveBranch),
+						promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+						promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+						promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
 					},
 				},
 				Spec: promoterv1alpha1.PullRequestSpec{
@@ -467,9 +467,9 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		// Find the PRs that match the proposed commit and the environment. There should only be one.
 		err := r.List(ctx, &prl, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
-				promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctx, ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-				promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctx, ctp.Name),
-				promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctx, ctp.Spec.ActiveBranch),
+				promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+				promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+				promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
 			}),
 		})
 		if err != nil {

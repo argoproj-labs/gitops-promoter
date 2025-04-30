@@ -117,7 +117,7 @@ func TruncateStringFromBeginning(str string, length int) string {
 
 var m1 = regexp.MustCompile("[^a-zA-Z0-9]+")
 
-func GetPullRequestName(ctx context.Context, repoOwner, repoName, pcProposedBranch, pcActiveBranch string) string {
+func GetPullRequestName(repoOwner, repoName, pcProposedBranch, pcActiveBranch string) string {
 	return fmt.Sprintf("%s-%s-%s-%s", repoOwner, repoName, pcProposedBranch, pcActiveBranch)
 }
 
@@ -146,7 +146,7 @@ func KubeSafeUniqueName(ctx context.Context, name string) string {
 
 // KubeSafeLabel Creates a safe label buy truncating from the beginning of 'name' to a max of 63 characters, if the name starts with a hyphen it will be removed.
 // We truncate from beginning so that we can keep the unique hash at the end of the name.
-func KubeSafeLabel(ctx context.Context, name string) string {
+func KubeSafeLabel(name string) string {
 	if name == "" {
 		return ""
 	}

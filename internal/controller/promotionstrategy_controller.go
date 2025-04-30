@@ -154,8 +154,8 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			Namespace:       ps.Namespace,
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 			Labels: map[string]string{
-				promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ctx, ps.Name),
-				promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(ctx, environment.Branch),
+				promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
+				promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(environment.Branch),
 			},
 		},
 		Spec: promoterv1alpha1.ChangeTransferPolicySpec{
