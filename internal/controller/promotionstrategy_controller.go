@@ -78,25 +78,22 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get PromitionStrategy %q: %w", req.Name, err)
 	}
 
-	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a map with the branch as the key.
-	ctpsByBranch := make(map[string]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
-	for _, environment := range ps.Spec.Environments {
+	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a slice with the same order as ps.Spec.Environments.
+	ctps := make([]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
+	for i, environment := range ps.Spec.Environments {
 		var ctp *promoterv1alpha1.ChangeTransferPolicy
 		ctp, err = r.upsertChangeTransferPolicy(ctx, &ps, environment)
 		if err != nil {
 			logger.Error(err, "failed to upsert ChangeTransferPolicy")
 			return ctrl.Result{}, fmt.Errorf("failed to create ChangeTransferPolicy for branch %q: %w", environment.Branch, err)
 		}
-		ctpsByBranch[environment.Branch] = ctp
+		ctps[i] = ctp
 	}
 
-	// Calculate the status of the PromotionStrategy
-	err = r.calculateStatus(&ps, ctpsByBranch)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to calculate PromotionStrategy status: %w", err)
-	}
+	// Calculate the status of the PromotionStrategy. Updates ps in place.
+	r.calculateStatus(&ps, ctps)
 
-	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctpsByBranch)
+	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to merge PRs: %w", err)
 	}
@@ -155,8 +152,8 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			Namespace:       ps.Namespace,
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 			Labels: map[string]string{
-				promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ctx, ps.Name),
-				promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(ctx, environment.Branch),
+				promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
+				promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(environment.Branch),
 			},
 		},
 		Spec: promoterv1alpha1.ChangeTransferPolicySpec{
@@ -169,8 +166,8 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		},
 	}
 
-	previousEnvironmentIndex, _ := utils.GetPreviousEnvironmentStatusByBranch(*ps, environment.Branch)
 	environmentIndex, _ := utils.GetEnvironmentByBranch(*ps, environment.Branch)
+	previousEnvironmentIndex := environmentIndex - 1
 	if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
 		previousEnvironmentCommitStatusSelector := promoterv1alpha1.CommitStatusSelector{
 			Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
@@ -214,80 +211,79 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	return &pc, nil
 }
 
-func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.PromotionStrategy, ctpsByBranch map[string]*promoterv1alpha1.ChangeTransferPolicy) error {
-	for _, environment := range ps.Spec.Environments {
-		ctp, ok := ctpsByBranch[environment.Branch]
-		if !ok {
-			return fmt.Errorf("ChangeTransferPolicy not found for branch %s", environment.Branch)
-		}
-
-		ps.Status.Environments = utils.UpsertEnvironmentStatus(ps.Status.Environments, func() promoterv1alpha1.EnvironmentStatus {
-			status := promoterv1alpha1.EnvironmentStatus{
-				Branch: environment.Branch,
-				Active: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					Dry:      promoterv1alpha1.CommitShaState{Sha: ctp.Status.Active.Dry.Sha, CommitTime: ctp.Status.Active.Dry.CommitTime},
-					Hydrated: promoterv1alpha1.CommitShaState{Sha: ctp.Status.Active.Hydrated.Sha, CommitTime: ctp.Status.Active.Hydrated.CommitTime},
-					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
-						Phase: string(promoterv1alpha1.CommitPhasePending),
-						Sha:   string(promoterv1alpha1.CommitPhasePending),
-					},
-				},
-				Proposed: promoterv1alpha1.PromotionStrategyBranchStateStatus{
-					Dry:      promoterv1alpha1.CommitShaState{Sha: ctp.Status.Proposed.Dry.Sha, CommitTime: ctp.Status.Proposed.Dry.CommitTime},
-					Hydrated: promoterv1alpha1.CommitShaState{Sha: ctp.Status.Proposed.Hydrated.Sha, CommitTime: ctp.Status.Proposed.Hydrated.CommitTime},
-					CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
-						Phase: string(promoterv1alpha1.CommitPhasePending),
-						Sha:   string(promoterv1alpha1.CommitPhasePending),
-					},
-				},
+// calculateStatus calculates the status of the PromotionStrategy based on the ChangeTransferPolicies.
+// ps.Spec.Environments must be the same length and in the same order as ctps.
+// This function updates ps.Status.Environments to be the same length and order as ps.Spec.Environments.
+func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.PromotionStrategy, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
+	// Reconstruct current environment state based on ps.Environments order. Dropped environments will effectively be
+	// deleted, and new environments will be added as empty statuses. Those new environments will be populated in the
+	// ctp loop.
+	environmentStatuses := make([]promoterv1alpha1.EnvironmentStatus, len(ps.Spec.Environments))
+	for i, environment := range ps.Spec.Environments {
+		for _, environmentStatus := range ps.Status.Environments {
+			if environmentStatus.Branch == environment.Branch {
+				environmentStatuses[i] = environmentStatus
+				break
 			}
+		}
+	}
+	ps.Status.Environments = environmentStatuses
 
-			return status
-		}())
-
-		i, environmentStatus := utils.GetEnvironmentStatusByBranch(*ps, environment.Branch)
+	for i, ctp := range ctps {
+		// Update fields individually to avoid overwriting existing fields.
+		ps.Status.Environments[i].Branch = ctp.Spec.ActiveBranch
+		ps.Status.Environments[i].Active = promoterv1alpha1.PromotionStrategyBranchStateStatus{
+			Dry:      ctp.Status.Active.Dry,
+			Hydrated: ctp.Status.Active.Hydrated,
+			CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
+				Phase: string(promoterv1alpha1.CommitPhasePending),
+				Sha:   string(promoterv1alpha1.CommitPhasePending),
+			},
+		}
+		ps.Status.Environments[i].Proposed = promoterv1alpha1.PromotionStrategyBranchStateStatus{
+			Dry:      ctp.Status.Proposed.Dry,
+			Hydrated: ctp.Status.Proposed.Hydrated,
+			CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
+				Phase: string(promoterv1alpha1.CommitPhasePending),
+				Sha:   string(promoterv1alpha1.CommitPhasePending),
+			},
+		}
 
 		// TODO: actually implement keeping track of healthy dry sha's
 		// We only want to keep the last 10 healthy dry sha's
-		if environmentStatus != nil && i < len(ps.Status.Environments) && len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
+		if i < len(ps.Status.Environments) && len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
 			ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
 		}
 
-		if ctpsByBranch[environment.Branch] == nil {
-			return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while calculating activeCommitStatus", environment.Branch)
-		}
-		activeEnvStatus := ctpsByBranch[environment.Branch].Status.Active
-		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Active.CommitStatus, len(environment.ActiveCommitStatuses)+len(ps.Spec.ActiveCommitStatuses), activeEnvStatus)
-		proposedEnvStatus := ctpsByBranch[environment.Branch].Status.Proposed
-		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Proposed.CommitStatus, len(environment.ProposedCommitStatuses)+len(ps.Spec.ProposedCommitStatuses), proposedEnvStatus)
+		environment := ps.Spec.Environments[i]
+		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Active.CommitStatus, len(environment.ActiveCommitStatuses)+len(ps.Spec.ActiveCommitStatuses), ctp.Status.Active)
+		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Proposed.CommitStatus, len(environment.ProposedCommitStatuses)+len(ps.Spec.ProposedCommitStatuses), ctp.Status.Proposed)
 	}
-	return nil
 }
 
 // setEnvironmentCommitStatus sets the commit status for the environment based on the configured commit statuses.
 func (r *PromotionStrategyReconciler) setEnvironmentCommitStatus(targetStatus *promoterv1alpha1.PromotionStrategyCommitStatus, statusCount int, ctpEnvStatus promoterv1alpha1.CommitBranchState) {
-	if statusCount > 0 && len(ctpEnvStatus.CommitStatuses) == statusCount {
-		// We have configured active commits and our count of active commits from promotion strategy matches the count of active commit resource.
-		for _, status := range ctpEnvStatus.CommitStatuses {
-			targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-			targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
-			if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
-				targetStatus.Phase = status.Phase
-				targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
-				break
-			}
+	// Default to pending phase
+	targetStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
+	targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
+
+	if statusCount != len(ctpEnvStatus.CommitStatuses) {
+		// Assume pending until counts match.
+		return
+	}
+
+	// Assume success unless a failure is found
+	targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
+
+	for _, status := range ctpEnvStatus.CommitStatuses {
+		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
+			targetStatus.Phase = status.Phase
+			return
 		}
-	} else if statusCount == 0 && len(ctpEnvStatus.CommitStatuses) == 0 {
-		// We have no configured active commits and our count of active commits from promotion strategy matches the count of active commit resource, should be 0 each.
-		targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-		targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
-	} else {
-		targetStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
-		targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
 	}
 }
 
-func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentStatus *promoterv1alpha1.EnvironmentStatus, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) error {
+func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) error {
 	// TODO: do we like this name proposed-<name>?
 	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
 	proposedCSObjectKey := client.ObjectKey{Namespace: ctp.Namespace, Name: csName}
@@ -295,11 +291,6 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 	controllerRef := metav1.NewControllerRef(ctp, gvk)
-
-	branch := "no previous environment"
-	if previousEnvironmentStatus != nil {
-		branch = previousEnvironmentStatus.Branch + " - synced and healthy"
-	}
 
 	statusMap := make(map[string]string)
 	for _, status := range previousCRPCSPhases {
@@ -325,8 +316,8 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		Spec: promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: ctp.Spec.RepositoryReference,
 			Sha:                 ctp.Status.Proposed.Hydrated.Sha,
-			Name:                branch,
-			Description:         branch,
+			Name:                previousEnvironmentBranch + " - synced and healthy",
+			Description:         previousEnvironmentBranch + " - synced and healthy",
 			Phase:               phase,
 			// Url:                 "https://github.com/" + gitRepo.Spec.Owner + "/" + gitRepo.Spec.Name + "/commit/" + copyFromActiveHydratedSha,
 		},
@@ -371,49 +362,41 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 }
 
 // updatePreviousEnvironmentCommitStatus checks if any environment is ready to be merged and if so, merges the pull request. It does this by looking at any active and proposed commit statuses.
-func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctpMap map[string]*promoterv1alpha1.ChangeTransferPolicy) error {
+// ps.Spec.Environments and ps.Status.Environments must be the same length and in the same order as ctps.
+func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctps []*promoterv1alpha1.ChangeTransferPolicy) error {
 	logger := log.FromContext(ctx)
 	// Go through each environment and copy any commit statuses from the previous environment if the previous environment's running dry commit is the same as the
 	// currently processing environments proposed dry sha.
 	// We then look at the status of the current environment and if all checks have passed and the environment is set to auto merge, we merge the pull request.
-	for _, environment := range ps.Spec.Environments {
-		previousEnvironmentIndex, previousEnvironmentStatus := utils.GetPreviousEnvironmentStatusByBranch(*ps, environment.Branch)
-		environmentIndex, environmentStatus := utils.GetEnvironmentStatusByBranch(*ps, environment.Branch)
-		if environmentStatus == nil {
-			return fmt.Errorf("EnvironmentStatus not found for branch %s", environment.Branch)
+	for i, ctp := range ctps {
+		if i == 0 {
+			// Skip, there's no previous environment.
+			continue
 		}
 
-		if ctpMap[environment.Branch] == nil {
-			return fmt.Errorf("ChangeTransferPolicy not found in map for branch %s while merging pull requests", environment.Branch)
+		if len(ps.Spec.ActiveCommitStatuses) == 0 && len(ps.Spec.Environments[i-1].ActiveCommitStatuses) != 0 {
+			// Skip, there aren't any active commit statuses configured for the PromotionStrategy or the previous environment.
+			continue
 		}
 
-		activeChecksPassed := previousEnvironmentStatus != nil &&
-			previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
-			previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha &&
-			previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time)
+		previousEnvironmentStatus := ps.Status.Environments[i-1]
+		currentEnvironmentStatus := ps.Status.Environments[i]
 
-		if previousEnvironmentStatus != nil {
-			logger.Info(
-				"Previous environment status",
-				"branch", environment.Branch,
-				"activeChecksPassed", activeChecksPassed,
-				"sha", previousEnvironmentStatus.Active.Dry.Sha == ctpMap[environment.Branch].Status.Proposed.Dry.Sha,
-				"time", previousEnvironmentStatus.Active.Dry.CommitTime.After(environmentStatus.Active.Dry.CommitTime.Time),
-				"phase", previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess))
-		}
+		activeChecksPassed := previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
+			previousEnvironmentStatus.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha &&
+			previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
+
 		commitStatusPhase := promoterv1alpha1.CommitPhasePending
-		if environmentIndex == 0 || activeChecksPassed {
-			logger.V(4).Info("Checks passed, setting previous environment check to success", "branch", environment.Branch)
+		if activeChecksPassed {
+			logger.V(4).Info("Checks passed, setting previous environment check to success", "branch", ctp.Spec.ActiveBranch)
 			commitStatusPhase = promoterv1alpha1.CommitPhaseSuccess
 		}
 
-		if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
-			// Since there is at least one configured active check, and since this is not the first environment,
-			// we should not create a commit status for the previous environment.
-			err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctpMap[environment.Branch], commitStatusPhase, previousEnvironmentStatus, ctpMap[ps.Spec.Environments[previousEnvironmentIndex].Branch].Status.Active.CommitStatuses)
-			if err != nil {
-				return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", environment.Branch, err)
-			}
+		// Since there is at least one configured active check, and since this is not the first environment,
+		// we should not create a commit status for the previous environment.
+		err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
+		if err != nil {
+			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", ctp.Spec.ActiveBranch, err)
 		}
 	}
 

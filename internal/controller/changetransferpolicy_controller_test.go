@@ -78,7 +78,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+			prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
 				typeNamespacedNamePR := types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
@@ -189,7 +189,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+			prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				Expect(err).To(Succeed())
@@ -246,7 +246,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+			prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
 				typeNamespacedNamePR := types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
@@ -319,7 +319,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
-			prName := utils.GetPullRequestName(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+			prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
 			Eventually(func(g Gomega) {
 				typeNamespacedNamePR := types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
