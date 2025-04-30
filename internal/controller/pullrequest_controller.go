@@ -134,9 +134,13 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
+	if err != nil {
+		return fmt.Errorf("failed to create controller: %w", err)
+	}
+	return nil
 }
 
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
@@ -147,9 +151,9 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 
 	switch {
 	case scmProvider.Spec.GitHub != nil:
-		return github.NewGithubPullRequestProvider(r.Client, scmProvider, *secret)
+		return github.NewGithubPullRequestProvider(r.Client, scmProvider, *secret) //nolint:wrapcheck
 	case scmProvider.Spec.GitLab != nil:
-		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.Spec.GitLab.Domain)
+		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.Spec.GitLab.Domain) //nolint:wrapcheck
 	case scmProvider.Spec.Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:
@@ -162,9 +166,9 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 
 	if pr.DeletionTimestamp.IsZero() {
 		if !controllerutil.ContainsFinalizer(pr, finalizer) {
-			return false, retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
 				if err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr); err != nil {
-					return err
+					return err //nolint:wrapcheck
 				}
 				if controllerutil.AddFinalizer(pr, finalizer) {
 					return r.Update(ctx, pr)
