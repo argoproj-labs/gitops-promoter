@@ -267,14 +267,18 @@ func (r *PromotionStrategyReconciler) setEnvironmentCommitStatus(targetStatus *p
 	targetStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
 	targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
 
-	if statusCount == len(ctpEnvStatus.CommitStatuses) {
-		// Assume success unless a failure is found
-		targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-		for _, status := range ctpEnvStatus.CommitStatuses {
-			if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
-				targetStatus.Phase = status.Phase
-				return
-			}
+	if statusCount != len(ctpEnvStatus.CommitStatuses) {
+		// Assume pending until counts match.
+		return
+	}
+
+	// Assume success unless a failure is found
+	targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
+
+	for _, status := range ctpEnvStatus.CommitStatuses {
+		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
+			targetStatus.Phase = status.Phase
+			return
 		}
 	}
 }
