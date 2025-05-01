@@ -67,6 +67,10 @@ spec:
               state:
                 default: open
                 description: State of the merge request closed/merged/open
+                enum:
+                - closed
+                - merged
+                - open
                 type: string
               targetBranch:
                 description: Head the git reference we are merging from Head --->

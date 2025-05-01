@@ -47,6 +47,7 @@ type PullRequestSpec struct {
 	// State of the merge request closed/merged/open
 	// +kubebuilder:default:=open
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=closed;merged;open
 	State PullRequestState `json:"state"`
 }
 
