@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"k8s.io/client-go/tools/record"
 
@@ -58,121 +59,99 @@ type PullRequestReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	logger.Info("Reconciling PullRequest")
 
 	var pr promoterv1alpha1.PullRequest
-	err := r.Get(ctx, req.NamespacedName, &pr, &client.GetOptions{})
-	if err != nil {
+	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("PullRequest not found", "namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
-
-		logger.Error(err, "failed to get PullRequest", "namespace", req.Namespace, "name", req.Name)
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest: %w", err)
 	}
 
-	pullRequestProvider, err := r.getPullRequestProvider(ctx, pr)
+	provider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}
-	if pullRequestProvider == nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil")
+
+	if deleted, err := r.handleFinalizer(ctx, &pr, provider); err != nil || deleted {
+		return ctrl.Result{}, err
 	}
 
-	deleted, err := r.handleFinalizer(ctx, &pr, pullRequestProvider)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to handle finalizer: %w", err)
-	}
-	if deleted {
-		return ctrl.Result{}, nil
-	}
-
-	found, err := pullRequestProvider.FindOpen(ctx, &pr)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
-	}
-
-	// We can't find an open PR on the provider, and we have had a status state before, we should now delete it because
-	// it no longer exists on provider.
-	if !found && pr.Status.State != "" {
-		logger.Info("Deleting Pull Request, because no open PR found on provider")
-		err = r.Delete(ctx, &pr)
-		if err != nil {
-			if errors.IsNotFound(err) {
-				return ctrl.Result{}, nil
-			}
+	if pr.Status.State == promoterv1alpha1.PullRequestMerged || pr.Status.State == promoterv1alpha1.PullRequestClosed {
+		logger.Info("Cleaning up close and merged pull request", "pullRequestID", pr.Status.ID)
+		if err := r.Delete(ctx, &pr); err != nil && !errors.IsNotFound(err) {
+			logger.Error(err, "Failed to delete PullRequest")
 			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 		}
 		return ctrl.Result{}, nil
 	}
 
-	// If we have a status state, and the status state is the same as the spec state, and the observed generation is the same as the generation, we don't need to reconcile.
-	if pr.Status.State != "" && pr.Spec.State == pr.Status.State && pr.Status.ObservedGeneration == pr.Generation {
-		logger.V(4).Info("Reconcile not needed")
+	logger.Info("Checking for open PR on provider")
+	found, id, err := provider.FindOpen(ctx, &pr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
+	}
+
+	// Calculate the state of the PR based on the provider, if found we have to be open
+	if found {
+		pr.Status.State = promoterv1alpha1.PullRequestOpen
+		pr.Status.ID = id
+	} else if pr.Status.ID != "" {
+		// If we don't find the PR, but we have an ID, it means it was deleted on the provider side
+		if err := r.Delete(ctx, &pr); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest resource due to SCM not found: %w", err)
+		}
 		return ctrl.Result{}, nil
 	}
 
-	// We want the PR to be open, but it's not open on the provider, we should create it.
-	if pr.Spec.State == promoterv1alpha1.PullRequestOpen && pr.Status.State != promoterv1alpha1.PullRequestOpen {
-		err = r.createPullRequest(ctx, &pr, pullRequestProvider)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to create pull request: %w", err)
+	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
+	if pr.Status.State != pr.Spec.State {
+		switch pr.Spec.State {
+		case promoterv1alpha1.PullRequestOpen:
+			if pr.Status.ID == "" {
+				// Because status id is empty, we need to create a new pull request
+				logger.Info("Creating PullRequest")
+				if err := r.createPullRequest(ctx, &pr, provider); err != nil {
+					return ctrl.Result{}, fmt.Errorf("failed to create pull request: %w", err)
+				}
+			}
+		case promoterv1alpha1.PullRequestMerged:
+			logger.Info("Merging PullRequest")
+			if err := r.mergePullRequest(ctx, &pr, provider); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to merge pull request: %w", err)
+			}
+			if err := r.Delete(ctx, &pr); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
+			}
+			return ctrl.Result{}, nil
+		case promoterv1alpha1.PullRequestClosed:
+			logger.Info("Closing PullRequest")
+			if err := r.closePullRequest(ctx, &pr, provider); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err)
+			}
+			if err := r.Delete(ctx, &pr); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
+			}
+			return ctrl.Result{}, nil
 		}
-	}
-
-	// We want to merge the PR, but it's not merged on the provider, we should merge it on the provicer and delete on k8s.
-	if pr.Spec.State == promoterv1alpha1.PullRequestMerged && pr.Status.State != promoterv1alpha1.PullRequestMerged {
-		err = r.mergePullRequest(ctx, &pr, pullRequestProvider)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to merge pull request: %w", err)
-		}
-
-		err = r.Status().Update(ctx, &pr)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("merged pull request in the SCM, but failed to update PullRequest status: %w", err)
-		}
-		// We requeue here because we want to delete the resource on the next reconcile, this does cause more API calls to the provider
-		// but is cleaner than deleting right away. Will revisit this.
-		return ctrl.Result{Requeue: true}, nil
-	}
-
-	// We want to close the PR, but it's not closed on the provider based on status, we should close it on provider and delete it from k8s.
-	if pr.Spec.State == promoterv1alpha1.PullRequestClosed && pr.Status.State != promoterv1alpha1.PullRequestClosed {
-		err := r.closePullRequest(ctx, &pr, pullRequestProvider)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err)
-		}
-
-		err = r.Status().Update(ctx, &pr)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("closed pull request, but failed to update PullRequest status: %w", err)
-		}
-		// We requeue here because we want to delete the resource on the next reconcile, this does cause more API calls to the provider
-		// but is cleaner than deleting right away. Will revisit this.
-		return ctrl.Result{Requeue: true}, nil
-	}
-
-	if pr.Status.ObservedGeneration != pr.Generation {
-		// TODO: is there more work avoidance we can do here? Just because the generation has changed, do we know that
-		//       we need to hit the SCM? For example, an annotation update probably shouldn't cause an API call.
-		err = r.updatePullRequest(ctx, pr, pullRequestProvider)
-		if err != nil {
+	} else {
+		logger.Info("Updating PullRequest")
+		if err := r.updatePullRequest(ctx, pr, provider); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to update pull request: %w", err)
 		}
 	}
 
-	// TODO: can we just skip this status update if the generation hasn't changed?
 	pr.Status.ObservedGeneration = pr.Generation
-	err = r.Status().Update(ctx, &pr)
-	if err != nil {
+	if err := r.Status().Update(ctx, &pr); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update PullRequest status: %w", err)
 	}
 
 	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
 func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
@@ -186,160 +165,84 @@ func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
 	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, pr.Spec.RepositoryReference, &pr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", pr.Spec.RepositoryReference.Name, err)
+		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
 	}
 
 	switch {
 	case scmProvider.Spec.GitHub != nil:
-		var p *github.PullRequest
-		p, err = github.NewGithubPullRequestProvider(r.Client, scmProvider, *secret)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get GitHub provider for domain %q and secret %q: %w", scmProvider.Spec.GitHub.Domain, secret.Name, err)
-		}
-		return p, nil
+		return github.NewGithubPullRequestProvider(r.Client, scmProvider, *secret) //nolint:wrapcheck
 	case scmProvider.Spec.GitLab != nil:
-		var p *gitlab.PullRequest
-		p, err = gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.Spec.GitLab.Domain)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get GitLab provider for domain %q and secret %q: %w", scmProvider.Spec.GitLab.Domain, secret.Name, err)
-		}
-		return p, nil
+		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.Spec.GitLab.Domain) //nolint:wrapcheck
 	case scmProvider.Spec.Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:
-		return nil, nil
+		return nil, fmt.Errorf("unsupported SCM provider: %s", scmProvider.Name)
 	}
 }
 
-func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) (bool, error) {
-	// name of our custom finalizer
-	finalizerName := "pullrequest.promoter.argoporoj.io/finalizer"
+func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
+	finalizer := "pullrequest.promoter.argoporoj.io/finalizer"
 
-	var err error
-	// examine DeletionTimestamp to determine if object is under deletion
 	if pr.DeletionTimestamp.IsZero() {
-		// The object is not being deleted, so if it does not have our finalizer,
-		// then lets add the finalizer and update the object. This is equivalent
-		// to registering our finalizer.
-		if !controllerutil.ContainsFinalizer(pr, finalizerName) {
-			err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-				// TODO: consider skipping the Get on the initial attempt, the object may already be up to date.
-				err = r.Get(ctx, client.ObjectKeyFromObject(pr), pr)
-				if err != nil {
-					return fmt.Errorf("failed to get PullRequest %q: %w", pr.Name, err)
+		if !controllerutil.ContainsFinalizer(pr, finalizer) {
+			return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
+				if err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr); err != nil {
+					return err //nolint:wrapcheck
 				}
-				updated := controllerutil.AddFinalizer(pr, finalizerName)
-				if !updated {
-					// Nothing to update.
-					return nil
+				if controllerutil.AddFinalizer(pr, finalizer) {
+					return r.Update(ctx, pr)
 				}
-				// No need to wrap the error, we'll wrap it outside the retry.
-				return r.Update(ctx, pr)
+				return nil
 			})
-			if err != nil {
-				return false, fmt.Errorf("failed to add finalizer: %w", err)
-			}
 		}
-	} else {
-		// The object is being deleted
-		if controllerutil.ContainsFinalizer(pr, finalizerName) {
-			// our finalizer is present, so lets handle any external dependency
-			err = r.closePullRequest(ctx, pr, pullRequestProvider)
-			if err != nil {
-				// if fail to delete the external dependency here, return with error
-				// so that it can be retried.
-				return false, fmt.Errorf("failed to close pull request %q: %w", pr.Status.ID, err)
-			}
-
-			// remove our finalizer from the list and update it.
-			controllerutil.RemoveFinalizer(pr, finalizerName)
-			if err = r.Update(ctx, pr); err != nil {
-				return true, fmt.Errorf("failed to remove finalizer: %w", err)
-			}
-			return true, nil
+	} else if controllerutil.ContainsFinalizer(pr, finalizer) {
+		if err := r.closePullRequest(ctx, pr, provider); err != nil {
+			return false, fmt.Errorf("failed to close pull request: %w", err)
 		}
+		controllerutil.RemoveFinalizer(pr, finalizer)
+		if err := r.Update(ctx, pr); err != nil {
+			return true, fmt.Errorf("failed to remove finalizer: %w", err)
+		}
+		return true, nil
 	}
 
 	return false, nil
 }
 
-func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
-	logger := log.FromContext(ctx)
-	logger.Info("Opening Pull Request")
-
-	if pr == nil {
-		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in createPullRequest")
-	}
-
-	id, err := pullRequestProvider.Create(
-		ctx,
-		pr.Spec.Title,
-		pr.Spec.SourceBranch,
-		pr.Spec.TargetBranch,
-		pr.Spec.Description,
-		pr)
+func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	id, err := provider.Create(ctx, pr.Spec.Title, pr.Spec.SourceBranch, pr.Spec.TargetBranch, pr.Spec.Description, pr)
 	if err != nil {
 		return fmt.Errorf("failed to create pull request: %w", err)
 	}
-
 	pr.Status.State = promoterv1alpha1.PullRequestOpen
 	pr.Status.PRCreationTime = metav1.Now()
 	pr.Status.ID = id
 	return nil
 }
 
-func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
-	logger := log.FromContext(ctx)
-	logger.Info("Updating Pull Request")
-
-	if pullRequestProvider == nil {
-		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in updatePullRequest")
+func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	if err := provider.Update(ctx, pr.Spec.Title, pr.Spec.Description, &pr); err != nil {
+		return fmt.Errorf("failed to update pull request: %w", err)
 	}
-
-	err := pullRequestProvider.Update(ctx, pr.Spec.Title, pr.Spec.Description, &pr)
 	r.Recorder.Event(&pr, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
-	if err != nil {
-		return fmt.Errorf("failed to update pull request %q: %w", pr.Status.ID, err)
-	}
-
 	return nil
 }
 
-func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
-	logger := log.FromContext(ctx)
-
-	if pullRequestProvider == nil {
-		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in mergePullRequest")
+func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	if err := provider.Merge(ctx, "", pr); err != nil {
+		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
-
-	logger.Info("Merging Pull Request", "namespace", pr.Namespace, "name", pr.Name)
-	err := pullRequestProvider.Merge(ctx, "", pr)
-	if err != nil {
-		return fmt.Errorf("failed to merge pull request %q: %w", pr.Status.ID, err)
-	}
-
 	pr.Status.State = promoterv1alpha1.PullRequestMerged
-
 	return nil
 }
 
-func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, pullRequestProvider scms.PullRequestProvider) error {
-	logger := log.FromContext(ctx)
-
-	if pullRequestProvider == nil {
-		return fmt.Errorf("failed to get pull request provider, pullRequestProvider is nil in closePullRequest")
-	}
-
+func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
 	if pr.Status.State == promoterv1alpha1.PullRequestMerged {
 		return nil
 	}
-
-	logger.Info("Closing Pull Request")
-	err := pullRequestProvider.Close(ctx, pr)
-	if err != nil {
-		return fmt.Errorf("failed to close pull request %q: %w", pr.Status.ID, err)
+	if err := provider.Close(ctx, pr); err != nil {
+		return fmt.Errorf("failed to close pull request: %w", err)
 	}
-
 	pr.Status.State = promoterv1alpha1.PullRequestClosed
 	return nil
 }
