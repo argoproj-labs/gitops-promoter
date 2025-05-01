@@ -97,9 +97,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if found {
 		pr.Status.State = promoterv1alpha1.PullRequestOpen
 		pr.Status.ID = id
-	} else {
-		pr.Status.State = ""
-		pr.Status.ID = ""
+	} else if pr.Status.ID != "" {
+		if err := r.Client.Delete(ctx, &pr); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
+		}
+		return ctrl.Result{}, nil
 	}
 
 	if pr.Status.State == pr.Spec.State && pr.Status.ObservedGeneration == pr.Generation {
