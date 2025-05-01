@@ -176,7 +176,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	return nil
 }
 
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, string, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
@@ -191,7 +191,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return false, fmt.Errorf("failed to list pull requests: %w", err)
+		return false, "", fmt.Errorf("failed to list pull requests: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -203,8 +203,8 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 	if len(pullRequests) > 0 {
 		pullRequest.Status.ID = strconv.Itoa(*pullRequests[0].Number)
 		pullRequest.Status.State = v1alpha1.PullRequestState(*pullRequests[0].State)
-		return true, nil
+		return true, pullRequest.Status.ID, nil
 	}
 
-	return false, nil
+	return false, "", nil
 }

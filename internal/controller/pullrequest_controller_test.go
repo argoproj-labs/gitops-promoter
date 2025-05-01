@@ -35,7 +35,7 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should successfully reconcile the resource when updating title then merging", func() {
 			By("Reconciling the created resource")
 
-			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "update-title", "default")
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "update-title-merge", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -53,7 +53,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 			}, EventuallyTimeout)
 
@@ -85,12 +85,17 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should successfully reconcile the resource when closing", func() {
 			By("Reconciling the created resource")
 
-			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "update-title", "default")
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "update-title-close", "default")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
 				Namespace: "default",
 			}
+
+			pullRequest.Spec.Title = "Initial Title"
+			pullRequest.Spec.TargetBranch = "staging"
+			pullRequest.Spec.SourceBranch = "staging-next"
+			pullRequest.Spec.Description = "Initial Description"
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -98,7 +103,7 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 			}, EventuallyTimeout).Should(Succeed())
 

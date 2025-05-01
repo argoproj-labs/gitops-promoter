@@ -216,7 +216,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *v
 	return nil
 }
 
-func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest) (bool, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest) (bool, string, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
@@ -225,7 +225,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 		Name:      prObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return false, fmt.Errorf("failed to get repo: %w", err)
+		return false, "", fmt.Errorf("failed to get repo: %w", err)
 	}
 
 	options := &gitlab.ListMergeRequestsOptions{
@@ -240,7 +240,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return false, fmt.Errorf("failed to list pull requests: %w", err)
+		return false, "", fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
 	logGitLabRateLimitsIfAvailable(
@@ -254,8 +254,8 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 	if len(mrs) > 0 {
 		prObj.Status.ID = strconv.Itoa(mrs[0].IID)
 		prObj.Status.State = mapMergeRequestState(mrs[0].State)
-		return true, nil
+		return true, prObj.Status.ID, nil
 	}
 
-	return false, nil
+	return false, "", nil
 }
