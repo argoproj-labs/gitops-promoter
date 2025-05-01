@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"k8s.io/client-go/tools/record"
 
@@ -98,8 +99,9 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		pr.Status.State = promoterv1alpha1.PullRequestOpen
 		pr.Status.ID = id
 	} else if pr.Status.ID != "" {
+		// If we don't find the PR, but we have an ID, it means it was deleted on the provider side
 		if err := r.Client.Delete(ctx, &pr); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
+			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest resource due to SCM not found: %w", err)
 		}
 		return ctrl.Result{}, nil
 	}
@@ -111,14 +113,16 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
 	if pr.Status.State != pr.Spec.State {
-		if pr.Spec.State == promoterv1alpha1.PullRequestOpen {
+		switch pr.Spec.State {
+		case promoterv1alpha1.PullRequestOpen:
 			if pr.Status.ID == "" {
+				// Because status id is empty, we need to create a new pull request
 				logger.Info("Creating PullRequest")
 				if err := r.createPullRequest(ctx, &pr, provider); err != nil {
 					return ctrl.Result{}, fmt.Errorf("failed to create pull request: %w", err)
 				}
 			}
-		} else if pr.Spec.State == promoterv1alpha1.PullRequestMerged {
+		case promoterv1alpha1.PullRequestMerged:
 			logger.Info("Merging PullRequest")
 			if err := r.mergePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to merge pull request: %w", err)
@@ -126,9 +130,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			if err := r.Client.Delete(ctx, &pr); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 			}
-			// No need to update the status here, as the pull request is deleted
 			return ctrl.Result{}, nil
-		} else if pr.Spec.State == promoterv1alpha1.PullRequestClosed {
+		case promoterv1alpha1.PullRequestClosed:
 			logger.Info("Closing PullRequest")
 			if err := r.closePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err)
@@ -136,7 +139,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			if err := r.Client.Delete(ctx, &pr); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 			}
-			// No need to update the status here, as the pull request is deleted
 			return ctrl.Result{}, nil
 		}
 	} else {
@@ -152,7 +154,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
 func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
