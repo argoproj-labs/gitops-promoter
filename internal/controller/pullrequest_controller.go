@@ -115,11 +115,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				if err := r.createPullRequest(ctx, &pr, provider); err != nil {
 					return ctrl.Result{}, fmt.Errorf("failed to create pull request: %w", err)
 				}
-			} else {
-				logger.Info("Updating PullRequest")
-				if err := r.updatePullRequest(ctx, pr, provider); err != nil {
-					return ctrl.Result{}, fmt.Errorf("failed to update pull request: %w", err)
-				}
 			}
 		} else if pr.Spec.State == promoterv1alpha1.PullRequestMerged {
 			logger.Info("Merging PullRequest")
@@ -141,6 +136,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 			// No need to update the status here, as the pull request is deleted
 			return ctrl.Result{}, nil
+		}
+	} else {
+		logger.Info("Updating PullRequest")
+		if err := r.updatePullRequest(ctx, pr, provider); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to update pull request: %w", err)
 		}
 	}
 
