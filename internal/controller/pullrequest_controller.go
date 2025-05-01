@@ -116,6 +116,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 					return ctrl.Result{}, fmt.Errorf("failed to create pull request: %w", err)
 				}
 			} else {
+				logger.Info("Updating PullRequest")
 				if err := r.updatePullRequest(ctx, pr, provider); err != nil {
 					return ctrl.Result{}, fmt.Errorf("failed to update pull request: %w", err)
 				}
@@ -128,6 +129,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			if err := r.Client.Delete(ctx, &pr); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 			}
+			// No need to update the status here, as the pull request is deleted
+			return ctrl.Result{}, nil
 		} else if pr.Spec.State == promoterv1alpha1.PullRequestClosed {
 			logger.Info("Closing PullRequest")
 			if err := r.closePullRequest(ctx, &pr, provider); err != nil {
@@ -136,6 +139,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			if err := r.Client.Delete(ctx, &pr); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 			}
+			// No need to update the status here, as the pull request is deleted
+			return ctrl.Result{}, nil
 		}
 	}
 
