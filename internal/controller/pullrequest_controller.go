@@ -100,7 +100,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		pr.Status.ID = id
 	} else if pr.Status.ID != "" {
 		// If we don't find the PR, but we have an ID, it means it was deleted on the provider side
-		if err := r.Client.Delete(ctx, &pr); err != nil {
+		if err := r.Delete(ctx, &pr); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest resource due to SCM not found: %w", err)
 		}
 		return ctrl.Result{}, nil
@@ -127,7 +127,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			if err := r.mergePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to merge pull request: %w", err)
 			}
-			if err := r.Client.Delete(ctx, &pr); err != nil {
+			if err := r.Delete(ctx, &pr); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 			}
 			return ctrl.Result{}, nil
@@ -136,7 +136,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			if err := r.closePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err)
 			}
-			if err := r.Client.Delete(ctx, &pr); err != nil {
+			if err := r.Delete(ctx, &pr); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 			}
 			return ctrl.Result{}, nil
