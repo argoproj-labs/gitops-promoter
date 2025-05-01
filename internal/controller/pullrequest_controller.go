@@ -106,11 +106,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	if pr.Status.State == pr.Spec.State && pr.Status.ObservedGeneration == pr.Generation {
-		logger.V(4).Info("Reconcile not needed")
-		return ctrl.Result{}, nil
-	}
-
 	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
 	if pr.Status.State != pr.Spec.State {
 		switch pr.Spec.State {
