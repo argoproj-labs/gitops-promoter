@@ -15,7 +15,8 @@ spec:
 #    - key: healthy-lint
   environments:
     - branch: environment/development
-      autoMerge: true
+      mergePolicy:
+        autoMerge: OnCommitStatusSuccess
     - branch: environment/staging
     - branch: environment/production
       activeCommitStatuses:

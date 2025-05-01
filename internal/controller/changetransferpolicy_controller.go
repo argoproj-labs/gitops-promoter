@@ -462,7 +462,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		}
 	}
 
-	if *ctp.Spec.AutoMerge {
+	if ctp.Spec.MergePolicy.AutoMerge != promoterv1alpha1.AutoMergePolicyNever {
 		prl := promoterv1alpha1.PullRequestList{}
 		// Find the PRs that match the proposed commit and the environment. There should only be one.
 		err := r.List(ctx, &prl, &client.ListOptions{

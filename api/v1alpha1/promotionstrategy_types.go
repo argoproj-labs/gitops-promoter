@@ -56,11 +56,13 @@ type PromotionStrategySpec struct {
 type Environment struct {
 	// +kubebuilder:validation:Required
 	Branch string `json:"branch"`
+
 	// AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence.
 	// If false, the dry commit will be proposed but not merged.
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default:=true
-	AutoMerge *bool `json:"autoMerge,omitempty"`
+	MergePolicy MergePolicy `json:"mergePolicy,omitempty"`
+
 	// ActiveCommitStatuses are commit statuses describing an actively running dry commit. If an active commit status
 	// is failing for an environment, subsequent environments will not deploy the failing commit.
 	//
@@ -68,6 +70,7 @@ type Environment struct {
 	// for all environments in the `spec.activeCommitStatuses` field.
 	// +kubebuilder:validation:Optional
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+
 	// ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
 	// in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
 	// be promoted to that environment.
@@ -78,12 +81,19 @@ type Environment struct {
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
-// GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.
-func (e *Environment) GetAutoMerge() bool {
-	if e.AutoMerge == nil {
-		return true
-	}
-	return *e.AutoMerge
+type AutoMergePolicy string
+
+const (
+	AutoMergePolicyDefault               AutoMergePolicy = ""
+	AutoMergePolicyOnCommitStatusSuccess AutoMergePolicy = "OnCommitStatusSuccess"
+	AutoMergePolicyNever                 AutoMergePolicy = "Never"
+)
+
+type MergePolicy struct {
+	// AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Enum:="";OnCommitStatusSuccess;Never
+	AutoMerge AutoMergePolicy `json:"autoMerge,omitempty"`
 }
 
 type CommitStatusSelector struct {
