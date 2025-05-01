@@ -78,19 +78,28 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Checking for open PR on provider")
-	found, err := provider.FindOpen(ctx, &pr)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
-	}
-
-	if !found && pr.Status.State != "" {
-		logger.Info("Deleting PullRequest - the corresponding SCM PR was previously identified but is no longer open", "pullRequestID", pr.Status.ID)
+	if pr.Status.State == promoterv1alpha1.PullRequestMerged || pr.Status.State == promoterv1alpha1.PullRequestClosed {
+		logger.Info("Cleaning up close|merged pull request", "pullRequestID", pr.Status.ID)
 		if err := r.Delete(ctx, &pr); err != nil && !errors.IsNotFound(err) {
 			logger.Error(err, "Failed to delete PullRequest")
 			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 		}
 		return ctrl.Result{}, nil
+	}
+
+	logger.Info("Checking for open PR on provider")
+	found, id, err := provider.FindOpen(ctx, &pr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
+	}
+
+	// Calculate the state of the PR based on the provider, if found we have to be open
+	if found {
+		pr.Status.State = promoterv1alpha1.PullRequestOpen
+		pr.Status.ID = id
+	} else {
+		pr.Status.State = ""
+		pr.Status.ID = ""
 	}
 
 	if pr.Status.State == pr.Spec.State && pr.Status.ObservedGeneration == pr.Generation {
@@ -100,34 +109,33 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
 	if pr.Status.State != pr.Spec.State {
-		switch pr.Spec.State {
-		case promoterv1alpha1.PullRequestOpen:
-			logger.Info("Creating PullRequest")
-			if err := r.createPullRequest(ctx, &pr, provider); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to create pull request: %w", err)
+		if pr.Spec.State == promoterv1alpha1.PullRequestOpen {
+			if pr.Status.ID == "" {
+				logger.Info("Creating PullRequest")
+				if err := r.createPullRequest(ctx, &pr, provider); err != nil {
+					return ctrl.Result{}, fmt.Errorf("failed to create pull request: %w", err)
+				}
+			} else {
+				if err := r.updatePullRequest(ctx, pr, provider); err != nil {
+					return ctrl.Result{}, fmt.Errorf("failed to update pull request: %w", err)
+				}
 			}
-		case promoterv1alpha1.PullRequestMerged:
+		} else if pr.Spec.State == promoterv1alpha1.PullRequestMerged {
 			logger.Info("Merging PullRequest")
 			if err := r.mergePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to merge pull request: %w", err)
 			}
-			// We do not need to update status here because we close the PR on the SCM but we requeue the reconcile to
-			// clean up the PullRequest object
-			return ctrl.Result{Requeue: true}, nil
-		case promoterv1alpha1.PullRequestClosed:
+			if err := r.Client.Delete(ctx, &pr); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
+			}
+		} else if pr.Spec.State == promoterv1alpha1.PullRequestClosed {
 			logger.Info("Closing PullRequest")
 			if err := r.closePullRequest(ctx, &pr, provider); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err)
 			}
-			// We do not need to update status here because we close the PR on the SCM but we requeue the reconcile to
-			// clean up the PullRequest object
-			return ctrl.Result{Requeue: true}, nil
-		}
-	}
-
-	if pr.Status.ObservedGeneration != pr.Generation {
-		if err := r.updatePullRequest(ctx, pr, provider); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to update pull request: %w", err)
+			if err := r.Client.Delete(ctx, &pr); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
+			}
 		}
 	}
 

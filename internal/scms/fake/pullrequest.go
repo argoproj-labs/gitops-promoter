@@ -143,27 +143,27 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	return nil
 }
 
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, string, error) {
 	mutexPR.RLock()
-	found := pr.findOpen(ctx, pullRequest)
+	found, id := pr.findOpen(ctx, pullRequest)
 	mutexPR.RUnlock()
-	return found, nil
+	return found, id, nil
 }
 
-func (pr *PullRequest) findOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) bool {
+func (pr *PullRequest) findOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, string) {
 	log.FromContext(ctx).Info("Finding open pull request", "pullRequest", pullRequest)
 	if pullRequests == nil {
-		return false
+		return false, ""
 	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		log.FromContext(ctx).Error(err, "failed to get GitRepository")
-		return false
+		return false, ""
 	}
 
 	pullRequestState, ok := pullRequests[pr.getMapKey(*pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
-	return ok && pullRequestState.State == v1alpha1.PullRequestOpen
+	return ok && pullRequestState.State == v1alpha1.PullRequestOpen, pullRequestState.ID
 }
 
 func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name string) string {
