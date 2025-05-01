@@ -79,7 +79,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if pr.Status.State == promoterv1alpha1.PullRequestMerged || pr.Status.State == promoterv1alpha1.PullRequestClosed {
-		logger.Info("Cleaning up close|merged pull request", "pullRequestID", pr.Status.ID)
+		logger.Info("Cleaning up close and merged pull request", "pullRequestID", pr.Status.ID)
 		if err := r.Delete(ctx, &pr); err != nil && !errors.IsNotFound(err) {
 			logger.Error(err, "Failed to delete PullRequest")
 			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
