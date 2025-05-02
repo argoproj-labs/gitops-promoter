@@ -46,10 +46,14 @@ type ChangeTransferPolicySpec struct {
 
 	// ActiveCommitStatuses lists the statuses to be monitored on the active branch
 	// +kubebuilder:validation:Optional
+	// +listType:=map
+	// +listMapKey=key
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 
 	// ProposedCommitStatuses lists the statuses to be monitored on the proposed branch
 	// +kubebuilder:validation:Optional
+	// +listType:=map
+	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
@@ -68,6 +72,8 @@ type CommitBranchState struct {
 	Dry      CommitShaState `json:"dry,omitempty"`
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
 	// +kubebuilder:validation:Optional
+	// +listType:=map
+	// +listMapKey=key
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 
