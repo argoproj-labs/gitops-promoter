@@ -209,6 +209,9 @@ spec:
                   - key
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - key
+                x-kubernetes-list-type: map
               autoMerge:
                 default: true
                 type: boolean
@@ -235,6 +238,9 @@ spec:
                   - key
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - key
+                x-kubernetes-list-type: map
             required:
             - activeBranch
             - gitRepositoryRef
@@ -264,6 +270,9 @@ spec:
                       - phase
                       type: object
                     type: array
+                    x-kubernetes-list-map-keys:
+                    - key
+                    x-kubernetes-list-type: map
                   dry:
                     properties:
                       commitTime:
@@ -304,6 +313,9 @@ spec:
                       - phase
                       type: object
                     type: array
+                    x-kubernetes-list-map-keys:
+                    - key
+                    x-kubernetes-list-type: map
                   dry:
                     properties:
                       commitTime:
@@ -694,6 +706,9 @@ spec:
                   - key
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - key
+                x-kubernetes-list-type: map
               environments:
                 description: Environments is the sequence of environments that a dry
                   commit will be promoted through.
@@ -715,6 +730,9 @@ spec:
                         - key
                         type: object
                       type: array
+                      x-kubernetes-list-map-keys:
+                      - key
+                      x-kubernetes-list-type: map
                     autoMerge:
                       default: true
                       description: |-
@@ -740,11 +758,17 @@ spec:
                         - key
                         type: object
                       type: array
+                      x-kubernetes-list-map-keys:
+                      - key
+                      x-kubernetes-list-type: map
                   required:
                   - branch
                   type: object
                 minItems: 1
                 type: array
+                x-kubernetes-list-map-keys:
+                - branch
+                x-kubernetes-list-type: map
               gitRepositoryRef:
                 properties:
                   name:
@@ -769,6 +793,9 @@ spec:
                   - key
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - key
+                x-kubernetes-list-type: map
             required:
             - environments
             - gitRepositoryRef
@@ -876,6 +903,9 @@ spec:
                   - proposed
                   type: object
                 type: array
+                x-kubernetes-list-map-keys:
+                - branch
+                x-kubernetes-list-type: map
             required:
             - environments
             type: object
@@ -953,6 +983,10 @@ spec:
               state:
                 default: open
                 description: State of the merge request closed/merged/open
+                enum:
+                - closed
+                - merged
+                - open
                 type: string
               targetBranch:
                 description: Head the git reference we are merging from Head --->
@@ -987,6 +1021,11 @@ spec:
                 type: string
               state:
                 description: State of the merge request closed/merged/open
+                enum:
+                - ""
+                - closed
+                - merged
+                - open
                 type: string
             required:
             - observedGeneration

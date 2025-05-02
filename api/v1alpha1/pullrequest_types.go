@@ -47,6 +47,7 @@ type PullRequestSpec struct {
 	// State of the merge request closed/merged/open
 	// +kubebuilder:default:=open
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=closed;merged;open
 	State PullRequestState `json:"state"`
 }
 
@@ -61,6 +62,7 @@ type PullRequestStatus struct {
 	// ID the id of the pull request
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
+	// +kubebuilder:validation:Enum="";closed;merged;open
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime the time the PR was created
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
