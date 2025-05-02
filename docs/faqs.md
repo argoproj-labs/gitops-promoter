@@ -21,3 +21,42 @@ applied to all environments.
 
 By focusing on the promotion part and leaving manifest manipulation to other tools, GitOps Promoter is able to reliably
 handle whatever manifest structure your organization prefers.
+
+## How does GitOps Promoter handle concurrent releases?
+
+GitOps Promoter always works on releasing the latest DRY commit. If a new commit is pushed while another commit is still
+moving through environments, GitOps Promoter stops working on the old commit and waits for the new commit to work its
+way through the environments.
+
+This model has some major advantages.
+
+1. **Simplicity**: The user never has to think about the progress of commits other than the most recent one. After 
+   pushing a commit, they know that higher environments will hold their current state while the new change works its way
+   through the environments.
+
+2. **Ease of use**: The pending change is always represented as a simple PR from the HEAD of the proposed branch to the 
+   HEAD of the active branch. Hotfixes require simply clicking "Merge" on the PR to promote the change to a given 
+   environment.
+
+3. **Reliability**: Concurrent releases would require somehow queueing commits (in a series of PRs or some other state
+   store). The implementation would be far more complex and error-prone.
+
+The "release latest" model has some drawbacks.
+
+1. **Delays in high-churn applications**: Frequent changes could delay releases to higher environments. An environment
+   must wait the sum of all previous environments' delays before receiving a change. If commits arrive faster than that
+   sum, the environment will wait at an old state until a change can clear all prior environments.
+
+2. **Skipped commits**: There's no guarantee that every change will be released to every environment. For example, if 
+   the second environment is running commit A, and active commit statuses never pass for commits B and C, then the 
+   second environment will never see commits B and C. It will skip straight to D. This could confuse for users who are
+   used to a queue-based deployment. It may make it more difficult to diagnose which commit caused a problem in a given
+   environment.
+
+For most use cases, these tradeoffs are worth it.
+
+To mitigate the downsides, try to speed up active commit statuses (maybe by shifting more of those validations left) or
+adopting a "slower" release model, such as by batching multiple changes in a single DRY commit.
+
+Once the "release latest" model is validated in production environments, we may consider adding a queue-based model for
+users who need it.
