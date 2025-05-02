@@ -991,6 +991,11 @@ spec:
                 type: string
               state:
                 description: State of the merge request closed/merged/open
+                enum:
+                - ""
+                - closed
+                - merged
+                - open
                 type: string
             required:
             - observedGeneration
