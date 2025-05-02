@@ -37,6 +37,8 @@ type PromotionStrategySpec struct {
 	// The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
 	// specify commit statuses for individual environments in the `environments` field.
 	// +kubebuilder:validation:Optional
+	// +listType:=map
+	// +listMapKey=key
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 
 	// ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
@@ -46,10 +48,14 @@ type PromotionStrategySpec struct {
 	// The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
 	// specify commit statuses for individual environments in the `environments` field.
 	// +kubebuilder:validation:Optional
+	// +listType:=map
+	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
+	// +listType:=map
+	// +listMapKey=branch
 	Environments []Environment `json:"environments"`
 }
 
@@ -67,6 +73,8 @@ type Environment struct {
 	// The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
 	// for all environments in the `spec.activeCommitStatuses` field.
 	// +kubebuilder:validation:Optional
+	// +listType:=map
+	// +listMapKey=key
 	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
 	// ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
 	// in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
@@ -75,6 +83,8 @@ type Environment struct {
 	// The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
 	// for all environments in the `spec.proposedCommitStatuses` field.
 	// +kubebuilder:validation:Optional
+	// +listType:=map
+	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
@@ -87,12 +97,15 @@ func (e *Environment) GetAutoMerge() bool {
 }
 
 type CommitStatusSelector struct {
+	// +required
 	// +kubebuilder:validation:Pattern:=(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
 	Key string `json:"key"`
 }
 
 // PromotionStrategyStatus defines the observed state of PromotionStrategy
 type PromotionStrategyStatus struct {
+	// +listType:=map
+	// +listMapKey=branch
 	Environments []EnvironmentStatus `json:"environments"`
 }
 
