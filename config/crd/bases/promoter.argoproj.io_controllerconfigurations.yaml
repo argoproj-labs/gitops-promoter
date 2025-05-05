@@ -77,11 +77,17 @@ spec:
                 required:
                 - template
                 type: object
+              pullRequestRequeueDuration:
+                description: |-
+                  How frequently to requeue pull request resources for auto reconciliation. Default: "5m".
+                  Format is go's time.Duration, e.g. "5m" for 5 minutes.
+                type: string
             required:
             - argocdCommitStatusRequeueDuration
             - changeTransferPolicyRequeueDuration
             - promotionStrategyRequeueDuration
             - pullRequest
+            - pullRequestRequeueDuration
             type: object
           status:
             description: ControllerConfigurationStatus defines the observed state

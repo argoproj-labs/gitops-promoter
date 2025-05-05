@@ -19,8 +19,8 @@ package controller
 import (
 	"context"
 	"fmt"
-	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"k8s.io/client-go/tools/record"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -44,8 +44,9 @@ import (
 // PullRequestReconciler reconciles a PullRequest object
 type PullRequestReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Scheme      *runtime.Scheme
+	Recorder    record.EventRecorder
+	SettingsMgr *settings.Manager
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch;delete
@@ -149,7 +150,13 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
-	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+
+	pullRequestDuration, err := r.SettingsMgr.GetPullRequestRequeueDuration(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get pull request requeue duration: %w", err)
+	}
+
+	return ctrl.Result{RequeueAfter: pullRequestDuration}, nil
 }
 
 func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
