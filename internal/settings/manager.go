@@ -58,6 +58,15 @@ func (m *Manager) GetArgoCDCommitStatusRequeueDuration(ctx context.Context) (tim
 	return controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration.Duration, nil
 }
 
+func (m *Manager) GetPullRequestRequeueDuration(ctx context.Context) (time.Duration, error) {
+	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
+	if err != nil {
+		return time.Duration(0), fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	return controllerConfiguration.Spec.PullRequestRequeueDuration.Duration, nil
+}
+
 func NewManager(client client.Client, config ManagerConfig) *Manager {
 	return &Manager{
 		client: client,

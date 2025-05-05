@@ -44,6 +44,11 @@ type ControllerConfigurationSpec struct {
 	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
 	// +required
 	ArgoCDCommitStatusRequeueDuration metav1.Duration `json:"argocdCommitStatusRequeueDuration,omitempty"`
+
+	// How frequently to requeue pull request resources for auto reconciliation. Default: "5m".
+	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
+	// +required
+	PullRequestRequeueDuration metav1.Duration `json:"pullRequestRequeueDuration,omitempty"`
 }
 
 type PullRequestConfiguration struct {

@@ -155,9 +155,10 @@ func main() {
 	})
 
 	if err = (&controller.PullRequestReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("PullRequest"),
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Recorder:    mgr.GetEventRecorderFor("PullRequest"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create PullRequest controller")
 	}
