@@ -28,7 +28,7 @@ jobs:
           path: bin/manager
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
       - name: Lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v8
         with:
           version: v2.0.2
           args: --timeout=5m
