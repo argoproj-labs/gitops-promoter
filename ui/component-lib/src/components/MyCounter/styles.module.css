@@ -1,0 +1,9 @@
+.container {
+  text-align: center;
+  font-family: system-ui;
+}
+
+.text {
+  font-size: 1.5rem;
+  margin-bottom: 10px;
+}
