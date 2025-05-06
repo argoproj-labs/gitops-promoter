@@ -208,175 +208,11 @@ func (ws *WebServer) Start(ctx context.Context, addr string) error {
 	router.Use(ginlogr.RecoveryWithLogr(logger, time.RFC3339, true, true))
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
-	router.GET("/watch", WatchHeadersMiddleware(), ws.Event.serveHTTP(), func(c *gin.Context) {
-		v, ok := c.Get("clientChan")
-		if !ok {
-			return
-		}
-		clientChan, ok := v.(ClientChan)
-		if !ok {
-			return
-		}
+	router.GET("/watch", WatchHeadersMiddleware(), ws.Event.serveHTTP(), ws.httpWatch)
 
-		gone := c.Stream(func(w io.Writer) bool {
-			// Stream message to client from message channel
-			if msg, ok := <-clientChan; ok {
-				match, err := filter(msg, c)
-				if err != nil {
-					logger.Error(err, "failed to filter message", "name", msg.Name, "kind", msg.Kind)
-					return false
-				}
+	router.GET("/list", ws.httpList)
 
-				if match {
-					c.SSEvent(msg.Kind, msg.Data)
-				}
-
-				return true
-			}
-			return false
-		})
-		if gone {
-			logger.Info("client gone stream")
-			// Send closed connection to event server
-			ws.Event.closedClients <- clientChan
-		}
-	})
-
-	router.GET("/list", func(c *gin.Context) { //nolint:contextcheck
-		if c.Query("kind") == "" {
-			c.JSON(http.StatusBadRequest, "kind is required")
-			return
-		}
-		kind := strings.ToLower(c.Query("kind"))
-		listOptions := &client.ListOptions{}
-		if c.Query("namespace") != "" {
-			listOptions = &client.ListOptions{Namespace: c.Query("namespace")}
-		}
-
-		switch kind {
-		case "promotionstrategy":
-			psl := &promoterv1alpha1.PromotionStrategyList{}
-			err := ws.List(c, psl, listOptions)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, err.Error())
-				return
-			}
-			c.JSON(http.StatusOK, psl.Items)
-
-		case "changetransferpolicy":
-			ctpl := &promoterv1alpha1.ChangeTransferPolicyList{}
-			err := ws.List(c, ctpl, listOptions)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, err.Error())
-				return
-			}
-			c.JSON(http.StatusOK, ctpl.Items)
-
-		case "pullrequest":
-			prl := &promoterv1alpha1.PullRequestList{}
-			err := ws.List(c, prl, listOptions)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, err.Error())
-				return
-			}
-			c.JSON(http.StatusOK, prl.Items)
-
-		case "commitstatus":
-			csl := &promoterv1alpha1.CommitStatusList{}
-			err := ws.List(c, csl, listOptions)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, err.Error())
-				return
-			}
-			c.JSON(http.StatusOK, csl.Items)
-
-		case "namespace":
-			if c.Query("namespace") != "" {
-				c.JSON(http.StatusBadRequest, "namespace is not valid for listing namespaces")
-				return
-			}
-
-			m := make(map[string]bool)
-			var namespaces []string
-
-			psl := &promoterv1alpha1.PromotionStrategyList{}
-			err := ws.List(c, psl, &client.ListOptions{})
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, err.Error())
-				return
-			}
-			for _, ps := range psl.Items {
-				ns := ps.Namespace
-				if !m[ns] {
-					m[ns] = true
-					namespaces = append(namespaces, ns)
-				}
-			}
-			c.JSON(http.StatusOK, namespaces)
-
-		default:
-			c.JSON(http.StatusBadRequest, "invalid kind")
-		}
-	})
-
-	router.GET("/get", func(c *gin.Context) {
-		if c.Query("kind") == "" {
-			c.JSON(http.StatusBadRequest, "kind is required")
-			return
-		}
-		if c.Query("namespace") == "" {
-			c.JSON(http.StatusBadRequest, "namespace is required")
-			return
-		}
-		if c.Query("name") == "" {
-			c.JSON(http.StatusBadRequest, "name is required")
-			return
-		}
-		kind := strings.ToLower(c.Query("kind"))
-		namespace := strings.ToLower(c.Query("namespace"))
-		name := strings.ToLower(c.Query("name"))
-
-		switch kind {
-		case "promotionstrategy":
-			ps := &promoterv1alpha1.PromotionStrategy{}
-			err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, ps)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, err.Error())
-				return
-			}
-			c.JSON(http.StatusOK, ps)
-
-		case "changetransferpolicy":
-			ctps := &promoterv1alpha1.ChangeTransferPolicy{}
-			err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, ctps)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, err.Error())
-				return
-			}
-			c.JSON(http.StatusOK, ctps)
-
-		case "pullrequest":
-			pr := &promoterv1alpha1.PullRequest{}
-			err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, pr)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, err.Error())
-				return
-			}
-			c.JSON(http.StatusOK, pr)
-
-		case "commitstatus":
-			cs := &promoterv1alpha1.CommitStatus{}
-			err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, cs)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, err.Error())
-				return
-			}
-			c.JSON(http.StatusOK, cs)
-
-		default:
-			c.JSON(http.StatusBadRequest, "invalid kind")
-		}
-	})
+	router.GET("/get", ws.httpGet)
 
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "ok")
@@ -409,6 +245,176 @@ func (ws *WebServer) Start(ctx context.Context, addr string) error {
 	logger.Info("web server exited properly")
 
 	return nil
+}
+
+func (ws *WebServer) httpGet(c *gin.Context) {
+	if c.Query("kind") == "" {
+		c.JSON(http.StatusBadRequest, "kind is required")
+		return
+	}
+	if c.Query("namespace") == "" {
+		c.JSON(http.StatusBadRequest, "namespace is required")
+		return
+	}
+	if c.Query("name") == "" {
+		c.JSON(http.StatusBadRequest, "name is required")
+		return
+	}
+	kind := strings.ToLower(c.Query("kind"))
+	namespace := strings.ToLower(c.Query("namespace"))
+	name := strings.ToLower(c.Query("name"))
+
+	switch kind {
+	case "promotionstrategy":
+		ps := &promoterv1alpha1.PromotionStrategy{}
+		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, ps)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, ps)
+
+	case "changetransferpolicy":
+		ctps := &promoterv1alpha1.ChangeTransferPolicy{}
+		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, ctps)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, ctps)
+
+	case "pullrequest":
+		pr := &promoterv1alpha1.PullRequest{}
+		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, pr)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, pr)
+
+	case "commitstatus":
+		cs := &promoterv1alpha1.CommitStatus{}
+		err := ws.Get(c, client.ObjectKey{Namespace: namespace, Name: name}, cs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, cs)
+
+	default:
+		c.JSON(http.StatusBadRequest, "invalid kind")
+	}
+}
+
+func (ws *WebServer) httpList(c *gin.Context) {
+	if c.Query("kind") == "" {
+		c.JSON(http.StatusBadRequest, "kind is required")
+		return
+	}
+	kind := strings.ToLower(c.Query("kind"))
+	listOptions := &client.ListOptions{}
+	if c.Query("namespace") != "" {
+		listOptions = &client.ListOptions{Namespace: c.Query("namespace")}
+	}
+
+	switch kind {
+	case "promotionstrategy":
+		psl := &promoterv1alpha1.PromotionStrategyList{}
+		err := ws.List(c, psl, listOptions)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, psl.Items)
+
+	case "changetransferpolicy":
+		ctpl := &promoterv1alpha1.ChangeTransferPolicyList{}
+		err := ws.List(c, ctpl, listOptions)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, ctpl.Items)
+
+	case "pullrequest":
+		prl := &promoterv1alpha1.PullRequestList{}
+		err := ws.List(c, prl, listOptions)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, prl.Items)
+
+	case "commitstatus":
+		csl := &promoterv1alpha1.CommitStatusList{}
+		err := ws.List(c, csl, listOptions)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, csl.Items)
+
+	case "namespace":
+		if c.Query("namespace") != "" {
+			c.JSON(http.StatusBadRequest, "namespace is not valid for listing namespaces")
+			return
+		}
+
+		m := make(map[string]bool)
+		var namespaces []string
+
+		psl := &promoterv1alpha1.PromotionStrategyList{}
+		err := ws.List(c, psl, &client.ListOptions{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+		for _, ps := range psl.Items {
+			ns := ps.Namespace
+			if !m[ns] {
+				m[ns] = true
+				namespaces = append(namespaces, ns)
+			}
+		}
+		c.JSON(http.StatusOK, namespaces)
+
+	default:
+		c.JSON(http.StatusBadRequest, "invalid kind")
+	}
+}
+
+func (ws *WebServer) httpWatch(c *gin.Context) {
+	v, ok := c.Get("clientChan")
+	if !ok {
+		return
+	}
+	clientChan, ok := v.(ClientChan)
+	if !ok {
+		return
+	}
+
+	gone := c.Stream(func(w io.Writer) bool {
+		// Stream message to client from message channel
+		if msg, ok := <-clientChan; ok {
+			match, err := filter(msg, c)
+			if err != nil {
+				logger.Error(err, "failed to filter message", "name", msg.Name, "kind", msg.Kind)
+				return false
+			}
+
+			if match {
+				c.SSEvent(msg.Kind, msg.Data)
+			}
+
+			return true
+		}
+		return false
+	})
+	if gone {
+		logger.Info("client gone stream")
+		// Send closed connection to event server
+		ws.Event.closedClients <- clientChan
+	}
 }
 
 // It Listens all incoming requests from clients.
