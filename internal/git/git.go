@@ -268,7 +268,7 @@ func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNe
 	logger.V(4).Info("Fetched branch", "branch", environmentNextBranch)
 
 	// Get the diff between the two branches
-	stdout, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "diff", fmt.Sprintf("origin/%s", environmentBranch), fmt.Sprintf("origin/%s", environmentNextBranch), "--name-only", "--diff-filter=ACMRT")
+	stdout, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "diff", fmt.Sprintf("origin/%s...origin/%s", environmentBranch, environmentNextBranch), "--name-only", "--diff-filter=ACMRT")
 	if err != nil {
 		logger.Error(err, "could not get diff", "gitError", stderr)
 		return false, err
