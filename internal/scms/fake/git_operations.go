@@ -3,6 +3,7 @@ package fake
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	ginkov2 "github.com/onsi/ginkgo/v2"
@@ -23,7 +24,7 @@ func NewFakeGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret 
 
 func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepo v1alpha1.GitRepository) string {
 	gitServerPort := 5000 + ginkov2.GinkgoParallelProcess()
-	gitServerPortStr := fmt.Sprintf("%d", gitServerPort)
+	gitServerPortStr := strconv.Itoa(gitServerPort)
 
 	if gh.scmProvider.Spec.Fake != nil && gh.scmProvider.Spec.Fake.Domain == "" {
 		return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)

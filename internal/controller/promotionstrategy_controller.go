@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -34,7 +35,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -69,7 +70,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	var ps promoterv1alpha1.PromotionStrategy
 	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("PromotionStrategy not found")
 			return ctrl.Result{}, nil
 		}
@@ -183,7 +184,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		// This could be a patch as well.
 		err := r.Get(ctx, client.ObjectKey{Name: pcName, Namespace: ps.Namespace}, &pc)
 		if err != nil {
-			if errors.IsNotFound(err) {
+			if k8serrors.IsNotFound(err) {
 				logger.Info("ChangeTransferPolicy not found, creating")
 				err = r.Create(ctx, &pcNew)
 				if err != nil {
@@ -325,7 +326,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	updatedCS := &promoterv1alpha1.CommitStatus{}
 	err = r.Get(ctx, proposedCSObjectKey, updatedCS)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			err = r.Create(ctx, commitStatus)
 			if err != nil {
 				return fmt.Errorf("failed to create previous environments CommitStatus: %w", err)
@@ -342,7 +343,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 			return fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
 		}
 	} else {
-		return fmt.Errorf("previous environments CommitStatus does not have a previous environment commit statuses annotation")
+		return errors.New("previous environments CommitStatus does not have a previous environment commit statuses annotation")
 	}
 
 	if updatedCS.Spec.Phase != phase || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha || !reflect.DeepEqual(statusMap, updatedYamlStatusMap) {
