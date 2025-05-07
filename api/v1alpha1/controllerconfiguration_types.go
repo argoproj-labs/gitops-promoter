@@ -27,6 +27,7 @@ import (
 // ControllerConfigurationSpec defines the desired state of ControllerConfiguration.
 type ControllerConfigurationSpec struct {
 	PullRequest PullRequestConfiguration `json:"pullRequest,omitempty"`
+	// +required
 	Webhook     WebhookConfiguration     `json:"webhook,omitempty"`
 
 	// How frequently to requeue promotion strategy resources for auto reconciliation. Default: "5m".
