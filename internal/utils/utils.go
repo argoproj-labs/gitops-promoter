@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"regexp"
@@ -11,7 +12,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -29,7 +30,7 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 	}
 	err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
 			return nil, fmt.Errorf("ScmProvider not found: %w", err)
 		}
@@ -77,7 +78,7 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 	}
 	err = k8sClient.Get(ctx, objectKey, &secret)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("Secret from ScmProvider not found", "namespace", scmProvider.Namespace, "name", objectKey.Name)
 			return nil, nil, fmt.Errorf("secret from ScmProvider not found: %w", err)
 		}
