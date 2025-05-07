@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -174,7 +175,7 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCo
 		if repo == "" {
 			repo = application.Spec.SourceHydrator.DrySource.RepoURL
 		} else if repo != application.Spec.SourceHydrator.DrySource.RepoURL {
-			return map[string][]*aggregate{}, fmt.Errorf("all applications must have the same repo configured")
+			return map[string][]*aggregate{}, errors.New("all applications must have the same repo configured")
 		}
 
 		aggregateItem := &aggregate{
@@ -408,7 +409,7 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 		}
 		return gitlabClient, ps.Spec.RepositoryReference, nil
 	default:
-		return nil, ps.Spec.RepositoryReference, fmt.Errorf("no supported git authentication provider found")
+		return nil, ps.Spec.RepositoryReference, errors.New("no supported git authentication provider found")
 	}
 }
 

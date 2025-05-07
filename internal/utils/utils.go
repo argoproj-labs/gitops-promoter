@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -40,7 +41,7 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 	if (repositoryRef.Spec.GitHub != nil && scmProvider.Spec.GitHub == nil) ||
 		(repositoryRef.Spec.GitLab != nil && scmProvider.Spec.GitLab == nil) ||
 		(repositoryRef.Spec.Fake != nil && scmProvider.Spec.Fake == nil) {
-		return nil, fmt.Errorf("wrong ScmProvider configured for Repository")
+		return nil, errors.New("wrong ScmProvider configured for Repository")
 	}
 
 	return &scmProvider, nil
@@ -135,7 +136,7 @@ func KubeSafeUniqueName(ctx context.Context, name string) string {
 	if err != nil {
 		log.FromContext(ctx).Error(err, "Failed to write to hash")
 	}
-	hash := fmt.Sprintf("%x", h.Sum32())
+	hash := strconv.FormatUint(uint64(h.Sum32()), 16)
 
 	if name[len(name)-1] == '-' {
 		name = name[:len(name)-1]
