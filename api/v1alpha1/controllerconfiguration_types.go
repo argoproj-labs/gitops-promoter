@@ -63,7 +63,8 @@ type WebhookConfiguration struct {
 	// Maximum allowed payload size in bytes.
 	// The default value is 25Mi.
 	// Set to 0 for no limit on the payload size.
-	MaxPayloadSize *resource.Quantity `json:"maxPayloadSize,omitempty"`
+	// +required
+	MaxPayloadSize resource.Quantity `json:"maxPayloadSize,omitempty"`
 }
 
 // ControllerConfigurationStatus defines the observed state of ControllerConfiguration.
