@@ -328,15 +328,6 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	var ul unstructured.Unstructured
 	ul.SetGroupVersionKind(gvk)
 
-	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
-	// if err := mgr.GetFieldIndexer().IndexField(context.Background(), &ul, ".status.applications", func(rawObj client.Object) []string {
-	//	//nolint:forcetypeassert
-	//	ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
-	//	return []string{ctp.Status.Proposed.Hydrated.Sha}
-	// }); err != nil {
-	//	return fmt.Errorf("failed to set field index for .status.proposed.hydrated.sha: %w", err)
-	//}
-
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{}).
 		Watches(&ul, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
