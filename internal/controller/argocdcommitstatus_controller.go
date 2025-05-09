@@ -20,9 +20,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"k8s.io/apimachinery/pkg/fields"
 	"reflect"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -261,29 +265,63 @@ func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregate
 	return mostRecentLastTransitionTime
 }
 
-// func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
-//	return func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
-//		var un unstructured.Unstructured
-//		un.SetGroupVersionKind(gvk)
-//
-//		err := c.Get(ctx, client.ObjectKey{Namespace: argoCDApplication.GetName(), Name: argoCDApplication.GetName()}, &un, &client.GetOptions{})
-//		if err != nil {
-//			return []reconcile.Request{}
-//		}
-//
-//		var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatusList
-//		err = c.List(ctx, &argoCDCommitStatus, &client.ListOptions{
-//			FieldSelector: fields.SelectorFromSet(map[string]string{
-//				".spec.l": "",
-//			}),
-//		})
-//		if err != nil {
-//			return []reconcile.Request{}
-//		}
-//
-//		return []reconcile.Request{}
-//	}
-//}
+// var syncMap sync.Map
+var rwMutex sync.RWMutex
+var revMap = make(map[string]string)
+
+func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
+	return func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
+		un := &unstructured.Unstructured{}
+		un.SetGroupVersionKind(gvk)
+
+		if err := c.Get(ctx, client.ObjectKeyFromObject(argoCDApplication), un, &client.GetOptions{}); err != nil {
+			return nil
+		}
+
+		var application argocd.ArgoCDApplication
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.Object, &application); err != nil {
+			return nil
+		}
+
+		appKey := application.GetNamespace() + application.GetName()
+
+		rwMutex.RLock()
+		appRef := revMap[appKey]
+		rwMutex.RUnlock()
+
+		if appRef == application.Status.Sync.Revision && time.Since(application.Status.Health.LastTransitionTime.Time) >= 10*time.Second {
+			// No change in-app revision, and the last transition time is more than 15 seconds ago, let's not add this to the queue
+			return nil
+		}
+
+		rwMutex.Lock()
+		revMap[appKey] = application.Status.Sync.Revision
+		rwMutex.Unlock()
+
+		var argoCDCommitStatusList promoterv1alpha1.ArgoCDCommitStatusList
+		if err := c.List(ctx, &argoCDCommitStatusList, &client.ListOptions{}); err != nil {
+			return nil
+		}
+
+		for _, argoCDCommitStatus := range argoCDCommitStatusList.Items {
+			selector, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
+			if err != nil || !selector.Matches(fields.Set(un.GetLabels())) {
+				continue
+			}
+
+			log.FromContext(ctx).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
+				"application", appKey, "argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
+
+			return []reconcile.Request{{
+				NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
+			}}
+		}
+
+		log.FromContext(ctx).Info("No ArgoCDCommitStatus found for ArgoCD application",
+			"namespace", argoCDApplication.GetNamespace(), "name", argoCDApplication.GetName())
+		return nil
+	}
+}
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -301,7 +339,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error 
 
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{}).
-		// Watches(&ul, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
+		Watches(&ul, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
