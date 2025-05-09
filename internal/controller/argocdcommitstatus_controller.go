@@ -20,14 +20,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"k8s.io/apimachinery/pkg/fields"
 	"reflect"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"k8s.io/apimachinery/pkg/fields"
+
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/cespare/xxhash/v2"
 
@@ -266,8 +268,10 @@ func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregate
 }
 
 // var syncMap sync.Map
-var rwMutex sync.RWMutex
-var revMap = make(map[string]string)
+var (
+	rwMutex sync.RWMutex
+	revMap  = make(map[string]string)
+)
 
 func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
 	return func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
