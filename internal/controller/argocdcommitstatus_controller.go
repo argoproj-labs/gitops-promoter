@@ -287,7 +287,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 			return nil
 		}
 
-		appKey := application.GetNamespace() + application.GetName()
+		appKey := application.GetNamespace() + "/" + application.GetName()
 
 		rwMutex.RLock()
 		appRef := revMap[appKey]
