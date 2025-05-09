@@ -294,7 +294,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 		rwMutex.RUnlock()
 
 		if appRef == application.Status.Sync.Revision && time.Since(application.Status.Health.LastTransitionTime.Time) >= 10*time.Second {
-			// No change in-app revision, and the last transition time is more than 15 seconds ago, let's not add this to the queue
+			// No change in-app revision, and the last transition time is more than 10 seconds ago, let's not add this to the queue
 			return nil
 		}
 
