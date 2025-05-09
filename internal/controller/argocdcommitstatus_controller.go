@@ -307,6 +307,8 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 			return nil
 		}
 
+		// TODO: is there some way to do this without a loop? Can we use a field indexer? The one issue with field indexers is that
+		// they can not be used with lists (aka label selectors) so how else can we lookup.
 		for _, argoCDCommitStatus := range argoCDCommitStatusList.Items {
 			selector, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
 			if err == nil && selector.Matches(fields.Set(un.GetLabels())) {
