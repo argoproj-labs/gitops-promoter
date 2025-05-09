@@ -305,16 +305,14 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 
 		for _, argoCDCommitStatus := range argoCDCommitStatusList.Items {
 			selector, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
-			if err != nil || !selector.Matches(fields.Set(un.GetLabels())) {
-				continue
+			if err == nil && selector.Matches(fields.Set(un.GetLabels())) {
+				log.FromContext(ctx).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
+					"application", appKey, "argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
+
+				return []reconcile.Request{{
+					NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
+				}}
 			}
-
-			log.FromContext(ctx).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
-				"application", appKey, "argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
-
-			return []reconcile.Request{{
-				NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
-			}}
 		}
 
 		log.FromContext(ctx).Info("No ArgoCDCommitStatus found for ArgoCD application",
