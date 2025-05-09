@@ -13,5 +13,5 @@ spec:
       description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}."
   promotionStrategyRequeueDuration: "5m"
   changeTransferPolicyRequeueDuration: "5m"
-  argocdCommitStatusRequeueDuration: "15s"
+  argocdCommitStatusRequeueDuration: "5m"
   pullRequestRequeueDuration: "5m"
