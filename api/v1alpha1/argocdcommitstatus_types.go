@@ -30,6 +30,20 @@ type ArgoCDCommitStatusSpec struct {
 
 	// +kubebuilder:validation:Required
 	ApplicationSelector *metav1.LabelSelector `json:"applicationSelector,omitempty"`
+
+	// URLTemplate generates the URL to use in the CommitStatus, for example a link to the Argo CD UI. The template
+	// is a go text template and receives a single variable called `apps`, which contains a list of the Application
+	// objects associated with the commit status.
+	//
+	// Example:
+	//
+	// {{ if eq (.apps | len) 1 -}}
+	// https://argocd.example.com/applications/{{ .app.metadata.namespace | mustRegexFind '^[0-9a-z-]+$' }}/{{ .app.metadata.name | mustRegexFind '^[0-9a-z-]+$'}}
+	// {{- end }}
+	//
+	// Regex validation might not be necessary if the values from the Application object are trusted.
+	// +kubebuilder:validation:Optional
+	URLTemplate string `json:"urlTemplate,omitempty"`
 }
 
 // ArgoCDCommitStatusStatus defines the observed state of ArgoCDCommitStatus.
