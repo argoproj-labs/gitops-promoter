@@ -254,6 +254,9 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 	if len(mrs) > 0 {
 		prObj.Status.ID = strconv.Itoa(mrs[0].IID)
 		prObj.Status.State = mapMergeRequestState(mrs[0].State)
+
+		logger.V(4).Info("Found open pull request", "id", prObj.Status.ID, "detailed_merge_status", mrs[0].DetailedMergeStatus)
+
 		return true, prObj.Status.ID, nil
 	}
 
