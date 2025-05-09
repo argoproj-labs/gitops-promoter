@@ -1865,7 +1865,7 @@ metadata:
   name: promoter-controller-configuration
   namespace: promoter-system
 spec:
-  argocdCommitStatusRequeueDuration: 15s
+  argocdCommitStatusRequeueDuration: 5m
   changeTransferPolicyRequeueDuration: 5m
   promotionStrategyRequeueDuration: 5m
   pullRequest:
