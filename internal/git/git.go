@@ -117,7 +117,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (Branc
 
 	p := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
 	logger.V(4).Info("git path", "path", p)
-	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", branch, fmt.Sprintf("origin/%s", branch))
+	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", branch, "origin/"+branch)
 	if err != nil {
 		logger.Error(err, "could not git checkout", "gitError", stderr)
 		return BranchShas{}, err
@@ -204,7 +204,7 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 		return err
 	}
 
-	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", environmentBranch, fmt.Sprintf("origin/%s", environmentBranch))
+	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", environmentBranch, "origin/"+environmentBranch)
 	if err != nil {
 		logger.Error(err, "could not git checkout", "gitError", stderr)
 		return err
@@ -250,7 +250,7 @@ func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNe
 	}
 
 	// Checkout the environment branch
-	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", environmentBranch, fmt.Sprintf("origin/%s", environmentBranch))
+	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", environmentBranch, "origin/"+environmentBranch)
 	if err != nil {
 		logger.Error(err, "could not git checkout", "gitError", stderr)
 		return false, err
@@ -322,9 +322,9 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...st
 	cmd := exec.Command("git", args...)
 	cmd.Env = []string{
 		"GIT_ASKPASS=promoter_askpass.sh", // Needs to be on path
-		fmt.Sprintf("GIT_USERNAME=%s", user),
-		fmt.Sprintf("GIT_PASSWORD=%s", token),
-		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
+		"GIT_USERNAME=" + user,
+		"GIT_PASSWORD=" + token,
+		"PATH=" + os.Getenv("PATH"),
 		"GIT_TERMINAL_PROMPT=0",
 	}
 	var stdoutBuf bytes.Buffer

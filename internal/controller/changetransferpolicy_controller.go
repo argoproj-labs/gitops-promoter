@@ -190,7 +190,7 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 		}
 		return provider, nil
 	default:
-		return nil, fmt.Errorf("no supported git authentication provider found")
+		return nil, errors.New("no supported git authentication provider found")
 	}
 }
 

@@ -28,6 +28,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -286,7 +287,7 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	}
 
 	gitServerPort := 5000 + GinkgoParallelProcess()
-	gitServerPortStr := fmt.Sprintf("%d", gitServerPort)
+	gitServerPortStr := strconv.Itoa(gitServerPort)
 	server := &http.Server{Addr: ":" + gitServerPortStr, Handler: service}
 
 	// Disables logging for gitkit

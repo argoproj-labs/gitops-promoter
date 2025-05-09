@@ -29,6 +29,7 @@ linters:
     - nolintlint
     - nosprintfhostport
     - paralleltest
+    - perfsprint
     - prealloc
     - promlinter
     - testifylint
