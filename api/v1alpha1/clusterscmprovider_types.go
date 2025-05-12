@@ -19,14 +19,13 @@ package v1alpha1
 import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// ScmProviderSpec defines the desired state of ScmProvider
-type ScmProviderSpec struct {
+// ClusterScmProviderSpec defines the desired state of ClusterScmProvider.
+type ClusterScmProviderSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
@@ -43,17 +42,18 @@ type ScmProviderSpec struct {
 	Fake *Fake `json:"fake,omitempty"`
 }
 
-// ScmProviderStatus defines the observed state of ScmProvider
-type ScmProviderStatus struct {
+// ClusterScmProviderStatus defines the observed state of ClusterScmProvider.
+type ClusterScmProviderStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster
 
-// ScmProvider is the Schema for the scmproviders API
-type ScmProvider struct {
+// ClusterScmProvider is the Schema for the clusterscmproviders API.
+type ClusterScmProvider struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
@@ -61,63 +61,43 @@ type ScmProvider struct {
 	Status ScmProviderStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
-// ScmProviderList contains a list of ScmProvider
-type ScmProviderList struct {
+// ClusterScmProviderList contains a list of ClusterScmProvider.
+type ClusterScmProviderList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []ScmProvider `json:"items"`
+	Items           []ClusterScmProvider `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&ScmProvider{}, &ScmProviderList{})
-}
-
-// +kubebuilder:object:root=false
-// +kubebuilder:object:generate:false
-// +k8s:deepcopy-gen:interfaces=nil
-// +k8s:deepcopy-gen=nil
-
-// GenericStore is a common interface for interacting with ClusterScmProviders
-// or namespaced ScmProviders.
-type GenericScmProvider interface {
-	runtime.Object
-	metav1.Object
-
-	GetObjectMeta() *metav1.ObjectMeta
-	GetTypeMeta() *metav1.TypeMeta
-	GetKind() string
-
-	GetSpec() *ScmProviderSpec
-	GetStatus() ScmProviderStatus
-	SetStatus(status ScmProviderStatus)
+	SchemeBuilder.Register(&ClusterScmProvider{}, &ClusterScmProviderList{})
 }
 
 // +kubebuilder:object:root:false
 // +kubebuilder:object:generate:false
-var _ GenericScmProvider = &ScmProvider{}
+var _ GenericScmProvider = &ClusterScmProvider{}
 
-func (c *ScmProvider) GetObjectMeta() *metav1.ObjectMeta {
+func (c *ClusterScmProvider) GetObjectMeta() *metav1.ObjectMeta {
 	return &c.ObjectMeta
 }
 
-func (s *ScmProvider) GetTypeMeta() *metav1.TypeMeta {
+func (s *ClusterScmProvider) GetTypeMeta() *metav1.TypeMeta {
 	return &s.TypeMeta
 }
 
-func (s *ScmProvider) GetSpec() *ScmProviderSpec {
+func (s *ClusterScmProvider) GetSpec() *ScmProviderSpec {
 	return &s.Spec
 }
 
-func (s *ScmProvider) GetStatus() ScmProviderStatus {
+func (s *ClusterScmProvider) GetStatus() ScmProviderStatus {
 	return s.Status
 }
 
-func (s *ScmProvider) SetStatus(status ScmProviderStatus) {
+func (s *ClusterScmProvider) SetStatus(status ScmProviderStatus) {
 	s.Status = status
 }
 
-func (s *ScmProvider) GetKind() string {
-	return ScmProviderKind
+func (s *ClusterScmProvider) GetKind() string {
+	return ClusterScmProviderKind
 }

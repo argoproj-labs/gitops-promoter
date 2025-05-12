@@ -23,6 +23,19 @@ type ObjectReference struct {
 	Name string `json:"name"`
 }
 
+type TypedObjectReference struct {
+	// APIGroup is the group for the resource being referenced.
+	// If APIGroup is not specified, the specified Kind must be in the core API group.
+	// For any other third-party types, APIGroup is required.
+	// +optional
+	APIGroup *string `json:"apiGroup,omitempty"`
+	// Kind is the type of resource being referenced
+	// +kubebuilder:validation:Required
+	Kind string `json:"kind"`
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+}
+
 type GitHubRepo struct {
 	// +kubebuilder:validation:Required
 	Owner string `json:"owner"`

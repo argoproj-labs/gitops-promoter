@@ -64,7 +64,7 @@ var _ = Describe("CommitStatus Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				},
 				Spec: promoterv1alpha1.ScmProviderSpec{
-					SecretRef: &v1.LocalObjectReference{Name: resourceName},
+					SecretRef: &v1.ObjectReference{Name: resourceName},
 					Fake:      &promoterv1alpha1.Fake{},
 				},
 				Status: promoterv1alpha1.ScmProviderStatus{},
@@ -80,7 +80,7 @@ var _ = Describe("CommitStatus Controller", func() {
 						Owner: typeNamespacedName.Name,
 						Name:  typeNamespacedName.Name,
 					},
-					ScmProviderRef: promoterv1alpha1.ObjectReference{
+					ScmProviderRef: promoterv1alpha1.TypedObjectReference{
 						Name: typeNamespacedName.Name,
 					},
 				},

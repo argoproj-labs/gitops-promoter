@@ -4,20 +4,21 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.3
-  name: scmproviders.promoter.argoproj.io
+  name: clusterscmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: ScmProvider
-    listKind: ScmProviderList
-    plural: scmproviders
-    singular: scmprovider
-  scope: Namespaced
+    kind: ClusterScmProvider
+    listKind: ClusterScmProviderList
+    plural: clusterscmproviders
+    singular: clusterscmprovider
+  scope: Cluster
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ScmProvider is the Schema for the scmproviders API
+        description: ClusterScmProvider is the Schema for the clusterscmproviders
+          API.
         properties:
           apiVersion:
             description: |-

@@ -95,7 +95,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	gitAuthProvider, err := r.getGitAuthProvider(ctx, scmProvider, secret)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
 	}
 	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, ctp.Spec.RepositoryReference, &ctp, ctp.Spec.ActiveBranch)
 	if err != nil {
@@ -173,16 +173,16 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 	return nil
 }
 
-func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
+func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context, scmProvider promoterv1alpha1.GenericScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
 	logger := log.FromContext(ctx)
 	switch {
-	case scmProvider.Spec.Fake != nil:
+	case scmProvider.GetSpec().Fake != nil:
 		logger.V(4).Info("Creating fake git authentication provider")
 		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
-	case scmProvider.Spec.GitHub != nil:
+	case scmProvider.GetSpec().GitHub != nil:
 		logger.V(4).Info("Creating GitHub git authentication provider")
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
-	case scmProvider.Spec.GitLab != nil:
+	case scmProvider.GetSpec().GitLab != nil:
 		logger.V(4).Info("Creating GitLab git authentication provider")
 		provider, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
 		if err != nil {

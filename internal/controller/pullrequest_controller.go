@@ -176,14 +176,14 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	}
 
 	switch {
-	case scmProvider.Spec.GitHub != nil:
+	case scmProvider.GetSpec().GitHub != nil:
 		return github.NewGithubPullRequestProvider(r.Client, scmProvider, *secret) //nolint:wrapcheck
-	case scmProvider.Spec.GitLab != nil:
-		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.Spec.GitLab.Domain) //nolint:wrapcheck
-	case scmProvider.Spec.Fake != nil:
+	case scmProvider.GetSpec().GitLab != nil:
+		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:
-		return nil, fmt.Errorf("unsupported SCM provider: %s", scmProvider.Name)
+		return nil, fmt.Errorf("unsupported SCM provider: %s", scmProvider.GetName())
 	}
 }
 

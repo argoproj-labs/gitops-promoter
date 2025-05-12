@@ -29,7 +29,7 @@ type GitRepositorySpec struct {
 	GitLab *GitLabRepo `json:"gitlab,omitempty"`
 	Fake   *FakeRepo   `json:"fake,omitempty"`
 	// +kubebuilder:validation:Required
-	ScmProviderRef ObjectReference `json:"scmProviderRef"`
+	ScmProviderRef TypedObjectReference `json:"scmProviderRef"`
 }
 
 // GitRepositoryStatus defines the observed state of GitRepository

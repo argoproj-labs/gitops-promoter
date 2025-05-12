@@ -163,21 +163,21 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 	}
 
 	switch {
-	case scmProvider.Spec.GitHub != nil:
+	case scmProvider.GetSpec().GitHub != nil:
 		var p *github.CommitStatus
 		p, err = github.NewGithubCommitStatusProvider(r.Client, scmProvider, *secret)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get GitHub provider for domain %q with secret %q: %w", scmProvider.Spec.GitHub.Domain, secret.Name, err)
+			return nil, fmt.Errorf("failed to get GitHub provider for domain %q with secret %q: %w", scmProvider.GetSpec().GitHub.Domain, secret.Name, err)
 		}
 		return p, nil
-	case scmProvider.Spec.GitLab != nil:
+	case scmProvider.GetSpec().GitLab != nil:
 		var p *gitlab.CommitStatus
-		p, err = gitlab.NewGitlabCommitStatusProvider(r.Client, *secret, scmProvider.Spec.GitLab.Domain)
+		p, err = gitlab.NewGitlabCommitStatusProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get GitLab provider for domain %q with secret %q: %w", scmProvider.Spec.GitLab.Domain, secret.Name, err)
+			return nil, fmt.Errorf("failed to get GitLab provider for domain %q with secret %q: %w", scmProvider.GetSpec().GitLab.Domain, secret.Name, err)
 		}
 		return p, nil
-	case scmProvider.Spec.Fake != nil:
+	case scmProvider.GetSpec().Fake != nil:
 		//nolint: wrapcheck
 		return fake.NewFakeCommitStatusProvider(*secret)
 	default:

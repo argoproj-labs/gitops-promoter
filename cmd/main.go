@@ -223,6 +223,13 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ControllerConfiguration controller")
 	}
+	if err = (&controller.ClusterScmProviderReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ClusterScmProvider")
+		os.Exit(1)
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
