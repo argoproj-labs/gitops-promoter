@@ -1850,7 +1850,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: promoter
     app.kubernetes.io/part-of: promoter
-  name: promoter-promoter-controller-configuration
+  name: promoter-controller-configuration
   namespace: promoter-system
 spec:
   argocdCommitStatusRequeueDuration: 15s
