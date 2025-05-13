@@ -22,6 +22,11 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 	logger := log.FromContext(ctx)
 
 	var provider promoterv1alpha1.GenericScmProvider
+	kind := repositoryRef.Spec.ScmProviderRef.Kind
+	if kind == "" {
+		kind = promoterv1alpha1.ScmProviderKind
+	}
+
 	switch repositoryRef.Spec.ScmProviderRef.Kind {
 	case promoterv1alpha1.ClusterScmProviderKind:
 		var scmProvider promoterv1alpha1.ClusterScmProvider
