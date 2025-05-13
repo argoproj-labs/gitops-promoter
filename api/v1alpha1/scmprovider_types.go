@@ -79,45 +79,18 @@ func init() {
 // +k8s:deepcopy-gen:interfaces=nil
 // +k8s:deepcopy-gen=nil
 
-// GenericStore is a common interface for interacting with ClusterScmProviders
+// GenericScmProvider is a common interface for interacting with either cluster-scoped ClusterScmProvider
 // or namespaced ScmProviders.
 type GenericScmProvider interface {
 	runtime.Object
 	metav1.Object
-
-	GetObjectMeta() *metav1.ObjectMeta
-	GetTypeMeta() *metav1.TypeMeta
-	GetKind() string
-
 	GetSpec() *ScmProviderSpec
-	GetStatus() ScmProviderStatus
-	SetStatus(status ScmProviderStatus)
 }
 
 // +kubebuilder:object:root:false
 // +kubebuilder:object:generate:false
 var _ GenericScmProvider = &ScmProvider{}
 
-func (c *ScmProvider) GetObjectMeta() *metav1.ObjectMeta {
-	return &c.ObjectMeta
-}
-
-func (s *ScmProvider) GetTypeMeta() *metav1.TypeMeta {
-	return &s.TypeMeta
-}
-
 func (s *ScmProvider) GetSpec() *ScmProviderSpec {
 	return &s.Spec
-}
-
-func (s *ScmProvider) GetStatus() ScmProviderStatus {
-	return s.Status
-}
-
-func (s *ScmProvider) SetStatus(status ScmProviderStatus) {
-	s.Status = status
-}
-
-func (s *ScmProvider) GetKind() string {
-	return ScmProviderKind
 }

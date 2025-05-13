@@ -109,13 +109,14 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 	}
 	err = k8sClient.Get(ctx, objectKey, &secret)
 	if err != nil {
+		kind := scmProvider.GetObjectKind().GroupVersionKind().Kind
 		if k8serrors.IsNotFound(err) {
-			logger.Info(fmt.Sprintf("Secret from %s not found", scmProvider.GetKind()), "namespace", secretNamespace, "name", objectKey.Name)
-			return nil, nil, fmt.Errorf("secret from %s not found: %w", scmProvider.GetKind(), err)
+			logger.Info(fmt.Sprintf("Secret from %s not found", kind), "namespace", secretNamespace, "name", objectKey.Name)
+			return nil, nil, fmt.Errorf("secret from %s not found: %w", kind, err)
 		}
 
-		logger.Error(err, fmt.Sprintf("failed to get Secret from %s", scmProvider.GetKind()), "namespace", secretNamespace, "name", objectKey.Name)
-		return nil, nil, fmt.Errorf("failed to get Secret from %s", scmProvider.GetKind(), err)
+		logger.Error(err, fmt.Sprintf("failed to get Secret from %s", kind), "namespace", secretNamespace, "name", objectKey.Name)
+		return nil, nil, fmt.Errorf("failed to get Secret from %s", kind, err)
 	}
 
 	return scmProvider, &secret, nil

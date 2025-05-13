@@ -17,36 +17,11 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-// ClusterScmProviderSpec defines the desired state of ClusterScmProvider.
-type ClusterScmProviderSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// SecretRef contains the credentials required to auth to a specific provider
-	SecretRef *v1.ObjectReference `json:"secretRef,omitempty"`
-
-	// GitHub required configuration for GitHub as the SCM provider
-	GitHub *GitHub `json:"github,omitempty"`
-
-	// GitLab required configuration for GitLab as the SCM provider
-	GitLab *GitLab `json:"gitlab,omitempty"`
-
-	// Fake required configuration for Fake as the SCM provider
-	Fake *Fake `json:"fake,omitempty"`
-}
-
-// ClusterScmProviderStatus defines the observed state of ClusterScmProvider.
-type ClusterScmProviderStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-}
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
@@ -78,26 +53,6 @@ func init() {
 // +kubebuilder:object:generate:false
 var _ GenericScmProvider = &ClusterScmProvider{}
 
-func (c *ClusterScmProvider) GetObjectMeta() *metav1.ObjectMeta {
-	return &c.ObjectMeta
-}
-
-func (s *ClusterScmProvider) GetTypeMeta() *metav1.TypeMeta {
-	return &s.TypeMeta
-}
-
 func (s *ClusterScmProvider) GetSpec() *ScmProviderSpec {
 	return &s.Spec
-}
-
-func (s *ClusterScmProvider) GetStatus() ScmProviderStatus {
-	return s.Status
-}
-
-func (s *ClusterScmProvider) SetStatus(status ScmProviderStatus) {
-	s.Status = status
-}
-
-func (s *ClusterScmProvider) GetKind() string {
-	return ClusterScmProviderKind
 }
