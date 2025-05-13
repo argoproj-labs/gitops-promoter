@@ -26,9 +26,7 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-var (
-	ScmProviderKind = reflect.TypeOf(ScmProvider{}).Name()
-)
+var ScmProviderKind = reflect.TypeOf(ScmProvider{}).Name()
 
 // ScmProviderSpec defines the desired state of ScmProvider
 type ScmProviderSpec struct {

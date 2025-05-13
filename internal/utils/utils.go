@@ -101,7 +101,8 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 	}
 
 	secretNamespace := scmProvider.GetSpec().SecretRef.Namespace
-	if secretNamespace == "" {
+	// For namespaced ScmProvider, force the secret to be in the same namespace
+	if scmProvider.GetObjectKind().GroupVersionKind().Kind == promoterv1alpha1.ScmProviderKind || secretNamespace == "" {
 		secretNamespace = scmProvider.GetNamespace()
 	}
 
