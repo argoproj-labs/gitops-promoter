@@ -115,7 +115,7 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 			return nil, nil, fmt.Errorf("secret from %s not found: %w", kind, err)
 		}
 
-		logger.Error(err, fmt.Sprintf("failed to get Secret from %s", kind), "namespace", secretNamespace, "name", objectKey.Name)
+		logger.Error(err, "failed to get Secret from %s"+kind, "namespace", secretNamespace, "name", objectKey.Name)
 		return nil, nil, fmt.Errorf("failed to get Secret from %s: %w", kind, err)
 	}
 
