@@ -64,7 +64,7 @@ var _ = Describe("CommitStatus Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				},
 				Spec: promoterv1alpha1.ScmProviderSpec{
-					SecretRef: &v1.ObjectReference{Name: resourceName},
+					SecretRef: &promoterv1alpha1.NamespacedObjectReference{Name: resourceName},
 					Fake:      &promoterv1alpha1.Fake{},
 				},
 				Status: promoterv1alpha1.ScmProviderStatus{},

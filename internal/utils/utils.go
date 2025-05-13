@@ -21,7 +21,9 @@ import (
 func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Client, repositoryRef *promoterv1alpha1.GitRepository, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, error) {
 	logger := log.FromContext(ctx)
 
-	if repositoryRef.Spec.ScmProviderRef.Kind == promoterv1alpha1.ClusterScmProviderKind {
+	var provider promoterv1alpha1.GenericScmProvider
+	switch repositoryRef.Spec.ScmProviderRef.Kind {
+	case promoterv1alpha1.ClusterScmProviderKind:
 		var scmProvider promoterv1alpha1.ClusterScmProvider
 		objectKey := client.ObjectKey{
 			Name: repositoryRef.Spec.ScmProviderRef.Name,
@@ -37,41 +39,35 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 			logger.Error(err, "failed to get ClusterScmProvider", "name", objectKey.Name)
 			return nil, fmt.Errorf("failed to get ClusterScmProvider: %w", err)
 		}
-
-		if (repositoryRef.Spec.GitHub != nil && scmProvider.Spec.GitHub == nil) ||
-			(repositoryRef.Spec.GitLab != nil && scmProvider.Spec.GitLab == nil) ||
-			(repositoryRef.Spec.Fake != nil && scmProvider.Spec.Fake == nil) {
-			return nil, errors.New("wrong ClusterScmProvider configured for Repository")
+	case promoterv1alpha1.ScmProviderKind:
+		var scmProvider promoterv1alpha1.ScmProvider
+		namespace := obj.GetNamespace()
+		objectKey := client.ObjectKey{
+			Namespace: obj.GetNamespace(),
+			Name:      repositoryRef.Spec.ScmProviderRef.Name,
 		}
 
-		return &scmProvider, nil
-	}
+		err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				logger.Info("ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
+				return nil, fmt.Errorf("ScmProvider not found: %w", err)
+			}
 
-	var scmProvider promoterv1alpha1.ScmProvider
-	namespace := obj.GetNamespace()
-
-	objectKey := client.ObjectKey{
-		Namespace: namespace,
-		Name:      repositoryRef.Spec.ScmProviderRef.Name,
-	}
-	err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			logger.Info("ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
-			return nil, fmt.Errorf("ScmProvider not found: %w", err)
+			logger.Error(err, "failed to get ScmProvider", "namespace", namespace, "name", objectKey.Name)
+			return nil, fmt.Errorf("failed to get ScmProvider: %w", err)
 		}
-
-		logger.Error(err, "failed to get ScmProvider", "namespace", namespace, "name", objectKey.Name)
-		return nil, fmt.Errorf("failed to get ScmProvider: %w", err)
+	default:
+		return nil, fmt.Errorf("unsupported ScmProvider kind: %s", repositoryRef.Spec.ScmProviderRef.Kind)
 	}
 
-	if (repositoryRef.Spec.GitHub != nil && scmProvider.Spec.GitHub == nil) ||
-		(repositoryRef.Spec.GitLab != nil && scmProvider.Spec.GitLab == nil) ||
-		(repositoryRef.Spec.Fake != nil && scmProvider.Spec.Fake == nil) {
+	if (repositoryRef.Spec.GitHub != nil && provider.GetSpec().GitHub == nil) ||
+		(repositoryRef.Spec.GitLab != nil && provider.GetSpec().GitLab == nil) ||
+		(repositoryRef.Spec.Fake != nil && provider.GetSpec().Fake == nil) {
 		return nil, errors.New("wrong ScmProvider configured for Repository")
 	}
 
-	return &scmProvider, nil
+	return provider, nil
 }
 
 // GetGitRepositoryFromObjectKey returns the GitRepository object from the repository reference

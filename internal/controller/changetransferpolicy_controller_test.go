@@ -389,7 +389,7 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 			Namespace: namespace,
 		},
 		Spec: promoterv1alpha1.ScmProviderSpec{
-			SecretRef: &v1.ObjectReference{Name: name},
+			SecretRef: &promoterv1alpha1.NamespacedObjectReference{Name: name},
 			Fake:      &promoterv1alpha1.Fake{},
 		},
 		Status: promoterv1alpha1.ScmProviderStatus{},
