@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -31,7 +30,7 @@ type ScmProviderSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// SecretRef contains the credentials required to auth to a specific provider
-	SecretRef *v1.ObjectReference `json:"secretRef,omitempty"`
+	SecretRef *NamespacedObjectReference `json:"secretRef,omitempty"`
 
 	// GitHub required configuration for GitHub as the SCM provider
 	GitHub *GitHub `json:"github,omitempty"`
