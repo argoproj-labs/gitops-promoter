@@ -51,6 +51,11 @@ var _ = Describe("GitRepository Controller", func() {
 						Name:      resourceName,
 						Namespace: "default",
 					},
+					Spec: promoterv1alpha1.GitRepositorySpec{
+						ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
+							Kind: promoterv1alpha1.ScmProviderKind,
+						},
+					},
 					// TODO(user): Specify other spec details if needed.
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
