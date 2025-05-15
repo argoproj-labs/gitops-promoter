@@ -1,12 +1,12 @@
 package utils_test
 
 import (
-	"testing"
+	"context"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -18,8 +18,7 @@ const (
 	controllerNamespace = "controller-namespace"
 )
 
-func TestGetScmProviderFromGitRepository(t *testing.T) {
-	t.Parallel()
+var _ = Describe("getting an ScmProvider from a GitRepository", func() {
 	namespacedScmProvider := &promoterv1alpha1.ScmProvider{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "namespaced-scm-provider",
@@ -34,7 +33,7 @@ func TestGetScmProviderFromGitRepository(t *testing.T) {
 	}
 
 	scheme := runtime.NewScheme()
-	require.NoError(t, promoterv1alpha1.AddToScheme(scheme))
+	Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
 	client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(namespacedScmProvider, clusterScmProvider).Build()
 
 	// We only need an object that implements the Object interface, it doesn't have to be a ChangeTransferPolicy
@@ -44,8 +43,7 @@ func TestGetScmProviderFromGitRepository(t *testing.T) {
 		},
 	}
 
-	t.Run("can get namespaced ScmProvider", func(t *testing.T) {
-		t.Parallel()
+	It("can get namespaced ScmProvider", func(ctx context.Context) {
 		gitRepository := &promoterv1alpha1.GitRepository{
 			Spec: promoterv1alpha1.GitRepositorySpec{
 				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
@@ -55,13 +53,12 @@ func TestGetScmProviderFromGitRepository(t *testing.T) {
 			},
 		}
 
-		got, err := utils.GetScmProviderFromGitRepository(t.Context(), client, gitRepository, ctp)
-		require.NoError(t, err)
-		assert.Equal(t, namespacedScmProvider, got)
+		got, err := utils.GetScmProviderFromGitRepository(ctx, client, gitRepository, ctp)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(got).To(Equal(namespacedScmProvider))
 	})
 
-	t.Run("can get ClusterSCMProvider", func(t *testing.T) {
-		t.Parallel()
+	It("can get ClusterScmProvider", func(ctx context.Context) {
 		gitRepository := &promoterv1alpha1.GitRepository{
 			Spec: promoterv1alpha1.GitRepositorySpec{
 				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
@@ -71,13 +68,12 @@ func TestGetScmProviderFromGitRepository(t *testing.T) {
 			},
 		}
 
-		got, err := utils.GetScmProviderFromGitRepository(t.Context(), client, gitRepository, ctp)
-		require.NoError(t, err)
-		assert.Equal(t, clusterScmProvider, got)
+		got, err := utils.GetScmProviderFromGitRepository(ctx, client, gitRepository, ctp)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(got).To(Equal(clusterScmProvider))
 	})
 
-	t.Run("errors for unsupported SCM provider kind", func(t *testing.T) {
-		t.Parallel()
+	It("errors for unsupported SCM provider kind", func(ctx context.Context) {
 		gitRepository := &promoterv1alpha1.GitRepository{
 			Spec: promoterv1alpha1.GitRepositorySpec{
 				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
@@ -87,14 +83,12 @@ func TestGetScmProviderFromGitRepository(t *testing.T) {
 			},
 		}
 
-		_, err := utils.GetScmProviderFromGitRepository(t.Context(), client, gitRepository, ctp)
-		require.ErrorContains(t, err, "unsupported ScmProvider kind")
+		_, err := utils.GetScmProviderFromGitRepository(ctx, client, gitRepository, ctp)
+		Expect(err).To(MatchError(ContainSubstring("unsupported ScmProvider kind")))
 	})
-}
+})
 
-func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
-	t.Parallel()
-
+var _ = Describe("getting an ScmProvider and Secret from a repositoryRef", func() {
 	secret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "scm-provider-secret",
@@ -103,8 +97,8 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 	}
 
 	scheme := runtime.NewScheme()
-	require.NoError(t, promoterv1alpha1.AddToScheme(scheme))
-	require.NoError(t, v1.AddToScheme(scheme))
+	Expect(promoterv1alpha1.AddToScheme(scheme)).To(Succeed())
+	Expect(v1.AddToScheme(scheme)).To(Succeed())
 
 	// We only need an object that implements the Object interface, it doesn't have to be a ChangeTransferPolicy
 	ctp := &promoterv1alpha1.ChangeTransferPolicy{
@@ -114,8 +108,7 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 	}
 	repositoryRef := promoterv1alpha1.ObjectReference{Name: "test-repository"}
 
-	t.Run("ScmProvider use secret in the same namespace", func(t *testing.T) {
-		t.Parallel()
+	It("uses secrets in the same namespace for ScmProvider", func(ctx context.Context) {
 		scmProvider := &promoterv1alpha1.ScmProvider{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "scm-provider",
@@ -142,14 +135,13 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 
 		client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(gitRepository, scmProvider, secret).Build()
 
-		gotScmProvider, gotSecret, err := utils.GetScmProviderAndSecretFromRepositoryReference(t.Context(), client, controllerNamespace, repositoryRef, ctp)
-		require.NoError(t, err)
-		assert.Equal(t, scmProvider, gotScmProvider)
-		assert.Equal(t, secret, gotSecret)
+		gotScmProvider, gotSecret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, client, controllerNamespace, repositoryRef, ctp)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(gotScmProvider).To(Equal(scmProvider))
+		Expect(gotSecret).To(Equal(secret))
 	})
 
-	t.Run("ClusterScmProvider use secrets from other controller namespace", func(t *testing.T) {
-		t.Parallel()
+	It("uses secrets in the controller namespace for ClusterScmProvider", func(ctx context.Context) {
 		secret := &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "scm-provider-secret",
@@ -184,9 +176,9 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 
 		client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(gitRepository, scmProvider, secret).Build()
 
-		gotScmProvider, gotSecret, err := utils.GetScmProviderAndSecretFromRepositoryReference(t.Context(), client, controllerNamespace, repositoryRef, ctp)
-		require.NoError(t, err)
-		assert.Equal(t, scmProvider, gotScmProvider)
-		assert.Equal(t, secret, gotSecret)
+		gotScmProvider, gotSecret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, client, controllerNamespace, repositoryRef, ctp)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(gotScmProvider).To(Equal(scmProvider))
+		Expect(gotSecret).To(Equal(secret))
 	})
-}
+})
