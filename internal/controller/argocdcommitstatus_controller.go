@@ -389,7 +389,7 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get PromotionStrategy from ArgoCDCommitStatus %s: %w", argoCDCommitStatus.Name, err)
 	}
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, ps.Spec.RepositoryReference, ps)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetConfig().GlobalNamespace, ps.Spec.RepositoryReference, ps)
 	if err != nil {
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get ScmProvider and secret for PromotionStrategy %q: %w", ps.Name, err)
 	}

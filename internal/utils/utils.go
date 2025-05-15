@@ -88,7 +88,7 @@ func GetGitRepositoryFromObjectKey(ctx context.Context, k8sClient client.Client,
 	return &gitRepo, nil
 }
 
-func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
+func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
 	logger := log.FromContext(ctx)
 	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
 	if err != nil {
@@ -101,8 +101,8 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 	}
 
 	var secretNamespace string
-	// For namespaced ScmProvider, force the secret to be in the same namespace
 	if scmProvider.GetObjectKind().GroupVersionKind().Kind == promoterv1alpha1.ClusterScmProviderKind {
+		secretNamespace = controllerNamespace
 	} else {
 		secretNamespace = scmProvider.GetNamespace()
 	}

@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	namespace = "test-namespace"
+	namespace           = "test-namespace"
+	controllerNamespace = "controller-namespace"
 )
 
 func TestGetScmProviderFromGitRepository(t *testing.T) {
@@ -141,7 +142,7 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 
 		client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(gitRepository, scmProvider, secret).Build()
 
-		gotScmProvider, gotSecret, err := utils.GetScmProviderAndSecretFromRepositoryReference(t.Context(), client, repositoryRef, ctp)
+		gotScmProvider, gotSecret, err := utils.GetScmProviderAndSecretFromRepositoryReference(t.Context(), client, controllerNamespace, repositoryRef, ctp)
 		require.NoError(t, err)
 		assert.Equal(t, scmProvider, gotScmProvider)
 		assert.Equal(t, secret, gotSecret)
@@ -152,7 +153,7 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 		secret := &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "scm-provider-secret",
-				Namespace: "another-namespace",
+				Namespace: controllerNamespace,
 			},
 		}
 		scmProvider := &promoterv1alpha1.ClusterScmProvider{
@@ -183,7 +184,7 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 
 		client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(gitRepository, scmProvider, secret).Build()
 
-		gotScmProvider, gotSecret, err := utils.GetScmProviderAndSecretFromRepositoryReference(t.Context(), client, repositoryRef, ctp)
+		gotScmProvider, gotSecret, err := utils.GetScmProviderAndSecretFromRepositoryReference(t.Context(), client, controllerNamespace, repositoryRef, ctp)
 		require.NoError(t, err)
 		assert.Equal(t, scmProvider, gotScmProvider)
 		assert.Equal(t, secret, gotSecret)

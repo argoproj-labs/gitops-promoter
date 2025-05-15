@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
@@ -47,8 +48,9 @@ import (
 // CommitStatusReconciler reconciles a CommitStatus object
 type CommitStatusReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	Scheme      *runtime.Scheme
+	Recorder    record.EventRecorder
+	SettingsMgr *settings.Manager
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -157,7 +159,7 @@ func (r *CommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, commitStatus promoterv1alpha1.CommitStatus) (scms.CommitStatusProvider, error) {
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, commitStatus.Spec.RepositoryReference, &commitStatus)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetConfig().GlobalNamespace, commitStatus.Spec.RepositoryReference, &commitStatus)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", commitStatus.Spec.RepositoryReference.Name, err)
 	}

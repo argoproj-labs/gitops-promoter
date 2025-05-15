@@ -67,6 +67,10 @@ func (m *Manager) GetPullRequestRequeueDuration(ctx context.Context) (time.Durat
 	return controllerConfiguration.Spec.PullRequestRequeueDuration.Duration, nil
 }
 
+func (m *Manager) GetConfig() ManagerConfig {
+	return m.config
+}
+
 func NewManager(client client.Client, config ManagerConfig) *Manager {
 	return &Manager{
 		client: client,
