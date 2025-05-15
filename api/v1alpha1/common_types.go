@@ -23,13 +23,6 @@ type ObjectReference struct {
 	Name string `json:"name"`
 }
 
-type NamespacedObjectReference struct {
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-	// +kubebuilder:validation:Optional
-	Namespace string `json:"namespace,omitempty"`
-}
-
 type TypedObjectReference struct {
 	// Kind is the type of resource being referenced
 	// +kubebuilder:validation:Required

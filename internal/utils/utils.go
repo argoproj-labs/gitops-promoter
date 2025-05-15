@@ -100,14 +100,11 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 		return nil, nil, err
 	}
 
-	secretNamespace := scmProvider.GetSpec().SecretRef.Namespace
-	if secretNamespace == "" {
-		secretNamespace = scmProvider.GetNamespace()
-	}
-
+	var secretNamespace string
 	// For namespaced ScmProvider, force the secret to be in the same namespace
-	if scmProvider.GetObjectKind().GroupVersionKind().Kind == promoterv1alpha1.ScmProviderKind && secretNamespace != scmProvider.GetNamespace() {
-		return nil, nil, fmt.Errorf("secret namespace %s does not match ScmProvider namespace %s", secretNamespace, scmProvider.GetNamespace())
+	if scmProvider.GetObjectKind().GroupVersionKind().Kind == promoterv1alpha1.ClusterScmProviderKind {
+	} else {
+		secretNamespace = scmProvider.GetNamespace()
 	}
 
 	var secret v1.Secret

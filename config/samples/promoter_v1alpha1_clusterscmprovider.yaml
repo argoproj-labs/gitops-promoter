@@ -10,4 +10,3 @@ spec:
     domain: github.com
   secretRef:
     name: my-auth
-    namespace: my-namespace

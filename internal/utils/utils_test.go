@@ -113,7 +113,7 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 	}
 	repositoryRef := promoterv1alpha1.ObjectReference{Name: "test-repository"}
 
-	t.Run("ScmProvider referencing a secret in the same namespace is successful", func(t *testing.T) {
+	t.Run("ScmProvider use secret in the same namespace", func(t *testing.T) {
 		t.Parallel()
 		scmProvider := &promoterv1alpha1.ScmProvider{
 			ObjectMeta: metav1.ObjectMeta{
@@ -121,9 +121,8 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 				Namespace: namespace,
 			},
 			Spec: promoterv1alpha1.ScmProviderSpec{
-				SecretRef: &promoterv1alpha1.NamespacedObjectReference{
-					Name:      "scm-provider-secret",
-					Namespace: namespace,
+				SecretRef: &v1.LocalObjectReference{
+					Name: "scm-provider-secret",
 				},
 			},
 		}
@@ -148,81 +147,7 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 		assert.Equal(t, secret, gotSecret)
 	})
 
-	t.Run("ScmProvider referencing a secret without namespace is successful", func(t *testing.T) {
-		t.Parallel()
-		scmProvider := &promoterv1alpha1.ScmProvider{
-			TypeMeta: metav1.TypeMeta{
-				Kind: promoterv1alpha1.ScmProviderKind,
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "scm-provider",
-				Namespace: namespace,
-			},
-			Spec: promoterv1alpha1.ScmProviderSpec{
-				SecretRef: &promoterv1alpha1.NamespacedObjectReference{
-					Name:      "scm-provider-secret",
-					Namespace: "",
-				},
-			},
-		}
-		gitRepository := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      repositoryRef.Name,
-				Namespace: namespace,
-			},
-			Spec: promoterv1alpha1.GitRepositorySpec{
-				ScmProviderRef: promoterv1alpha1.TypedObjectReference{
-					Kind: promoterv1alpha1.ScmProviderKind,
-					Name: scmProvider.Name,
-				},
-			},
-		}
-
-		client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(gitRepository, scmProvider, secret).Build()
-
-		gotScmProvider, gotSecret, err := utils.GetScmProviderAndSecretFromRepositoryReference(t.Context(), client, repositoryRef, ctp)
-		require.NoError(t, err)
-		assert.Equal(t, scmProvider, gotScmProvider)
-		assert.Equal(t, secret, gotSecret)
-	})
-
-	t.Run("namespaced ScmProvider errors if using a different namespace", func(t *testing.T) {
-		t.Parallel()
-		scmProvider := &promoterv1alpha1.ScmProvider{
-			TypeMeta: metav1.TypeMeta{
-				Kind: promoterv1alpha1.ScmProviderKind,
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "scm-provider",
-				Namespace: namespace,
-			},
-			Spec: promoterv1alpha1.ScmProviderSpec{
-				SecretRef: &promoterv1alpha1.NamespacedObjectReference{
-					Name:      secret.Name,
-					Namespace: "another-namespace",
-				},
-			},
-		}
-		gitRepository := &promoterv1alpha1.GitRepository{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      repositoryRef.Name,
-				Namespace: namespace,
-			},
-			Spec: promoterv1alpha1.GitRepositorySpec{
-				ScmProviderRef: promoterv1alpha1.TypedObjectReference{
-					Kind: promoterv1alpha1.ScmProviderKind,
-					Name: scmProvider.Name,
-				},
-			},
-		}
-
-		client := fake.NewClientBuilder().WithScheme(scheme).WithObjects(gitRepository, scmProvider, secret).Build()
-
-		_, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(t.Context(), client, repositoryRef, ctp)
-		assert.ErrorContains(t, err, "does not match ScmProvider namespace")
-	})
-
-	t.Run("ClusterScmProvider can use secrets from other namespaces", func(t *testing.T) {
+	t.Run("ClusterScmProvider use secrets from other controller namespace", func(t *testing.T) {
 		t.Parallel()
 		secret := &v1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -238,9 +163,8 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 				Name: "scm-provider",
 			},
 			Spec: promoterv1alpha1.ScmProviderSpec{
-				SecretRef: &promoterv1alpha1.NamespacedObjectReference{
-					Name:      secret.Name,
-					Namespace: secret.Namespace,
+				SecretRef: &v1.LocalObjectReference{
+					Name: secret.Name,
 				},
 			},
 		}
