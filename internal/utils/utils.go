@@ -27,8 +27,6 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 		kind = promoterv1alpha1.ScmProviderKind
 	}
 
-	fmt.Println(promoterv1alpha1.ClusterScmProviderKind)
-
 	switch kind {
 	case promoterv1alpha1.ClusterScmProviderKind:
 		var scmProvider promoterv1alpha1.ClusterScmProvider
