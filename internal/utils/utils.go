@@ -27,6 +27,8 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 		kind = promoterv1alpha1.ScmProviderKind
 	}
 
+	fmt.Println(promoterv1alpha1.ClusterScmProviderKind)
+
 	switch kind {
 	case promoterv1alpha1.ClusterScmProviderKind:
 		var scmProvider promoterv1alpha1.ClusterScmProvider
@@ -116,11 +118,11 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 	if err != nil {
 		kind := scmProvider.GetObjectKind().GroupVersionKind().Kind
 		if k8serrors.IsNotFound(err) {
-			logger.Info("Secret from %s not found"+kind, "namespace", secretNamespace, "name", objectKey.Name)
+			logger.Info("Secret not found for "+kind, "namespace", secretNamespace, "name", objectKey.Name)
 			return nil, nil, fmt.Errorf("secret from %s not found: %w", kind, err)
 		}
 
-		logger.Error(err, "failed to get Secret from %s"+kind, "namespace", secretNamespace, "name", objectKey.Name)
+		logger.Error(err, "failed to get Secret from "+kind, "namespace", secretNamespace, "name", objectKey.Name)
 		return nil, nil, fmt.Errorf("failed to get Secret from %s: %w", kind, err)
 	}
 
