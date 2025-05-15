@@ -34,7 +34,7 @@ type GitRepositorySpec struct {
 
 type ScmProviderObjectReference struct {
 	// Kind is the type of resource being referenced
-	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=ScmProvider
 	// +kubebuilder:validation:Enum:=ScmProvider;ClusterScmProvider
 	Kind string `json:"kind"`

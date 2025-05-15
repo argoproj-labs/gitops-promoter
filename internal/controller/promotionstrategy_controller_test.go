@@ -1396,6 +1396,7 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 				Name:  name,
 			},
 			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
+				Kind: promoterv1alpha1.ScmProviderKind,
 				Name: name,
 			},
 		},

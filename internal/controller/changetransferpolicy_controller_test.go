@@ -406,6 +406,7 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 				Name:  name,
 			},
 			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
+				Kind: promoterv1alpha1.ScmProviderKind,
 				Name: name,
 			},
 		},
