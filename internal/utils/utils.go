@@ -36,11 +36,6 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 
 		err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
 		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				logger.Info("ClusterScmProvider not found", "name", objectKey.Name)
-				return nil, fmt.Errorf("ClusterScmProvider not found: %w", err)
-			}
-
 			logger.Error(err, "failed to get ClusterScmProvider", "name", objectKey.Name)
 			return nil, fmt.Errorf("failed to get ClusterScmProvider: %w", err)
 		}
@@ -55,11 +50,6 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 
 		err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
 		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				logger.Info("ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
-				return nil, fmt.Errorf("ScmProvider not found: %w", err)
-			}
-
 			logger.Error(err, "failed to get ScmProvider", "namespace", namespace, "name", objectKey.Name)
 			return nil, fmt.Errorf("failed to get ScmProvider: %w", err)
 		}

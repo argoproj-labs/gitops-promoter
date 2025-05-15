@@ -48,7 +48,7 @@ func TestGetScmProviderFromGitRepository(t *testing.T) {
 		t.Parallel()
 		gitRepository := &promoterv1alpha1.GitRepository{
 			Spec: promoterv1alpha1.GitRepositorySpec{
-				ScmProviderRef: promoterv1alpha1.TypedObjectReference{
+				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
 					Kind: "ScmProvider",
 					Name: "namespaced-scm-provider",
 				},
@@ -64,7 +64,7 @@ func TestGetScmProviderFromGitRepository(t *testing.T) {
 		t.Parallel()
 		gitRepository := &promoterv1alpha1.GitRepository{
 			Spec: promoterv1alpha1.GitRepositorySpec{
-				ScmProviderRef: promoterv1alpha1.TypedObjectReference{
+				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
 					Kind: "ClusterScmProvider",
 					Name: "cluster-scm-provider",
 				},
@@ -80,7 +80,7 @@ func TestGetScmProviderFromGitRepository(t *testing.T) {
 		t.Parallel()
 		gitRepository := &promoterv1alpha1.GitRepository{
 			Spec: promoterv1alpha1.GitRepositorySpec{
-				ScmProviderRef: promoterv1alpha1.TypedObjectReference{
+				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
 					Kind: "UnsupportedScmProvider",
 					Name: "unsuppoerted-scm-provider",
 				},
@@ -133,7 +133,7 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 				Namespace: namespace,
 			},
 			Spec: promoterv1alpha1.GitRepositorySpec{
-				ScmProviderRef: promoterv1alpha1.TypedObjectReference{
+				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
 					Kind: promoterv1alpha1.ScmProviderKind,
 					Name: scmProvider.Name,
 				},
@@ -175,7 +175,7 @@ func TestGetScmProviderAndSecretFromRepositoryReference(t *testing.T) {
 				Namespace: namespace,
 			},
 			Spec: promoterv1alpha1.GitRepositorySpec{
-				ScmProviderRef: promoterv1alpha1.TypedObjectReference{
+				ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
 					Kind: promoterv1alpha1.ClusterScmProviderKind,
 					Name: scmProvider.Name,
 				},

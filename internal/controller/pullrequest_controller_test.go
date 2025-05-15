@@ -159,7 +159,7 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 				Owner: name,
 				Name:  name,
 			},
-			ScmProviderRef: promoterv1alpha1.TypedObjectReference{
+			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
 				Name: name,
 			},
 		},

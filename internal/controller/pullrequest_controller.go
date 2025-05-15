@@ -170,7 +170,7 @@ func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetConfig().GlobalNamespace, pr.Spec.RepositoryReference, &pr)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetGlobalNamespace(), pr.Spec.RepositoryReference, &pr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
 	}
