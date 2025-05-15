@@ -159,7 +159,7 @@ func (r *CommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, commitStatus promoterv1alpha1.CommitStatus) (scms.CommitStatusProvider, error) {
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetGlobalNamespace(), commitStatus.Spec.RepositoryReference, &commitStatus)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), commitStatus.Spec.RepositoryReference, &commitStatus)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", commitStatus.Spec.RepositoryReference.Name, err)
 	}

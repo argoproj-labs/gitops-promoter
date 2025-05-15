@@ -151,7 +151,7 @@ func main() {
 	}
 
 	settingsMgr := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
-		GlobalNamespace: controllerNamespace,
+		ControllerNamespace: controllerNamespace,
 	})
 
 	if err = (&controller.PullRequestReconciler{

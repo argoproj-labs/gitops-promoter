@@ -737,7 +737,6 @@ spec:
                   name:
                     type: string
                 required:
-                - kind
                 - name
                 type: object
             required:
