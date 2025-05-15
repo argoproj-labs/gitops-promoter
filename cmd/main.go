@@ -163,9 +163,10 @@ func main() {
 		panic("unable to create PullRequest controller")
 	}
 	if err = (&controller.CommitStatusReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("CommitStatus"),
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Recorder:    mgr.GetEventRecorderFor("CommitStatus"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create CommitStatus controller")
 	}
