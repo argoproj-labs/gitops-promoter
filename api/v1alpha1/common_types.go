@@ -23,14 +23,6 @@ type ObjectReference struct {
 	Name string `json:"name"`
 }
 
-type TypedObjectReference struct {
-	// Kind is the type of resource being referenced
-	// +kubebuilder:validation:Required
-	Kind string `json:"kind"`
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-}
-
 type GitHubRepo struct {
 	// +kubebuilder:validation:Required
 	Owner string `json:"owner"`

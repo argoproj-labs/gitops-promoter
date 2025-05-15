@@ -79,7 +79,11 @@ spec:
               scmProviderRef:
                 properties:
                   kind:
+                    default: ScmProvider
                     description: Kind is the type of resource being referenced
+                    enum:
+                    - ScmProvider
+                    - ClusterScmProvider
                     type: string
                   name:
                     type: string
