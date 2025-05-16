@@ -17,12 +17,17 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"reflect"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+
+var ScmProviderKind = reflect.TypeOf(ScmProvider{}).Name()
 
 // ScmProviderSpec defines the desired state of ScmProvider
 type ScmProviderSpec struct {
@@ -71,4 +76,25 @@ type ScmProviderList struct {
 
 func init() {
 	SchemeBuilder.Register(&ScmProvider{}, &ScmProviderList{})
+}
+
+// +kubebuilder:object:root=false
+// +kubebuilder:object:generate:false
+// +k8s:deepcopy-gen:interfaces=nil
+// +k8s:deepcopy-gen=nil
+
+// GenericScmProvider is a common interface for interacting with either cluster-scoped ClusterScmProvider
+// or namespaced ScmProviders.
+type GenericScmProvider interface {
+	runtime.Object
+	metav1.Object
+	GetSpec() *ScmProviderSpec
+}
+
+// +kubebuilder:object:root:false
+// +kubebuilder:object:generate:false
+var _ GenericScmProvider = &ScmProvider{}
+
+func (s *ScmProvider) GetSpec() *ScmProviderSpec {
+	return &s.Spec
 }

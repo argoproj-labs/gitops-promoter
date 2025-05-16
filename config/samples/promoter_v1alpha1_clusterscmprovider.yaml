@@ -1,0 +1,12 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ClusterScmProvider
+metadata:
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: clusterscmprovider-sample
+spec:
+  github:
+    domain: github.com
+  secretRef:
+    name: my-auth

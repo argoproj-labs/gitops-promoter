@@ -11,6 +11,7 @@ resources:
 - bases/promoter.argoproj.io_changetransferpolicies.yaml
 - bases/promoter.argoproj.io_argocdcommitstatuses.yaml
 - bases/promoter.argoproj.io_controllerconfigurations.yaml
+- bases/promoter.argoproj.io_clusterscmproviders.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:

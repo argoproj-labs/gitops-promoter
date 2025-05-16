@@ -24,7 +24,7 @@ type PullRequest struct {
 
 var _ scms.PullRequestProvider = &PullRequest{}
 
-func NewGithubPullRequestProvider(k8sClient client.Client, scmProvider *v1alpha1.ScmProvider, secret v1.Secret) (*PullRequest, error) {
+func NewGithubPullRequestProvider(k8sClient client.Client, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret) (*PullRequest, error) {
 	client, err := GetClient(scmProvider, secret)
 	if err != nil {
 		return nil, err

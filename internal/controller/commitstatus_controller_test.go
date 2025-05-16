@@ -80,7 +80,8 @@ var _ = Describe("CommitStatus Controller", func() {
 						Owner: typeNamespacedName.Name,
 						Name:  typeNamespacedName.Name,
 					},
-					ScmProviderRef: promoterv1alpha1.ObjectReference{
+					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
+						Kind: promoterv1alpha1.ScmProviderKind,
 						Name: typeNamespacedName.Name,
 					},
 				},

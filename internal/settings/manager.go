@@ -14,7 +14,7 @@ const (
 )
 
 type ManagerConfig struct {
-	GlobalNamespace string
+	ControllerNamespace string
 }
 
 type Manager struct {
@@ -24,7 +24,7 @@ type Manager struct {
 
 func (m *Manager) GetControllerConfiguration(ctx context.Context) (*promoterv1alpha1.ControllerConfiguration, error) {
 	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{}
-	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.GlobalNamespace}, controllerConfiguration); err != nil {
+	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.ControllerNamespace}, controllerConfiguration); err != nil {
 		return nil, fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
 
@@ -65,6 +65,10 @@ func (m *Manager) GetPullRequestRequeueDuration(ctx context.Context) (time.Durat
 	}
 
 	return controllerConfiguration.Spec.PullRequestRequeueDuration.Duration, nil
+}
+
+func (m *Manager) GetControllerNamespace() string {
+	return m.config.ControllerNamespace
 }
 
 func NewManager(client client.Client, config ManagerConfig) *Manager {

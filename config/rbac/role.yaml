@@ -25,6 +25,7 @@ rules:
   resources:
   - argocdcommitstatuses
   - changetransferpolicies
+  - clusterscmproviders
   - commitstatuses
   - controllerconfigurations
   - gitrepositories
@@ -45,6 +46,7 @@ rules:
   resources:
   - argocdcommitstatuses/finalizers
   - changetransferpolicies/finalizers
+  - clusterscmproviders/finalizers
   - commitstatuses/finalizers
   - controllerconfigurations/finalizers
   - gitrepositories/finalizers
@@ -59,6 +61,7 @@ rules:
   resources:
   - argocdcommitstatuses/status
   - changetransferpolicies/status
+  - clusterscmproviders/status
   - commitstatuses/status
   - controllerconfigurations/status
   - gitrepositories/status
