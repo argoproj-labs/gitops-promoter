@@ -64,5 +64,7 @@ This cluster-scoped reference is reasonably safe in a multi-tenant setup because
 
 ScmProvider and ClusterScmProvider are the same resource but are available for different scopes and have different tenancy considerations:
 
-- ScmProvider is a namespaced resource and must exist in the same namespace as the GitRepository referencing it. It is ideal for teams that want to manage the access to their SCM themselves and stay isolated from other tenants.
-- ClusterScmProvider is a cluster-scoped resource and can be referenced by any GitRepository from all namespaces. This allows a centralized way to configure the SCM access for all tenants in the cluster.
+- ScmProvider is a namespaced resource and must exist in the same namespace as the GitRepository referencing it. It is ideal for teams that want to manage the access to their SCM themselves and stay isolated from other tenants. 
+  The secret referenced by the ScmProvider must be in the same namespace as the ScmProvider.
+- ClusterScmProvider is a cluster-scoped resource and can be referenced by any GitRepository from all namespaces. This allows a centralized way to configure the SCM access for all tenants in the cluster. 
+  The secret referenced by a ClusterScmProvider must be in the namespace where the promoter is deployed.
