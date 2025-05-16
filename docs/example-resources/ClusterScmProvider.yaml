@@ -1,0 +1,19 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ClusterScmProvider
+metadata:
+  name: example-cluster-scm-provider
+spec:
+  secretRef:
+    # Secret must be in the same namespace where the promoter is running
+    name: example-cluster-scm-provider-secret 
+
+  # You must specify either github or gitlab. Both are provided here as examples.
+  # If you do not need to specify any sub-fields, just set the field to {}.
+
+  github:
+    domain: github.com # Optional
+    appID: <your-app-id>
+    installationID: <your-installation-id>
+
+  gitlab:
+    domain: gitlab.com # Optional
