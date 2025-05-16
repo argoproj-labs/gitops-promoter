@@ -23,10 +23,6 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 
 	var provider promoterv1alpha1.GenericScmProvider
 	kind := repositoryRef.Spec.ScmProviderRef.Kind
-	if kind == "" {
-		kind = promoterv1alpha1.ScmProviderKind
-	}
-
 	switch kind {
 	case promoterv1alpha1.ClusterScmProviderKind:
 		var scmProvider promoterv1alpha1.ClusterScmProvider
@@ -42,7 +38,6 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 		provider = &scmProvider
 	case promoterv1alpha1.ScmProviderKind:
 		var scmProvider promoterv1alpha1.ScmProvider
-		namespace := obj.GetNamespace()
 		objectKey := client.ObjectKey{
 			Namespace: obj.GetNamespace(),
 			Name:      repositoryRef.Spec.ScmProviderRef.Name,
@@ -50,7 +45,7 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 
 		err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
 		if err != nil {
-			logger.Error(err, "failed to get ScmProvider", "namespace", namespace, "name", objectKey.Name)
+			logger.Error(err, "failed to get ScmProvider", "namespace", obj.GetNamespace(), "name", objectKey.Name)
 			return nil, fmt.Errorf("failed to get ScmProvider: %w", err)
 		}
 		provider = &scmProvider
