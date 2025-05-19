@@ -83,7 +83,7 @@ A hydration system has two jobs:
 2. When a commit arrives, push an environment-specific Hydrated Commit to the Staging Branch for each environment. The 
    contents of the commit are up to the hydrator. For example, if the DRY Branch contains a Helm chart, the hydrator
    might push a file with the output of `helm template`.
-3. A `hydrator.metadata` file containing JSON file containing: `{"drySha": "<commit SHA from DRY Branch>"}`
+3. A `hydrator.metadata` JSON file containing: `{"drySha": "<commit SHA from DRY Branch>"}`
 
 That's the whole contract! GitOps Promoter will handle opening, updating, and merging PRs as newly-hydrated commits
 arrive.
