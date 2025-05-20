@@ -319,7 +319,8 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 			}
 			if err == nil && selector.Matches(fields.Set(un.GetLabels())) {
 				log.FromContext(ctx).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
-					"application", appKey, "argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
+					"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
+					"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
 
 				return []reconcile.Request{{
 					NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
@@ -328,7 +329,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 		}
 
 		log.FromContext(ctx).Info("No ArgoCDCommitStatus found for ArgoCD application",
-			"namespace", argoCDApplication.GetNamespace(), "name", argoCDApplication.GetName())
+			"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName())
 		return nil
 	}
 }
