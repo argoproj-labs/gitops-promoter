@@ -279,11 +279,13 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 		un.SetGroupVersionKind(gvk)
 
 		if err := c.Get(ctx, client.ObjectKeyFromObject(argoCDApplication), un, &client.GetOptions{}); err != nil {
+			log.FromContext(ctx).Error(err, "failed to get ArgoCDApplication")
 			return nil
 		}
 
 		var application argocd.ArgoCDApplication
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.Object, &application); err != nil {
+			log.FromContext(ctx).Error(err, "failed to convert unstructured object to typed object")
 			return nil
 		}
 
@@ -304,6 +306,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 
 		var argoCDCommitStatusList promoterv1alpha1.ArgoCDCommitStatusList
 		if err := c.List(ctx, &argoCDCommitStatusList, &client.ListOptions{}); err != nil {
+			log.FromContext(ctx).Error(err, "failed to list ArgoCDCommitStatus objects")
 			return nil
 		}
 
