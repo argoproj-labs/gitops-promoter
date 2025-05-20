@@ -23,7 +23,13 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"k8s.io/apimachinery/pkg/fields"
+
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/cespare/xxhash/v2"
 
@@ -261,47 +267,81 @@ func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregate
 	return mostRecentLastTransitionTime
 }
 
-// func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
-//	return func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
-//		var un unstructured.Unstructured
-//		un.SetGroupVersionKind(gvk)
-//
-//		err := c.Get(ctx, client.ObjectKey{Namespace: argoCDApplication.GetName(), Name: argoCDApplication.GetName()}, &un, &client.GetOptions{})
-//		if err != nil {
-//			return []reconcile.Request{}
-//		}
-//
-//		var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatusList
-//		err = c.List(ctx, &argoCDCommitStatus, &client.ListOptions{
-//			FieldSelector: fields.SelectorFromSet(map[string]string{
-//				".spec.l": "",
-//			}),
-//		})
-//		if err != nil {
-//			return []reconcile.Request{}
-//		}
-//
-//		return []reconcile.Request{}
-//	}
-//}
+// var syncMap sync.Map
+var (
+	rwMutex sync.RWMutex
+	revMap  = make(map[string]string)
+)
+
+func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
+	return func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
+		un := &unstructured.Unstructured{}
+		un.SetGroupVersionKind(gvk)
+
+		if err := c.Get(ctx, client.ObjectKeyFromObject(argoCDApplication), un, &client.GetOptions{}); err != nil {
+			log.FromContext(ctx).Error(err, "failed to get ArgoCDApplication")
+			return nil
+		}
+
+		var application argocd.ArgoCDApplication
+		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.Object, &application); err != nil {
+			log.FromContext(ctx).Error(err, "failed to convert unstructured object to typed object")
+			return nil
+		}
+
+		appKey := application.GetNamespace() + "/" + application.GetName()
+
+		rwMutex.RLock()
+		appRef := revMap[appKey]
+		rwMutex.RUnlock()
+
+		if appRef == application.Status.Sync.Revision && time.Since(application.Status.Health.LastTransitionTime.Time) >= 10*time.Second {
+			// No change in-app revision, and the last transition time is more than 10 seconds ago, let's not add this to the queue
+			return nil
+		}
+
+		rwMutex.Lock()
+		revMap[appKey] = application.Status.Sync.Revision
+		rwMutex.Unlock()
+
+		var argoCDCommitStatusList promoterv1alpha1.ArgoCDCommitStatusList
+		if err := c.List(ctx, &argoCDCommitStatusList, &client.ListOptions{}); err != nil {
+			log.FromContext(ctx).Error(err, "failed to list ArgoCDCommitStatus objects")
+			return nil
+		}
+
+		// TODO: is there some way to do this without a loop? Can we use a field indexer? The one issue with field indexers is that
+		// they can not be used with lists (aka label selectors) so how else can we lookup.
+		for _, argoCDCommitStatus := range argoCDCommitStatusList.Items {
+			selector, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
+			if err != nil {
+				log.FromContext(ctx).Error(err, "failed to parse label selector")
+			}
+			if err == nil && selector.Matches(fields.Set(un.GetLabels())) {
+				log.FromContext(ctx).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
+					"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
+					"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
+
+				return []reconcile.Request{{
+					NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
+				}}
+			}
+		}
+
+		log.FromContext(ctx).Info("No ArgoCDCommitStatus found for ArgoCD application",
+			"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName())
+		return nil
+	}
+}
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	var ul unstructured.Unstructured
 	ul.SetGroupVersionKind(gvk)
 
-	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
-	// if err := mgr.GetFieldIndexer().IndexField(context.Background(), &ul, ".status.applications", func(rawObj client.Object) []string {
-	//	//nolint:forcetypeassert
-	//	ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
-	//	return []string{ctp.Status.Proposed.Hydrated.Sha}
-	// }); err != nil {
-	//	return fmt.Errorf("failed to set field index for .status.proposed.hydrated.sha: %w", err)
-	//}
-
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{}).
-		// Watches(&ul, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
+		Watches(&ul, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
