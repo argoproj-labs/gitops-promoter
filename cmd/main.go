@@ -151,7 +151,7 @@ func main() {
 	}
 
 	settingsMgr := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
-		GlobalNamespace: controllerNamespace,
+		ControllerNamespace: controllerNamespace,
 	})
 
 	if err = (&controller.PullRequestReconciler{
@@ -163,9 +163,10 @@ func main() {
 		panic("unable to create PullRequest controller")
 	}
 	if err = (&controller.CommitStatusReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("CommitStatus"),
+		Client:      mgr.GetClient(),
+		Scheme:      mgr.GetScheme(),
+		Recorder:    mgr.GetEventRecorderFor("CommitStatus"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create CommitStatus controller")
 	}
@@ -222,6 +223,12 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ControllerConfiguration controller")
+	}
+	if err = (&controller.ClusterScmProviderReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		panic("unable to create ClusterScmProvider controller")
 	}
 	//+kubebuilder:scaffold:builder
 

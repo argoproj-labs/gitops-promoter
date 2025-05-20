@@ -24,7 +24,7 @@ type CommitStatus struct {
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
-func NewGithubCommitStatusProvider(k8sClient client.Client, scmProvider *promoterv1alpha1.ScmProvider, secret v1.Secret) (*CommitStatus, error) {
+func NewGithubCommitStatusProvider(k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret) (*CommitStatus, error) {
 	client, err := GetClient(scmProvider, secret)
 	if err != nil {
 		return nil, err

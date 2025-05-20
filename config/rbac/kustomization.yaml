@@ -27,6 +27,9 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the {{ .ProjectName }} itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- clusterscmprovider_admin_role.yaml
+- clusterscmprovider_editor_role.yaml
+- clusterscmprovider_viewer_role.yaml
 - controllerconfiguration_admin_role.yaml
 - controllerconfiguration_editor_role.yaml
 - controllerconfiguration_viewer_role.yaml

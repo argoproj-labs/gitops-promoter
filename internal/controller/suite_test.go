@@ -151,13 +151,14 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), settings.ManagerConfig{
-		GlobalNamespace: "default",
+		ControllerNamespace: "default",
 	})
 
 	err = (&CommitStatusReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("CommitStatus"),
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorderFor("CommitStatus"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

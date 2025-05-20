@@ -27,7 +27,7 @@ import (
 type GitOperations struct {
 	gap         scms.GitOperationsProvider
 	gitRepo     *v1alpha1.GitRepository
-	scmProvider *v1alpha1.ScmProvider
+	scmProvider v1alpha1.GenericScmProvider
 	pathContext string
 }
 
