@@ -314,6 +314,9 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 		// they can not be used with lists (aka label selectors) so how else can we lookup.
 		for _, argoCDCommitStatus := range argoCDCommitStatusList.Items {
 			selector, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
+			if err != nil {
+				log.FromContext(ctx).Error(err, "failed to parse label selector")
+			}
 			if err == nil && selector.Matches(fields.Set(un.GetLabels())) {
 				log.FromContext(ctx).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
 					"application", appKey, "argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
