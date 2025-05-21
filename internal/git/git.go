@@ -344,3 +344,75 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...st
 
 	return stdoutBuf.String(), stderrBuf.String(), nil
 }
+
+//	func (g *GitOperations) HasConflict(ctx context.Context, branch1, branch2 string) (bool, error) {
+//		logger := log.FromContext(ctx)
+//
+//		// Perform a dry-run merge to check for conflicts
+//		_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext),
+//			"merge", "--no-commit", "--no-ff", "--dry-run", branch1, branch2)
+//		if err != nil {
+//			if strings.Contains(stderr, "CONFLICT") {
+//				logger.V(4).Info("Conflict detected during dry-run merge", "branch1", branch1, "branch2", branch2)
+//				return true, nil
+//			}
+//			logger.Error(err, "Failed to perform dry-run merge", "stderr", stderr)
+//			return false, err
+//		}
+//
+//		logger.V(4).Info("No conflicts detected during dry-run merge", "branch1", branch1, "branch2", branch2)
+//		return false, nil
+//	}
+func (g *GitOperations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
+	logger := log.FromContext(ctx)
+	path := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+
+	// Ensure both branches are fetched from origin
+	if _, stderr, err := g.runCmd(ctx, path, "fetch", "origin", activeBranch, proposedBranch); err != nil {
+		logger.Error(err, "could not fetch branches", "stderr", stderr)
+		return false, err
+	}
+
+	// Check for conflict hunks via diff of origin branches
+	stdout, stderr, err := g.runCmd(ctx, path,
+		"diff", "--name-only", "--diff-filter=U", "origin/"+activeBranch, "origin/"+proposedBranch)
+	if err != nil {
+		logger.Error(err, "failed to diff origin branches", "stderr", stderr)
+		return false, err
+	}
+	if strings.TrimSpace(stdout) != "" {
+		logger.V(4).Info("Conflict detected in origin diff", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+		return true, nil
+	}
+
+	logger.V(4).Info("No conflicts detected in origin diff", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+	return false, nil
+}
+
+func (g *GitOperations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
+	logger := log.FromContext(ctx)
+
+	// Checkout the proposed branch
+	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", proposedBranch)
+	if err != nil {
+		logger.Error(err, "Failed to checkout branch", "branch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to checkout branch %q: %w", activeBranch, err)
+	}
+
+	// Perform the merge with "ours" strategy
+	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "merge", "-s", "ours", activeBranch)
+	if err != nil {
+		logger.Error(err, "Failed to merge branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to merge branch %q into %q with 'ours' strategy: %w", proposedBranch, activeBranch, err)
+	}
+
+	// Push the changes to the remote repository
+	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "push", "origin", proposedBranch)
+	if err != nil {
+		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to push merged branch %q: %w", proposedBranch, err)
+	}
+
+	logger.Info("Successfully merged branches with 'ours' strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+	return nil
+}
