@@ -48,7 +48,7 @@ all: build
 # file as xyz: ## something, and then pretty-format the target and help. Then,
 # if there's a line with ##@ something, that gets pretty-printed as a category.
 # More info on the usage of ANSI control characters for terminal formatting:
-# https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_parameters
+# https://en.wikipedia.org/wiki/ANSI_escape_code#Select_Graphic_Rendition_parameters
 # More info on the awk command:
 # http://linuxcommand.org/lc3_adv_awk.php
 
@@ -122,7 +122,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
-# More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+# More info: https://docs.docker.com/build/buildkit/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG} .
@@ -141,8 +141,8 @@ goreleaser-release-local: goreleaser ## Run goreleaser release locally. Use to v
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
-# - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
-# - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+# - be able to use docker buildx. More info: https://docs.docker.com/reference/cli/docker/buildx/
+# - have enabled BuildKit. More info: https://docs.docker.com/build/buildkit/
 # - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
