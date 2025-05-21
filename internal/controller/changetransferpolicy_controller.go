@@ -115,6 +115,11 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to calculate ChangeTransferPolicy status: %w", err)
 	}
 
+	err = r.gitMergeStrategyOurs(ctx, gitOperations, &ctp)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to git merge for conflict resolution: %w", err)
+	}
+
 	err = r.mergeOrPullRequestPromote(ctx, gitOperations, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set promotion state: %w", err)
@@ -511,6 +516,37 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 			}
 		}
 	}
+
+	return nil
+}
+
+// gitMergeStrategyOurs tests if there is a conflict between the active and proposed branches. If there is, we
+// perform a merge with ours as the strategy. This is to prevent conflicts in the pull request by assuming that
+// the proposed branch is the source of truth.
+func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Context, gitOperations *git.GitOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	logger := log.FromContext(ctx)
+	logger.Info("Testing for conflicts between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+
+	// Check if there's a conflict between branches
+	hasConflict, err := gitOperations.HasConflict(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	if err != nil {
+		return fmt.Errorf("failed to check for conflicts between branches %q and %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+	}
+
+	if !hasConflict {
+		logger.V(4).Info("No conflicts detected between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+		return nil // No conflict, nothing to do
+	}
+
+	// If we have a conflict, perform a merge with "ours" strategy
+	logger.Info("Conflicts detected, performing merge with 'ours' strategy", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+
+	err = gitOperations.MergeWithOursStrategy(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	if err != nil {
+		return fmt.Errorf("failed to merge branches %q and %q with 'ours' strategy: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+	}
+
+	r.Recorder.Event(ctp, "Normal", "MergeWithOursStrategy", fmt.Sprintf("Merged %s into %s with 'ours' strategy to resolve conflicts", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
 
 	return nil
 }
