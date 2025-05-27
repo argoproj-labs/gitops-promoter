@@ -347,41 +347,42 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...st
 
 func (g *GitOperations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
-	path := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	repoPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
 
-	// Ensure both branches are fetched from origin
-	if _, stderr, err := g.runCmd(ctx, path, "fetch", "origin", activeBranch, proposedBranch); err != nil {
+	// Fetch both branches from origin
+	if _, stderr, err := g.runCmd(ctx, repoPath, "fetch", "origin", activeBranch, proposedBranch); err != nil {
 		logger.Error(err, "could not fetch branches", "stderr", stderr)
 		return false, err
 	}
+
 	// Checkout the active branch
-	if _, stderr, err := g.runCmd(ctx, path, "checkout", "--progress", "-B", activeBranch, "origin/"+activeBranch); err != nil {
+	if _, stderr, err := g.runCmd(ctx, repoPath, "checkout", "--progress", "-B", activeBranch, "origin/"+activeBranch); err != nil {
 		logger.Error(err, "could not checkout active branch", "branch", activeBranch, "stderr", stderr)
 		return false, fmt.Errorf("failed to checkout active branch %q: %w", activeBranch, err)
 	}
 
-	// Merge the proposed origin branch into the active branch
-	if stdout, stderr, err := g.runCmd(ctx, path, "merge", "--no-commit", "--no-ff", "origin/"+proposedBranch); err != nil {
+	// Attempt merging the proposed branch without committing
+	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge", "--no-commit", "--no-ff", "origin/"+proposedBranch)
+	if err != nil {
 		if strings.Contains(stdout, "CONFLICT") {
 			logger.Info("Merge conflict detected", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
-
-			if _, stderr, err := g.runCmd(ctx, path, "merge", "--abort"); err != nil {
-				logger.Error(err, "could not abort merge", "stderr", stderr)
-				return false, fmt.Errorf("failed to abort merge after testing branches %q and %q: %w", proposedBranch, activeBranch, err)
+			// Abort merge after detecting the conflict
+			if _, abortStderr, abortErr := g.runCmd(ctx, repoPath, "merge", "--abort"); abortErr != nil {
+				logger.Error(abortErr, "could not abort merge", "stderr", abortStderr)
+				return false, fmt.Errorf("failed to abort merge after finding a conflict in branches %q and %q: %w", proposedBranch, activeBranch, abortErr)
 			}
-
-			return true, nil // Conflict detected
+			return true, nil
 		}
 		logger.Error(err, "could not merge branches", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return false, fmt.Errorf("failed to test merge branch %q into %q: %w", proposedBranch, activeBranch, err)
 	}
 
-	// If we reach here, it means the merge was successful without conflicts
-	if _, stderr, err := g.runCmd(ctx, path, "merge", "--abort"); err != nil {
+	// Abort the merge to clean up even if no conflict occurred
+	if _, stderr, err := g.runCmd(ctx, repoPath, "merge", "--abort"); err != nil {
 		logger.Error(err, "could not abort merge", "stderr", stderr)
-		return false, fmt.Errorf("failed to abort merge after testing branches %q and %q: %w", proposedBranch, activeBranch, err)
+		return false, fmt.Errorf("failed to abort merge after finding a no conflicts in branches %q and %q: %w", proposedBranch, activeBranch, err)
 	}
-	return false, nil // No conflict detected
+	return false, nil
 }
 
 func (g *GitOperations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
