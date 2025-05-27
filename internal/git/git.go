@@ -345,24 +345,6 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...st
 	return stdoutBuf.String(), stderrBuf.String(), nil
 }
 
-//	func (g *GitOperations) HasConflict(ctx context.Context, branch1, branch2 string) (bool, error) {
-//		logger := log.FromContext(ctx)
-//
-//		// Perform a dry-run merge to check for conflicts
-//		_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext),
-//			"merge", "--no-commit", "--no-ff", "--dry-run", branch1, branch2)
-//		if err != nil {
-//			if strings.Contains(stderr, "CONFLICT") {
-//				logger.V(4).Info("Conflict detected during dry-run merge", "branch1", branch1, "branch2", branch2)
-//				return true, nil
-//			}
-//			logger.Error(err, "Failed to perform dry-run merge", "stderr", stderr)
-//			return false, err
-//		}
-//
-//		logger.V(4).Info("No conflicts detected during dry-run merge", "branch1", branch1, "branch2", branch2)
-//		return false, nil
-//	}
 func (g *GitOperations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
 	path := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
