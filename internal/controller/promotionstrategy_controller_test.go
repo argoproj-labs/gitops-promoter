@@ -653,7 +653,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		It("should successfully reconcile the resource with a git conflict", func() {
 			By("Creating the resources")
 
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status-conflict", "default")
 			setupInitialTestGitRepoOnServer(name, name)
 
 			typeNamespacedName := types.NamespacedName{
