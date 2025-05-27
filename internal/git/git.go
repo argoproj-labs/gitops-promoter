@@ -375,7 +375,6 @@ func (g *GitOperations) HasConflict(ctx context.Context, proposedBranch, activeB
 	}
 
 	if err != nil && conflictDetected {
-		logger.Info("Merge conflict detected", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
 		return true, nil
 	} else if err != nil {
 		logger.Error(err, "could not merge branches", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
@@ -391,15 +390,15 @@ func (g *GitOperations) MergeWithOursStrategy(ctx context.Context, proposedBranc
 	// Checkout the proposed branch
 	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", proposedBranch)
 	if err != nil {
-		logger.Error(err, "Failed to checkout branch", "branch", activeBranch, "stderr", stderr)
-		return fmt.Errorf("failed to checkout branch %q: %w", activeBranch, err)
+		logger.Error(err, "Failed to checkout branch", "branch", proposedBranch, "stderr", stderr)
+		return fmt.Errorf("failed to checkout branch %q: %w", proposedBranch, err)
 	}
 
 	// Perform the merge with "ours" strategy
 	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "merge", "-s", "ours", activeBranch)
 	if err != nil {
 		logger.Error(err, "Failed to merge branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
-		return fmt.Errorf("failed to merge branch %q into %q with 'ours' strategy: %w", proposedBranch, activeBranch, err)
+		return fmt.Errorf("failed to merge branch %q into %q with 'ours' strategy: %w", activeBranch, proposedBranch, err)
 	}
 
 	// Push the changes to the remote repository
