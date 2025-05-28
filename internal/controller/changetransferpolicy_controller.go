@@ -20,9 +20,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"reflect"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
