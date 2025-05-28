@@ -345,6 +345,9 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...st
 	return stdoutBuf.String(), stderrBuf.String(), nil
 }
 
+// HasConflict checks if there is a merge conflict between the proposed branch and the active branch. It assumes that
+// origin/<branch> is currently fetched and updated in the local repository. This should happen via GetBranchShas function
+// earlier in the reconcile.
 func (g *GitOperations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
 	repoPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
