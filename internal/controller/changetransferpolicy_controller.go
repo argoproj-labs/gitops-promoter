@@ -224,7 +224,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
-			r.Recorder.Event(ctp, "Warning", "TooManyMatchingSha", "There are to many matching SHAs for the active commit status")
+			r.Recorder.Event(ctp, "Warning", constants.TooManyMatchingShaReason, constants.TooManyMatchingShaActiveMessage)
 		}
 		return fmt.Errorf("failed to set active commit status state: %w", err)
 	}
@@ -233,7 +233,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
-			r.Recorder.Event(ctp, "Warning", "TooManyMatchingSha", "There are to many matching SHAs for the proposed commit status")
+			r.Recorder.Event(ctp, "Warning", constants.TooManyMatchingShaReason, constants.TooManyMatchingShaProposedMessage)
 		}
 		return fmt.Errorf("failed to set proposed commit status state: %w", err)
 	}
@@ -426,7 +426,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			if err != nil {
 				return fmt.Errorf("failed to create PR from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 			}
-			r.Recorder.Event(ctp, "Normal", "PullRequestCreated", fmt.Sprintf("Pull Request %s created", pr.Name))
+			r.Recorder.Event(ctp, "Normal", constants.PullRequestCreatedReason, fmt.Sprintf(constants.PullRequestCreatedMessage, pr.Name))
 			logger.V(4).Info("Created pull request")
 		} else {
 			return fmt.Errorf("failed to get PR %q: %w", prName, err)
@@ -509,7 +509,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 				if err != nil {
 					return fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
 				}
-				r.Recorder.Event(ctp, "Normal", "PullRequestMerged", fmt.Sprintf("Pull Request %s merged", pullRequest.Name))
+				r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
 				logger.Info("Merged pull request")
 			} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
 				// This is for the case where the PR is set to merge in k8s but something else is blocking it, like an external commit status check.
