@@ -546,7 +546,7 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 		return fmt.Errorf("failed to merge branches %q and %q with 'ours' strategy: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 	}
 
-	r.Recorder.Event(ctp, "Normal", "MergeWithOursStrategy", fmt.Sprintf("Merged %s into %s with 'ours' strategy to resolve conflicts", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+	r.Recorder.Event(ctp, "Normal", "ResolvedConflicts", fmt.Sprintf("Merged %s into %s with 'ours' strategy to resolve conflicts", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
 
 	return nil
 }

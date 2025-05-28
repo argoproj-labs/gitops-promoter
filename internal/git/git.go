@@ -345,16 +345,9 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...st
 	return stdoutBuf.String(), stderrBuf.String(), nil
 }
 
-// replace lines 348 to 386
 func (g *GitOperations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
 	repoPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
-
-	// Fetch both branches from origin
-	if _, stderr, err := g.runCmd(ctx, repoPath, "fetch", "origin", activeBranch, proposedBranch); err != nil {
-		logger.Error(err, "could not fetch branches", "stderr", stderr)
-		return false, err
-	}
 
 	// Checkout the active branch
 	if _, stderr, err := g.runCmd(ctx, repoPath, "checkout", "--progress", "-B", activeBranch, "origin/"+activeBranch); err != nil {
@@ -363,7 +356,7 @@ func (g *GitOperations) HasConflict(ctx context.Context, proposedBranch, activeB
 	}
 
 	// Merge the proposed branch without committing
-	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge", "--no-commit", "--no-ff", "origin/"+proposedBranch)
+	stdout, stderr, mergeErr := g.runCmd(ctx, repoPath, "merge", "--no-commit", "--no-ff", "origin/"+proposedBranch)
 	conflictDetected := strings.Contains(stdout, "CONFLICT")
 
 	// Always attempt to abort the merge to clean up
@@ -374,11 +367,12 @@ func (g *GitOperations) HasConflict(ctx context.Context, proposedBranch, activeB
 		}
 	}
 
-	if err != nil && conflictDetected {
+	if conflictDetected {
 		return true, nil
-	} else if err != nil {
-		logger.Error(err, "could not merge branches", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
-		return false, fmt.Errorf("failed to test merge branch %q into %q: %w", proposedBranch, activeBranch, err)
+	}
+	if mergeErr != nil {
+		logger.Error(mergeErr, "could not merge branches", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return false, fmt.Errorf("failed to test merge branch %q into %q: %w", proposedBranch, activeBranch, mergeErr)
 	}
 
 	return false, nil
