@@ -11,7 +11,7 @@ spec:
   # If you do not need to specify any sub-fields, just set the field to {}.
 
   github:
-    domain: github.com # Optional
+    domain: github.com # Optional, leave empty for default github.com
     appID: <your-app-id>
     installationID: <your-installation-id>
 
