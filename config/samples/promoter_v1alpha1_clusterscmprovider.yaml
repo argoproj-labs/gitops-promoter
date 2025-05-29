@@ -6,7 +6,6 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: clusterscmprovider-sample
 spec:
-  github:
-    domain: github.com
+  github: {}
   secretRef:
     name: my-auth

@@ -53,7 +53,14 @@ spec:
                     format: int64
                     type: integer
                   domain:
+                    description: |-
+                      Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
+                      empty.
                     type: string
+                    x-kubernetes-validations:
+                    - message: Instead of setting the domain to github.com, leave
+                        the field blank
+                      rule: self != "github.com"
                   installationID:
                     description: InstallationID is the GitHub App Installation ID.
                     format: int64
