@@ -29,7 +29,7 @@ func NewGithubGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider,
 		panic(err)
 	}
 
-	if scmProvider.GetSpec().GitHub != nil && scmProvider.GetSpec().GitHub.Domain != "" && scmProvider.GetSpec().GitHub.Domain != "github.com" {
+	if scmProvider.GetSpec().GitHub != nil && scmProvider.GetSpec().GitHub.Domain != "" {
 		itr.BaseURL = fmt.Sprintf("https://%s/api/v3", scmProvider.GetSpec().GitHub.Domain)
 	}
 

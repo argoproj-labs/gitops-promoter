@@ -1,6 +1,9 @@
 package v1alpha1
 
 type GitHub struct {
+	// Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
+	// empty.
+	// +kubebuilder:validation:XValidation:rule=`self != "github.com"`, message="Instead of setting the domain to github.com, leave the field blank"
 	Domain string `json:"domain,omitempty"`
 	// AppID is the GitHub App ID.
 	// +kubebuilder:validation:Required
