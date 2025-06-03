@@ -17,7 +17,9 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"os"
 	"runtime/debug"
@@ -25,6 +27,7 @@ import (
 
 	"github.com/spf13/pflag"
 	"go.uber.org/zap/zapcore"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
@@ -43,6 +46,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
@@ -68,6 +73,8 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var clientConfig clientcmd.ClientConfig
+	var kubeconfigSecretLabel string
+	var kubeconfigSecretKey string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -77,6 +84,8 @@ func main() {
 		"If set the metrics endpoint is served securely")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&kubeconfigSecretLabel, "kubeconfig-secret-label", "sigs.k8s.io/multicluster-runtime-kubeconfig", "The label of the kubeconfig secret.")
+	flag.StringVar(&kubeconfigSecretKey, "kubeconfig-secret-key", "kubeconfig", "The key of the kubeconfig secret.")
 	opts := zap.Options{
 		Development: true,
 		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
@@ -123,7 +132,19 @@ func main() {
 		TLSOpts: tlsOpts,
 	})
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	// Create the kubeconfig provider with options
+	providerOpts := kubeconfigprovider.Options{
+		Namespace:             controllerNamespace,
+		KubeconfigSecretLabel: kubeconfigSecretLabel,
+		KubeconfigSecretKey:   kubeconfigSecretKey,
+		IncludeLocalCluster:   false,
+	}
+
+	// Create the provider first, then the manager with the provider
+	setupLog.Info("Creating provider")
+	provider := kubeconfigprovider.New(providerOpts)
+
+	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
@@ -146,9 +167,11 @@ func main() {
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
 	})
-	if err != nil || mgr == nil {
+	if err != nil || mcMgr == nil {
 		panic("unable to start manager")
 	}
+
+	mgr := mcMgr.GetLocalManager()
 
 	settingsMgr := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
@@ -211,11 +234,11 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ChangeTransferPolicy controller")
 	}
+
 	if err = (&controller.ArgoCDCommitStatusReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
+		Manager:     mcMgr,
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mcMgr); err != nil {
 		panic("unable to create ArgoCDCommitStatus controller")
 	}
 	if err = (&controller.ControllerConfigurationReconciler{
@@ -242,23 +265,48 @@ func main() {
 	processSignals := ctrl.SetupSignalHandler()
 
 	whr := webhookreceiver.NewWebhookReceiver(mgr)
+
 	go func() {
-		err = whr.Start(processSignals, ":3333")
-		if err != nil {
-			setupLog.Error(err, "unable to start webhook receiver")
-			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-			if err != nil {
-				setupLog.Error(err, "unable to kill process")
-			}
+		if err := provider.Run(processSignals, mcMgr); err != nil {
+			setupLog.Error(err, "unable to run provider")
 		}
 	}()
 
-	setupLog.Info("starting manager")
-	if err := mgr.Start(processSignals); err != nil {
-		panic("problem running manager")
-	}
-	setupLog.Info("Cleaning up cloned directories")
+	g, ctx := errgroup.WithContext(processSignals)
+	g.Go(func() error {
+		if err := ignoreCanceled(provider.Run(ctx, mcMgr)); err != nil {
+			setupLog.Error(err, "unable to run provider")
+			return err
+		}
+		return nil
+	})
 
+	g.Go(func() error {
+		setupLog.Info("starting manager")
+		if err := ignoreCanceled(mcMgr.Start(processSignals)); err != nil {
+			setupLog.Error(err, "unable to start manager")
+			return err
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		if err := ignoreCanceled(whr.Start(processSignals, ":3333")); err != nil {
+			setupLog.Error(err, "unable to start webhook receiver")
+			return err
+		}
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		setupLog.Error(err, "unable to start")
+		err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		if err != nil {
+			setupLog.Error(err, "unable to kill process")
+		}
+	}
+
+	setupLog.Info("Cleaning up cloned directories")
 	for _, path := range gitpaths.GetValues() {
 		err := os.RemoveAll(path)
 		if err != nil {
@@ -276,4 +324,11 @@ func addKubectlFlags(flags *pflag.FlagSet) clientcmd.ClientConfig {
 	flags.StringVar(&loadingRules.ExplicitPath, "kubeconfig", "", "Path to a kube config. Only required if out-of-cluster")
 	clientcmd.BindOverrideFlags(&overrides, flags, kflags)
 	return clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, &overrides, os.Stdin)
+}
+
+func ignoreCanceled(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+	return err
 }
