@@ -307,7 +307,8 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 				return nil
 			}
 
-			appKey := application.GetNamespace() + "/" + application.GetName()
+			// if clusterName is empty, then cluster == local cluster
+			appKey := fmt.Sprintf("%s/%s/%s", clusterName, application.GetNamespace(), application.GetName())
 
 			rwMutex.RLock()
 			appRef := revMap[appKey]
