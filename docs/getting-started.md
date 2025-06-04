@@ -179,6 +179,19 @@ stringData:
   token: <your-access-token>
 ```
 
+Alternatively, you can use basic http authentication against your Forgejo instance:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  user: <your-user>
+  password: <your-password>
+```
+
 We also need a GitRepository and ScmProvider, which is are custom resources that represents a git repository and a provider.
 Here is an example of both resources:
 

@@ -64,6 +64,13 @@ func GetClient(domain string, secret k8sV1.Secret) (*forgejo.Client, error) {
 		options = append(options, forgejo.SetBasicAuth(basicAuthUser, basicAuthPassword))
 	}
 
+	if len(options) == 0 {
+		return nil, fmt.Errorf("missing token or user/password keys in the secret %q", secret.Name)
+	}
+	if len(options) > 1 {
+		return nil, fmt.Errorf("too many authentication methods in the secret %q, choose one between token or user/password", secret.Name)
+	}
+
 	client, err := forgejo.NewClient(
 		"https://"+domain,
 		options...,
