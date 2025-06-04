@@ -192,14 +192,21 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 
 	for _, pr := range prs {
 		// REVIEW: head =? source or is it the other way around
+		// REVIEW: we may need to improve the pr selection. This is a hazard and can create weird situations is multiple PRs are targeting the same branches.
 		if pr.Head.Name != prObj.Spec.SourceBranch ||
 			pr.Base.Name != prObj.Spec.TargetBranch ||
 			pr.State != forgejo.StateOpen {
 			continue
 		}
 
+		prState, err := mapPullRequestState(*pr)
+		if err != nil {
+			return false, "", err
+		}
+
+
 		prObj.Status.ID = strconv.FormatInt(pr.ID, 10)
-		prObj.Status.State = mapMergeRequestState(string(pr.State))
+		prObj.Status.State = prState
 		return true, prObj.Status.ID, nil
 	}
 
