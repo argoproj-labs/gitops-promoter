@@ -51,7 +51,7 @@ func (gap GitAuthenticationProvider) GetUser(ctx context.Context) (string, error
 }
 
 func GetClient(domain string, secret k8sV1.Secret) (*forgejo.Client, error) {
-	var options []forgejo.ClientOption = make([]forgejo.ClientOption, 0)
+	options := make([]forgejo.ClientOption, 0)
 
 	token := string(secret.Data["token"])
 	if token != "" {
@@ -65,7 +65,7 @@ func GetClient(domain string, secret k8sV1.Secret) (*forgejo.Client, error) {
 	}
 
 	client, err := forgejo.NewClient(
-		fmt.Sprintf("https://%s", domain),
+		"https://"+domain,
 		options...,
 	)
 	if err != nil {
