@@ -25,9 +25,10 @@ import (
 
 // GitRepositorySpec defines the desired state of GitRepository
 type GitRepositorySpec struct {
-	GitHub *GitHubRepo `json:"github,omitempty"`
-	GitLab *GitLabRepo `json:"gitlab,omitempty"`
-	Fake   *FakeRepo   `json:"fake,omitempty"`
+	GitHub  *GitHubRepo  `json:"github,omitempty"`
+	GitLab  *GitLabRepo  `json:"gitlab,omitempty"`
+	Forgejo *ForgejoRepo `json:"forgejo,omitempty"`
+	Fake    *FakeRepo    `json:"fake,omitempty"`
 	// +kubebuilder:validation:Required
 	ScmProviderRef ScmProviderObjectReference `json:"scmProviderRef"`
 }
