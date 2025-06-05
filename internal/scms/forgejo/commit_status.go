@@ -66,7 +66,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 		return nil, err
 	}
 
-	commitStatus.Status.Id = commitStatus.Spec.Sha
+	commitStatus.Status.Id = commitStatus.Spec.Sha // There is no such thing as Commit ID in Forgejo. Closest thing is the "short" sha which is basically the 10th.
 	commitStatus.Status.Phase = commitPhase
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
 	return commitStatus, nil
