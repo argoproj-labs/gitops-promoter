@@ -204,7 +204,6 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 			return false, "", err
 		}
 
-
 		prObj.Status.ID = strconv.FormatInt(pr.ID, 10)
 		prObj.Status.State = prState
 		return true, prObj.Status.ID, nil
