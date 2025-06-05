@@ -185,10 +185,12 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *v
 	}
 
 	options := &gitlab.AcceptMergeRequestOptions{
-		MergeCommitMessage:        gitlab.Ptr(commitMessage),
 		MergeWhenPipelineSucceeds: gitlab.Ptr(false),
 		ShouldRemoveSourceBranch:  gitlab.Ptr(false),
 		Squash:                    gitlab.Ptr(false),
+	}
+	if commitMessage != "" {
+		options.MergeCommitMessage = gitlab.Ptr(commitMessage)
 	}
 
 	start := time.Now()
