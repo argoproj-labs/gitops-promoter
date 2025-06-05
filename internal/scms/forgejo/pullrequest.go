@@ -56,11 +56,11 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	start := time.Now()
 	pullRequest, resp, err := pr.foregejoClient.CreatePullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, options)
-	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
-	}
 	if err != nil {
 		return "", fmt.Errorf("failed to create pull request: %w", err)
+	}
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
@@ -90,11 +90,11 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 
 	start := time.Now()
 	_, resp, err := pr.foregejoClient.EditPullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
-	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
-	}
 	if err != nil {
 		return fmt.Errorf("failed to update pull request: %w", err)
+	}
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
@@ -124,11 +124,11 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *promoterv1alpha1.PullRe
 
 	start := time.Now()
 	_, resp, err := pr.foregejoClient.EditPullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
-	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
-	}
 	if err != nil {
 		return fmt.Errorf("failed to close pull request: %w", err)
+	}
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
@@ -157,11 +157,11 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *p
 
 	start := time.Now()
 	_, resp, err := pr.foregejoClient.MergePullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
-	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
-	}
 	if err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
+	}
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 	return nil
@@ -182,11 +182,11 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 
 	start := time.Now()
 	prs, resp, err := pr.foregejoClient.ListRepoPullRequests(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, options)
-	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
-	}
 	if err != nil {
 		return false, "", fmt.Errorf("failed to list pull requests: %w", err)
+	}
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 
