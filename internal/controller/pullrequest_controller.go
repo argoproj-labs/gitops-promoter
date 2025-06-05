@@ -170,20 +170,20 @@ func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, pr.Spec.RepositoryReference, &pr)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), pr.Spec.RepositoryReference, &pr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
 	}
 
 	switch {
-	case scmProvider.Spec.GitHub != nil:
+	case scmProvider.GetSpec().GitHub != nil:
 		return github.NewGithubPullRequestProvider(r.Client, scmProvider, *secret) //nolint:wrapcheck
-	case scmProvider.Spec.GitLab != nil:
-		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.Spec.GitLab.Domain) //nolint:wrapcheck
-	case scmProvider.Spec.Fake != nil:
+	case scmProvider.GetSpec().GitLab != nil:
+		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:
-		return nil, fmt.Errorf("unsupported SCM provider: %s", scmProvider.Name)
+		return nil, fmt.Errorf("unsupported SCM provider: %s", scmProvider.GetName())
 	}
 }
 

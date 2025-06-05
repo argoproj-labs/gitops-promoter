@@ -27,7 +27,7 @@ import (
 type GitOperations struct {
 	gap         scms.GitOperationsProvider
 	gitRepo     *v1alpha1.GitRepository
-	scmProvider *v1alpha1.ScmProvider
+	scmProvider v1alpha1.GenericScmProvider
 	pathContext string
 }
 
@@ -339,8 +339,72 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...st
 
 	if err := cmd.Wait(); err != nil {
 		// exitErr := err.(*exec.ExitError)
-		return "", stderrBuf.String(), err
+		return stdoutBuf.String(), stderrBuf.String(), err
 	}
 
 	return stdoutBuf.String(), stderrBuf.String(), nil
+}
+
+// HasConflict checks if there is a merge conflict between the proposed branch and the active branch. It assumes that
+// origin/<branch> is currently fetched and updated in the local repository. This should happen via GetBranchShas function
+// earlier in the reconcile.
+func (g *GitOperations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
+	logger := log.FromContext(ctx)
+	repoPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+
+	// Checkout the active branch
+	if _, stderr, err := g.runCmd(ctx, repoPath, "checkout", "--progress", "-B", activeBranch, "origin/"+activeBranch); err != nil {
+		logger.Error(err, "could not checkout active branch", "branch", activeBranch, "stderr", stderr)
+		return false, fmt.Errorf("failed to checkout active branch %q: %w", activeBranch, err)
+	}
+
+	// Merge the proposed branch without committing
+	stdout, stderr, mergeErr := g.runCmd(ctx, repoPath, "merge", "--no-commit", "--no-ff", "origin/"+proposedBranch)
+	conflictDetected := strings.Contains(stdout, "CONFLICT")
+
+	// Always attempt to abort the merge to clean up
+	if _, abortStderr, abortErr := g.runCmd(ctx, repoPath, "merge", "--abort"); abortErr != nil {
+		if !strings.Contains(abortStderr, "MERGE_HEAD missing") { // Ignore the error if there is no merge in progress
+			logger.Error(abortErr, "could not abort merge", "stderr", abortStderr)
+			return false, fmt.Errorf("failed to abort merge: %w", abortErr)
+		}
+	}
+
+	if conflictDetected {
+		return true, nil
+	}
+	if mergeErr != nil {
+		logger.Error(mergeErr, "could not merge branches", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return false, fmt.Errorf("failed to test merge branch %q into %q: %w", proposedBranch, activeBranch, mergeErr)
+	}
+
+	return false, nil
+}
+
+func (g *GitOperations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
+	logger := log.FromContext(ctx)
+
+	// Checkout the proposed branch
+	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", proposedBranch)
+	if err != nil {
+		logger.Error(err, "Failed to checkout branch", "branch", proposedBranch, "stderr", stderr)
+		return fmt.Errorf("failed to checkout branch %q: %w", proposedBranch, err)
+	}
+
+	// Perform the merge with "ours" strategy
+	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "merge", "-s", "ours", activeBranch)
+	if err != nil {
+		logger.Error(err, "Failed to merge branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to merge branch %q into %q with 'ours' strategy: %w", activeBranch, proposedBranch, err)
+	}
+
+	// Push the changes to the remote repository
+	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "push", "origin", proposedBranch)
+	if err != nil {
+		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to push merged branch %q: %w", proposedBranch, err)
+	}
+
+	logger.Info("Successfully merged branches with 'ours' strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+	return nil
 }

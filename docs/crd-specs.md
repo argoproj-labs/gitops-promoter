@@ -55,11 +55,20 @@ auth mechanism.
 
 ## ScmProvider
 
-An ScmProvider represents a SCM instance (such as GitHub). It references a Secret to enable access via some configured
+An ScmProvider represents a scm instance (such as github). It references a Secret to enable access via some configured
 auth mechanism.
 
 ```yaml
 {!docs/example-resources/ScmProvider.yaml!}
+```
+
+## ClusterScmProvider
+
+A ClusterScmProvider represents a SCM instance (such as GitHub). ClusterScmProvider is the cluster-scoped alternative to the ScmProvider. It references a Secret in the same namespace where the promoter is running to enable access via some configured
+auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in the cluster, regardless of namespace.
+
+```yaml
+{!docs/example-resources/ClusterScmProvider.yaml!}
 ```
 
 ## ArgoCDCommitStatus

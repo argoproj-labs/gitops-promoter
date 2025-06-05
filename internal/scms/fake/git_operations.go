@@ -11,11 +11,11 @@ import (
 )
 
 type GitAuthenticationProvider struct {
-	scmProvider *v1alpha1.ScmProvider
+	scmProvider v1alpha1.GenericScmProvider
 	secret      *v1.Secret
 }
 
-func NewFakeGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret *v1.Secret) GitAuthenticationProvider {
+func NewFakeGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider, secret *v1.Secret) GitAuthenticationProvider {
 	return GitAuthenticationProvider{
 		scmProvider: scmProvider,
 		secret:      secret,
@@ -26,7 +26,7 @@ func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepo v1alpha1.GitRepos
 	gitServerPort := 5000 + ginkov2.GinkgoParallelProcess()
 	gitServerPortStr := strconv.Itoa(gitServerPort)
 
-	if gh.scmProvider.Spec.Fake != nil && gh.scmProvider.Spec.Fake.Domain == "" {
+	if gh.scmProvider.GetSpec().Fake != nil && gh.scmProvider.GetSpec().Fake.Domain == "" {
 		return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 	}
 	return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)

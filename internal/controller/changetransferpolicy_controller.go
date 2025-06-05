@@ -23,6 +23,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
@@ -88,14 +90,14 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to get ChangeTransferPolicy: %w", err)
 	}
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, ctp.Spec.RepositoryReference, &ctp)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ctp.Spec.RepositoryReference, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", ctp.Spec.RepositoryReference.Name, err)
 	}
 
 	gitAuthProvider, err := r.getGitAuthProvider(ctx, scmProvider, secret)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
 	}
 	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, ctp.Spec.RepositoryReference, &ctp, ctp.Spec.ActiveBranch)
 	if err != nil {
@@ -113,6 +115,11 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	err = r.calculateStatus(ctx, &ctp, gitOperations)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to calculate ChangeTransferPolicy status: %w", err)
+	}
+
+	err = r.gitMergeStrategyOurs(ctx, gitOperations, &ctp)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to git merge for conflict resolution: %w", err)
 	}
 
 	err = r.mergeOrPullRequestPromote(ctx, gitOperations, &ctp)
@@ -173,16 +180,16 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 	return nil
 }
 
-func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
+func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context, scmProvider promoterv1alpha1.GenericScmProvider, secret *v1.Secret) (scms.GitOperationsProvider, error) {
 	logger := log.FromContext(ctx)
 	switch {
-	case scmProvider.Spec.Fake != nil:
+	case scmProvider.GetSpec().Fake != nil:
 		logger.V(4).Info("Creating fake git authentication provider")
 		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
-	case scmProvider.Spec.GitHub != nil:
+	case scmProvider.GetSpec().GitHub != nil:
 		logger.V(4).Info("Creating GitHub git authentication provider")
 		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), nil
-	case scmProvider.Spec.GitLab != nil:
+	case scmProvider.GetSpec().GitLab != nil:
 		logger.V(4).Info("Creating GitLab git authentication provider")
 		provider, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
 		if err != nil {
@@ -218,7 +225,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
-			r.Recorder.Event(ctp, "Warning", "TooManyMatchingSha", "There are to many matching SHAs for the active commit status")
+			r.Recorder.Event(ctp, "Warning", constants.TooManyMatchingShaReason, constants.TooManyMatchingShaActiveMessage)
 		}
 		return fmt.Errorf("failed to set active commit status state: %w", err)
 	}
@@ -227,7 +234,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
-			r.Recorder.Event(ctp, "Warning", "TooManyMatchingSha", "There are to many matching SHAs for the proposed commit status")
+			r.Recorder.Event(ctp, "Warning", constants.TooManyMatchingShaReason, constants.TooManyMatchingShaProposedMessage)
 		}
 		return fmt.Errorf("failed to set proposed commit status state: %w", err)
 	}
@@ -420,7 +427,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			if err != nil {
 				return fmt.Errorf("failed to create PR from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 			}
-			r.Recorder.Event(ctp, "Normal", "PullRequestCreated", fmt.Sprintf("Pull Request %s created", pr.Name))
+			r.Recorder.Event(ctp, "Normal", constants.PullRequestCreatedReason, fmt.Sprintf(constants.PullRequestCreatedMessage, pr.Name))
 			logger.V(4).Info("Created pull request")
 		} else {
 			return fmt.Errorf("failed to get PR %q: %w", prName, err)
@@ -503,7 +510,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 				if err != nil {
 					return fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
 				}
-				r.Recorder.Event(ctp, "Normal", "PullRequestMerged", fmt.Sprintf("Pull Request %s merged", pullRequest.Name))
+				r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
 				logger.Info("Merged pull request")
 			} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
 				// This is for the case where the PR is set to merge in k8s but something else is blocking it, like an external commit status check.
@@ -511,6 +518,37 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 			}
 		}
 	}
+
+	return nil
+}
+
+// gitMergeStrategyOurs tests if there is a conflict between the active and proposed branches. If there is, we
+// perform a merge with ours as the strategy. This is to prevent conflicts in the pull request by assuming that
+// the proposed branch is the source of truth.
+func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Context, gitOperations *git.GitOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	logger := log.FromContext(ctx)
+	logger.Info("Testing for conflicts between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+
+	// Check if there's a conflict between branches
+	hasConflict, err := gitOperations.HasConflict(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	if err != nil {
+		return fmt.Errorf("failed to check for conflicts between branches %q and %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+	}
+
+	if !hasConflict {
+		logger.V(4).Info("No conflicts detected between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+		return nil // No conflict, nothing to do
+	}
+
+	// If we have a conflict, perform a merge with "ours" strategy
+	logger.Info("Conflicts detected, performing merge with 'ours' strategy", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+
+	err = gitOperations.MergeWithOursStrategy(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	if err != nil {
+		return fmt.Errorf("failed to merge branches %q and %q with 'ours' strategy: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+	}
+
+	r.Recorder.Event(ctp, "Normal", constants.ResolvedConflictReason, fmt.Sprintf(constants.ResolvedConflictMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
 
 	return nil
 }

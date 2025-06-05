@@ -11,13 +11,13 @@ import (
 )
 
 type GitAuthenticationProvider struct {
-	scmProvider *v1alpha1.ScmProvider
+	scmProvider v1alpha1.GenericScmProvider
 	secret      *v1.Secret
 	client      *gitlab.Client
 }
 
-func NewGitlabGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secret *v1.Secret) (*GitAuthenticationProvider, error) {
-	client, err := GetClient(*secret, scmProvider.Spec.GitLab.Domain)
+func NewGitlabGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider, secret *v1.Secret) (*GitAuthenticationProvider, error) {
+	client, err := GetClient(*secret, scmProvider.GetSpec().GitLab.Domain)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GitLab Client: %w", err)
 	}
@@ -31,8 +31,8 @@ func NewGitlabGitAuthenticationProvider(scmProvider *v1alpha1.ScmProvider, secre
 
 func (gl GitAuthenticationProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string {
 	var repoUrl string
-	if gl.scmProvider.Spec.GitLab != nil && gl.scmProvider.Spec.GitLab.Domain != "" {
-		repoUrl = fmt.Sprintf("https://%s/%s/%s.git", gl.scmProvider.Spec.GitLab.Domain, repo.Spec.GitLab.Namespace, repo.Spec.GitLab.Name)
+	if gl.scmProvider.GetSpec().GitLab != nil && gl.scmProvider.GetSpec().GitLab.Domain != "" {
+		repoUrl = fmt.Sprintf("https://%s/%s/%s.git", gl.scmProvider.GetSpec().GitLab.Domain, repo.Spec.GitLab.Namespace, repo.Spec.GitLab.Name)
 	} else {
 		repoUrl = fmt.Sprintf("https://gitlab.com/%s/%s.git", repo.Spec.GitLab.Namespace, repo.Spec.GitLab.Name)
 	}

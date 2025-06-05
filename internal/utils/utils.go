@@ -18,34 +18,48 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Client, repositoryRef *promoterv1alpha1.GitRepository, obj metav1.Object) (*promoterv1alpha1.ScmProvider, error) {
+func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Client, repositoryRef *promoterv1alpha1.GitRepository, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, error) {
 	logger := log.FromContext(ctx)
 
-	var scmProvider promoterv1alpha1.ScmProvider
-	namespace := obj.GetNamespace()
-
-	objectKey := client.ObjectKey{
-		Namespace: namespace,
-		Name:      repositoryRef.Spec.ScmProviderRef.Name,
-	}
-	err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			logger.Info("ScmProvider not found", "namespace", namespace, "name", objectKey.Name)
-			return nil, fmt.Errorf("ScmProvider not found: %w", err)
+	var provider promoterv1alpha1.GenericScmProvider
+	kind := repositoryRef.Spec.ScmProviderRef.Kind
+	switch kind {
+	case promoterv1alpha1.ClusterScmProviderKind:
+		var scmProvider promoterv1alpha1.ClusterScmProvider
+		objectKey := client.ObjectKey{
+			Name: repositoryRef.Spec.ScmProviderRef.Name,
 		}
 
-		logger.Error(err, "failed to get ScmProvider", "namespace", namespace, "name", objectKey.Name)
-		return nil, fmt.Errorf("failed to get ScmProvider: %w", err)
+		err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
+		if err != nil {
+			logger.Error(err, "failed to get ClusterScmProvider", "name", objectKey.Name)
+			return nil, fmt.Errorf("failed to get ClusterScmProvider: %w", err)
+		}
+		provider = &scmProvider
+	case promoterv1alpha1.ScmProviderKind:
+		var scmProvider promoterv1alpha1.ScmProvider
+		objectKey := client.ObjectKey{
+			Namespace: obj.GetNamespace(),
+			Name:      repositoryRef.Spec.ScmProviderRef.Name,
+		}
+
+		err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
+		if err != nil {
+			logger.Error(err, "failed to get ScmProvider", "namespace", obj.GetNamespace(), "name", objectKey.Name)
+			return nil, fmt.Errorf("failed to get ScmProvider: %w", err)
+		}
+		provider = &scmProvider
+	default:
+		return nil, fmt.Errorf("unsupported ScmProvider kind: %s", kind)
 	}
 
-	if (repositoryRef.Spec.GitHub != nil && scmProvider.Spec.GitHub == nil) ||
-		(repositoryRef.Spec.GitLab != nil && scmProvider.Spec.GitLab == nil) ||
-		(repositoryRef.Spec.Fake != nil && scmProvider.Spec.Fake == nil) {
+	if (repositoryRef.Spec.GitHub != nil && provider.GetSpec().GitHub == nil) ||
+		(repositoryRef.Spec.GitLab != nil && provider.GetSpec().GitLab == nil) ||
+		(repositoryRef.Spec.Fake != nil && provider.GetSpec().Fake == nil) {
 		return nil, errors.New("wrong ScmProvider configured for Repository")
 	}
 
-	return &scmProvider, nil
+	return provider, nil
 }
 
 // GetGitRepositoryFromObjectKey returns the GitRepository object from the repository reference
@@ -59,7 +73,7 @@ func GetGitRepositoryFromObjectKey(ctx context.Context, k8sClient client.Client,
 	return &gitRepo, nil
 }
 
-func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (*promoterv1alpha1.ScmProvider, *v1.Secret, error) {
+func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
 	logger := log.FromContext(ctx)
 	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
 	if err != nil {
@@ -71,20 +85,28 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 		return nil, nil, err
 	}
 
+	var secretNamespace string
+	if scmProvider.GetObjectKind().GroupVersionKind().Kind == promoterv1alpha1.ClusterScmProviderKind {
+		secretNamespace = controllerNamespace
+	} else {
+		secretNamespace = scmProvider.GetNamespace()
+	}
+
 	var secret v1.Secret
 	objectKey := client.ObjectKey{
-		Namespace: scmProvider.Namespace,
-		Name:      scmProvider.Spec.SecretRef.Name,
+		Namespace: secretNamespace,
+		Name:      scmProvider.GetSpec().SecretRef.Name,
 	}
 	err = k8sClient.Get(ctx, objectKey, &secret)
 	if err != nil {
+		kind := scmProvider.GetObjectKind().GroupVersionKind().Kind
 		if k8serrors.IsNotFound(err) {
-			logger.Info("Secret from ScmProvider not found", "namespace", scmProvider.Namespace, "name", objectKey.Name)
-			return nil, nil, fmt.Errorf("secret from ScmProvider not found: %w", err)
+			logger.Info("Secret not found for "+kind, "namespace", secretNamespace, "name", objectKey.Name)
+			return nil, nil, fmt.Errorf("secret from %s not found: %w", kind, err)
 		}
 
-		logger.Error(err, "failed to get Secret from ScmProvider", "namespace", scmProvider.Namespace, "name", objectKey.Name)
-		return nil, nil, fmt.Errorf("failed to get Secret from ScmProvider: %w", err)
+		logger.Error(err, "failed to get Secret from "+kind, "namespace", secretNamespace, "name", objectKey.Name)
+		return nil, nil, fmt.Errorf("failed to get Secret from %s: %w", kind, err)
 	}
 
 	return scmProvider, &secret, nil
