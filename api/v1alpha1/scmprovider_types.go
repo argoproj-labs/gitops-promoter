@@ -43,6 +43,9 @@ type ScmProviderSpec struct {
 	// GitLab required configuration for GitLab as the SCM provider
 	GitLab *GitLab `json:"gitlab,omitempty"`
 
+	// Forgejo required configuration for Forgejo as the SCM provider
+	Forgejo *Forgejo `json:"forgejo,omitempty"`
+
 	// Fake required configuration for Fake as the SCM provider
 	Fake *Fake `json:"fake,omitempty"`
 }

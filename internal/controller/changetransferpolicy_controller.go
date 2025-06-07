@@ -28,6 +28,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -196,6 +197,9 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 			return nil, fmt.Errorf("failed to create GitLab Auth Provider: %w", err)
 		}
 		return provider, nil
+	case scmProvider.GetSpec().Forgejo != nil:
+		logger.V(4).Info("Creating Forgejo git authentication provider")
+		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), nil
 	default:
 		return nil, errors.New("no supported git authentication provider found")
 	}
@@ -374,6 +378,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prName = utils.GetPullRequestName(gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.GitLab != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.GitLab.Namespace, gitRepo.Spec.GitLab.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.Forgejo != nil:
+		prName = utils.GetPullRequestName(gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.Fake != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	}

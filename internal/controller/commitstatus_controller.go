@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -177,6 +178,13 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		p, err = gitlab.NewGitlabCommitStatusProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get GitLab provider for domain %q with secret %q: %w", scmProvider.GetSpec().GitLab.Domain, secret.Name, err)
+		}
+		return p, nil
+	case scmProvider.GetSpec().Forgejo != nil:
+		var p *forgejo.CommitStatus
+		p, err = forgejo.NewForgejoCommitStatusProvider(r.Client, scmProvider, *secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Forgejo provider for domain %q with secret %q: %w", scmProvider.GetSpec().Forgejo.Domain, secret.Name, err)
 		}
 		return p, nil
 	case scmProvider.GetSpec().Fake != nil:
