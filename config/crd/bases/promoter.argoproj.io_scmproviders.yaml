@@ -51,7 +51,7 @@ spec:
                 properties:
                   domain:
                     description: |-
-                      Domain is the Forgejo domain, suche as "codeberg.org" or "forgejo.mycompany.com".
+                      Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
                       There is no default domain since Forgejo is not a service like Gitlab or Github.
                     type: string
                 required:
