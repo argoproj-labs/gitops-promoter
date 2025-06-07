@@ -44,7 +44,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		Name:      prObj.Name,
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
 	options := forgejo.CreatePullRequestOption{
@@ -80,7 +80,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		Name:      prObj.Name,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
 	options := forgejo.EditPullRequestOption{
@@ -114,7 +114,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *promoterv1alpha1.PullRe
 		Name:      prObj.Name,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
 	state := forgejo.StateClosed
@@ -148,7 +148,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *p
 		Name:      prObj.Name,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
 	options := forgejo.MergePullRequestOption{
@@ -175,7 +175,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 		Name:      prObj.Name,
 	})
 	if err != nil {
-		return false, "", err
+		return false, "", fmt.Errorf("failed to merge pull request: %w", err)
 	}
 
 	options := forgejo.ListPullRequestsOptions{}
