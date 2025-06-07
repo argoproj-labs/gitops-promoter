@@ -1,29 +1,40 @@
 package forgejo
 
 import (
-	forgejo "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2"
+	"fmt"
 
-	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	forgejo "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-func buildStateToPhase(buildState forgejo.StatusState) v1alpha1.CommitStatusPhase {
+func buildStateToPhase(buildState forgejo.StatusState) (promoterv1alpha1.CommitStatusPhase, error) {
 	switch buildState {
 	case forgejo.StatusSuccess:
-		return v1alpha1.CommitPhaseSuccess
+		return promoterv1alpha1.CommitPhaseSuccess, nil
 	case forgejo.StatusPending:
-		return v1alpha1.CommitPhasePending
+		return promoterv1alpha1.CommitPhasePending, nil
+	case forgejo.StatusWarning:
+		return promoterv1alpha1.CommitPhasePending, nil
+	case forgejo.StatusError:
+		return promoterv1alpha1.CommitPhaseFailure, nil
+	case forgejo.StatusFailure:
+		return promoterv1alpha1.CommitPhaseFailure, nil
 	default:
-		return v1alpha1.CommitPhaseFailure
+		return promoterv1alpha1.CommitPhaseFailure, fmt.Errorf("unknown status state: %v", buildState)
 	}
 }
 
-func mapMergeRequestState(state string) v1alpha1.PullRequestState {
-	switch state {
-	case "opened":
-		return v1alpha1.PullRequestOpen
-	case "closed":
-		return v1alpha1.PullRequestClosed
+func mapPullRequestState(pr forgejo.PullRequest) (promoterv1alpha1.PullRequestState, error) {
+	if pr.HasMerged {
+		return promoterv1alpha1.PullRequestMerged, nil
+	}
+
+	switch pr.State {
+	case forgejo.StateOpen:
+		return promoterv1alpha1.PullRequestOpen, nil
+	case forgejo.StateClosed:
+		return promoterv1alpha1.PullRequestClosed, nil
 	default:
-		return v1alpha1.PullRequestMerged
+		return promoterv1alpha1.PullRequestClosed, fmt.Errorf("unknown pull request state: %v", pr.State)
 	}
 }

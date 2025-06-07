@@ -61,8 +61,13 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 
+	commitPhase, err := buildStateToPhase(combinedStatus.State)
+	if err != nil {
+		return nil, err
+	}
+
 	commitStatus.Status.Id = commitStatus.Spec.Sha
-	commitStatus.Status.Phase = buildStateToPhase(combinedStatus.State)
+	commitStatus.Status.Phase = commitPhase
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
 	return commitStatus, nil
 }
