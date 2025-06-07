@@ -18,7 +18,7 @@ type GitLab struct {
 }
 
 type Forgejo struct {
-	// Domain is the Forgejo domain, suche as "codeberg.org" or "forgejo.mycompany.com".
+	// Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
 	// There is no default domain since Forgejo is not a service like Gitlab or Github.
 	// +kubebuilder:validation:Required
 	Domain string `json:"domain"`
