@@ -178,7 +178,9 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 		return false, "", fmt.Errorf("failed to merge pull request: %w", err)
 	}
 
-	options := forgejo.ListPullRequestsOptions{}
+	options := forgejo.ListPullRequestsOptions{
+		State: forgejo.StateOpen,
+	}
 
 	start := time.Now()
 	prs, resp, err := pr.foregejoClient.ListRepoPullRequests(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, options)
@@ -192,8 +194,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 
 	for _, pr := range prs {
 		if pr.Head.Name != prObj.Spec.SourceBranch ||
-			pr.Base.Name != prObj.Spec.TargetBranch ||
-			pr.State != forgejo.StateOpen {
+			pr.Base.Name != prObj.Spec.TargetBranch {
 			continue
 		}
 
