@@ -41,7 +41,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{
 		Namespace: prObj.Namespace,
-		Name:      prObj.Name,
+		Name:      prObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to get git repository from object: %w", err)
@@ -56,15 +56,15 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	start := time.Now()
 	pullRequest, resp, err := pr.foregejoClient.CreatePullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, options)
-	if err != nil {
-		return "", fmt.Errorf("failed to create pull request: %w", err)
-	}
 	if resp != nil {
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
+	if err != nil {
+		return "", fmt.Errorf("failed to create pull request: %w", err)
+	}
 
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
-	return strconv.FormatInt(pullRequest.ID, 10), nil
+	return strconv.FormatInt(pullRequest.Index, 10), nil
 }
 
 func (pr *PullRequest) Update(ctx context.Context, title, description string, prObj *promoterv1alpha1.PullRequest) error {
@@ -77,7 +77,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{
 		Namespace: prObj.Namespace,
-		Name:      prObj.Name,
+		Name:      prObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get git repository from object: %w", err)
@@ -90,11 +90,11 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 
 	start := time.Now()
 	_, resp, err := pr.foregejoClient.EditPullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
-	if err != nil {
-		return fmt.Errorf("failed to update pull request: %w", err)
-	}
 	if resp != nil {
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to update pull request: %w", err)
 	}
 
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
@@ -111,10 +111,30 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *promoterv1alpha1.PullRe
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{
 		Namespace: prObj.Namespace,
-		Name:      prObj.Name,
+		Name:      prObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get git repository from object: %w", err)
+	}
+
+	// Check if the PR has been merge or closed manually.
+	start := time.Now()
+	existingPr, resp, err := pr.foregejoClient.GetPullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID)
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get pull request: %w", err)
+	}
+	logger.V(4).Info("forgejo response status", "status", resp.Status)
+
+	if existingPr.State != forgejo.StateOpen {
+		// if existingPr.HasMerged {
+		// 	prObj.Status.State = promoterv1alpha1.PullRequestMerged
+		// } else {
+		// 	prObj.Status.State = promoterv1alpha1.PullRequestClosed
+		// }
+		return nil
 	}
 
 	state := forgejo.StateClosed
@@ -122,13 +142,13 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *promoterv1alpha1.PullRe
 		State: &state,
 	}
 
-	start := time.Now()
-	_, resp, err := pr.foregejoClient.EditPullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
-	if err != nil {
-		return fmt.Errorf("failed to close pull request: %w", err)
-	}
+	start = time.Now()
+	_, resp, err = pr.foregejoClient.EditPullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
 	if resp != nil {
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to close pull request: %w", err)
 	}
 
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
@@ -145,23 +165,43 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *p
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{
 		Namespace: prObj.Namespace,
-		Name:      prObj.Name,
+		Name:      prObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get git repository from object: %w", err)
+	}
+
+	// Check if the PR has been merge or closed manually.
+	start := time.Now()
+	existingPr, resp, err := pr.foregejoClient.GetPullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID)
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get pull request: %w", err)
+	}
+	logger.V(4).Info("forgejo response status", "status", resp.Status)
+
+	if existingPr.State != forgejo.StateOpen {
+		// if existingPr.HasMerged {
+		// 	prObj.Status.State = promoterv1alpha1.PullRequestMerged
+		// } else {
+		// 	prObj.Status.State = promoterv1alpha1.PullRequestClosed
+		// }
+		return nil
 	}
 
 	options := forgejo.MergePullRequestOption{
 		Message: commitMessage,
 	}
 
-	start := time.Now()
-	_, resp, err := pr.foregejoClient.MergePullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
-	if err != nil {
-		return fmt.Errorf("failed to merge pull request: %w", err)
-	}
+	start = time.Now()
+	_, resp, err = pr.foregejoClient.MergePullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
 	if resp != nil {
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 	return nil
@@ -172,10 +212,10 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{
 		Namespace: prObj.Namespace,
-		Name:      prObj.Name,
+		Name:      prObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return false, "", fmt.Errorf("failed to merge pull request: %w", err)
+		return false, "", fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
 	options := forgejo.ListPullRequestsOptions{
@@ -184,11 +224,11 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 
 	start := time.Now()
 	prs, resp, err := pr.foregejoClient.ListRepoPullRequests(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, options)
-	if err != nil {
-		return false, "", fmt.Errorf("failed to list pull requests: %w", err)
-	}
 	if resp != nil {
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return false, "", fmt.Errorf("failed to list pull requests: %w", err)
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 
@@ -203,7 +243,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 			return false, "", err
 		}
 
-		prObj.Status.ID = strconv.FormatInt(pr.ID, 10)
+		prObj.Status.ID = strconv.FormatInt(pr.Index, 10)
 		prObj.Status.State = prState
 		return true, prObj.Status.ID, nil
 	}

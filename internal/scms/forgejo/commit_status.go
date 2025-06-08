@@ -53,11 +53,11 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 		repo.Spec.Forgejo.Name,
 		commitStatus.Spec.Sha,
 	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get commit info: %w", err)
-	}
 	if resp != nil {
 		metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit info: %w", err)
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 
