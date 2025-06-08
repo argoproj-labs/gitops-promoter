@@ -209,7 +209,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 			continue
 		}
 
-		prState, err := mapPullRequestState(*pr)
+		prState, err := forgejoPullRequestStateToPullRequestState(*pr)
 		if err != nil {
 			return false, "", err
 		}

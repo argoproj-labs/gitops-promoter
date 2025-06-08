@@ -7,7 +7,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-func commitPhaseToBuildState(commitPhase promoterv1alpha1.CommitStatusPhase) (forgejo.StatusState, error) {
+func commitPhaseToForgejoStatusState(commitPhase promoterv1alpha1.CommitStatusPhase) (forgejo.StatusState, error) {
 	switch commitPhase {
 	case promoterv1alpha1.CommitPhaseFailure:
 		return forgejo.StatusFailure, nil
@@ -20,24 +20,7 @@ func commitPhaseToBuildState(commitPhase promoterv1alpha1.CommitStatusPhase) (fo
 	}
 }
 
-func buildStateToPhase(buildState forgejo.StatusState) (promoterv1alpha1.CommitStatusPhase, error) {
-	switch buildState {
-	case forgejo.StatusSuccess:
-		return promoterv1alpha1.CommitPhaseSuccess, nil
-	case forgejo.StatusPending:
-		return promoterv1alpha1.CommitPhasePending, nil
-	case forgejo.StatusWarning:
-		return promoterv1alpha1.CommitPhasePending, nil
-	case forgejo.StatusError:
-		return promoterv1alpha1.CommitPhaseFailure, nil
-	case forgejo.StatusFailure:
-		return promoterv1alpha1.CommitPhaseFailure, nil
-	default:
-		return promoterv1alpha1.CommitPhaseFailure, fmt.Errorf("unknown status state: %v", buildState)
-	}
-}
-
-func mapPullRequestState(pr forgejo.PullRequest) (promoterv1alpha1.PullRequestState, error) {
+func forgejoPullRequestStateToPullRequestState(pr forgejo.PullRequest) (promoterv1alpha1.PullRequestState, error) {
 	if pr.HasMerged {
 		return promoterv1alpha1.PullRequestMerged, nil
 	}

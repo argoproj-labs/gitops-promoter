@@ -48,7 +48,7 @@ func (cs CommitStatus) Set(ctx context.Context, csObj *promoterv1alpha1.CommitSt
 		return nil, fmt.Errorf("failed to get repo: %w", err)
 	}
 
-	status, err := commitPhaseToBuildState(csObj.Spec.Phase)
+	status, err := commitPhaseToForgejoStatusState(csObj.Spec.Phase)
 	if err != nil {
 		return nil, err
 	}
