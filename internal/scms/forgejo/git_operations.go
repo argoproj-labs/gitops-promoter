@@ -58,7 +58,7 @@ func GetClient(domain string, secret k8sV1.Secret) (*forgejo.Client, error) {
 		options = append(options, forgejo.SetToken(token))
 	}
 
-	basicAuthUser := string(secret.Data["user"])
+	basicAuthUser := string(secret.Data["username"])
 	basicAuthPassword := string(secret.Data["password"])
 	if basicAuthUser != "" && basicAuthPassword != "" {
 		options = append(options, forgejo.SetBasicAuth(basicAuthUser, basicAuthPassword))

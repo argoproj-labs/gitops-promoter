@@ -188,7 +188,7 @@ metadata:
   name: <your-secret-name>
 type: Opaque
 stringData:
-  user: <your-user>
+  username: <your-user>
   password: <your-password>
 ```
 
