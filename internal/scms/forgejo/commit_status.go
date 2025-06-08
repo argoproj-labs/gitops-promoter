@@ -3,6 +3,7 @@ package forgejo
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	forgejo "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2"
@@ -35,39 +36,47 @@ func NewForgejoCommitStatusProvider(k8sClient k8sClient.Client, scmProvider prom
 	}, nil
 }
 
-func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
+func (cs CommitStatus) Set(ctx context.Context, csObj *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Setting Commit Phase")
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, cs.k8sClient, k8sClient.ObjectKey{
-		Namespace: commitStatus.Namespace,
-		Name:      commitStatus.Spec.RepositoryReference.Name,
+		Namespace: csObj.Namespace,
+		Name:      csObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get repo: %w", err)
 	}
 
+	status, err := commitPhaseToBuildState(csObj.Spec.Phase)
+	if err != nil {
+		return nil, err
+	}
+	options := forgejo.CreateStatusOption{
+		State:       status,
+		TargetURL:   csObj.Spec.Url,
+		Description: csObj.Spec.Description,
+		Context:     csObj.Spec.Name,
+	}
+
 	start := time.Now()
-	combinedStatus, resp, err := cs.foregejoClient.GetCombinedStatus(
+	commitStatus, resp, err := cs.foregejoClient.CreateStatus(
 		repo.Spec.Forgejo.Owner,
 		repo.Spec.Forgejo.Name,
-		commitStatus.Spec.Sha,
+		csObj.Spec.Sha,
+		options,
 	)
 	if resp != nil {
 		metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get commit info: %w", err)
+		return nil, fmt.Errorf("failed to set commit status: %w", err)
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 
-	commitPhase, err := buildStateToPhase(combinedStatus.State)
-	if err != nil {
-		return nil, err
-	}
+	csObj.Status.Id = strconv.FormatInt(commitStatus.ID, 10)
+	csObj.Status.Phase = csObj.Spec.Phase
+	csObj.Status.Sha = strconv.FormatInt(commitStatus.ID, 10)
 
-	commitStatus.Status.Id = commitStatus.Spec.Sha // There is no such thing as Commit ID in Forgejo. Closest thing is the "short" sha which is basically the 10th.
-	commitStatus.Status.Phase = commitPhase
-	commitStatus.Status.Sha = commitStatus.Spec.Sha
-	return commitStatus, nil
+	return csObj, nil
 }

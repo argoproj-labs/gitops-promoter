@@ -7,6 +7,19 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+func commitPhaseToBuildState(commitPhase promoterv1alpha1.CommitStatusPhase) (forgejo.StatusState, error) {
+	switch commitPhase {
+	case promoterv1alpha1.CommitPhaseFailure:
+		return forgejo.StatusFailure, nil
+	case promoterv1alpha1.CommitPhasePending:
+		return forgejo.StatusPending, nil
+	case promoterv1alpha1.CommitPhaseSuccess:
+		return forgejo.StatusSuccess, nil
+	default:
+		return forgejo.StatusError, fmt.Errorf("unknown commit phase: %v", commitPhase)
+	}
+}
+
 func buildStateToPhase(buildState forgejo.StatusState) (promoterv1alpha1.CommitStatusPhase, error) {
 	switch buildState {
 	case forgejo.StatusSuccess:
