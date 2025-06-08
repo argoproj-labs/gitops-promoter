@@ -165,7 +165,7 @@ spec:
 
 ## Forgejo Configuration
 
-To configure Gitops Promoter with Forgejo, you will need to configure an App. The process is very similar to Github or Codeberg. Here is the [official Codeberg documentation](https://docs.codeberg.org/advanced/access-token/) (note: Codeberg is powered by Forgejo under the hood). Give the ` read and write` Token the permissions on the repository.
+To configure Gitops Promoter with Forgejo, you will need to configure an App. The process is very similar to Codeberg. Here is the [official Codeberg documentation](https://docs.codeberg.org/advanced/access-token/) (note: Codeberg is powered by Forgejo under the hood). Give the `read and write` Token the permissions on the repository.
 
 This Token should be in a secret as follow:
 

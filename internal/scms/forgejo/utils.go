@@ -16,7 +16,7 @@ func commitPhaseToForgejoStatusState(commitPhase promoterv1alpha1.CommitStatusPh
 	case promoterv1alpha1.CommitPhaseSuccess:
 		return forgejo.StatusSuccess, nil
 	default:
-		return forgejo.StatusError, fmt.Errorf("unknown commit phase: %v", commitPhase)
+		return forgejo.StatusError, fmt.Errorf("cannot map promoter commit phase '%v' to a forgejo commit status", commitPhase)
 	}
 }
 
@@ -31,6 +31,6 @@ func forgejoPullRequestStateToPullRequestState(pr forgejo.PullRequest) (promoter
 	case forgejo.StateClosed:
 		return promoterv1alpha1.PullRequestClosed, nil
 	default:
-		return promoterv1alpha1.PullRequestClosed, fmt.Errorf("unknown pull request state: %v", pr.State)
+		return promoterv1alpha1.PullRequestClosed, fmt.Errorf("cannot map promoter phase '%v' to a forgejo pull request state", pr.State)
 	}
 }

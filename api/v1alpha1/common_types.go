@@ -53,7 +53,7 @@ type GitLabRepo struct {
 	ProjectID int `json:"projectId"`
 }
 
-type ForgejoRepo struct { // TODO: validate forgejo repo
+type ForgejoRepo struct {
 	// +kubebuilder:validation:Required
 	Owner string `json:"owner"`
 	// +kubebuilder:validation:Required
