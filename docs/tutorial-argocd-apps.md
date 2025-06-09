@@ -76,31 +76,6 @@ kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/downl
 
 Argo provides with a example repository: [https://github.com/argoproj/argocd-example-apps](https://github.com/argoproj/argocd-example-apps). Fork it!
 
-### Set up the environment branches
-
-In your repo, create 6 branches from `main` :
-
-- `environment/dev`
-- `environment/dev-next` 
-- `environment/staging`
-- `environment/staging-next` 
-- `environment/prod`
-- `environment/prod-next`
-
-!!! tip
-
-    You can clone the repo locally and run the following commands to save time:
-
-    ```bash
-    git checkout main && git checkout -b environment/dev && git push
-    git checkout main && git checkout -b environment/dev-next && git push
-    git checkout main && git checkout -b environment/staging && git push
-    git checkout main && git checkout -b environment/staging-next && git push
-    git checkout main && git checkout -b environment/prod && git push
-    git checkout main && git checkout -b environment/prod-next && git push
-    git checkout main
-    ```
-
 ### Create a Github application
 
 In your Github account, go to Settings > Developer settings > Github Apps.
@@ -182,7 +157,7 @@ kubectl label secret -n argocd github-app argocd.argoproj.io/secret-type=reposit
 Then create the application with the following:
 
 ```bash
-for env in 'dev' 'staging' 'prod'; do
+for env in 'development' 'staging' 'prod'; do
 cat << EOF | kubectl apply -f-
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -217,7 +192,7 @@ done
 
 If you go to the ArgoCD UI, in the applications, you should now see the "SOURCE HYDRATOR" section in the header.
 
-It shuold have the message "from HEAD (...) to environment/dev-next (...)"
+It shuold have the message "from HEAD (...) to environment/development-next (...)"
 
 This means three things in case of a change in the main branch:
 
@@ -283,7 +258,7 @@ metadata:
 spec:
   environments:
     - autoMerge: true
-      branch: environment/dev
+      branch: environment/development
     - autoMerge: true
       branch: environment/staging
     - autoMerge: false
@@ -295,8 +270,8 @@ EOF
 
 Here, we implement a simple strategy :
 
-1. Automerge on dev
-2. Automerge on staging (if dev is successful)
+1. Automerge on development
+2. Automerge on staging (if development is successful)
 3. Manual merge on production
 
 !!! note
@@ -307,7 +282,7 @@ Here, we implement a simple strategy :
 
 We deployed the application "helm-guestbook" from the example repository.
 
-Try editing the main branch: number of replicas, helm templates... And see the PRs getting promoted from dev to staging, then wait for your approval for the prod.
+Try editing the main branch: number of replicas, helm templates... And see the PRs getting promoted from development to staging, then wait for your approval for the prod.
 
 !!! note
 
