@@ -95,13 +95,21 @@ Fill up the form with the following (leave non specified to defaults):
 
 Hit the `Create GitHub App` button.
 
-!!! info "Webhook"
-
-    In this tutorial, we won't be using the webhook since we don't have any public IP with our kind cluster.
-
-    See [Getting Started](./getting-started.md)
-
 Once the app is created. Go to Install app and install it in your account.
+
+#### Using the webhook
+
+The webhook notifies the promoter and argocd that a new commit was push/merged to the main branch. It greatly reduces the latency between deployment.
+
+However, we are running the workload locally and the webhook is not required for a simple demo.
+
+If you want to set up the webhook, read [Getting started](./getting-started.md) and try to use [https://smee.io/](https://smee.io/).
+
+!!! tip "Alternatively"
+
+    You can adjust the setting down to something like 15 or 30 seconds.
+
+    [https://github.com/argoproj-labs/gitops-promoter/blob/main/config/config/controllerconfiguration.yaml#L14-L17](https://github.com/argoproj-labs/gitops-promoter/blob/main/config/config/controllerconfiguration.yaml#L14-L17)
 
 #### Generate a key
 
