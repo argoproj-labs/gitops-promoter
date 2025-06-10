@@ -73,8 +73,6 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var clientConfig clientcmd.ClientConfig
-	var kubeconfigSecretLabel string
-	var kubeconfigSecretKey string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -84,8 +82,6 @@ func main() {
 		"If set the metrics endpoint is served securely")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&kubeconfigSecretLabel, "kubeconfig-secret-label", "sigs.k8s.io/multicluster-runtime-kubeconfig", "The label of the kubeconfig secret.")
-	flag.StringVar(&kubeconfigSecretKey, "kubeconfig-secret-key", "kubeconfig", "The key of the kubeconfig secret.")
 	opts := zap.Options{
 		Development: true,
 		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
@@ -135,8 +131,8 @@ func main() {
 	// Create the kubeconfig provider with options
 	providerOpts := kubeconfigprovider.Options{
 		Namespace:             controllerNamespace,
-		KubeconfigSecretLabel: kubeconfigSecretLabel,
-		KubeconfigSecretKey:   kubeconfigSecretKey,
+		KubeconfigSecretLabel: "sigs.k8s.io/multicluster-runtime-kubeconfig",
+		KubeconfigSecretKey:   "kubeconfig",
 	}
 
 	// Create the provider first, then the manager with the provider
