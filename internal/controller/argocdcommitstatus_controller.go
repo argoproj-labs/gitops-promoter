@@ -64,9 +64,21 @@ var gvk = schema.GroupVersionKind{
 	Kind:    "Application",
 }
 
+// var syncMap sync.Map
+var (
+	rwMutex sync.RWMutex
+	revMap  = make(map[appRevisionKey]string)
+)
+
 type aggregate struct {
 	application  *argocd.ArgoCDApplication
 	commitStatus *promoterv1alpha1.CommitStatus
+}
+
+type appRevisionKey struct {
+	clusterName string
+	namespace   string
+	name        string
 }
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
@@ -283,12 +295,6 @@ func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregate
 	return mostRecentLastTransitionTime
 }
 
-// var syncMap sync.Map
-var (
-	rwMutex sync.RWMutex
-	revMap  = make(map[string]string)
-)
-
 func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
 	return func(clusterName string, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
 		return handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, argoCDApplication client.Object) []mcreconcile.Request {
@@ -308,7 +314,11 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 			}
 
 			// if clusterName is empty, then cluster == local cluster
-			appKey := fmt.Sprintf("%s/%s/%s", clusterName, application.GetNamespace(), application.GetName())
+			appKey := appRevisionKey{
+				clusterName: clusterName,
+				namespace:   application.GetNamespace(),
+				name:        application.GetName(),
+			}
 
 			rwMutex.RLock()
 			appRef := revMap[appKey]
