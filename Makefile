@@ -3,6 +3,14 @@ IMG ?= quay.io/argoprojlabs/gitops-promoter:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.31.0
 
+CURRENT_DIR=$(shell pwd)
+
+# Docker command to use
+DOCKER?=docker
+
+MKDOCS_DOCKER_IMAGE?=python:3.7-alpine
+MKDOCS_RUN_ARGS?=
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -256,6 +264,10 @@ ginkgo:
 goreleaser: $(GORELEASER)
 $(GORELEASER): $(LOCALBIN)
 	$(call go-install-tool,$(GORELEASER),github.com/goreleaser/goreleaser/v2,$(GORELEASER_VERSION))
+
+.PHONY: serve-docs
+serve-docs:
+	$(DOCKER) run ${MKDOCS_RUN_ARGS} --rm -it -p 8000:8000 -v ${CURRENT_DIR}:/docs -w /docs --entrypoint "" ${MKDOCS_DOCKER_IMAGE} sh -c 'pip install mkdocs; pip install $$(mkdocs get-deps); mkdocs serve -a $$(ip route get 1 | awk '\''{print $$7}'\''):8000'
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)
