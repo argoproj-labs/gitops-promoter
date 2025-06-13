@@ -67,6 +67,18 @@ type FakeRepo struct {
 	Name string `json:"name"`
 }
 
+// HydratorMetadataFile contains metadata about the commit that is used to hydrate a branch. It is used to store
+type HydratorMetadataFile struct {
+	RepoURL    string              `json:"repoURL,omitempty"`
+	DrySHA     string              `json:"drySha,omitempty"`
+	Commands   []string            `json:"commands,omitempty"`
+	Author     string              `json:"author,omitempty"`
+	Date       string              `json:"date,omitempty"`
+	Subject    string              `json:"subject,omitempty"`
+	Body       string              `json:"body,omitempty"`
+	References []RevisionReference `json:"references,omitempty"`
+}
+
 // CommitMetadata contains metadata about a commit that is related in some way to another commit.
 type CommitMetadata struct {
 	// Author is the author of the commit.

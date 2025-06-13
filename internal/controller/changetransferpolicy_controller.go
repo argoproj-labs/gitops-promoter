@@ -210,15 +210,17 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 
 	// TODO: consider parallelizing parts of this function that are network-bound work.
 
-	_, proposedShas, err := gitOperations.GetBranchInfo(ctx, ctp.Spec.ProposedBranch)
+	proposedMetaDataFile, proposedShas, err := gitOperations.GetBranchInfo(ctx, ctp.Spec.ProposedBranch)
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
+	ctp.Status.Proposed.CommitMetadata = proposedMetaDataFile
 
-	_, activeShas, err := gitOperations.GetBranchInfo(ctx, ctp.Spec.ActiveBranch)
+	activeMetaDataFile, activeShas, err := gitOperations.GetBranchInfo(ctx, ctp.Spec.ActiveBranch)
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for active branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}
+	ctp.Status.Active.CommitMetadata = activeMetaDataFile
 
 	logger.Info("Branch SHAs", "branchShas", map[string]git.BranchShas{
 		ctp.Spec.ActiveBranch:   activeShas,

@@ -30,16 +30,6 @@ type GitOperations struct {
 	scmProvider v1alpha1.GenericScmProvider
 	pathContext string
 }
-type HydratorMetadataFile struct {
-	RepoURL    string                       `json:"repoURL,omitempty"`
-	DrySHA     string                       `json:"drySha,omitempty"`
-	Commands   []string                     `json:"commands,omitempty"`
-	Author     string                       `json:"author,omitempty"`
-	Date       string                       `json:"date,omitempty"`
-	Subject    string                       `json:"subject,omitempty"`
-	Body       string                       `json:"body,omitempty"`
-	References []v1alpha1.RevisionReference `json:"references,omitempty"`
-}
 
 func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, repoRef v1alpha1.ObjectReference, obj v1.Object, pathConext string) (*GitOperations, error) {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repoRef.Name})
@@ -114,7 +104,7 @@ type BranchShas struct {
 	Hydrated string
 }
 
-func (g *GitOperations) GetBranchInfo(ctx context.Context, branch string) (*HydratorMetadataFile, BranchShas, error) {
+func (g *GitOperations) GetBranchInfo(ctx context.Context, branch string) (*v1alpha1.HydratorMetadataFile, BranchShas, error) {
 	logger := log.FromContext(ctx)
 
 	gPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
@@ -166,7 +156,7 @@ func (g *GitOperations) GetBranchInfo(ctx context.Context, branch string) (*Hydr
 		}
 	}()
 
-	var hydratorFile HydratorMetadataFile
+	var hydratorFile v1alpha1.HydratorMetadataFile
 	decoder := json.NewDecoder(jsonFile)
 	err = decoder.Decode(&hydratorFile)
 	if err != nil {
