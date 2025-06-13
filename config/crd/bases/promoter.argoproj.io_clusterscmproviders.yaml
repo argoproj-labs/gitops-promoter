@@ -46,6 +46,18 @@ spec:
                   domain:
                     type: string
                 type: object
+              forgejo:
+                description: Forgejo required configuration for Forgejo as the SCM
+                  provider
+                properties:
+                  domain:
+                    description: |-
+                      Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
+                      There is no default domain since Forgejo is not a service like Gitlab or Github.
+                    type: string
+                required:
+                - domain
+                type: object
               github:
                 description: GitHub required configuration for GitHub as the SCM provider
                 properties:

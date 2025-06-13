@@ -10,6 +10,7 @@ replace (
 )
 
 require (
+	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.1.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.16.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/go-logr/logr v1.4.3
@@ -23,7 +24,7 @@ require (
 	github.com/spf13/pflag v1.0.6
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/gjson v1.18.0
-	gitlab.com/gitlab-org/api/client-go v0.129.0
+	gitlab.com/gitlab-org/api/client-go v0.130.1
 	go.uber.org/zap v1.27.0
 	golang.org/x/sync v0.15.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -37,13 +38,16 @@ require (
 )
 
 require (
+	github.com/42wim/httpsig v1.2.3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/davidmz/go-pageant v1.0.2 // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.8.0 // indirect
+	github.com/go-fed/httpsig v1.1.0 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.21.1 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
@@ -60,6 +64,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
+	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect

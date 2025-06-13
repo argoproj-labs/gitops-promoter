@@ -17,6 +17,13 @@ type GitLab struct {
 	Domain string `json:"domain,omitempty"`
 }
 
+type Forgejo struct {
+	// Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
+	// There is no default domain since Forgejo is not a service like Gitlab or Github.
+	// +kubebuilder:validation:Required
+	Domain string `json:"domain"`
+}
+
 type Fake struct {
 	Domain string `json:"domain,omitempty"`
 }
@@ -44,6 +51,13 @@ type GitLabRepo struct {
 	Name string `json:"name"`
 	// +kubebuilder:validation:Required
 	ProjectID int `json:"projectId"`
+}
+
+type ForgejoRepo struct {
+	// +kubebuilder:validation:Required
+	Owner string `json:"owner"`
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
 }
 
 type FakeRepo struct {
