@@ -67,8 +67,8 @@ type FakeRepo struct {
 	Name string `json:"name"`
 }
 
-// HydratorMetadataFile contains metadata about the commit that is used to hydrate a branch. It is used to store
-type HydratorMetadataFile struct {
+// HydratorMetadata contains metadata about the commit that is used to hydrate a branch. It is used to store
+type HydratorMetadata struct {
 	RepoURL    string              `json:"repoURL,omitempty"`
 	DrySHA     string              `json:"drySha,omitempty"`
 	Commands   []string            `json:"commands,omitempty"`

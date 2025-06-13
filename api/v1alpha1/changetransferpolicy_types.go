@@ -76,8 +76,8 @@ type CommitBranchState struct {
 	// +listMapKey=key
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 
-	// CommitMetadata contains metadata about the commit, such as author and message.
-	CommitMetadata *HydratorMetadataFile `json:"hydratorMetadata,omitempty"`
+	// HydratorMetadata contains metadata about the commit, such as author and message.
+	HydratorMetadata *HydratorMetadata `json:"hydratorMetadata,omitempty"`
 }
 
 type CommitShaState struct {

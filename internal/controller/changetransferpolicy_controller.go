@@ -214,13 +214,13 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
-	ctp.Status.Proposed.CommitMetadata = proposedMetaDataFile
+	ctp.Status.Proposed.HydratorMetadata = proposedMetaDataFile
 
 	activeMetaDataFile, activeShas, err := gitOperations.GetBranchInfo(ctx, ctp.Spec.ActiveBranch)
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for active branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}
-	ctp.Status.Active.CommitMetadata = activeMetaDataFile
+	ctp.Status.Active.HydratorMetadata = activeMetaDataFile
 
 	logger.Info("Branch SHAs", "branchShas", map[string]git.BranchShas{
 		ctp.Spec.ActiveBranch:   activeShas,

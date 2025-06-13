@@ -104,7 +104,7 @@ type BranchShas struct {
 	Hydrated string
 }
 
-func (g *GitOperations) GetBranchInfo(ctx context.Context, branch string) (*v1alpha1.HydratorMetadataFile, BranchShas, error) {
+func (g *GitOperations) GetBranchInfo(ctx context.Context, branch string) (*v1alpha1.HydratorMetadata, BranchShas, error) {
 	logger := log.FromContext(ctx)
 
 	gPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
@@ -156,7 +156,7 @@ func (g *GitOperations) GetBranchInfo(ctx context.Context, branch string) (*v1al
 		}
 	}()
 
-	var hydratorFile v1alpha1.HydratorMetadataFile
+	var hydratorFile v1alpha1.HydratorMetadata
 	decoder := json.NewDecoder(jsonFile)
 	err = decoder.Decode(&hydratorFile)
 	if err != nil {

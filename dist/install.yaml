@@ -290,7 +290,7 @@ spec:
                         type: string
                     type: object
                   hydratorMetadata:
-                    description: CommitMetadata contains metadata about the commit,
+                    description: HydratorMetadata contains metadata about the commit,
                       such as author and message.
                     properties:
                       author:
@@ -389,7 +389,7 @@ spec:
                         type: string
                     type: object
                   hydratorMetadata:
-                    description: CommitMetadata contains metadata about the commit,
+                    description: HydratorMetadata contains metadata about the commit,
                       such as author and message.
                     properties:
                       author:
