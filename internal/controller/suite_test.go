@@ -39,9 +39,10 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-
 	ctrl "sigs.k8s.io/controller-runtime"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -140,15 +141,20 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	// kubeconfig provider
+	kubeconfigProvider := kubeconfigprovider.New(kubeconfigprovider.Options{})
+
 	//nolint:fatcontext
 	ctx, cancel = context.WithCancel(context.Background())
-	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
+	multiClusertManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
 		Scheme: scheme.Scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
 	})
 	Expect(err).ToNot(HaveOccurred())
+
+	k8sManager := multiClusertManager.GetLocalManager()
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), settings.ManagerConfig{
 		ControllerNamespace: "default",
@@ -208,11 +214,10 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ArgoCDCommitStatusReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
+		Manager:     multiClusertManager,
 		SettingsMgr: settingsMgr,
 		// Recorder: k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
-	}).SetupWithManager(k8sManager)
+	}).SetupWithManager(multiClusertManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	webhookReceiverPort := WebhookReceiverPort + GinkgoParallelProcess()
