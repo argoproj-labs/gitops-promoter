@@ -210,12 +210,12 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 
 	// TODO: consider parallelizing parts of this function that are network-bound work.
 
-	proposedShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ProposedBranch)
+	_, proposedShas, err := gitOperations.GetBranchInfo(ctx, ctp.Spec.ProposedBranch)
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
 
-	activeShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ActiveBranch)
+	_, activeShas, err := gitOperations.GetBranchInfo(ctx, ctp.Spec.ActiveBranch)
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for active branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}

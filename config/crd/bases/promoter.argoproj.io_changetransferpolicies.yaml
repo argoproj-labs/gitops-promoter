@@ -105,6 +105,33 @@ spec:
             properties:
               active:
                 properties:
+                  commitMetadata:
+                    description: CommitMetadata contains metadata about the commit,
+                      such as author and message.
+                    properties:
+                      author:
+                        description: Author is the author of the commit.
+                        type: string
+                      body:
+                        description: Body is the body of the commit message, excluding
+                          the subject line, i.e. `git show --format=%b`.
+                        type: string
+                      date:
+                        description: Date is the date of the commit, formatted as
+                          by `git show -s --format=%aI`.
+                        type: string
+                      message:
+                        description: Subject is the subject line of the commit message,
+                          i.e. `git show --format=%s`.
+                        type: string
+                      repoURL:
+                        description: RepoURL is the URL of the repository where the
+                          commit is located.
+                        type: string
+                      sha:
+                        description: SHA is the commit hash.
+                        type: string
+                    type: object
                   commitStatuses:
                     items:
                       properties:
@@ -148,6 +175,33 @@ spec:
                   INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
                   Important: Run "make" to regenerate code after modifying this file
                 properties:
+                  commitMetadata:
+                    description: CommitMetadata contains metadata about the commit,
+                      such as author and message.
+                    properties:
+                      author:
+                        description: Author is the author of the commit.
+                        type: string
+                      body:
+                        description: Body is the body of the commit message, excluding
+                          the subject line, i.e. `git show --format=%b`.
+                        type: string
+                      date:
+                        description: Date is the date of the commit, formatted as
+                          by `git show -s --format=%aI`.
+                        type: string
+                      message:
+                        description: Subject is the subject line of the commit message,
+                          i.e. `git show --format=%s`.
+                        type: string
+                      repoURL:
+                        description: RepoURL is the URL of the repository where the
+                          commit is located.
+                        type: string
+                      sha:
+                        description: SHA is the commit hash.
+                        type: string
+                    type: object
                   commitStatuses:
                     items:
                       properties:

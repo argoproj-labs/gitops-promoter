@@ -75,6 +75,9 @@ type CommitBranchState struct {
 	// +listType:=map
 	// +listMapKey=key
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
+
+	// CommitMetadata contains metadata about the commit, such as author and message.
+	CommitMetadata *CommitMetadata `json:"commitMetadata,omitempty"`
 }
 
 type CommitShaState struct {

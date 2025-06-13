@@ -30,10 +30,15 @@ type GitOperations struct {
 	scmProvider v1alpha1.GenericScmProvider
 	pathContext string
 }
-
 type HydratorMetadataFile struct {
-	Commands []string `json:"commands"`
-	DrySHA   string   `json:"drySha"`
+	RepoURL    string                       `json:"repoURL,omitempty"`
+	DrySHA     string                       `json:"drySha,omitempty"`
+	Commands   []string                     `json:"commands,omitempty"`
+	Author     string                       `json:"author,omitempty"`
+	Date       string                       `json:"date,omitempty"`
+	Subject    string                       `json:"subject,omitempty"`
+	Body       string                       `json:"body,omitempty"`
+	References []v1alpha1.RevisionReference `json:"references,omitempty"`
 }
 
 func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, repoRef v1alpha1.ObjectReference, obj v1.Object, pathConext string) (*GitOperations, error) {
@@ -109,18 +114,20 @@ type BranchShas struct {
 	Hydrated string
 }
 
-func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (BranchShas, error) {
+func (g *GitOperations) GetBranchInfo(ctx context.Context, branch string) (*HydratorMetadataFile, BranchShas, error) {
 	logger := log.FromContext(ctx)
-	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
-		return BranchShas{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+
+	gPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	logger.V(4).Info("git path", "path", gPath)
+
+	if gPath == "" {
+		return nil, BranchShas{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	p := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
-	logger.V(4).Info("git path", "path", p)
 	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", branch, "origin/"+branch)
 	if err != nil {
 		logger.Error(err, "could not git checkout", "gitError", stderr)
-		return BranchShas{}, err
+		return nil, BranchShas{}, err
 	}
 	logger.V(4).Info("Checked out branch", "branch", branch)
 
@@ -129,14 +136,14 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (Branc
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not git pull", "gitError", stderr)
-		return BranchShas{}, err
+		return nil, BranchShas{}, err
 	}
 	logger.V(4).Info("Pulled branch", "branch", branch)
 
 	stdout, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "rev-parse", branch)
 	if err != nil {
 		logger.Error(err, "could not get branch shas", "gitError", stderr)
-		return BranchShas{}, err
+		return nil, BranchShas{}, err
 	}
 
 	shas := BranchShas{}
@@ -149,21 +156,26 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (Branc
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			logger.Info("hydrator.metadata file not found", "file", metadataFile)
-			return shas, nil
+			return nil, shas, nil
 		}
-		return BranchShas{}, fmt.Errorf("could not open metadata file: %w", err)
+		return nil, shas, fmt.Errorf("could not open metadata file: %w", err)
 	}
+	defer func() {
+		if err := jsonFile.Close(); err != nil {
+			logger.Error(err, "could not close metadata file")
+		}
+	}()
 
 	var hydratorFile HydratorMetadataFile
 	decoder := json.NewDecoder(jsonFile)
 	err = decoder.Decode(&hydratorFile)
 	if err != nil {
-		return BranchShas{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
+		return nil, shas, fmt.Errorf("could not unmarshal metadata file: %w", err)
 	}
 	shas.Dry = hydratorFile.DrySHA
 	logger.V(4).Info("Got dry branch sha", "branch", branch, "sha", shas.Dry)
 
-	return shas, nil
+	return &hydratorFile, shas, nil
 }
 
 func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {
