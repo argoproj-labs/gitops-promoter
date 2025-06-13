@@ -1,0 +1,27 @@
+.button {
+  --bg-color: none;
+
+  background-color: var(--bg-color);
+  border-radius: 6px;
+}
+
+.button--primary {
+  --bg-color: crimson;
+
+  backdrop-filter: sepia(90%);
+}
+
+.button--small {
+  font-size: 1rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.button--medium {
+  font-size: 1.2rem;
+  padding: 0.6rem 0.8rem;
+}
+
+.button--large {
+  font-size: 1.4rem;
+  padding: 0.8rem 1rem;
+}
