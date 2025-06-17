@@ -139,12 +139,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 				// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
@@ -152,12 +150,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[1].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 				// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
@@ -165,12 +161,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 				g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[2].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
 			}, EventuallyTimeout).Should(Succeed())
 
@@ -357,12 +351,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 				// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
@@ -370,12 +362,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[1].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 				// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
@@ -383,12 +373,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 				g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[2].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
 			}, EventuallyTimeout).Should(Succeed())
 
@@ -562,12 +550,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 				// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
@@ -575,12 +561,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[1].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 				// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
@@ -588,12 +572,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 				g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[2].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
 			}, EventuallyTimeout).Should(Succeed())
 
@@ -763,12 +745,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[0].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).To(Equal(ctpDev.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).To(Equal(ctpDev.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 				// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
@@ -776,12 +756,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[1].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Hydrated.Sha).To(Equal(ctpStaging.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[1].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 				// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
@@ -789,12 +767,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 				g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
-				//g.Expect(promotionStrategy.Status.Environments[2].Active.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Active.CommitStatuses)).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha).To(Equal(ctpProd.Status.Proposed.Dry.Sha))
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
-				//g.Expect(promotionStrategy.Status.Environments[2].Proposed.CommitStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
 			}, EventuallyTimeout).Should(Succeed())
 
