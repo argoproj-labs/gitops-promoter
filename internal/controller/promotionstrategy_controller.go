@@ -244,28 +244,6 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	}
 }
 
-// setEnvironmentCommitStatus sets the commit status for the environment based on the configured commit statuses.
-//func (r *PromotionStrategyReconciler) setEnvironmentCommitStatus(targetStatus *promoterv1alpha1.CommitBranchState, statusCount int, ctpEnvStatus promoterv1alpha1.CommitBranchState) {
-//	// Default to pending phase
-//	targetStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
-//	targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
-//
-//	if statusCount != len(ctpEnvStatus.CommitStatuses) {
-//		// Assume pending until counts match.
-//		return
-//	}
-//
-//	// Assume success unless a failure is found
-//	targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-//
-//	for _, status := range ctpEnvStatus.CommitStatuses {
-//		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
-//			targetStatus.Phase = status.Phase
-//			return
-//		}
-//	}
-//}
-
 func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) error {
 	// TODO: do we like this name proposed-<name>?
 	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
