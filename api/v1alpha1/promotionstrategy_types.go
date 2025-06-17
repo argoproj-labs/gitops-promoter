@@ -110,9 +110,10 @@ type PromotionStrategyStatus struct {
 }
 
 type EnvironmentStatus struct {
-	Branch   string                             `json:"branch"`
-	Active   PromotionStrategyBranchStateStatus `json:"active"`
-	Proposed PromotionStrategyBranchStateStatus `json:"proposed"`
+	Branch   string            `json:"branch"`
+	Proposed CommitBranchState `json:"proposed,omitempty"`
+	Active   CommitBranchState `json:"active,omitempty"`
+
 	// +kubebuilder:validation:Optional
 	LastHealthyDryShas []HealthyDryShas `json:"lastHealthyDryShas"`
 }
