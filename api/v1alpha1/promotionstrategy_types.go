@@ -110,9 +110,13 @@ type PromotionStrategyStatus struct {
 }
 
 type EnvironmentStatus struct {
-	Branch   string                             `json:"branch"`
-	Active   PromotionStrategyBranchStateStatus `json:"active"`
-	Proposed PromotionStrategyBranchStateStatus `json:"proposed"`
+	Branch string `json:"branch"`
+	//Active   PromotionStrategyBranchStateStatus `json:"active"`
+	//Proposed PromotionStrategyBranchStateStatus `json:"proposed"`
+
+	Proposed CommitBranchState `json:"proposed,omitempty"`
+	Active   CommitBranchState `json:"active,omitempty"`
+
 	// +kubebuilder:validation:Optional
 	LastHealthyDryShas []HealthyDryShas `json:"lastHealthyDryShas"`
 }
@@ -124,12 +128,16 @@ type HealthyDryShas struct {
 }
 
 type PromotionStrategyBranchStateStatus struct {
-	Dry          CommitShaState                `json:"dry"`
-	Hydrated     CommitShaState                `json:"hydrated"`
-	CommitStatus PromotionStrategyCommitStatus `json:"commitStatus"`
+	Dry                    CommitShaState         `json:"dry"`
+	Hydrated               CommitShaState         `json:"hydrated"`
+	AggregatedCommitStatus AggregatedCommitStatus `json:"aggregatedCommitStatus"`
+	// +kubebuilder:validation:Optional
+	// +listType:=map
+	// +listMapKey=key
+	CommitStatuses []ChangeTransferPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 
-type PromotionStrategyCommitStatus struct {
+type AggregatedCommitStatus struct {
 	Sha string `json:"sha"`
 	// +kubebuilder:validation:Enum:=pending;success;failure
 	Phase string `json:"phase"`

@@ -37,7 +37,7 @@ func GitOperationResultFromError(err error) GitOperationResult {
 type SCMAPI string
 
 const (
-	SCMAPICommitStatus SCMAPI = "CommitStatus"
+	SCMAPICommitStatus SCMAPI = "AggregatedCommitStatus"
 	SCMAPIPullRequest  SCMAPI = "PullRequest"
 )
 

@@ -112,7 +112,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		LabelSelector: ls,
 	})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to list CommitStatus objects: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to list AggregatedCommitStatus objects: %w", err)
 	}
 
 	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, argoCDCommitStatus)
@@ -196,7 +196,7 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCo
 			phase = promoterv1alpha1.CommitPhaseFailure
 		}
 
-		// This is an in memory version of the desired CommitStatus for a single application, this will be used to figure out
+		// This is an in memory version of the desired AggregatedCommitStatus for a single application, this will be used to figure out
 		// the aggregated phase of all applications for a particular environment
 		aggregateItem.commitStatus = &promoterv1alpha1.CommitStatus{
 			Spec: promoterv1alpha1.CommitStatusSpec{
@@ -389,13 +389,13 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	err = r.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed to get CommitStatus object: %w", err)
+			return fmt.Errorf("failed to get AggregatedCommitStatus object: %w", err)
 		}
 		// Create
 		err = r.Create(ctx, &desiredCommitStatus)
 		logger.Info("Created ArgoCDCommitStatus", "name", desiredCommitStatus.Name)
 		if err != nil {
-			return fmt.Errorf("failed to create CommitStatus object: %w", err)
+			return fmt.Errorf("failed to create AggregatedCommitStatus object: %w", err)
 		}
 	} else {
 		// Update
@@ -403,7 +403,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		err = r.Update(ctx, &currentCommitStatus)
 		logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "sha", sha, "phase", phase, "desc", desc)
 		if err != nil {
-			return fmt.Errorf("failed to update CommitStatus object: %w", err)
+			return fmt.Errorf("failed to update AggregatedCommitStatus object: %w", err)
 		}
 	}
 

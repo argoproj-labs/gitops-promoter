@@ -57,7 +57,7 @@ type ChangeTransferPolicySpec struct {
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
-type ChangeRequestPolicyCommitStatusPhase struct {
+type ChangeTransferPolicyCommitStatusPhase struct {
 	// Key staging hydrated branch
 	// +kubebuilder:validation:Required
 	Key string `json:"key"`
@@ -74,15 +74,18 @@ type CommitBranchState struct {
 	// +kubebuilder:validation:Optional
 	// +listType:=map
 	// +listMapKey=key
-	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
-
-	// HydratorMetadata contains metadata about the commit, such as author and message.
-	HydratorMetadata *HydratorMetadata `json:"hydratorMetadata,omitempty"`
+	CommitStatuses []ChangeTransferPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 
 type CommitShaState struct {
-	Sha        string      `json:"sha,omitempty"`
-	CommitTime metav1.Time `json:"commitTime,omitempty"`
+	Sha        string              `json:"sha,omitempty"`
+	CommitTime metav1.Time         `json:"commitTime,omitempty"`
+	RepoURL    string              `json:"repoURL,omitempty"`
+	Commands   []string            `json:"commands,omitempty"`
+	Author     string              `json:"author,omitempty"`
+	Subject    string              `json:"subject,omitempty"`
+	Body       string              `json:"body,omitempty"`
+	References []RevisionReference `json:"references,omitempty"`
 }
 
 func (b *CommitBranchState) DryShaShort() string {

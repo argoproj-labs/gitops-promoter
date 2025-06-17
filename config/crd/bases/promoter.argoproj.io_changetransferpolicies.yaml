@@ -128,24 +128,6 @@ spec:
                     x-kubernetes-list-type: map
                   dry:
                     properties:
-                      commitTime:
-                        format: date-time
-                        type: string
-                      sha:
-                        type: string
-                    type: object
-                  hydrated:
-                    properties:
-                      commitTime:
-                        format: date-time
-                        type: string
-                      sha:
-                        type: string
-                    type: object
-                  hydratorMetadata:
-                    description: HydratorMetadata contains metadata about the commit,
-                      such as author and message.
-                    properties:
                       author:
                         type: string
                       body:
@@ -154,9 +136,8 @@ spec:
                         items:
                           type: string
                         type: array
-                      date:
-                        type: string
-                      drySha:
+                      commitTime:
+                        format: date-time
                         type: string
                       references:
                         items:
@@ -194,6 +175,63 @@ spec:
                           type: object
                         type: array
                       repoURL:
+                        type: string
+                      sha:
+                        type: string
+                      subject:
+                        type: string
+                    type: object
+                  hydrated:
+                    properties:
+                      author:
+                        type: string
+                      body:
+                        type: string
+                      commands:
+                        items:
+                          type: string
+                        type: array
+                      commitTime:
+                        format: date-time
+                        type: string
+                      references:
+                        items:
+                          description: |-
+                            RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                            it supports only references to a commit. In the future, it may support other types of references.
+                          properties:
+                            commit:
+                              description: Commit contains metadata about the commit
+                                that is related in some way to another commit.
+                              properties:
+                                author:
+                                  description: Author is the author of the commit.
+                                  type: string
+                                body:
+                                  description: Body is the body of the commit message,
+                                    excluding the subject line, i.e. `git show --format=%b`.
+                                  type: string
+                                date:
+                                  description: Date is the date of the commit, formatted
+                                    as by `git show -s --format=%aI`.
+                                  type: string
+                                message:
+                                  description: Subject is the subject line of the
+                                    commit message, i.e. `git show --format=%s`.
+                                  type: string
+                                repoURL:
+                                  description: RepoURL is the URL of the repository
+                                    where the commit is located.
+                                  type: string
+                                sha:
+                                  description: SHA is the commit hash.
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                      repoURL:
+                        type: string
+                      sha:
                         type: string
                       subject:
                         type: string
@@ -227,24 +265,6 @@ spec:
                     x-kubernetes-list-type: map
                   dry:
                     properties:
-                      commitTime:
-                        format: date-time
-                        type: string
-                      sha:
-                        type: string
-                    type: object
-                  hydrated:
-                    properties:
-                      commitTime:
-                        format: date-time
-                        type: string
-                      sha:
-                        type: string
-                    type: object
-                  hydratorMetadata:
-                    description: HydratorMetadata contains metadata about the commit,
-                      such as author and message.
-                    properties:
                       author:
                         type: string
                       body:
@@ -253,9 +273,8 @@ spec:
                         items:
                           type: string
                         type: array
-                      date:
-                        type: string
-                      drySha:
+                      commitTime:
+                        format: date-time
                         type: string
                       references:
                         items:
@@ -293,6 +312,63 @@ spec:
                           type: object
                         type: array
                       repoURL:
+                        type: string
+                      sha:
+                        type: string
+                      subject:
+                        type: string
+                    type: object
+                  hydrated:
+                    properties:
+                      author:
+                        type: string
+                      body:
+                        type: string
+                      commands:
+                        items:
+                          type: string
+                        type: array
+                      commitTime:
+                        format: date-time
+                        type: string
+                      references:
+                        items:
+                          description: |-
+                            RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                            it supports only references to a commit. In the future, it may support other types of references.
+                          properties:
+                            commit:
+                              description: Commit contains metadata about the commit
+                                that is related in some way to another commit.
+                              properties:
+                                author:
+                                  description: Author is the author of the commit.
+                                  type: string
+                                body:
+                                  description: Body is the body of the commit message,
+                                    excluding the subject line, i.e. `git show --format=%b`.
+                                  type: string
+                                date:
+                                  description: Date is the date of the commit, formatted
+                                    as by `git show -s --format=%aI`.
+                                  type: string
+                                message:
+                                  description: Subject is the subject line of the
+                                    commit message, i.e. `git show --format=%s`.
+                                  type: string
+                                repoURL:
+                                  description: RepoURL is the URL of the repository
+                                    where the commit is located.
+                                  type: string
+                                sha:
+                                  description: SHA is the commit hash.
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                      repoURL:
+                        type: string
+                      sha:
                         type: string
                       subject:
                         type: string

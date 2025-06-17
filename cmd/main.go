@@ -165,10 +165,10 @@ func main() {
 	if err = (&controller.CommitStatusReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("CommitStatus"),
+		Recorder:    mgr.GetEventRecorderFor("AggregatedCommitStatus"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgr); err != nil {
-		panic("unable to create CommitStatus controller")
+		panic("unable to create AggregatedCommitStatus controller")
 	}
 	if err = (&controller.RevertCommitReconciler{
 		Client:   mgr.GetClient(),

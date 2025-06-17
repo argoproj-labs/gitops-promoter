@@ -29,7 +29,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-var _ = Describe("CommitStatus Controller", func() {
+var _ = Describe("AggregatedCommitStatus Controller", func() {
 	var gitRepo *promoterv1alpha1.GitRepository
 	var scmProvider *promoterv1alpha1.ScmProvider
 	var scmSecret *v1.Secret
@@ -46,7 +46,7 @@ var _ = Describe("CommitStatus Controller", func() {
 		}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind CommitStatus")
+			By("creating the custom resource for the Kind AggregatedCommitStatus")
 
 			scmSecret = &v1.Secret{
 				TypeMeta: metav1.TypeMeta{},
@@ -104,7 +104,7 @@ var _ = Describe("CommitStatus Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			By("Cleanup the specific resource instance CommitStatus")
+			By("Cleanup the specific resource instance AggregatedCommitStatus")
 			_ = k8sClient.Delete(ctx, commitStatus)
 			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())

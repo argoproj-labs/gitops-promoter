@@ -153,7 +153,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
+	// This index gets used by the AggregatedCommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
 		//nolint:forcetypeassert
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
@@ -162,7 +162,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		return fmt.Errorf("failed to set field index for .status.proposed.hydrated.sha: %w", err)
 	}
 
-	// This gets used by the CommitStatus controller to find the ChangeTransferPolicy to trigger reconcile
+	// This gets used by the AggregatedCommitStatus controller to find the ChangeTransferPolicy to trigger reconcile
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
 		//nolint:forcetypeassert
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
@@ -210,17 +210,15 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 
 	// TODO: consider parallelizing parts of this function that are network-bound work.
 
-	proposedMetaDataFile, proposedShas, err := gitOperations.GetBranchInfo(ctx, ctp.Spec.ProposedBranch)
+	proposedShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ProposedBranch)
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
-	ctp.Status.Proposed.HydratorMetadata = proposedMetaDataFile
 
-	activeMetaDataFile, activeShas, err := gitOperations.GetBranchInfo(ctx, ctp.Spec.ActiveBranch)
+	activeShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ActiveBranch)
 	if err != nil {
 		return fmt.Errorf("failed to get SHAs for active branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}
-	ctp.Status.Active.HydratorMetadata = activeMetaDataFile
 
 	logger.Info("Branch SHAs", "branchShas", map[string]git.BranchShas{
 		ctp.Spec.ActiveBranch:   activeShas,
@@ -245,6 +243,18 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set proposed commit status state: %w", err)
 	}
 
+	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeShas.Hydrated)
+	if err != nil {
+		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeShas.Hydrated, err)
+	}
+	ctp.Status.Active.Dry = activeCommitMetadata
+
+	proposedCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedShas.Hydrated)
+	if err != nil {
+		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeShas.Hydrated, err)
+	}
+	ctp.Status.Proposed.Dry = proposedCommitMetadata
+
 	return nil
 }
 
@@ -259,28 +269,28 @@ func (e *TooManyMatchingShaError) Error() string {
 func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Context, targetCommitBranchState *promoterv1alpha1.CommitBranchState, commitStatuses []promoterv1alpha1.CommitStatusSelector, gitOperations *git.GitOperations, shas git.BranchShas) error {
 	logger := log.FromContext(ctx)
 
-	targetCommitBranchState.Hydrated.Sha = shas.Hydrated
-	commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
-	if err != nil {
-		return fmt.Errorf("failed to get commit time for hydrated SHA %q: %w", shas.Hydrated, err)
-	}
-	targetCommitBranchState.Hydrated.CommitTime = commitTime
+	//targetCommitBranchState.Hydrated.Sha = shas.Hydrated
+	//commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
+	//if err != nil {
+	//	return fmt.Errorf("failed to get commit time for hydrated SHA %q: %w", shas.Hydrated, err)
+	//}
+	//targetCommitBranchState.Hydrated.CommitTime = commitTime
+	//
+	//if shas.Dry != "" {
+	//	targetCommitBranchState.Dry.Sha = shas.Dry
+	//	commitTime, err = gitOperations.GetShaTime(ctx, shas.Dry)
+	//	if err != nil {
+	//		return fmt.Errorf("failed to get dry SHA %q on: %w", shas.Dry, err)
+	//	}
+	//	targetCommitBranchState.Dry.CommitTime = commitTime
+	//}
 
-	if shas.Dry != "" {
-		targetCommitBranchState.Dry.Sha = shas.Dry
-		commitTime, err = gitOperations.GetShaTime(ctx, shas.Dry)
-		if err != nil {
-			return fmt.Errorf("failed to get dry SHA %q on: %w", shas.Dry, err)
-		}
-		targetCommitBranchState.Dry.CommitTime = commitTime
-	}
-
-	commitStatusesState := []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
+	commitStatusesState := []promoterv1alpha1.ChangeTransferPolicyCommitStatusPhase{}
 	var tooManyMatchingShas bool
 	for _, status := range commitStatuses {
 		var csList promoterv1alpha1.CommitStatusList
 		// Find all the replicasets that match the commit status configured name and the sha of the hydrated commit
-		err = r.List(ctx, &csList, &client.ListOptions{
+		err := r.List(ctx, &csList, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
 				promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(status.Key),
 			}),
@@ -295,7 +305,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 		found := false
 		phase := promoterv1alpha1.CommitPhasePending
 		if len(csList.Items) == 1 {
-			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeTransferPolicyCommitStatusPhase{
 				Key:   status.Key,
 				Phase: string(csList.Items[0].Status.Phase),
 			})
@@ -303,7 +313,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			phase = csList.Items[0].Status.Phase
 		} else if len(csList.Items) > 1 {
 			// TODO: decided how to bubble up errors
-			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeTransferPolicyCommitStatusPhase{
 				Key:   status.Key,
 				Phase: string(promoterv1alpha1.CommitPhasePending),
 			})
@@ -311,7 +321,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			phase = promoterv1alpha1.CommitPhasePending
 		} else if len(csList.Items) == 0 {
 			// TODO: decided how to bubble up errors
-			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeTransferPolicyCommitStatusPhase{
 				Key:   status.Key,
 				Phase: string(promoterv1alpha1.CommitPhasePending),
 			})
@@ -319,7 +329,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			phase = promoterv1alpha1.CommitPhasePending
 			// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
 		}
-		logger.Info("CommitStatus State",
+		logger.Info("AggregatedCommitStatus State",
 			"key", status.Key,
 			"sha", targetCommitBranchState.Hydrated.Sha,
 			"phase", phase,

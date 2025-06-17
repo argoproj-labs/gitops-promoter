@@ -46,7 +46,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// CommitStatusReconciler reconciles a CommitStatus object
+// CommitStatusReconciler reconciles a AggregatedCommitStatus object
 type CommitStatusReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
@@ -61,7 +61,7 @@ type CommitStatusReconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the CommitStatus object against the actual cluster state, and then
+// the AggregatedCommitStatus object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
@@ -69,19 +69,19 @@ type CommitStatusReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling CommitStatus", "name", req.Name)
+	logger.Info("Reconciling AggregatedCommitStatus", "name", req.Name)
 	startTime := time.Now()
 
 	var cs promoterv1alpha1.CommitStatus
 	err := r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
-			logger.Info("CommitStatus not found")
+			logger.Info("AggregatedCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
 
-		logger.Error(err, "failed to get CommitStatus")
-		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
+		logger.Error(err, "failed to get AggregatedCommitStatus")
+		return ctrl.Result{}, fmt.Errorf("failed to get AggregatedCommitStatus %q: %w", req.Name, err)
 	}
 
 	// We use observed generation pattern here to avoid provider API calls.
@@ -98,7 +98,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get AggregatedCommitStatus provider: %w", err)
 	}
 
 	// We need the old sha to trigger the reconcile of the change transfer policy
@@ -112,20 +112,20 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		// TODO: consider skipping Get on the initial attempt. The object we already got might be up to date.
 		err = r.Get(ctx, req.NamespacedName, &newCs, &client.GetOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
+			return fmt.Errorf("failed to get AggregatedCommitStatus %q: %w", req.Name, err)
 		}
 
 		// TODO: consider pulling this outside the retry loop and instead using the reconcile requeue to handle SCM errors.
 		_, err = commitStatusProvider.Set(ctx, &newCs)
 		if err != nil {
-			return fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
+			return fmt.Errorf("failed to set AggregatedCommitStatus state for %q: %w", req.Name, err)
 		}
 
 		newCs.Status.ObservedGeneration = newCs.Generation
 		err = r.Status().Update(ctx, &newCs)
 		if err != nil {
 			if errors.IsConflict(err) {
-				logger.Info("Conflict while updating CommitStatus status. Retrying")
+				logger.Info("Conflict while updating AggregatedCommitStatus status. Retrying")
 			}
 			// Don't wrap this error, it'll be wrapped one level up.
 			//nolint: wrapcheck
@@ -134,17 +134,17 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 		err = r.triggerReconcileChangeTransferPolicy(ctx, newCs, oldSha, cs.Spec.Sha)
 		if err != nil {
-			return fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
+			return fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via AggregatedCommitStatus: %w", err)
 		}
 
 		return nil
 	})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus %q, %w", req.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to update AggregatedCommitStatus %q, %w", req.Name, err)
 	}
 	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 
-	logger.Info("Reconciling CommitStatus End", "duration", time.Since(startTime))
+	logger.Info("Reconciling AggregatedCommitStatus End", "duration", time.Since(startTime))
 	return ctrl.Result{}, nil
 }
 

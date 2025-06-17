@@ -104,20 +104,19 @@ type BranchShas struct {
 	Hydrated string
 }
 
-func (g *GitOperations) GetBranchInfo(ctx context.Context, branch string) (*v1alpha1.HydratorMetadata, BranchShas, error) {
+func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (BranchShas, error) {
 	logger := log.FromContext(ctx)
 
-	gPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
-	logger.V(4).Info("git path", "path", gPath)
-
-	if gPath == "" {
-		return nil, BranchShas{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
+		return BranchShas{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
+	p := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	logger.V(4).Info("git path", "path", p)
 	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", "--progress", "-B", branch, "origin/"+branch)
 	if err != nil {
 		logger.Error(err, "could not git checkout", "gitError", stderr)
-		return nil, BranchShas{}, err
+		return BranchShas{}, err
 	}
 	logger.V(4).Info("Checked out branch", "branch", branch)
 
@@ -126,14 +125,14 @@ func (g *GitOperations) GetBranchInfo(ctx context.Context, branch string) (*v1al
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not git pull", "gitError", stderr)
-		return nil, BranchShas{}, err
+		return BranchShas{}, err
 	}
 	logger.V(4).Info("Pulled branch", "branch", branch)
 
 	stdout, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "rev-parse", branch)
 	if err != nil {
 		logger.Error(err, "could not get branch shas", "gitError", stderr)
-		return nil, BranchShas{}, err
+		return BranchShas{}, err
 	}
 
 	shas := BranchShas{}
@@ -146,26 +145,21 @@ func (g *GitOperations) GetBranchInfo(ctx context.Context, branch string) (*v1al
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			logger.Info("hydrator.metadata file not found", "file", metadataFile)
-			return nil, shas, nil
+			return shas, nil
 		}
-		return nil, shas, fmt.Errorf("could not open metadata file: %w", err)
+		return BranchShas{}, fmt.Errorf("could not open metadata file: %w", err)
 	}
-	defer func() {
-		if err := jsonFile.Close(); err != nil {
-			logger.Error(err, "could not close metadata file")
-		}
-	}()
 
 	var hydratorFile v1alpha1.HydratorMetadata
 	decoder := json.NewDecoder(jsonFile)
 	err = decoder.Decode(&hydratorFile)
 	if err != nil {
-		return nil, shas, fmt.Errorf("could not unmarshal metadata file: %w", err)
+		return BranchShas{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
 	}
 	shas.Dry = hydratorFile.DrySHA
 	logger.V(4).Info("Got dry branch sha", "branch", branch, "sha", shas.Dry)
 
-	return &hydratorFile, shas, nil
+	return shas, nil
 }
 
 func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {
@@ -188,6 +182,49 @@ func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, er
 	}
 
 	return v1.Time{Time: cTime}, nil
+}
+
+func (g *GitOperations) GetShaMetadataFromFile(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
+	logger := log.FromContext(ctx)
+
+	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	metadataFileStdout, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "show", fmt.Sprintf("%s:hydrator.metadata", sha))
+	if err != nil {
+		logger.Error(err, "could not git show file", "gitError", stderr)
+		return v1alpha1.CommitShaState{}, err
+	}
+	logger.V(4).Info("Got metadata file", "sha", sha, "file", metadataFileStdout)
+
+	var hydratorFile v1alpha1.HydratorMetadata
+	err = json.Unmarshal([]byte(metadataFileStdout), &hydratorFile)
+	if err != nil {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
+	}
+
+	hydratorMetadataDate := v1.Time{}
+	if hydratorFile.Date != "" {
+		hDate, err := time.Parse(time.RFC3339, hydratorFile.Date)
+		if err != nil {
+			return v1alpha1.CommitShaState{}, fmt.Errorf("failed to parse date %q: %w", hydratorFile.Date, err)
+		}
+		hydratorMetadataDate = v1.Time{Time: hDate}
+	}
+
+	commitState := v1alpha1.CommitShaState{
+		Sha:        hydratorFile.DrySHA,
+		CommitTime: hydratorMetadataDate,
+		RepoURL:    hydratorFile.RepoURL,
+		Commands:   hydratorFile.Commands,
+		Author:     hydratorFile.Author,
+		Subject:    hydratorFile.Subject,
+		Body:       hydratorFile.Body,
+		References: hydratorFile.References,
+	}
+
+	return commitState, nil
 }
 
 func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environmentBranch, environmentNextBranch string) error {
