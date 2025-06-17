@@ -213,6 +213,7 @@ func UpsertChangeTransferPolicy(policies []promoterv1alpha1.ChangeTransferPolicy
 	}
 	return append(policies, policy)
 }
+
 func AreCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) bool {
 	for _, status := range commitStatuses {
 		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
