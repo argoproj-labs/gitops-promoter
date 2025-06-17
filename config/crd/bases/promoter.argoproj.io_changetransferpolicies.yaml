@@ -186,6 +186,9 @@ spec:
                         type: string
                     type: object
                 type: object
+            required:
+            - active
+            - proposed
             type: object
         type: object
     served: true
