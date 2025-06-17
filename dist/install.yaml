@@ -333,9 +333,6 @@ spec:
                         type: string
                     type: object
                 type: object
-            required:
-            - active
-            - proposed
             type: object
         type: object
     served: true
@@ -1045,7 +1042,9 @@ spec:
                           type: object
                       type: object
                   required:
+                  - active
                   - branch
+                  - proposed
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:

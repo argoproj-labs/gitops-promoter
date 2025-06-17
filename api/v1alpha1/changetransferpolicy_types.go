@@ -98,8 +98,8 @@ func (b *CommitBranchState) DryShaShort() string {
 type ChangeTransferPolicyStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Proposed CommitBranchState `json:"proposed"`
-	Active   CommitBranchState `json:"active"`
+	Proposed CommitBranchState `json:"proposed,omitempty"`
+	Active   CommitBranchState `json:"active,omitempty"`
 }
 
 //+kubebuilder:object:root=true

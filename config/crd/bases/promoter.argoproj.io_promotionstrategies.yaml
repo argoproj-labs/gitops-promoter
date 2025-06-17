@@ -260,7 +260,9 @@ spec:
                           type: object
                       type: object
                   required:
+                  - active
                   - branch
+                  - proposed
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:
