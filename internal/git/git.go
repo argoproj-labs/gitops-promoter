@@ -216,15 +216,79 @@ func (g *GitOperations) GetShaMetadataFromGit(ctx context.Context, sha string) (
 		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to get commit time for hydrated SHA %q: %w", sha, err)
 	}
 
+	commitAuthor, err := g.GetShaAuthor(ctx, sha)
+	if err != nil {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to get commit author for hydrated SHA %q: %w", sha, err)
+	}
+
+	commitSubject, err := g.GetShaSubject(ctx, sha)
+	if err != nil {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to get commit time for hydrated SHA %q: %w", sha, err)
+	}
+
+	commitBody, err := g.GetShaBody(ctx, sha)
+	if err != nil {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to get commit body for hydrated SHA %q: %w", sha, err)
+	}
+
 	commitState := v1alpha1.CommitShaState{
 		Sha:        sha,
 		CommitTime: commitTime,
-		Author:     "",
-		Subject:    "",
-		Body:       "",
+		Author:     commitAuthor,
+		Subject:    commitSubject,
+		Body:       commitBody,
 	}
 
 	return commitState, nil
+}
+
+// GetShaBody retrieves the body of a commit given its SHA.
+func (g *GitOperations) GetShaBody(ctx context.Context, sha string) (string, error) {
+	logger := log.FromContext(ctx)
+	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
+		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "show", "-s", "--format=%b", sha)
+	if err != nil {
+		logger.Error(err, "could not git show", "gitError", stderr)
+		return "", fmt.Errorf("failed to get commit body for sha %q: %w", sha, err)
+	}
+	logger.V(4).Info("Got sha body", "sha", sha, "body", stdout)
+
+	return strings.TrimSpace(stdout), nil
+}
+
+func (g *GitOperations) GetShaAuthor(ctx context.Context, sha string) (string, error) {
+	logger := log.FromContext(ctx)
+	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
+		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "show", "-s", "--format=%an", sha)
+	if err != nil {
+		logger.Error(err, "could not git show", "gitError", stderr)
+		return "", fmt.Errorf("failed to get author for sha %q: %w", sha, err)
+	}
+	logger.V(4).Info("Got sha author", "sha", sha, "author", stdout)
+
+	return strings.TrimSpace(stdout), nil
+}
+
+func (g *GitOperations) GetShaSubject(ctx context.Context, sha string) (string, error) {
+	logger := log.FromContext(ctx)
+	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
+		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "show", "-s", "--format=%s", sha)
+	if err != nil {
+		logger.Error(err, "could not git show", "gitError", stderr)
+		return "", fmt.Errorf("failed to get commit subject for sha %q: %w", sha, err)
+	}
+	logger.V(4).Info("Got sha subject", "sha", sha, "subject", stdout)
+
+	return strings.TrimSpace(stdout), nil
 }
 
 func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {
