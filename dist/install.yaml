@@ -946,20 +946,27 @@ spec:
                   properties:
                     active:
                       properties:
-                        commitStatus:
-                          properties:
-                            phase:
-                              enum:
-                              - pending
-                              - success
-                              - failure
-                              type: string
-                            sha:
-                              type: string
-                          required:
-                          - phase
-                          - sha
-                          type: object
+                        commitStatuses:
+                          items:
+                            properties:
+                              key:
+                                description: Key staging hydrated branch
+                                type: string
+                              phase:
+                                description: Phase what phase is the status in
+                                enum:
+                                - pending
+                                - success
+                                - failure
+                                type: string
+                            required:
+                            - key
+                            - phase
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - key
+                          x-kubernetes-list-type: map
                         dry:
                           properties:
                             commitTime:
@@ -976,10 +983,6 @@ spec:
                             sha:
                               type: string
                           type: object
-                      required:
-                      - commitStatus
-                      - dry
-                      - hydrated
                       type: object
                     branch:
                       type: string
@@ -1000,20 +1003,27 @@ spec:
                       type: array
                     proposed:
                       properties:
-                        commitStatus:
-                          properties:
-                            phase:
-                              enum:
-                              - pending
-                              - success
-                              - failure
-                              type: string
-                            sha:
-                              type: string
-                          required:
-                          - phase
-                          - sha
-                          type: object
+                        commitStatuses:
+                          items:
+                            properties:
+                              key:
+                                description: Key staging hydrated branch
+                                type: string
+                              phase:
+                                description: Phase what phase is the status in
+                                enum:
+                                - pending
+                                - success
+                                - failure
+                                type: string
+                            required:
+                            - key
+                            - phase
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - key
+                          x-kubernetes-list-type: map
                         dry:
                           properties:
                             commitTime:
@@ -1030,10 +1040,6 @@ spec:
                             sha:
                               type: string
                           type: object
-                      required:
-                      - commitStatus
-                      - dry
-                      - hydrated
                       type: object
                   required:
                   - active
