@@ -66,3 +66,38 @@ type FakeRepo struct {
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 }
+
+// HydratorMetadata contains metadata about the commit that is used to hydrate a branch. It is used to store
+type HydratorMetadata struct {
+	RepoURL    string              `json:"repoURL,omitempty"`
+	DrySHA     string              `json:"drySha,omitempty"`
+	Commands   []string            `json:"commands,omitempty"`
+	Author     string              `json:"author,omitempty"`
+	Date       string              `json:"date,omitempty"`
+	Subject    string              `json:"subject,omitempty"`
+	Body       string              `json:"body,omitempty"`
+	References []RevisionReference `json:"references,omitempty"`
+}
+
+// CommitMetadata contains metadata about a commit that is related in some way to another commit.
+type CommitMetadata struct {
+	// Author is the author of the commit.
+	Author string `json:"author,omitempty"`
+	// Date is the date of the commit, formatted as by `git show -s --format=%aI`.
+	Date string `json:"date,omitempty"`
+	// Subject is the subject line of the commit message, i.e. `git show --format=%s`.
+	Subject string `json:"message,omitempty"`
+	// Body is the body of the commit message, excluding the subject line, i.e. `git show --format=%b`.
+	Body string `json:"body,omitempty"`
+	// SHA is the commit hash.
+	SHA string `json:"sha,omitempty"`
+	// RepoURL is the URL of the repository where the commit is located.
+	RepoURL string `json:"repoURL,omitempty"`
+}
+
+// RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+// it supports only references to a commit. In the future, it may support other types of references.
+type RevisionReference struct {
+	// Commit contains metadata about the commit that is related in some way to another commit.
+	Commit *CommitMetadata `json:"commit,omitempty"`
+}

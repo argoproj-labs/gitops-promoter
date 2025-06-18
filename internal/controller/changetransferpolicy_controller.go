@@ -225,7 +225,31 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		ctp.Spec.ProposedBranch: proposedShas,
 	})
 
-	err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses, gitOperations, activeShas)
+	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeShas.Hydrated)
+	if err != nil {
+		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeShas.Hydrated, err)
+	}
+	ctp.Status.Active.Dry = activeCommitMetadata
+
+	proposedCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedShas.Hydrated)
+	if err != nil {
+		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeShas.Hydrated, err)
+	}
+	ctp.Status.Proposed.Dry = proposedCommitMetadata
+
+	activeCommitMetadata, err = gitOperations.GetShaMetadataFromGit(ctx, activeShas.Hydrated)
+	if err != nil {
+		return fmt.Errorf("failed to get commit active metadata for hydrated SHA %q: %w", activeShas.Hydrated, err)
+	}
+	ctp.Status.Active.Hydrated = activeCommitMetadata
+
+	proposedCommitMetadata, err = gitOperations.GetShaMetadataFromGit(ctx, proposedShas.Hydrated)
+	if err != nil {
+		return fmt.Errorf("failed to get commit proposed metadata for hydrated SHA %q: %w", proposedShas.Hydrated, err)
+	}
+	ctp.Status.Proposed.Hydrated = proposedCommitMetadata
+
+	err = r.setCommitStatusState(ctx, &ctp.Status.Active, ctp.Spec.ActiveCommitStatuses)
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
@@ -234,7 +258,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set active commit status state: %w", err)
 	}
 
-	err = r.setCommitStatusState(ctx, &ctp.Status.Proposed, ctp.Spec.ProposedCommitStatuses, gitOperations, proposedShas)
+	err = r.setCommitStatusState(ctx, &ctp.Status.Proposed, ctp.Spec.ProposedCommitStatuses)
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
@@ -254,31 +278,15 @@ func (e *TooManyMatchingShaError) Error() string {
 
 // setCommitStatusState sets the hydrated and dry SHAs and commit times for the target commit branch state and sets the
 // commit statuses.
-func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Context, targetCommitBranchState *promoterv1alpha1.CommitBranchState, commitStatuses []promoterv1alpha1.CommitStatusSelector, gitOperations *git.GitOperations, shas git.BranchShas) error {
+func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Context, targetCommitBranchState *promoterv1alpha1.CommitBranchState, commitStatuses []promoterv1alpha1.CommitStatusSelector) error {
 	logger := log.FromContext(ctx)
-
-	targetCommitBranchState.Hydrated.Sha = shas.Hydrated
-	commitTime, err := gitOperations.GetShaTime(ctx, shas.Hydrated)
-	if err != nil {
-		return fmt.Errorf("failed to get commit time for hydrated SHA %q: %w", shas.Hydrated, err)
-	}
-	targetCommitBranchState.Hydrated.CommitTime = commitTime
-
-	if shas.Dry != "" {
-		targetCommitBranchState.Dry.Sha = shas.Dry
-		commitTime, err = gitOperations.GetShaTime(ctx, shas.Dry)
-		if err != nil {
-			return fmt.Errorf("failed to get dry SHA %q on: %w", shas.Dry, err)
-		}
-		targetCommitBranchState.Dry.CommitTime = commitTime
-	}
 
 	commitStatusesState := []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
 	var tooManyMatchingShas bool
 	for _, status := range commitStatuses {
 		var csList promoterv1alpha1.CommitStatusList
 		// Find all the replicasets that match the commit status configured name and the sha of the hydrated commit
-		err = r.List(ctx, &csList, &client.ListOptions{
+		err := r.List(ctx, &csList, &client.ListOptions{
 			LabelSelector: labels.SelectorFromSet(map[string]string{
 				promoterv1alpha1.CommitStatusLabel: utils.KubeSafeLabel(status.Key),
 			}),

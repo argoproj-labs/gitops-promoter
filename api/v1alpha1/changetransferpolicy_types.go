@@ -78,8 +78,14 @@ type CommitBranchState struct {
 }
 
 type CommitShaState struct {
-	Sha        string      `json:"sha,omitempty"`
-	CommitTime metav1.Time `json:"commitTime,omitempty"`
+	Sha        string              `json:"sha,omitempty"`
+	CommitTime metav1.Time         `json:"commitTime,omitempty"`
+	RepoURL    string              `json:"repoURL,omitempty"`
+	Commands   []string            `json:"commands,omitempty"`
+	Author     string              `json:"author,omitempty"`
+	Subject    string              `json:"subject,omitempty"`
+	Body       string              `json:"body,omitempty"`
+	References []RevisionReference `json:"references,omitempty"`
 }
 
 func (b *CommitBranchState) DryShaShort() string {
