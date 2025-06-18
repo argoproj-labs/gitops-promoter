@@ -1,8 +1,7 @@
 # Getting Started
 
 This guide will help you get started installing and setting up the GitOps Promoter. We currently only support
-GitHub, GitHub Enterprise and GitLab as the SCM providers. We would welcome any contributions to add support for other
-providers.
+GitHub, GitHub Enterprise, GitLab and Forgejo (including Codeberg) as the SCM providers. We would welcome any contributions to add support for other providers.
 
 ## Requirements
 
@@ -16,7 +15,7 @@ providers.
 To install GitOps Promoter, you can use the following command:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.4.0/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.5.0/install.yaml
 ```
 
 ## GitHub App Configuration
@@ -163,6 +162,65 @@ spec:
   scmProviderRef:
     name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
 ```
+
+## Forgejo Configuration
+
+To configure Gitops Promoter with Forgejo, you will need to configure an App. The process is very similar to Codeberg. Here is the [official Codeberg documentation](https://docs.codeberg.org/advanced/access-token/) (note: Codeberg is powered by Forgejo under the hood). Give the `read and write` Token the permissions on the repository.
+
+This Token should be in a secret as follow:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  token: <your-access-token>
+```
+
+Alternatively, you can use basic http authentication against your Forgejo instance:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  username: <your-user>
+  password: <your-password>
+```
+
+We also need a GitRepository and ScmProvider, which is are custom resources that represents a git repository and a provider.
+Here is an example of both resources:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  forgejo: {}
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  forgejo:
+    owner: <organization-or-user-name>
+    name: <repo-name>
+  scmProviderRef:
+    name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
+```
+
+!!! note 
+
+    The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy resources in, and it also needs to be in the same namespace of the secret it references.
+
 
 ## Promotion Strategy
 
