@@ -453,14 +453,13 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 }
 
 func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
-
 	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
 	_, err := runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(gitPath, "config", "user.name", "testuser")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "config", "user.email", "testemail@test.com")
+	_, err = runGitCmd(gitPath, "config", "user.email", "testmail@test.com")
 	Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "config", "pull.rebase", "false")
 	Expect(err).NotTo(HaveOccurred())
@@ -489,10 +488,9 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	_, err = runGitCmd(gitPath, "add", "manifests-fake.yaml")
 	Expect(err).NotTo(HaveOccurred())
 	if dryCommitMessage == "" {
-		_, err = runGitCmd(gitPath, "commit", "-m", "added fake manifests commit with timestamp")
-	} else {
-		_, err = runGitCmd(gitPath, "commit", "-m", dryCommitMessage)
+		dryCommitMessage = "added fake manifests commit with timestamp"
 	}
+	_, err = runGitCmd(gitPath, "commit", "-m", dryCommitMessage)
 	Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "push", "-u", "origin", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
@@ -508,23 +506,31 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 		_, err = runGitCmd(gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 
+		var subject string
+		var body string
+		parts := strings.SplitN(dryCommitMessage, "\n\n", 2)
+		subject = parts[0]
+		if len(parts) > 1 {
+			body = parts[1]
+		}
+
 		metadata := promoterv1alpha1.HydratorMetadata{
 			RepoURL:  repoURL,
-			DrySHA:   sha,
+			DrySha:   sha,
 			Commands: []string{"fake test hydrator commands"},
-			Author:   "testuser <testemail@test.com>",
+			Author:   "testuser <testmail@test.com>",
 			Date:     time.Now().Format(time.RFC3339),
-			Subject:  "This is a subject of the commit",
-			Body:     "",
+			Subject:  subject,
+			Body:     body,
 			References: []promoterv1alpha1.RevisionReference{
 				{
 					Commit: &promoterv1alpha1.CommitMetadata{
-						Author:  "",
-						Date:    "",
-						Subject: "",
-						Body:    "",
-						SHA:     "",
-						RepoURL: "",
+						Author:  "upstream <upstream@example.com",
+						Date:    time.Now().Format(time.RFC3339),
+						Subject: "This is a fix for an upstream issue",
+						Body:    "This is a body of the commit",
+						Sha:     "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
+						RepoURL: "https://github.com/upstream/repo",
 					},
 				},
 			},

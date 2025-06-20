@@ -70,7 +70,7 @@ type FakeRepo struct {
 // HydratorMetadata contains metadata about the commit that is used to hydrate a branch. It is used to store
 type HydratorMetadata struct {
 	RepoURL    string              `json:"repoURL,omitempty"`
-	DrySHA     string              `json:"drySha,omitempty"`
+	DrySha     string              `json:"drySha,omitempty"`
 	Commands   []string            `json:"commands,omitempty"`
 	Author     string              `json:"author,omitempty"`
 	Date       string              `json:"date,omitempty"`
@@ -90,7 +90,7 @@ type CommitMetadata struct {
 	// Body is the body of the commit message, excluding the subject line, i.e. `git show --format=%b`.
 	Body string `json:"body,omitempty"`
 	// SHA is the commit hash.
-	SHA string `json:"sha,omitempty"`
+	Sha string `json:"sha,omitempty"`
 	// RepoURL is the URL of the repository where the commit is located.
 	RepoURL string `json:"repoURL,omitempty"`
 }

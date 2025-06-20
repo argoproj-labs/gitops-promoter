@@ -155,7 +155,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (Branc
 	if err != nil {
 		return BranchShas{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
 	}
-	shas.Dry = hydratorFile.DrySHA
+	shas.Dry = hydratorFile.DrySha
 	logger.V(4).Info("Got dry branch sha", "branch", branch, "sha", shas.Dry)
 
 	return shas, nil
@@ -191,7 +191,7 @@ func (g *GitOperations) GetShaMetadataFromFile(ctx context.Context, sha string) 
 	}
 
 	commitState := v1alpha1.CommitShaState{
-		Sha:        hydratorFile.DrySHA,
+		Sha:        hydratorFile.DrySha,
 		CommitTime: hydratorMetadataDate,
 		RepoURL:    hydratorFile.RepoURL,
 		Commands:   hydratorFile.Commands,
