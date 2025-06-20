@@ -74,7 +74,7 @@ type CommitMetadata struct {
 	// Author is the author of the commit.
 	Author string `json:"author,omitempty"`
 	// Date is the date of the commit, formatted as by `git show -s --format=%aI`.
-	Date metav1.Time `json:"date,omitempty"`
+	Date *metav1.Time `json:"date,omitempty"`
 	// Subject is the subject line of the commit message, i.e. `git show --format=%s`.
 	Subject string `json:"message,omitempty"`
 	// Body is the body of the commit message, excluding the subject line, i.e. `git show --format=%b`.
