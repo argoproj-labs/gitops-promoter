@@ -230,7 +230,7 @@ spec:
                                           where the commit is located.
                                         type: string
                                       sha:
-                                        description: SHA is the commit hash.
+                                        description: Sha is the commit hash.
                                         type: string
                                     type: object
                                 type: object
@@ -287,7 +287,7 @@ spec:
                                           where the commit is located.
                                         type: string
                                       sha:
-                                        description: SHA is the commit hash.
+                                        description: Sha is the commit hash.
                                         type: string
                                     type: object
                                 type: object
@@ -385,7 +385,7 @@ spec:
                                           where the commit is located.
                                         type: string
                                       sha:
-                                        description: SHA is the commit hash.
+                                        description: Sha is the commit hash.
                                         type: string
                                     type: object
                                 type: object
@@ -442,7 +442,7 @@ spec:
                                           where the commit is located.
                                         type: string
                                       sha:
-                                        description: SHA is the commit hash.
+                                        description: Sha is the commit hash.
                                         type: string
                                     type: object
                                 type: object

@@ -89,7 +89,7 @@ type CommitMetadata struct {
 	Subject string `json:"message,omitempty"`
 	// Body is the body of the commit message, excluding the subject line, i.e. `git show --format=%b`.
 	Body string `json:"body,omitempty"`
-	// SHA is the commit hash.
+	// Sha is the commit hash.
 	Sha string `json:"sha,omitempty"`
 	// RepoURL is the URL of the repository where the commit is located.
 	RepoURL string `json:"repoURL,omitempty"`
