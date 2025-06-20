@@ -515,6 +515,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 			body = parts[1]
 		}
 
+		date := metav1.Now()
 		metadata := git.HydratorMetadata{
 			RepoURL: repoURL,
 			DrySha:  sha,
@@ -526,7 +527,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 				{
 					Commit: &promoterv1alpha1.CommitMetadata{
 						Author:  "upstream <upstream@example.com",
-						Date:    metav1.Now(),
+						Date:    &date,
 						Subject: "This is a fix for an upstream issue",
 						Body:    "This is a body of the commit",
 						Sha:     "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
