@@ -225,7 +225,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		ctp.Spec.ProposedBranch: proposedShas,
 	})
 
-	err = r.setCommitMetadata(ctx, ctp, gitOperations, activeShas, proposedShas)
+	err = r.setCommitMetadata(ctx, ctp, gitOperations, activeShas.Hydrated, proposedShas.Hydrated)
 	if err != nil {
 		return fmt.Errorf("failed to set commit metadata: %w", err)
 	}
@@ -257,28 +257,28 @@ func (e *TooManyMatchingShaError) Error() string {
 	return "there are to many matching SHAs for the commit status"
 }
 
-func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.GitOperations, activeShas, proposedShas git.BranchShas) error {
-	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeShas.Hydrated)
+func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.GitOperations, activeHydratedSha, proposedHydratedSha string) error {
+	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeHydratedSha)
 	if err != nil {
-		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeShas.Hydrated, err)
+		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Active.Dry = activeCommitMetadata
 
-	proposedCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedShas.Hydrated)
+	proposedCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedHydratedSha)
 	if err != nil {
-		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeShas.Hydrated, err)
+		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Proposed.Dry = proposedCommitMetadata
 
-	activeCommitMetadata, err = gitOperations.GetShaMetadataFromGit(ctx, activeShas.Hydrated)
+	activeCommitMetadata, err = gitOperations.GetShaMetadataFromGit(ctx, activeHydratedSha)
 	if err != nil {
-		return fmt.Errorf("failed to get commit active metadata for hydrated SHA %q: %w", activeShas.Hydrated, err)
+		return fmt.Errorf("failed to get commit active metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Active.Hydrated = activeCommitMetadata
 
-	proposedCommitMetadata, err = gitOperations.GetShaMetadataFromGit(ctx, proposedShas.Hydrated)
+	proposedCommitMetadata, err = gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha)
 	if err != nil {
-		return fmt.Errorf("failed to get commit proposed metadata for hydrated SHA %q: %w", proposedShas.Hydrated, err)
+		return fmt.Errorf("failed to get commit proposed metadata for hydrated SHA %q: %w", proposedHydratedSha, err)
 	}
 	ctp.Status.Proposed.Hydrated = proposedCommitMetadata
 
