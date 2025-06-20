@@ -1,0 +1,9 @@
+.title {
+  --color: black;
+
+  color: var(--color);
+}
+
+.title--primary {
+  --color: crimson;
+}
