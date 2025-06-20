@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"log"
 	"math/rand"
 	"net/http"
@@ -514,7 +515,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 			body = parts[1]
 		}
 
-		metadata := promoterv1alpha1.HydratorMetadata{
+		metadata := git.HydratorMetadata{
 			RepoURL:  repoURL,
 			DrySha:   sha,
 			Commands: []string{"fake test hydrator commands"},

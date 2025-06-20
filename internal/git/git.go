@@ -31,6 +31,26 @@ type GitOperations struct {
 	pathContext string
 }
 
+// HydratorMetadata contains metadata about the commit that is used to hydrate a branch. It is used to store
+type HydratorMetadata struct {
+	// RepoURL is the URL of the repository where the commit is located.
+	RepoURL string `json:"repoURL,omitempty"`
+	// DrySha is the SHA of the commit that was used as the dry source for hydration.
+	DrySha string `json:"drySha,omitempty"`
+	// Commands are the commands that were run to hydrate the branch.
+	Commands []string `json:"commands,omitempty"`
+	// Author is the author of the dry commit that was used to hydrate the branch.
+	Author string `json:"author,omitempty"`
+	// Date is the date of the dry commit that was used to hydrate the branch.
+	Date v1.Time `json:"date,omitempty"`
+	// Subject is the subject line of the dry commit that was used to hydrate the branch.
+	Subject string `json:"subject,omitempty"`
+	// Body is the body of the dry commit that was used to hydrate the branch without the subject.
+	Body string `json:"body,omitempty"`
+	// References are the references to other commits, that went into the hydration of the branch.
+	References []v1alpha1.RevisionReference `json:"references,omitempty"`
+}
+
 func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, repoRef v1alpha1.ObjectReference, obj v1.Object, pathConext string) (*GitOperations, error) {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repoRef.Name})
 	if err != nil {
@@ -149,7 +169,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (Branc
 		return BranchShas{}, fmt.Errorf("could not open metadata file: %w", err)
 	}
 
-	var hydratorFile v1alpha1.HydratorMetadata
+	var hydratorFile HydratorMetadata
 	decoder := json.NewDecoder(jsonFile)
 	err = decoder.Decode(&hydratorFile)
 	if err != nil {
@@ -175,20 +195,11 @@ func (g *GitOperations) GetShaMetadataFromFile(ctx context.Context, sha string) 
 	}
 	logger.V(4).Info("Got metadata file", "sha", sha, "file", metadataFileStdout)
 
-	var hydratorFile v1alpha1.HydratorMetadata
+	var hydratorFile HydratorMetadata
 	err = json.Unmarshal([]byte(metadataFileStdout), &hydratorFile)
 	if err != nil {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
 	}
-
-	// hydratorMetadataDate := v1.Time{}
-	//if hydratorFile.Date != "" {
-	//	hDate, err := time.Parse(time.RFC3339, hydratorFile.Date)
-	//	if err != nil {
-	//		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to parse date %q: %w", hydratorFile.Date, err)
-	//	}
-	//	hydratorMetadataDate = v1.Time{Time: hDate}
-	//}
 
 	commitState := v1alpha1.CommitShaState{
 		Sha:        hydratorFile.DrySha,
