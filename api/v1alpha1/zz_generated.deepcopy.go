@@ -901,6 +901,7 @@ func (in *HydratorMetadata) DeepCopyInto(out *HydratorMetadata) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	in.Date.DeepCopyInto(&out.Date)
 	if in.References != nil {
 		in, out := &in.References, &out.References
 		*out = make([]RevisionReference, len(*in))

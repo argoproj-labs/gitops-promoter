@@ -80,7 +80,7 @@ type HydratorMetadata struct {
 	// Author is the author of the dry commit that was used to hydrate the branch.
 	Author string `json:"author,omitempty"`
 	// Date is the date of the dry commit that was used to hydrate the branch.
-	Date string `json:"date,omitempty"`
+	Date metav1.Time `json:"date,omitempty"`
 	// Subject is the subject line of the dry commit that was used to hydrate the branch.
 	Subject string `json:"subject,omitempty"`
 	// Body is the body of the dry commit that was used to hydrate the branch without the subject.
