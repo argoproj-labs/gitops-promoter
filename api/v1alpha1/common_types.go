@@ -1,5 +1,7 @@
 package v1alpha1
 
+import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 type GitHub struct {
 	// Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
 	// empty.
@@ -69,13 +71,21 @@ type FakeRepo struct {
 
 // HydratorMetadata contains metadata about the commit that is used to hydrate a branch. It is used to store
 type HydratorMetadata struct {
-	RepoURL    string              `json:"repoURL,omitempty"`
-	DrySha     string              `json:"drySha,omitempty"`
-	Commands   []string            `json:"commands,omitempty"`
-	Author     string              `json:"author,omitempty"`
-	Date       string              `json:"date,omitempty"`
-	Subject    string              `json:"subject,omitempty"`
-	Body       string              `json:"body,omitempty"`
+	// RepoURL is the URL of the repository where the commit is located.
+	RepoURL string `json:"repoURL,omitempty"`
+	// DrySha is the SHA of the commit that was used as the dry source for hydration.
+	DrySha string `json:"drySha,omitempty"`
+	// Commands are the commands that were run to hydrate the branch.
+	Commands []string `json:"commands,omitempty"`
+	// Author is the author of the dry commit that was used to hydrate the branch.
+	Author string `json:"author,omitempty"`
+	// Date is the date of the dry commit that was used to hydrate the branch.
+	Date string `json:"date,omitempty"`
+	// Subject is the subject line of the dry commit that was used to hydrate the branch.
+	Subject string `json:"subject,omitempty"`
+	// Body is the body of the dry commit that was used to hydrate the branch without the subject.
+	Body string `json:"body,omitempty"`
+	// References are the references to other commits, that went into the hydration of the branch.
 	References []RevisionReference `json:"references,omitempty"`
 }
 
@@ -84,7 +94,7 @@ type CommitMetadata struct {
 	// Author is the author of the commit.
 	Author string `json:"author,omitempty"`
 	// Date is the date of the commit, formatted as by `git show -s --format=%aI`.
-	Date string `json:"date,omitempty"`
+	Date metav1.Time `json:"date,omitempty"`
 	// Subject is the subject line of the commit message, i.e. `git show --format=%s`.
 	Subject string `json:"message,omitempty"`
 	// Body is the body of the commit message, excluding the subject line, i.e. `git show --format=%b`.
