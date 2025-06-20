@@ -203,7 +203,6 @@ func (g *GitOperations) GetShaMetadataFromFile(ctx context.Context, sha string) 
 		Sha:        hydratorFile.DrySha,
 		CommitTime: hydratorFile.Date,
 		RepoURL:    hydratorFile.RepoURL,
-		Commands:   hydratorFile.Commands,
 		Author:     hydratorFile.Author,
 		Subject:    hydratorFile.Subject,
 		Body:       hydratorFile.Body,
