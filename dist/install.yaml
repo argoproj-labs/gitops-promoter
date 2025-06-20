@@ -282,12 +282,6 @@ spec:
                         description: Body is the body of the commit message without
                           the subject line
                         type: string
-                      commands:
-                        description: Commands are the commands that were run to hydrate
-                          the branch
-                        items:
-                          type: string
-                        type: array
                       commitTime:
                         description: CommitTime is the time the commit was made
                         format: date-time
@@ -350,12 +344,6 @@ spec:
                         description: Body is the body of the commit message without
                           the subject line
                         type: string
-                      commands:
-                        description: Commands are the commands that were run to hydrate
-                          the branch
-                        items:
-                          type: string
-                        type: array
                       commitTime:
                         description: CommitTime is the time the commit was made
                         format: date-time
@@ -445,12 +433,6 @@ spec:
                         description: Body is the body of the commit message without
                           the subject line
                         type: string
-                      commands:
-                        description: Commands are the commands that were run to hydrate
-                          the branch
-                        items:
-                          type: string
-                        type: array
                       commitTime:
                         description: CommitTime is the time the commit was made
                         format: date-time
@@ -513,12 +495,6 @@ spec:
                         description: Body is the body of the commit message without
                           the subject line
                         type: string
-                      commands:
-                        description: Commands are the commands that were run to hydrate
-                          the branch
-                        items:
-                          type: string
-                        type: array
                       commitTime:
                         description: CommitTime is the time the commit was made
                         format: date-time
@@ -1216,12 +1192,6 @@ spec:
                               description: Body is the body of the commit message
                                 without the subject line
                               type: string
-                            commands:
-                              description: Commands are the commands that were run
-                                to hydrate the branch
-                              items:
-                                type: string
-                              type: array
                             commitTime:
                               description: CommitTime is the time the commit was made
                               format: date-time
@@ -1287,12 +1257,6 @@ spec:
                               description: Body is the body of the commit message
                                 without the subject line
                               type: string
-                            commands:
-                              description: Commands are the commands that were run
-                                to hydrate the branch
-                              items:
-                                type: string
-                              type: array
                             commitTime:
                               description: CommitTime is the time the commit was made
                               format: date-time
@@ -1399,12 +1363,6 @@ spec:
                               description: Body is the body of the commit message
                                 without the subject line
                               type: string
-                            commands:
-                              description: Commands are the commands that were run
-                                to hydrate the branch
-                              items:
-                                type: string
-                              type: array
                             commitTime:
                               description: CommitTime is the time the commit was made
                               format: date-time
@@ -1470,12 +1428,6 @@ spec:
                               description: Body is the body of the commit message
                                 without the subject line
                               type: string
-                            commands:
-                              description: Commands are the commands that were run
-                                to hydrate the branch
-                              items:
-                                type: string
-                              type: array
                             commitTime:
                               description: CommitTime is the time the commit was made
                               format: date-time

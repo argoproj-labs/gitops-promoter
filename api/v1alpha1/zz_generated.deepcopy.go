@@ -370,11 +370,6 @@ func (in *CommitMetadata) DeepCopy() *CommitMetadata {
 func (in *CommitShaState) DeepCopyInto(out *CommitShaState) {
 	*out = *in
 	in.CommitTime.DeepCopyInto(&out.CommitTime)
-	if in.Commands != nil {
-		in, out := &in.Commands, &out.Commands
-		*out = make([]string, len(*in))
-		copy(*out, *in)
-	}
 	if in.References != nil {
 		in, out := &in.References, &out.References
 		*out = make([]RevisionReference, len(*in))

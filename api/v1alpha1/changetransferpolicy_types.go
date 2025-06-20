@@ -84,8 +84,6 @@ type CommitShaState struct {
 	CommitTime metav1.Time `json:"commitTime,omitempty"`
 	// RepoURL is the URL of the repository where the commit is located
 	RepoURL string `json:"repoURL,omitempty"`
-	// Commands are the commands that were run to hydrate the branch
-	Commands []string `json:"commands,omitempty"`
 	// Author is the author of the commit
 	Author string `json:"author,omitempty"`
 	// Subject is the subject line of the commit message

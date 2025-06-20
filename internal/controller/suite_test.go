@@ -516,13 +516,12 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 		}
 
 		metadata := git.HydratorMetadata{
-			RepoURL:  repoURL,
-			DrySha:   sha,
-			Commands: []string{"fake test hydrator commands"},
-			Author:   "testuser <testmail@test.com>",
-			Date:     metav1.Now(),
-			Subject:  subject,
-			Body:     body,
+			RepoURL: repoURL,
+			DrySha:  sha,
+			Author:  "testuser <testmail@test.com>",
+			Date:    metav1.Now(),
+			Subject: subject,
+			Body:    body,
 			References: []promoterv1alpha1.RevisionReference{
 				{
 					Commit: &promoterv1alpha1.CommitMetadata{

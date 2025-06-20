@@ -37,8 +37,6 @@ type HydratorMetadata struct {
 	RepoURL string `json:"repoURL,omitempty"`
 	// DrySha is the SHA of the commit that was used as the dry source for hydration.
 	DrySha string `json:"drySha,omitempty"`
-	// Commands are the commands that were run to hydrate the branch.
-	Commands []string `json:"commands,omitempty"`
 	// Author is the author of the dry commit that was used to hydrate the branch.
 	Author string `json:"author,omitempty"`
 	// Date is the date of the dry commit that was used to hydrate the branch.
