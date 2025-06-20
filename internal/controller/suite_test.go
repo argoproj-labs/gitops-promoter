@@ -519,7 +519,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 			DrySha:   sha,
 			Commands: []string{"fake test hydrator commands"},
 			Author:   "testuser <testmail@test.com>",
-			Date:     time.Now().Format(time.RFC3339),
+			Date:     metav1.Now(),
 			Subject:  subject,
 			Body:     body,
 			References: []promoterv1alpha1.RevisionReference{

@@ -181,18 +181,18 @@ func (g *GitOperations) GetShaMetadataFromFile(ctx context.Context, sha string) 
 		return v1alpha1.CommitShaState{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
 	}
 
-	hydratorMetadataDate := v1.Time{}
-	if hydratorFile.Date != "" {
-		hDate, err := time.Parse(time.RFC3339, hydratorFile.Date)
-		if err != nil {
-			return v1alpha1.CommitShaState{}, fmt.Errorf("failed to parse date %q: %w", hydratorFile.Date, err)
-		}
-		hydratorMetadataDate = v1.Time{Time: hDate}
-	}
+	// hydratorMetadataDate := v1.Time{}
+	//if hydratorFile.Date != "" {
+	//	hDate, err := time.Parse(time.RFC3339, hydratorFile.Date)
+	//	if err != nil {
+	//		return v1alpha1.CommitShaState{}, fmt.Errorf("failed to parse date %q: %w", hydratorFile.Date, err)
+	//	}
+	//	hydratorMetadataDate = v1.Time{Time: hDate}
+	//}
 
 	commitState := v1alpha1.CommitShaState{
 		Sha:        hydratorFile.DrySha,
-		CommitTime: hydratorMetadataDate,
+		CommitTime: hydratorFile.Date,
 		RepoURL:    hydratorFile.RepoURL,
 		Commands:   hydratorFile.Commands,
 		Author:     hydratorFile.Author,
