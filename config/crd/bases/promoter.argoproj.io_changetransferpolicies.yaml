@@ -187,9 +187,6 @@ spec:
                       subject:
                         description: Subject is the subject line of the commit message
                         type: string
-                    required:
-                    - commitTime
-                    - sha
                     type: object
                   hydrated:
                     properties:
@@ -252,9 +249,6 @@ spec:
                       subject:
                         description: Subject is the subject line of the commit message
                         type: string
-                    required:
-                    - commitTime
-                    - sha
                     type: object
                 type: object
               proposed:
@@ -344,9 +338,6 @@ spec:
                       subject:
                         description: Subject is the subject line of the commit message
                         type: string
-                    required:
-                    - commitTime
-                    - sha
                     type: object
                   hydrated:
                     properties:
@@ -409,9 +400,6 @@ spec:
                       subject:
                         description: Subject is the subject line of the commit message
                         type: string
-                    required:
-                    - commitTime
-                    - sha
                     type: object
                 type: object
             type: object

@@ -79,11 +79,9 @@ type CommitBranchState struct {
 
 type CommitShaState struct {
 	// Sha is the SHA of the commit in the branch
-	// +kubebuilder:validation:Required
-	Sha string `json:"sha"`
+	Sha string `json:"sha,omitempty"`
 	// CommitTime is the time the commit was made
-	// +kubebuilder:validation:Required
-	CommitTime metav1.Time `json:"commitTime"`
+	CommitTime metav1.Time `json:"commitTime,omitempty"`
 	// RepoURL is the URL of the repository where the commit is located
 	RepoURL string `json:"repoURL,omitempty"`
 	// Author is the author of the commit
