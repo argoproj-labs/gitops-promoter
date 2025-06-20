@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"k8s.io/utils/ptr"
 	"log"
 	"math/rand"
 	"net/http"
@@ -515,7 +516,6 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 			body = parts[1]
 		}
 
-		date := metav1.Now()
 		metadata := git.HydratorMetadata{
 			RepoURL: repoURL,
 			DrySha:  sha,
@@ -527,7 +527,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 				{
 					Commit: &promoterv1alpha1.CommitMetadata{
 						Author:  "upstream <upstream@example.com",
-						Date:    &date,
+						Date:    ptr.To(metav1.Now()),
 						Subject: "This is a fix for an upstream issue",
 						Body:    "This is a body of the commit",
 						Sha:     "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
