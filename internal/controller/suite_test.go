@@ -19,6 +19,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -451,11 +452,10 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 	}
 }
 
-func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string) (string, string) {
-	// gitPath, err := os.MkdirTemp("", "*")
-	// Expect(err).NotTo(HaveOccurred())
+func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
 
-	_, err := runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName), ".")
+	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
+	_, err := runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 	Expect(err).NotTo(HaveOccurred())
 
 	_, err = runGitCmd(gitPath, "config", "user.name", "testuser")
@@ -488,7 +488,11 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 	Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "add", "manifests-fake.yaml")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "commit", "-m", "added fake manifests commit with timestamp")
+	if dryCommitMessage == "" {
+		_, err = runGitCmd(gitPath, "commit", "-m", "added fake manifests commit with timestamp")
+	} else {
+		_, err = runGitCmd(gitPath, "commit", "-m", dryCommitMessage)
+	}
 	Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "push", "-u", "origin", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
@@ -504,10 +508,33 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 		_, err = runGitCmd(gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 
+		metadata := promoterv1alpha1.HydratorMetadata{
+			RepoURL:  repoURL,
+			DrySHA:   sha,
+			Commands: []string{"fake test hydrator commands"},
+			Author:   "testuser <testemail@test.com>",
+			Date:     time.Now().Format(time.RFC3339),
+			Subject:  "This is a subject of the commit",
+			Body:     "",
+			References: []promoterv1alpha1.RevisionReference{
+				{
+					Commit: &promoterv1alpha1.CommitMetadata{
+						Author:  "",
+						Date:    "",
+						Subject: "",
+						Body:    "",
+						SHA:     "",
+						RepoURL: "",
+					},
+				},
+			},
+		}
+		m, err := json.Marshal(metadata)
+		Expect(err).NotTo(HaveOccurred())
+
 		f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
 		Expect(err).NotTo(HaveOccurred())
-		str = fmt.Sprintf("{\"drySHA\": \"%s\"}", sha)
-		_, err = f.WriteString(str)
+		_, err = f.Write(m)
 		Expect(err).NotTo(HaveOccurred())
 		err = f.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -523,8 +550,11 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "add", "manifests-fake.yaml")
 		Expect(err).NotTo(HaveOccurred())
-
-		_, err = runGitCmd(gitPath, "commit", "-m", "added pending commit from dry sha, "+sha+" from environment "+strings.TrimRight(environment, "-next"))
+		if hydratedCommitMessage == "" {
+			_, err = runGitCmd(gitPath, "commit", "-m", "added pending commit from dry sha, "+sha+" from environment "+strings.TrimRight(environment, "-next"))
+		} else {
+			_, err = runGitCmd(gitPath, "commit", "-m", hydratedCommitMessage)
+		}
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
