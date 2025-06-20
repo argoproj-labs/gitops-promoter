@@ -171,7 +171,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name)
+			makeChangeAndHydrateRepo(gitPath, name, name, "this is a change to bump image\n\nThis is the body\nThis is a newline", "added pending commit from dry sha")
 
 			simulateWebhook(ctx, k8sClient, &ctpDev)
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
@@ -186,6 +186,26 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
 				g.Expect(err).To(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				g.Expect(ctpDev.Status.Proposed.Dry.Subject).To(Equal("this is a change to bump image"))
+				g.Expect(ctpDev.Status.Proposed.Dry.Body).To(Equal("This is the body\nThis is a newline"))
+				g.Expect(ctpDev.Status.Proposed.Dry.References[0].Commit.Subject).To(Equal("This is a fix for an upstream issue"))
+				g.Expect(ctpDev.Status.Proposed.Dry.References[0].Commit.Body).To(Equal("This is a body of the commit"))
+				g.Expect(ctpDev.Status.Proposed.Dry.References[0].Commit.Sha).To(Equal("c4c862564afe56abf8cc8ac683eee3dc8bf96108"))
+
+				g.Expect(ctpDev.Status.Proposed.Hydrated.Subject).To(Equal("added pending commit from dry sha"))
+				g.Expect(ctpDev.Status.Proposed.Hydrated.Body).To(ContainSubstring(""))
+
+				g.Expect(ctpDev.Status.Active.Hydrated.Subject).To(Equal("initial commit"))
+				g.Expect(ctpDev.Status.Active.Hydrated.Body).To(Equal(""))
 			}, EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -383,7 +403,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name)
+			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 
 			simulateWebhook(ctx, k8sClient, &ctpDev)
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
@@ -582,7 +602,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name)
+			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 
 			simulateWebhook(ctx, k8sClient, &ctpDev)
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
@@ -777,7 +797,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name)
+			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 
 			simulateWebhook(ctx, k8sClient, &ctpDev)
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
@@ -935,7 +955,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name)
+			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 			simulateWebhook(ctx, k8sClient, &ctpDev)
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
 			simulateWebhook(ctx, k8sClient, &ctpProd)
@@ -1139,7 +1159,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name)
+			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 			simulateWebhook(ctx, k8sClient, &ctpDev)
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
 			simulateWebhook(ctx, k8sClient, &ctpProd)
@@ -1305,7 +1325,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name)
+			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -1453,7 +1473,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name)
+			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -1672,7 +1692,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name)
+			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 			simulateWebhook(ctx, k8sClient, &ctpDev)
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
 			simulateWebhook(ctx, k8sClient, &ctpProd)
