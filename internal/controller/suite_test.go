@@ -21,8 +21,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/git"
-	"k8s.io/utils/ptr"
 	"log"
 	"math/rand"
 	"net/http"
@@ -35,6 +33,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"k8s.io/utils/ptr"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
