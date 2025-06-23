@@ -286,6 +286,7 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "promoter",
 		Short: "GitOps Promoter",
+		Args:  cobra.NoArgs, //Handles unknown subcommand
 		Run: func(cmd *cobra.Command, args []string) {
 			runController()
 		},
