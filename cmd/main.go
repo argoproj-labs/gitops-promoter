@@ -46,7 +46,9 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+
 	//+kubebuilder:scaffold:imports
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -61,7 +63,7 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 }
 
-func main() {
+func runController() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
@@ -276,4 +278,19 @@ func addKubectlFlags(flags *pflag.FlagSet) clientcmd.ClientConfig {
 	flags.StringVar(&loadingRules.ExplicitPath, "kubeconfig", "", "Path to a kube config. Only required if out-of-cluster")
 	clientcmd.BindOverrideFlags(&overrides, flags, kflags)
 	return clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, &overrides, os.Stdin)
+}
+
+func main() {
+
+	// root command runs controller
+	var rootCmd = &cobra.Command{
+		Use:   "promoter",
+		Short: "GitOps Promoter",
+		Run: func(cmd *cobra.Command, args []string) {
+			runController()
+		},
+	}
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
 }
