@@ -258,24 +258,11 @@ func main() {
 
 	whr := webhookreceiver.NewWebhookReceiver(mgr)
 
-	go func() {
-		if err := provider.Run(processSignals, mcMgr); err != nil {
-			setupLog.Error(err, "unable to run provider")
-		}
-	}()
-
 	g, ctx := errgroup.WithContext(processSignals)
-	g.Go(func() error {
-		if err := ignoreCanceled(provider.Run(ctx, mcMgr)); err != nil {
-			setupLog.Error(err, "unable to run provider")
-			return err
-		}
-		return nil
-	})
 
 	g.Go(func() error {
 		setupLog.Info("starting manager")
-		if err := ignoreCanceled(mcMgr.Start(processSignals)); err != nil {
+		if err := ignoreCanceled(mcMgr.Start(ctx)); err != nil {
 			setupLog.Error(err, "unable to start manager")
 			return err
 		}

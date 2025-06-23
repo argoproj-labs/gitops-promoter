@@ -1620,7 +1620,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, &argocdCommitStatus)).To(Succeed())
 			Expect(k8sClient.Create(ctx, &argoCDAppDev)).To(Succeed())
 			Expect(k8sClient.Create(ctx, &argoCDAppStaging)).To(Succeed())
-			Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
+
+			// Create the prod ArgoCD application in the other cluster
+			Expect(k8sClient2.Create(ctx, &argoCDAppProduction)).To(Succeed())
 
 			By("Checking that the CommitStatus for each environment is created from ArgoCDCommitStatus")
 
@@ -1782,7 +1784,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argoCDAppDev)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argoCDAppStaging)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, &argoCDAppProduction)).To(Succeed())
+			Expect(k8sClient2.Delete(ctx, &argoCDAppProduction)).To(Succeed())
 		})
 	})
 })

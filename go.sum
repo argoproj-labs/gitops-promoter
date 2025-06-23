@@ -2,10 +2,8 @@ codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.1.0 h1:BsxZzd3nPPMyv8r6W964OL7X
 codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.1.0/go.mod h1:2i9GsyawlJtVMO5pTS/Om5uo2O3JN/eCjGWy5v15NGg=
 github.com/42wim/httpsig v1.2.3 h1:xb0YyWhkYj57SPtfSttIobJUPJZB9as1nsfo7KWVcEs=
 github.com/42wim/httpsig v1.2.3/go.mod h1:nZq9OlYKDrUBhptd77IHx4/sZZD+IxTBADvAPI9G/EM=
-github.com/FourFifthsCode/multicluster-runtime v0.0.0-20250609195707-c976645c49b1 h1:NsA4ObNjNP6znmbxkTGsyt6ok7Caq9iJnVWsooXSKKY=
-github.com/FourFifthsCode/multicluster-runtime v0.0.0-20250609195707-c976645c49b1/go.mod h1:CpBzLMLQKdm+UCchd2FiGPiDdCxM5dgCCPKuaQ6Fsv0=
-github.com/FourFifthsCode/multicluster-runtime/providers/kubeconfig v0.0.0-20250609195707-c976645c49b1 h1:2DxpyeEz9RGyVJK2MucgclXf/aVOQqZvOOx9Vs4jiFs=
-github.com/FourFifthsCode/multicluster-runtime/providers/kubeconfig v0.0.0-20250609195707-c976645c49b1/go.mod h1:Lsc8CcNlY1jyYHdvPSaTy/o34NMBP3osc52CK+jYT5Y=
+github.com/FourFifthsCode/multicluster-runtime v0.20.5-alpha.kubeconfigprovider2 h1:Tt7rGD+KfX93xma3DO2zqOrc9lpauMQajW4StAF24Ds=
+github.com/FourFifthsCode/multicluster-runtime v0.20.5-alpha.kubeconfigprovider2/go.mod h1:CpBzLMLQKdm+UCchd2FiGPiDdCxM5dgCCPKuaQ6Fsv0=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/blang/semver/v4 v4.0.0 h1:1PFHFE6yCCTv8C1TeyNNarDzntLi7wMI5i/pzqYIsAM=
