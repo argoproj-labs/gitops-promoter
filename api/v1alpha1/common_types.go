@@ -1,5 +1,7 @@
 package v1alpha1
 
+import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 type GitHub struct {
 	// Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
 	// empty.
@@ -65,4 +67,27 @@ type FakeRepo struct {
 	Owner string `json:"owner"`
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
+}
+
+// CommitMetadata contains metadata about a commit that is related in some way to another commit.
+type CommitMetadata struct {
+	// Author is the author of the commit.
+	Author string `json:"author,omitempty"`
+	// Date is the date of the commit, formatted as by `git show -s --format=%aI`.
+	Date *metav1.Time `json:"date,omitempty"`
+	// Subject is the subject line of the commit message, i.e. `git show --format=%s`.
+	Subject string `json:"message,omitempty"`
+	// Body is the body of the commit message, excluding the subject line, i.e. `git show --format=%b`.
+	Body string `json:"body,omitempty"`
+	// Sha is the commit hash.
+	Sha string `json:"sha,omitempty"`
+	// RepoURL is the URL of the repository where the commit is located.
+	RepoURL string `json:"repoURL,omitempty"`
+}
+
+// RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+// it supports only references to a commit. In the future, it may support other types of references.
+type RevisionReference struct {
+	// Commit contains metadata about the commit that is related in some way to another commit.
+	Commit *CommitMetadata `json:"commit,omitempty"`
 }

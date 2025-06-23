@@ -233,53 +233,13 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	for i, ctp := range ctps {
 		// Update fields individually to avoid overwriting existing fields.
 		ps.Status.Environments[i].Branch = ctp.Spec.ActiveBranch
-		ps.Status.Environments[i].Active = promoterv1alpha1.PromotionStrategyBranchStateStatus{
-			Dry:      ctp.Status.Active.Dry,
-			Hydrated: ctp.Status.Active.Hydrated,
-			CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
-				Phase: string(promoterv1alpha1.CommitPhasePending),
-				Sha:   string(promoterv1alpha1.CommitPhasePending),
-			},
-		}
-		ps.Status.Environments[i].Proposed = promoterv1alpha1.PromotionStrategyBranchStateStatus{
-			Dry:      ctp.Status.Proposed.Dry,
-			Hydrated: ctp.Status.Proposed.Hydrated,
-			CommitStatus: promoterv1alpha1.PromotionStrategyCommitStatus{
-				Phase: string(promoterv1alpha1.CommitPhasePending),
-				Sha:   string(promoterv1alpha1.CommitPhasePending),
-			},
-		}
+		ps.Status.Environments[i].Active = ctp.Status.Active
+		ps.Status.Environments[i].Proposed = ctp.Status.Proposed
 
 		// TODO: actually implement keeping track of healthy dry sha's
 		// We only want to keep the last 10 healthy dry sha's
 		if i < len(ps.Status.Environments) && len(ps.Status.Environments[i].LastHealthyDryShas) > 10 {
 			ps.Status.Environments[i].LastHealthyDryShas = ps.Status.Environments[i].LastHealthyDryShas[:10]
-		}
-
-		environment := ps.Spec.Environments[i]
-		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Active.CommitStatus, len(environment.ActiveCommitStatuses)+len(ps.Spec.ActiveCommitStatuses), ctp.Status.Active)
-		r.setEnvironmentCommitStatus(&ps.Status.Environments[i].Proposed.CommitStatus, len(environment.ProposedCommitStatuses)+len(ps.Spec.ProposedCommitStatuses), ctp.Status.Proposed)
-	}
-}
-
-// setEnvironmentCommitStatus sets the commit status for the environment based on the configured commit statuses.
-func (r *PromotionStrategyReconciler) setEnvironmentCommitStatus(targetStatus *promoterv1alpha1.PromotionStrategyCommitStatus, statusCount int, ctpEnvStatus promoterv1alpha1.CommitBranchState) {
-	// Default to pending phase
-	targetStatus.Phase = string(promoterv1alpha1.CommitPhasePending)
-	targetStatus.Sha = ctpEnvStatus.Hydrated.Sha
-
-	if statusCount != len(ctpEnvStatus.CommitStatuses) {
-		// Assume pending until counts match.
-		return
-	}
-
-	// Assume success unless a failure is found
-	targetStatus.Phase = string(promoterv1alpha1.CommitPhaseSuccess)
-
-	for _, status := range ctpEnvStatus.CommitStatuses {
-		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
-			targetStatus.Phase = status.Phase
-			return
 		}
 	}
 }
@@ -383,7 +343,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		previousEnvironmentStatus := ps.Status.Environments[i-1]
 		currentEnvironmentStatus := ps.Status.Environments[i]
 
-		activeChecksPassed := previousEnvironmentStatus.Active.CommitStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
+		activeChecksPassed := utils.AreCommitStatusesPassing(previousEnvironmentStatus.Active.CommitStatuses) &&
 			previousEnvironmentStatus.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha &&
 			(previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time) ||
 				previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: previousEnvironmentStatus.Active.Dry.CommitTime.Time}))

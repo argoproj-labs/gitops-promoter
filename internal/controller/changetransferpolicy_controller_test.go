@@ -64,7 +64,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
 			By("Reconciling the created resource")
 
@@ -92,7 +92,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("Adding another pending commit")
-			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
 			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
@@ -159,7 +159,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+			makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
@@ -234,7 +234,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
 			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
@@ -305,7 +305,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Adding a pending commit")
-			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
 			By("Reconciling the created resource")
 
@@ -333,7 +333,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("Adding another pending commit")
-			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
 			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
