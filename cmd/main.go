@@ -281,12 +281,11 @@ func addKubectlFlags(flags *pflag.FlagSet) clientcmd.ClientConfig {
 }
 
 func main() {
-
-	// root command runs controller
+	// Root command runs controller
 	var rootCmd = &cobra.Command{
 		Use:   "promoter",
 		Short: "GitOps Promoter",
-		Args:  cobra.NoArgs, //Handles unknown subcommand
+		Args:  cobra.NoArgs, // Handles unknown subcommand
 		Run: func(cmd *cobra.Command, args []string) {
 			runController()
 		},
