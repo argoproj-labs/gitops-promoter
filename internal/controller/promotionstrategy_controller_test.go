@@ -1447,6 +1447,17 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 			}, EventuallyTimeout).Should(Succeed())
 
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      promotionStrategy.Name,
+					Namespace: promotionStrategy.Namespace,
+				}, promotionStrategy)
+				g.Expect(err).To(Succeed())
+				g.Expect(len(promotionStrategy.Status.Environments) > 0).To(BeTrue())
+				g.Expect(len(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses) > 0).To(BeTrue())
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
+			}, EventuallyTimeout).Should(Succeed())
+
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
 
