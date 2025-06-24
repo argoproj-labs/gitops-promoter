@@ -713,11 +713,12 @@ func createKubeConfig(cfg *rest.Config) ([]byte, error) {
 		},
 		CurrentContext: name,
 	}
-	kubeconfigData, err := clientcmd.Write(apiConfig)
+
+	data, err := clientcmd.Write(apiConfig)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to write kubeconfig: %w", err)
 	}
-	return kubeconfigData, nil
+	return data, nil
 }
 
 func createKubeconfigSecret(ctx context.Context, name string, namespace string, cfg *rest.Config, cl client.Client) error {
@@ -738,5 +739,8 @@ func createKubeconfigSecret(ctx context.Context, name string, namespace string, 
 	secret.Data = map[string][]byte{
 		kubeconfigSecretKey: kubeconfigData,
 	}
-	return cl.Create(ctx, secret)
+	if err := cl.Create(ctx, secret); err != nil {
+		return fmt.Errorf("failed to create kubeconfig secret %s/%s: %w", namespace, name, err)
+	}
+	return nil
 }
