@@ -313,6 +313,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:   status.Key,
 				Phase: string(csList.Items[0].Status.Phase),
+				Url:   csList.Items[0].Spec.Url,
 			})
 			found = true
 			phase = csList.Items[0].Status.Phase
@@ -342,6 +343,18 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			"toManyMatchingSha", tooManyMatchingShas,
 			"foundCount", len(csList.Items))
 	}
+
+	// Keep the URL from previous reconciliation where the phase was a success, if the commit status was not found, likely due to a sha mismatch.
+	// This is to ensure that the URL is not lost when the commit status is not found in the current reconciliation.
+	// We do not want to solve this with the code below please do no uncomment it. A better solution would be to come up with
+	// a standard that CommitStatus managers can use to informer the CTPs the URLs for the commit statuses for each environment.
+	// for _, ctpStatusState := range targetCommitBranchState.CommitStatuses { // nolint:gocritic
+	//	for i, calculatedCSState := range commitStatusesState {
+	//		if calculatedCSState.Key == ctpStatusState.Key && ctpStatusState.Url != "" {
+	//			commitStatusesState[i].Url = ctpStatusState.Url
+	//		}
+	//	}
+	//}
 	targetCommitBranchState.CommitStatuses = commitStatusesState
 
 	if tooManyMatchingShas {

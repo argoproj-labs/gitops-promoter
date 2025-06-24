@@ -1317,6 +1317,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			proposedCommitStatusDevelopment.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "no-deployments-allowed",
 			}
+			proposedCommitStatusDevelopment.Spec.Url = "https://example.com/dev"
+
 			proposedCommitStatusStaging.Spec.Name = "no-deployments-allowed"
 			proposedCommitStatusStaging.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "no-deployments-allowed",
@@ -1415,6 +1417,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())
+
+				g.Expect(len(ctpDev.Status.Proposed.CommitStatuses)).To(Not(BeZero()))
+				g.Expect(ctpDev.Status.Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the development pull request has been merged and that staging, production pull request are still open")
@@ -1440,6 +1445,17 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      promotionStrategy.Name,
+					Namespace: promotionStrategy.Namespace,
+				}, promotionStrategy)
+				g.Expect(err).To(Succeed())
+				g.Expect(len(promotionStrategy.Status.Environments) > 0).To(BeTrue())
+				g.Expect(len(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses) > 0).To(BeTrue())
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
 			}, EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
