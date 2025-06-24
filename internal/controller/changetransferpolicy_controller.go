@@ -313,6 +313,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:   status.Key,
 				Phase: string(csList.Items[0].Status.Phase),
+				Url:   csList.Items[0].Spec.Url,
 			})
 			found = true
 			phase = csList.Items[0].Status.Phase
@@ -341,6 +342,15 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			"found", found,
 			"toManyMatchingSha", tooManyMatchingShas,
 			"foundCount", len(csList.Items))
+	}
+
+	// Keep the URL from previous reconciliation where the phase was a success, if the commit status was not found, likely due to a sha mismatch.
+	for _, ctpStatusState := range targetCommitBranchState.CommitStatuses {
+		for i, calculatedCSState := range commitStatusesState {
+			if calculatedCSState.Key == ctpStatusState.Key && ctpStatusState.Url != "" {
+				commitStatusesState[i].Url = ctpStatusState.Url
+			}
+		}
 	}
 	targetCommitBranchState.CommitStatuses = commitStatusesState
 

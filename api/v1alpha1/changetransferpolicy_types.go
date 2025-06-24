@@ -66,6 +66,9 @@ type ChangeRequestPolicyCommitStatusPhase struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum:=pending;success;failure
 	Phase string `json:"phase"`
+
+	// Url is the URL of the commit status
+	Url string `json:"url,omitempty"`
 }
 
 type CommitBranchState struct {
