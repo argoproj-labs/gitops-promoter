@@ -1323,7 +1323,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			proposedCommitStatusStaging.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "no-deployments-allowed",
 			}
-			proposedCommitStatusStaging.Spec.Url = "https://example.com/staging"
 
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
