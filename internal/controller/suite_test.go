@@ -21,7 +21,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"log"
 	"math/rand"
 	"net/http"
@@ -42,6 +41,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"

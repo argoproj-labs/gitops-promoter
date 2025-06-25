@@ -1911,16 +1911,16 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 
 func argocdApplications(namespace string, name string) (argocd.Application, argocd.Application, argocd.Application) {
 	environments := []string{"development", "staging", "production"}
-	var apps []argocd.Application
-	for _, environment := range environments {
-		nameAppDev := name + "-" + environment
-		argoCDAppDev := argocd.Application{
+	apps := make([]argocd.Application, len(environments))
+	for i, environment := range environments {
+		envAppName := name + "-" + environment
+		envApp := argocd.Application{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "Application",
 				APIVersion: "argoproj.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      nameAppDev,
+				Name:      envAppName,
 				Namespace: namespace,
 				Labels: map[string]string{
 					"app": name,
@@ -1946,7 +1946,7 @@ func argocdApplications(namespace string, name string) (argocd.Application, argo
 				},
 			},
 		}
-		apps = append(apps, argoCDAppDev)
+		apps[i] = envApp
 	}
 	return apps[0], apps[1], apps[2]
 }
