@@ -1758,7 +1758,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
-				g.Expect(err).To(HaveOccurred())
+				g.Expect(err).To(HaveOccurred(), "Staging PR should be closed since the dev app is healthy")
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))

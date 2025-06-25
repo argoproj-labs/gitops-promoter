@@ -6,7 +6,6 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // +versionName=v1alpha1
 
 // +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
 
 type Application struct {
 	Status            ApplicationStatus `json:"status,omitempty"`

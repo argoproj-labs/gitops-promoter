@@ -103,8 +103,10 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		LabelSelector: ls,
 	})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to list CommitStatus objects: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to list Applications: %w", err)
 	}
+
+	logger.V(4).Info("Found Applications", "appCount", len(apps.Items))
 
 	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, argoCDCommitStatus)
 	if err != nil {
