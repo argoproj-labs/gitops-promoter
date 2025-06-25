@@ -2,6 +2,9 @@ package argocd
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+// This lets us use argocd as the package name.
+// +versionName=v1alpha1
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 

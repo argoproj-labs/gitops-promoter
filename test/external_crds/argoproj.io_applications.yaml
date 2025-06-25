@@ -14,7 +14,7 @@ spec:
     singular: application
   scope: Namespaced
   versions:
-  - name: argocd
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         properties:
