@@ -204,9 +204,6 @@ func main() {
 		panic("unable to create GitRepository controller")
 	}
 
-	if err != nil {
-		panic("failed to parse proposed commit requeue duration")
-	}
 	if err = (&controller.ChangeTransferPolicyReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
