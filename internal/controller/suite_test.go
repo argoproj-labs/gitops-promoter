@@ -706,7 +706,6 @@ func createKubeconfigSecret(ctx context.Context, name string, namespace string, 
 }
 
 func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client) {
-
 	env := &envtest.Environment{
 		UseExistingCluster: ptr.To(false),
 		CRDDirectoryPaths: []string{

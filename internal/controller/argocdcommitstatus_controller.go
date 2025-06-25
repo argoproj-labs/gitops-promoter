@@ -106,7 +106,7 @@ type ArgoCDCommitStatusReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
 func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling ArgoCDCommitStatus", "cluster", req.ClusterName, "namespace", req.NamespacedName.Namespace, "name", req.NamespacedName.Name)
+	logger.Info("Reconciling ArgoCDCommitStatus", "cluster", req.ClusterName, "namespace", req.Namespace, "name", req.Name)
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 
 	// localClient is a client for the local cluster
@@ -143,9 +143,12 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 		clusterArgoCDApps := unstructured.UnstructuredList{}
 		clusterArgoCDApps.SetGroupVersionKind(gvk)
-		clusterClient.List(ctx, &clusterArgoCDApps, &client.ListOptions{
+		err = clusterClient.List(ctx, &clusterArgoCDApps, &client.ListOptions{
 			LabelSelector: ls,
 		})
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to list ArgoCDApplications: %w", err)
+		}
 
 		ulArgoCDApps.Items = append(ulArgoCDApps.Items, clusterArgoCDApps.Items...)
 	}
@@ -163,7 +166,6 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
-
 		gitOperation, err := git.NewGitOperations(ctx, localClient, gitAuthProvider, repositoryRef, &argoCDCommitStatus, targetBranch)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
