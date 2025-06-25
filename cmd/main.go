@@ -228,8 +228,9 @@ func main() {
 	}
 
 	if err = (&controller.ArgoCDCommitStatusReconciler{
-		Manager:     mcMgr,
-		SettingsMgr: settingsMgr,
+		Manager:            mcMgr,
+		SettingsMgr:        settingsMgr,
+		KubeConfigProvider: provider,
 	}).SetupWithManager(mcMgr); err != nil {
 		panic("unable to create ArgoCDCommitStatus controller")
 	}

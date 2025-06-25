@@ -48,6 +48,7 @@ import (
 	mchandler "sigs.k8s.io/multicluster-runtime/pkg/handler"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
+	"sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -84,8 +85,9 @@ type appRevisionKey struct {
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
-	Manager     mcmanager.Manager
-	SettingsMgr *settings.Manager
+	Manager            mcmanager.Manager
+	SettingsMgr        *settings.Manager
+	KubeConfigProvider *kubeconfig.Provider
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -104,21 +106,13 @@ type ArgoCDCommitStatusReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
 func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling ArgoCDCommitStatus")
+	logger.Info("Reconciling ArgoCDCommitStatus", "cluster", req.ClusterName, "namespace", req.NamespacedName.Namespace, "name", req.NamespacedName.Name)
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
-
-	cluster, err := r.Manager.GetCluster(ctx, req.ClusterName)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get cluster: %w", err)
-	}
-
-	// clusterClient is a client for the corresponding cluster
-	clusterClient := cluster.GetClient()
 
 	// localClient is a client for the local cluster
 	localClient := r.Manager.GetLocalManager().GetClient()
 
-	err = localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
+	err := localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
 			logger.Info("ArgoCDCommitStatus not found")
@@ -136,12 +130,27 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
 	var ulArgoCDApps unstructured.UnstructuredList
 	ulArgoCDApps.SetGroupVersionKind(gvk)
-	err = clusterClient.List(ctx, &ulArgoCDApps, &client.ListOptions{
-		LabelSelector: ls,
-	})
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to list CommitStatus objects: %w", err)
+
+	// list clusters so we can query argocd applications from all clusters
+	clusters := r.KubeConfigProvider.ListClusters()
+	clusters = append(clusters, "") // add the local cluster
+	for _, clusterName := range clusters {
+		cluster, err := r.Manager.GetCluster(ctx, clusterName)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to get cluster: %w", err)
+		}
+		clusterClient := cluster.GetClient()
+
+		clusterArgoCDApps := unstructured.UnstructuredList{}
+		clusterArgoCDApps.SetGroupVersionKind(gvk)
+		clusterClient.List(ctx, &clusterArgoCDApps, &client.ListOptions{
+			LabelSelector: ls,
+		})
+
+		ulArgoCDApps.Items = append(ulArgoCDApps.Items, clusterArgoCDApps.Items...)
 	}
+
+	logger.Info("Found ArgoCD applications", "count", len(ulArgoCDApps.Items), "cluster", req.ClusterName)
 
 	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, localClient, argoCDCommitStatus)
 	if err != nil {
@@ -154,6 +163,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
+
 		gitOperation, err := git.NewGitOperations(ctx, localClient, gitAuthProvider, repositoryRef, &argoCDCommitStatus, targetBranch)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)

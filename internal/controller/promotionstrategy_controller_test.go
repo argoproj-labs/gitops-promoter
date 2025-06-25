@@ -1640,9 +1640,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, &argocdCommitStatus)).To(Succeed())
 			Expect(k8sClient.Create(ctx, &argoCDAppDev)).To(Succeed())
 			Expect(k8sClient.Create(ctx, &argoCDAppStaging)).To(Succeed())
-
-			// Create the prod ArgoCD application in the other cluster
-			Expect(k8sClient2.Create(ctx, &argoCDAppProduction)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
 
 			By("Checking that the CommitStatus for each environment is created from ArgoCDCommitStatus")
 
@@ -1804,7 +1802,214 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argoCDAppDev)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argoCDAppStaging)).To(Succeed())
-			Expect(k8sClient2.Delete(ctx, &argoCDAppProduction)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &argoCDAppProduction)).To(Succeed())
+		})
+
+		It("should successfully reconcile the resource across clusters", func() {
+			// Skip("Skipping test because of flakiness")
+			By("Creating the resource")
+			plainName := "mc-promo-strategy-with-active-commit-status-argocdcommitstatus"
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, plainName, "default")
+			setupInitialTestGitRepoOnServer(name, name)
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{
+					Key: argocdCSLabel,
+				},
+			}
+
+			argocdCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: namespace,
+				},
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: promotionStrategy.Name,
+					},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": plainName},
+					},
+				},
+			}
+
+			argoCDAppDev, argoCDAppStaging, argoCDAppProduction := argocdApplications(namespace, plainName)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &argocdCommitStatus)).To(Succeed())
+			Expect(k8sClientDev.Create(ctx, &argoCDAppDev)).To(Succeed())
+			Expect(k8sClientStaging.Create(ctx, &argoCDAppStaging)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
+
+			By("Checking that the CommitStatus for each environment is created from ArgoCDCommitStatus")
+
+			// Expect(err).To(Succeed())
+			for _, environment := range promotionStrategy.Spec.Environments {
+				commitStatus := promoterv1alpha1.CommitStatus{}
+				commitStatusName := environment.Branch + "/health"
+				resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argocdCommitStatus.Name))
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      resourceName,
+						Namespace: argoCDAppDev.GetNamespace(),
+					}, &commitStatus)
+					g.Expect(err).To(Succeed())
+				}, EventuallyTimeout).Should(Succeed())
+			}
+
+			// We should now get PRs created for the ChangeTransferPolicies
+			// Check that ProposedCommit are created
+			ctpDev := promoterv1alpha1.ChangeTransferPolicy{}
+			ctpStaging := promoterv1alpha1.ChangeTransferPolicy{}
+			ctpProd := promoterv1alpha1.ChangeTransferPolicy{}
+
+			By("Checking that all the ChangeTransferPolicies and PRs are created and in their proper state")
+			Eventually(func(g Gomega) {
+				// Make sure CTP's are created
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch))))
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch))))
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch))))
+			}, EventuallyTimeout).Should(Succeed())
+
+			By("Adding a pending commit")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+			simulateWebhook(ctx, k8sClient, &ctpDev)
+			simulateWebhook(ctx, k8sClient, &ctpStaging)
+			simulateWebhook(ctx, k8sClient, &ctpProd)
+
+			pullRequestDev := promoterv1alpha1.PullRequest{}
+			pullRequestStaging := promoterv1alpha1.PullRequest{}
+			pullRequestProd := promoterv1alpha1.PullRequest{}
+			Eventually(func(g Gomega) {
+				// Dev PR should be closed because it is the lowest level environment
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestDev)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(Succeed())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
+
+			By("Updating the development Argo CD application to synced and health we should close staging PR")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				err = unstructured.SetNestedField(argoCDAppDev.Object, string(argocd.SyncStatusCodeSynced), "status", "sync", "status")
+				Expect(err).To(Succeed())
+				err = unstructured.SetNestedField(argoCDAppDev.Object, string(argocd.HealthStatusHealthy), "status", "health", "status")
+				Expect(err).To(Succeed())
+				err = unstructured.SetNestedField(argoCDAppDev.Object, ctpDev.Status.Active.Hydrated.Sha, "status", "sync", "revision")
+				Expect(err).To(Succeed())
+				err = unstructured.SetNestedField(argoCDAppDev.Object, metav1.Time{Time: time.Now().Add(-(6 * time.Second))}.ToUnstructured(), "status", "health", "lastTransitionTime")
+				Expect(err).To(Succeed())
+				err = k8sClientDev.Update(ctx, &argoCDAppDev)
+				Expect(err).To(Succeed())
+
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
+
+			By("Updating the staging Argo CD application to synced and health we should close production PR")
+
+			timeDelay := time.Now().Add(10 * time.Second)
+			waitedForDelay := false
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+
+				err = unstructured.SetNestedField(argoCDAppStaging.Object, string(argocd.SyncStatusCodeSynced), "status", "sync", "status")
+				Expect(err).To(Succeed())
+				err = unstructured.SetNestedField(argoCDAppStaging.Object, string(argocd.HealthStatusHealthy), "status", "health", "status")
+				Expect(err).To(Succeed())
+				err = unstructured.SetNestedField(argoCDAppStaging.Object, ctpStaging.Status.Active.Hydrated.Sha, "status", "sync", "revision")
+				Expect(err).To(Succeed())
+				if time.Now().After(timeDelay) {
+					err = unstructured.SetNestedField(argoCDAppStaging.Object, metav1.Time{Time: time.Now().Add(-(6 * time.Second))}.ToUnstructured(), "status", "health", "lastTransitionTime")
+					Expect(err).To(Succeed())
+					waitedForDelay = true
+				} else {
+					err = unstructured.SetNestedField(argoCDAppStaging.Object, metav1.Time{Time: time.Now()}.ToUnstructured(), "status", "health", "lastTransitionTime")
+					Expect(err).To(Succeed())
+				}
+				err = k8sClientStaging.Update(ctx, &argoCDAppStaging)
+				Expect(err).To(Succeed())
+
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, EventuallyTimeout).Should(Succeed())
+			Expect(waitedForDelay).To(BeTrue())
+
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
+			Expect(k8sClientDev.Delete(ctx, &argoCDAppDev)).To(Succeed())
+			Expect(k8sClientStaging.Delete(ctx, &argoCDAppStaging)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &argoCDAppProduction)).To(Succeed())
 		})
 	})
 })
