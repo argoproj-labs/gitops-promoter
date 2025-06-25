@@ -265,7 +265,11 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 	return func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
 		var application argocd.Application
 		if err := c.Get(ctx, client.ObjectKey{Namespace: argoCDApplication.GetNamespace(), Name: argoCDApplication.GetName()}, &application, &client.GetOptions{}); err != nil {
-			log.FromContext(ctx).Error(err, "failed to get Application")
+			if k8s_errors.IsNotFound(err) {
+				log.FromContext(ctx).V(4).Info("Application not found", "application", argoCDApplication.GetName(), "app-namespace", argoCDApplication.GetNamespace())
+				return nil
+			}
+			log.FromContext(ctx).Error(err, "failed to get Application", "application", argoCDApplication.GetName(), "app-namespace", argoCDApplication.GetNamespace())
 			return nil
 		}
 
