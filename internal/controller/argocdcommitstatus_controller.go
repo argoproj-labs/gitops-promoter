@@ -46,22 +46,14 @@ import (
 
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-var gvk = schema.GroupVersionKind{
-	Group:   "argoproj.io",
-	Version: "v1alpha1",
-	Kind:    "Application",
-}
-
 type aggregate struct {
-	application  *argocd.ArgoCDApplication
+	application  *argocd.Application
 	commitStatus *promoterv1alpha1.CommitStatus
 }
 
@@ -106,23 +98,24 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to parse label selector: %w", err)
 	}
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
-	var ulArgoCDApps unstructured.UnstructuredList
-	ulArgoCDApps.SetGroupVersionKind(gvk)
-	err = r.List(ctx, &ulArgoCDApps, &client.ListOptions{
+	var apps argocd.ApplicationList
+	err = r.List(ctx, &apps, &client.ListOptions{
 		LabelSelector: ls,
 	})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to list CommitStatus objects: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to list Applications: %w", err)
 	}
+
+	logger.V(4).Info("Found Applications", "appCount", len(apps.Items))
 
 	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, argoCDCommitStatus)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider: %w", err)
 	}
 
-	groupedArgoCDApps, err := r.groupArgoCDApplicationsWithPhase(&argoCDCommitStatus, ulArgoCDApps)
+	groupedArgoCDApps, err := r.groupArgoCDApplicationsWithPhase(&argoCDCommitStatus, apps)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDApplication: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get Application: %w", err)
 	}
 
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
@@ -162,18 +155,12 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 // groupArgoCDApplicationsWithPhase returns a map. The key is a branch name. The value is a list of apps configured for that target branch, along with the commit status for that one app.
 // As a side-effect, this function updates argoCDCommitStatus to represent the aggregate status
 // of all matching apps.
-func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, ulAppList unstructured.UnstructuredList) (map[string][]*aggregate, error) {
+func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps argocd.ApplicationList) (map[string][]*aggregate, error) {
 	aggregates := map[string][]*aggregate{}
 	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
 	repo := ""
 
-	for _, ulApp := range ulAppList.Items {
-		var application argocd.ArgoCDApplication
-		err := runtime.DefaultUnstructuredConverter.FromUnstructured(ulApp.Object, &application)
-		if err != nil {
-			return map[string][]*aggregate{}, fmt.Errorf("failed to cast unstructured object to typed object: %w", err)
-		}
-
+	for _, application := range apps.Items {
 		if application.Spec.SourceHydrator == nil {
 			return map[string][]*aggregate{}, fmt.Errorf("application %s/%s does not have a SourceHydrator configured", application.GetNamespace(), application.GetName())
 		}
@@ -276,17 +263,9 @@ var (
 
 func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
 	return func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
-		un := &unstructured.Unstructured{}
-		un.SetGroupVersionKind(gvk)
-
-		if err := c.Get(ctx, client.ObjectKeyFromObject(argoCDApplication), un, &client.GetOptions{}); err != nil {
-			log.FromContext(ctx).Error(err, "failed to get ArgoCDApplication")
-			return nil
-		}
-
-		var application argocd.ArgoCDApplication
-		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.Object, &application); err != nil {
-			log.FromContext(ctx).Error(err, "failed to convert unstructured object to typed object")
+		var application argocd.Application
+		if err := c.Get(ctx, client.ObjectKey{Namespace: argoCDApplication.GetNamespace(), Name: argoCDApplication.GetName()}, &application, &client.GetOptions{}); err != nil {
+			log.FromContext(ctx).Error(err, "failed to get Application")
 			return nil
 		}
 
@@ -318,7 +297,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 			if err != nil {
 				log.FromContext(ctx).Error(err, "failed to parse label selector")
 			}
-			if err == nil && selector.Matches(fields.Set(un.GetLabels())) {
+			if err == nil && selector.Matches(fields.Set(application.GetLabels())) {
 				log.FromContext(ctx).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
 					"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
 					"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
@@ -337,12 +316,9 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	var ul unstructured.Unstructured
-	ul.SetGroupVersionKind(gvk)
-
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{}).
-		Watches(&ul, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
+		Watches(&argocd.Application{}, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)

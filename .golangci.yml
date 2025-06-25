@@ -19,6 +19,7 @@ linters:
     - goconst
     - gocritic
     - gocyclo
+    - govet
     - lll
     - loggercheck
     - makezero
@@ -48,6 +49,9 @@ linters:
       disabled-checks:
         - assignOp
         - ifElseChain
+    govet:
+      enable:
+        - fieldalignment
   exclusions:
     rules:
       - linters:
@@ -59,6 +63,10 @@ linters:
       - linters:
           - dupl
         path: .*_test.go
+      # Disable govet for API types, because fieldalignment will fail. Maybe we can clean that up in the future.
+      - linters:
+          - govet
+        path: api/.*
     paths:
       - third_party$
       - builtin$
