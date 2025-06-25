@@ -66,13 +66,13 @@ const (
 
 // +kubebuilder:object:root=true
 
-// ArgoCDApplicationList contains a list of ArgoCDApplications.
-type ArgoCDApplicationList struct {
+// ApplicationList contains a list of ArgoCDApplications.
+type ApplicationList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Application `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Application{}, &ArgoCDApplicationList{})
+	SchemeBuilder.Register(&Application{}, &ApplicationList{})
 }
