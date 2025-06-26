@@ -21,8 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,7 +28,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/fields"
 
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/cespare/xxhash/v2"
