@@ -129,7 +129,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		resolvedSha, ok := resolvedShas[targetBranch]
 		if !ok {
-			return ctrl.Result{}, fmt.Errorf("failed to resolve target branch '%s': %w", targetBranch, err)
+			return ctrl.Result{}, fmt.Errorf("failed to resolve target branch %q: %w", targetBranch, err)
 		}
 		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha, mostRecentLastTransitionTime)
 
@@ -160,7 +160,7 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShaForBranch(ctx context.Context, 
 	}
 
 	var mu sync.Mutex
-	var g errgroup.Group
+	g, ctx := errgroup.WithContext(ctx)
 	headShasByTargetBranch := make(map[string]string)
 
 	for targetBranch := range targetBranches {
