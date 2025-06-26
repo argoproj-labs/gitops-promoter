@@ -28,7 +28,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/fields"
 
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/cespare/xxhash/v2"
@@ -321,7 +323,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 // SetupWithManager sets up the controller with the Manager.
 func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.ArgoCDCommitStatus{}).
+		For(&promoterv1alpha1.ArgoCDCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&argocd.Application{}, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
 		Complete(r)
 	if err != nil {
