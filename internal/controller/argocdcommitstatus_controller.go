@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -52,9 +53,6 @@ import (
 
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -73,7 +71,7 @@ var (
 )
 
 type aggregate struct {
-	application  *argocd.ArgoCDApplication
+	application  *argocd.Application
 	commitStatus *promoterv1alpha1.CommitStatus
 }
 
@@ -128,8 +126,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to parse label selector: %w", err)
 	}
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
-	var ulArgoCDApps unstructured.UnstructuredList
-	ulArgoCDApps.SetGroupVersionKind(gvk)
+	var apps argocd.ApplicationList
 
 	// list clusters so we can query argocd applications from all clusters
 	clusters := r.KubeConfigProvider.ListClusters()
@@ -141,8 +138,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		}
 		clusterClient := cluster.GetClient()
 
-		clusterArgoCDApps := unstructured.UnstructuredList{}
-		clusterArgoCDApps.SetGroupVersionKind(gvk)
+		clusterArgoCDApps := argocd.ApplicationList{}
 		err = clusterClient.List(ctx, &clusterArgoCDApps, &client.ListOptions{
 			LabelSelector: ls,
 		})
@@ -150,19 +146,19 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 			return ctrl.Result{}, fmt.Errorf("failed to list ArgoCDApplications: %w", err)
 		}
 
-		ulArgoCDApps.Items = append(ulArgoCDApps.Items, clusterArgoCDApps.Items...)
+		apps.Items = append(apps.Items, clusterArgoCDApps.Items...)
 	}
 
-	logger.Info("Found ArgoCD applications", "count", len(ulArgoCDApps.Items), "cluster", req.ClusterName)
+	logger.V(4).Info("Found Applications", "appCount", len(apps.Items))
 
 	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, localClient, argoCDCommitStatus)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider: %w", err)
 	}
 
-	groupedArgoCDApps, err := r.groupArgoCDApplicationsWithPhase(&argoCDCommitStatus, ulArgoCDApps)
+	groupedArgoCDApps, err := r.groupArgoCDApplicationsWithPhase(&argoCDCommitStatus, apps)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDApplication: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get Application: %w", err)
 	}
 
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
@@ -202,18 +198,12 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 // groupArgoCDApplicationsWithPhase returns a map. The key is a branch name. The value is a list of apps configured for that target branch, along with the commit status for that one app.
 // As a side-effect, this function updates argoCDCommitStatus to represent the aggregate status
 // of all matching apps.
-func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, ulAppList unstructured.UnstructuredList) (map[string][]*aggregate, error) {
+func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps argocd.ApplicationList) (map[string][]*aggregate, error) {
 	aggregates := map[string][]*aggregate{}
 	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
 	repo := ""
 
-	for _, ulApp := range ulAppList.Items {
-		var application argocd.ArgoCDApplication
-		err := runtime.DefaultUnstructuredConverter.FromUnstructured(ulApp.Object, &application)
-		if err != nil {
-			return map[string][]*aggregate{}, fmt.Errorf("failed to cast unstructured object to typed object: %w", err)
-		}
-
+	for _, application := range apps.Items {
 		if application.Spec.SourceHydrator == nil {
 			return map[string][]*aggregate{}, fmt.Errorf("application %s/%s does not have a SourceHydrator configured", application.GetNamespace(), application.GetName())
 		}
@@ -311,18 +301,11 @@ func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregate
 func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
 	return func(clusterName string, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
 		return handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, argoCDApplication client.Object) []mcreconcile.Request {
-			un := &unstructured.Unstructured{}
-			un.SetGroupVersionKind(gvk)
+			application := &argocd.Application{}
 
 			// fetch the ArgoCDApplication from the cluster
-			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), un, &client.GetOptions{}); err != nil {
+			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
 				log.FromContext(ctx).Error(err, "failed to get ArgoCDApplication")
-				return nil
-			}
-
-			var application argocd.ArgoCDApplication
-			if err := runtime.DefaultUnstructuredConverter.FromUnstructured(un.Object, &application); err != nil {
-				log.FromContext(ctx).Error(err, "failed to convert unstructured object to typed object")
 				return nil
 			}
 
@@ -360,7 +343,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 				if err != nil {
 					log.FromContext(ctx).Error(err, "failed to parse label selector")
 				}
-				if err == nil && selector.Matches(fields.Set(un.GetLabels())) {
+				if err == nil && selector.Matches(fields.Set(application.GetLabels())) {
 					log.FromContext(ctx).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
 						"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
 						"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
@@ -383,15 +366,13 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager) error {
-	var ul unstructured.Unstructured
-	ul.SetGroupVersionKind(gvk)
-
+	app := &argocd.Application{}
 	err := mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
 		).
-		Watches(&ul, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
+		Watches(app, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(true),
 		).
