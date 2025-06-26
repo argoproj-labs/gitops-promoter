@@ -33,6 +33,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -818,6 +819,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			_, err = runGitCmd(gitPath, "push", "-u", "origin", ctpDev.Spec.ActiveBranch)
 			Expect(err).NotTo(HaveOccurred())
+
+			By("Checking that there is no previous-environment commit status created, since no active checks are configured")
+			csList := promoterv1alpha1.CommitStatusList{}
+			err = k8sClient.List(ctx, &csList, client.MatchingLabels{
+				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(csList.Items)).To(Equal(0))
 
 			By("Checking that the pull request for the development environment is created")
 			Eventually(func(g Gomega) {
