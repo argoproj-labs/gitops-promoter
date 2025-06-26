@@ -335,7 +335,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			continue
 		}
 
-		if len(ps.Spec.ActiveCommitStatuses) == 0 && len(ps.Spec.Environments[i-1].ActiveCommitStatuses) != 0 {
+		if len(ps.Spec.ActiveCommitStatuses) == 0 && len(ps.Spec.Environments[i-1].ActiveCommitStatuses) == 0 {
 			// Skip, there aren't any active commit statuses configured for the PromotionStrategy or the previous environment.
 			continue
 		}

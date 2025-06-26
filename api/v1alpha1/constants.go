@@ -4,20 +4,8 @@ package v1alpha1
 // PromotionStrategy CR
 const CommitStatusLabel = "promoter.argoproj.io/commit-status"
 
-// CommitStatusCopyLabel is the label used to identify copied commit statuses (true or false)
-const CommitStatusCopyLabel = "promoter.argoproj.io/commit-status-copy"
-
 // PreviousEnvProposedCommitPrefixNameLabel is the prefix name for copied proposed commits
 const PreviousEnvProposedCommitPrefixNameLabel = "promoter-previous-env-"
-
-// CopiedCommitStatusFromLabel is the commit status that we were copied from
-const CopiedCommitStatusFromLabel = "promoter.argoproj.io/commit-status-copy-from"
-
-// CommmitStatusFromShaLabel is the commit status hydrated sha that we were copied from
-const CommmitStatusFromShaLabel = "promoter.argoproj.io/commit-status-copy-from-sha"
-
-// CommitStatusFromBranchLabel the branch/environment that we were copied from
-const CommitStatusFromBranchLabel = "promoter.argoproj.io/commit-status-copy-from-branch"
 
 // PromotionStrategyLabel the promotion strategy which the proposed commit is associated with
 const PromotionStrategyLabel = "promoter.argoproj.io/promotion-strategy"
