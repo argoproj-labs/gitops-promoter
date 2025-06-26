@@ -35,8 +35,14 @@ import (
 	"time"
 
 	"go.uber.org/zap/zapcore"
+
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/utils/ptr"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -44,20 +50,18 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-
 	ctrl "sigs.k8s.io/controller-runtime"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"github.com/sosedoff/gitkit"
-
-	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"github.com/sosedoff/gitkit"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
@@ -67,19 +71,28 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
-	cfg            *rest.Config
-	k8sClient      client.Client
-	testEnv        *envtest.Environment
-	gitServer      *http.Server
-	gitStoragePath string
-	cancel         context.CancelFunc
-	ctx            context.Context
-	gitServerPort  string
+	cfg              *rest.Config
+	cfgDev           *rest.Config
+	cfgStaging       *rest.Config
+	k8sClient        client.Client
+	k8sClientDev     client.Client
+	k8sClientStaging client.Client
+	testEnv          *envtest.Environment
+	testEnvDev       *envtest.Environment
+	testEnvStaging   *envtest.Environment
+	gitServer        *http.Server
+	gitStoragePath   string
+	cancel           context.CancelFunc
+	ctx              context.Context
+	gitServerPort    string
 )
 
 const (
-	EventuallyTimeout   = 90 * time.Second
-	WebhookReceiverPort = 3333
+	EventuallyTimeout         = 90 * time.Second
+	WebhookReceiverPort       = 3333
+	kubeconfigSecretNamespace = "default"
+	kubeconfigSecretLabel     = "kubeconfig"
+	kubeconfigSecretKey       = "kubeconfig"
 )
 
 func TestControllers(t *testing.T) {
@@ -100,6 +113,14 @@ func TestControllers(t *testing.T) {
 
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true), zap.Level(zapcore.Level(-4))))
+	var err error
+
+	//+kubebuilder:scaffold:scheme
+	err = promoterv1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = argocd.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 
 	By("setting up git server")
 	var errMkDir error
@@ -109,53 +130,46 @@ var _ = BeforeSuite(func() {
 	}
 	gitServerPort, gitServer = startGitServer(gitStoragePath)
 
-	By("bootstrapping test environment")
-	useExistingCluster := false
-	testEnv = &envtest.Environment{
-		UseExistingCluster: &useExistingCluster,
-		CRDDirectoryPaths: []string{
-			filepath.Join("..", "..", "config", "crd", "bases"),
-			filepath.Join("..", "..", "test", "external_crds"),
-		},
-		ErrorIfCRDPathMissing:    true,
-		ControlPlaneStopTimeout:  1 * time.Minute,
-		AttachControlPlaneOutput: false,
+	By("bootstrapping test environments")
+	// Create a local test environment to test the single cluster functionality
+	testEnv, cfg, k8sClient = createAndStartTestEnv()
 
-		// The BinaryAssetsDirectory is only required if you want to run the tests directly
-		// without call the makefile target test. If not informed it will look for the
-		// default path defined in controller-runtime which is /usr/local/kubebuilder/.
-		// Note that you must have the required binaries setup under the bin directory to perform
-		// the tests directly. When we run make test it will be setup and used automatically.
-		BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
-			fmt.Sprintf("1.31.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
-	}
+	// Create a dev and staging test environment to test the multi cluster functionality
+	// for watching argocd applications in the other clusters
+	testEnvDev, cfgDev, k8sClientDev = createAndStartTestEnv()
+	testEnvStaging, cfgStaging, k8sClientStaging = createAndStartTestEnv()
 
-	var err error
-	// cfg is defined in this file globally.
-	cfg, err = testEnv.Start()
-	Expect(err).NotTo(HaveOccurred())
-	Expect(cfg).NotTo(BeNil())
-
-	err = promoterv1alpha1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-	err = argocd.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-
-	//+kubebuilder:scaffold:scheme
-
-	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
-	Expect(err).NotTo(HaveOccurred())
-	Expect(k8sClient).NotTo(BeNil())
+	// kubeconfig provider
+	kubeconfigProvider := kubeconfigprovider.New(kubeconfigprovider.Options{
+		Namespace:             kubeconfigSecretNamespace,
+		KubeconfigSecretLabel: kubeconfigSecretLabel,
+		KubeconfigSecretKey:   kubeconfigSecretKey,
+	})
 
 	//nolint:fatcontext
 	ctx, cancel = context.WithCancel(context.Background())
-	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
+
+	// Create kubeconfig secret for dev and staging test environments in the local cluster
+	// Secrets used by the kubeconfig provider controller to access the other clusters
+	err = createKubeconfigSecret(ctx, "testenv-dev", kubeconfigSecretNamespace, cfgDev, k8sClient)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = createKubeconfigSecret(ctx, "testenv-staging", kubeconfigSecretNamespace, cfgStaging, k8sClient)
+	Expect(err).NotTo(HaveOccurred())
+
+	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
 		Scheme: scheme.Scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
 	})
 	Expect(err).ToNot(HaveOccurred())
+
+	// Setup kubeconfig provider controller with manager
+	err = kubeconfigProvider.SetupWithManager(ctx, multiClusterManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	k8sManager := multiClusterManager.GetLocalManager()
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), settings.ManagerConfig{
 		ControllerNamespace: "default",
@@ -215,11 +229,11 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ArgoCDCommitStatusReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		SettingsMgr: settingsMgr,
+		Manager:            multiClusterManager,
+		SettingsMgr:        settingsMgr,
+		KubeConfigProvider: kubeconfigProvider,
 		// Recorder: k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
-	}).SetupWithManager(k8sManager)
+	}).SetupWithManager(multiClusterManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	webhookReceiverPort := WebhookReceiverPort + GinkgoParallelProcess()
@@ -250,15 +264,23 @@ var _ = BeforeSuite(func() {
 
 	go func() {
 		defer GinkgoRecover()
-		err = k8sManager.Start(ctx)
+		err = multiClusterManager.Start(ctx)
 		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
 	}()
+
+	Eventually(kubeconfigProvider.ListClusters, EventuallyTimeout).Should(HaveLen(2))
 })
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
-	cancel()
+	cancel() // stops manager and anything else using the context
 	err := testEnv.Stop()
+	Expect(err).NotTo(HaveOccurred())
+
+	err = testEnvDev.Stop()
+	Expect(err).NotTo(HaveOccurred())
+
+	err = testEnvStaging.Stop()
 	Expect(err).NotTo(HaveOccurred())
 
 	_ = gitServer.Shutdown(context.Background())
@@ -629,4 +651,91 @@ func simulateWebhook(ctx context.Context, k8sClient client.Client, ctp *promoter
 		err = k8sClient.Update(ctx, ctp)
 		g.Expect(err).To(Succeed())
 	}, EventuallyTimeout).Should(Succeed())
+}
+
+func createKubeConfig(cfg *rest.Config) ([]byte, error) {
+	name := "cluster"
+	apiConfig := api.Config{
+		Clusters: map[string]*api.Cluster{
+			name: {
+				Server:                   cfg.Host,
+				CertificateAuthorityData: cfg.CAData,
+			},
+		},
+		AuthInfos: map[string]*api.AuthInfo{
+			name: {
+				ClientCertificateData: cfg.CertData,
+				ClientKeyData:         cfg.KeyData,
+				Token:                 cfg.BearerToken,
+			},
+		},
+		Contexts: map[string]*api.Context{
+			name: {
+				Cluster:  name,
+				AuthInfo: name,
+			},
+		},
+		CurrentContext: name,
+	}
+
+	data, err := clientcmd.Write(apiConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write kubeconfig: %w", err)
+	}
+	return data, nil
+}
+
+func createKubeconfigSecret(ctx context.Context, name string, namespace string, cfg *rest.Config, cl client.Client) error {
+	kubeconfigData, err := createKubeConfig(cfg)
+	if err != nil {
+		return err
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				kubeconfigSecretLabel: "true",
+			},
+		},
+	}
+	secret.Data = map[string][]byte{
+		kubeconfigSecretKey: kubeconfigData,
+	}
+	if err := cl.Create(ctx, secret); err != nil {
+		return fmt.Errorf("failed to create kubeconfig secret %s/%s: %w", namespace, name, err)
+	}
+	return nil
+}
+
+func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client) {
+	env := &envtest.Environment{
+		UseExistingCluster: ptr.To(false),
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "test", "external_crds"),
+		},
+		ErrorIfCRDPathMissing:    true,
+		ControlPlaneStopTimeout:  1 * time.Minute,
+		AttachControlPlaneOutput: false,
+
+		// The BinaryAssetsDirectory is only required if you want to run the tests directly
+		// without call the makefile target test. If not informed it will look for the
+		// default path defined in controller-runtime which is /usr/local/kubebuilder/.
+		// Note that you must have the required binaries setup under the bin directory to perform
+		// the tests directly. When we run make test it will be setup and used automatically.
+		BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
+			fmt.Sprintf("1.31.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
+	}
+
+	cfg, err := env.Start()
+	Expect(err).NotTo(HaveOccurred())
+	Expect(cfg).NotTo(BeNil())
+
+	cl, err := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(cl).NotTo(BeNil())
+
+	return env, cfg, cl
 }
