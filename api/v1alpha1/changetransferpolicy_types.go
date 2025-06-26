@@ -115,6 +115,13 @@ type ChangeTransferPolicyStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	Proposed CommitBranchState `json:"proposed,omitempty"`
 	Active   CommitBranchState `json:"active,omitempty"`
+
+	// Conditions Represents the observations of the current state.
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 //+kubebuilder:object:root=true

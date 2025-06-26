@@ -62,6 +62,13 @@ type CommitStatusStatus struct {
 	// +kubebuilder:default:=pending
 	// +kubebuilder:validation:Enum:=pending;success;failure
 	Phase CommitStatusPhase `json:"phase"`
+
+	// Conditions Represents the observations of the current state.
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 //+kubebuilder:object:root=true

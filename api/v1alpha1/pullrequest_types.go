@@ -66,6 +66,13 @@ type PullRequestStatus struct {
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime the time the PR was created
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
+
+	// Conditions Represents the observations of the current state.
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 //+kubebuilder:object:root=true

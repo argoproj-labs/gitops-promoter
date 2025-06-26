@@ -107,6 +107,13 @@ type PromotionStrategyStatus struct {
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []EnvironmentStatus `json:"environments"`
+
+	// Conditions Represents the observations of the current state.
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 type EnvironmentStatus struct {
