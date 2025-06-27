@@ -234,11 +234,11 @@ type StatusConditionUpdater interface {
 	GetConditions() *[]metav1.Condition
 }
 
-// HandleReconciliationResultGeneric handles reconciliation results for any object with status conditions.
-func HandleReconciliationResultGeneric[T StatusConditionUpdater](
+// HandleReconciliationResult handles reconciliation results for any object with status conditions.
+func HandleReconciliationResult(
 	ctx context.Context,
 	startTime time.Time,
-	obj T,
+	obj StatusConditionUpdater,
 	logger logr.Logger,
 	client client.Client,
 	recorder record.EventRecorder,
