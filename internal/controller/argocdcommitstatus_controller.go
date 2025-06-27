@@ -20,6 +20,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
+	"maps"
 	"reflect"
 	"strconv"
 	"strings"
@@ -27,11 +29,14 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"golang.org/x/sync/errgroup"
 	"k8s.io/client-go/tools/record"
 
 	"k8s.io/apimachinery/pkg/fields"
 
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/cespare/xxhash/v2"
@@ -115,29 +120,23 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	logger.V(4).Info("Found Applications", "appCount", len(apps.Items))
 
-	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, argoCDCommitStatus)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider: %w", err)
-	}
-
 	groupedArgoCDApps, err := r.groupArgoCDApplicationsWithPhase(&argoCDCommitStatus, apps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get Application: %w", err)
 	}
 
+	resolvedShas, err := r.getHeadShaForBranch(ctx, argoCDCommitStatus, maps.Keys(groupedArgoCDApps))
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get head shas for target branches: %w", err)
+	}
+
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
-		gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, repositoryRef, &argoCDCommitStatus, targetBranch)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
-		}
-
-		resolvedSha, err := gitOperation.LsRemote(ctx, targetBranch)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranch, err)
-		}
-
 		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
 
+		resolvedSha, ok := resolvedShas[targetBranch]
+		if !ok {
+			return ctrl.Result{}, fmt.Errorf("failed to resolve target branch %q: %w", targetBranch, err)
+		}
 		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha, mostRecentLastTransitionTime)
 
 		err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
@@ -157,6 +156,43 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil // Timer for now :(
+}
+
+// getHeadShaForBranch returns a map. The key is a branch name. The value is the resolved head sha for that branch.
+func (r *ArgoCDCommitStatusReconciler) getHeadShaForBranch(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranches iter.Seq[string]) (map[string]string, error) {
+	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, argoCDCommitStatus)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get git auth provider: %w", err)
+	}
+
+	var mu sync.Mutex
+	g, ctx := errgroup.WithContext(ctx)
+	headShasByTargetBranch := make(map[string]string)
+
+	for targetBranch := range targetBranches {
+		// Do this in parallel since it's network-bound.
+		g.Go(func() error {
+			gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, repositoryRef, &argoCDCommitStatus, targetBranch)
+			if err != nil {
+				return fmt.Errorf("failed to initialize git client: %w", err)
+			}
+
+			resolvedSha, err := gitOperation.LsRemote(ctx, targetBranch)
+			if err != nil {
+				return fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranch, err)
+			}
+
+			mu.Lock()
+			headShasByTargetBranch[targetBranch] = resolvedSha
+			mu.Unlock()
+			return nil
+		})
+	}
+	if err = g.Wait(); err != nil {
+		return nil, fmt.Errorf("failed to get head shas for target branches: %w", err)
+	}
+
+	return headShasByTargetBranch, nil
 }
 
 // groupArgoCDApplicationsWithPhase returns a map. The key is a branch name. The value is a list of apps configured for that target branch, along with the commit status for that one app.
@@ -328,7 +364,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx con
 // SetupWithManager sets up the controller with the Manager.
 func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.ArgoCDCommitStatus{}).
+		For(&promoterv1alpha1.ArgoCDCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&argocd.Application{}, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
 		Complete(r)
 	if err != nil {
@@ -384,14 +420,18 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		if err != nil {
 			return fmt.Errorf("failed to create CommitStatus object: %w", err)
 		}
-	} else {
-		// Update
-		currentCommitStatus.Spec = desiredCommitStatus.Spec
-		err = r.Update(ctx, &currentCommitStatus)
-		logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "sha", sha, "phase", phase, "desc", desc)
-		if err != nil {
-			return fmt.Errorf("failed to update CommitStatus object: %w", err)
-		}
+	}
+
+	if currentCommitStatus.Spec == desiredCommitStatus.Spec {
+		logger.V(4).Info("ArgoCDCommitStatus is already in sync")
+		return nil
+	}
+
+	currentCommitStatus.Spec = desiredCommitStatus.Spec
+	err = r.Update(ctx, &currentCommitStatus)
+	logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "sha", sha, "phase", phase, "desc", desc)
+	if err != nil {
+		return fmt.Errorf("failed to update CommitStatus object: %w", err)
 	}
 
 	return nil
