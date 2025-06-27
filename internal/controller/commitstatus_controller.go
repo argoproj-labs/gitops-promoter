@@ -148,7 +148,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 
-	logger.Info("Reconciling CommitStatus End", "duration", time.Since(startTime))
 	return ctrl.Result{}, nil
 }
 
