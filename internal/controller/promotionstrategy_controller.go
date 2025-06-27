@@ -24,6 +24,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"gopkg.in/yaml.v3"
 
 	"k8s.io/client-go/util/retry"
@@ -62,13 +63,16 @@ type PromotionStrategyReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
-func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling PromotionStrategy")
 	startTime := time.Now()
 
 	var ps promoterv1alpha1.PromotionStrategy
-	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
+
+	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, &err, string(conditions.Ready))
+
+	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			logger.Info("PromotionStrategy not found")
@@ -102,8 +106,6 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
 	}
-
-	logger.Info("Reconciling PromotionStrategy End", "duration", time.Since(startTime))
 
 	requeueDuration, err := r.SettingsMgr.GetPromotionStrategyRequeueDuration(ctx)
 	if err != nil {

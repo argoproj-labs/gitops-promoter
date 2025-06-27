@@ -37,6 +37,17 @@ type ArgoCDCommitStatusStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	ApplicationsSelected []ApplicationsSelected `json:"applicationsSelected,omitempty"`
+
+	// Conditions Represents the observations of the current state.
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+func (cs *ArgoCDCommitStatus) GetConditions() *[]metav1.Condition {
+	return &cs.Status.Conditions
 }
 
 type ApplicationsSelected struct {

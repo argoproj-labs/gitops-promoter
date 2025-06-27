@@ -218,7 +218,7 @@ var _ = BeforeSuite(func() {
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
 		SettingsMgr: settingsMgr,
-		// Recorder: k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
+		Recorder:    k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
