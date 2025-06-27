@@ -24,6 +24,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"k8s.io/apimachinery/pkg/api/meta"
+
 	"gopkg.in/yaml.v3"
 
 	"k8s.io/client-go/util/retry"
@@ -62,13 +65,71 @@ type PromotionStrategyReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
-func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling PromotionStrategy")
 	startTime := time.Now()
 
 	var ps promoterv1alpha1.PromotionStrategy
-	err := r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
+
+	defer func() {
+		if ps.Name == "" && ps.Namespace == "" {
+			logger.V(4).Info("PromotionStrategy not found, skipping reconciliation")
+			return
+		}
+		logger.Info("Reconciling PromotionStrategy End", "duration", time.Since(startTime))
+		if err != nil {
+			logger.Error(err, "Reconciliation failed")
+			r.Recorder.Eventf(&promoterv1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      req.Name,
+					Namespace: req.Namespace,
+				},
+			}, "Warning", "ReconcileError", "Reconciliation failed: %v", err)
+
+			// Set the Ready condition to false if there was an error
+			condition := metav1.Condition{
+				Type:               string(conditions.PromotionStrategyReady),
+				Status:             metav1.ConditionFalse,
+				Reason:             string(conditions.ReconciliationError),
+				Message:            fmt.Sprintf("Reconciliation failed: %v", err),
+				ObservedGeneration: ps.Generation,
+			}
+			changed := meta.SetStatusCondition(&ps.Status.Conditions, condition)
+			if changed {
+				if updateErr := r.Status().Update(ctx, &ps); updateErr != nil {
+					logger.Error(updateErr, "Failed to update PromotionStrategy status with error condition")
+				}
+			}
+		} else {
+			logger.Info("Reconciliation succeeded")
+			r.Recorder.Eventf(&promoterv1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      req.Name,
+					Namespace: req.Namespace,
+				},
+			}, "Normal", "ReconcileSuccess", "Reconciliation succeeded")
+
+			// Set the Ready condition to true if reconciliation succeeded
+			condition := metav1.Condition{
+				Type:               string(conditions.PromotionStrategyReady),
+				Status:             metav1.ConditionTrue,
+				Reason:             string(conditions.ReconciliationSuccess),
+				Message:            "Reconciliation succeeded",
+				ObservedGeneration: ps.Generation,
+			}
+			changed := meta.SetStatusCondition(&ps.Status.Conditions, condition)
+			if changed {
+				if updateErr := r.Status().Update(ctx, &ps); updateErr != nil {
+					logger.Error(updateErr, "Failed to update PromotionStrategy status with success condition")
+					result = ctrl.Result{}
+					err = fmt.Errorf("failed to update PromotionStrategy status with success condition: %w", updateErr)
+				}
+			}
+		}
+	}()
+
+	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			logger.Info("PromotionStrategy not found")
@@ -93,6 +154,51 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
 	r.calculateStatus(&ps, ctps)
 
+	// clear the ps conditions before we start setting them
+	ps.Status.Conditions = []metav1.Condition{}
+	// Find the first non-ready ChangeTransferPolicy
+	var notReadyCTP *promoterv1alpha1.ChangeTransferPolicy
+	var notReadyCondition *metav1.Condition
+	for _, ctp := range ctps {
+		readyCondition := meta.FindStatusCondition(ctp.Status.Conditions, string(conditions.PromotionStrategyReady))
+		if readyCondition == nil || readyCondition.Status != metav1.ConditionTrue {
+			notReadyCTP = ctp
+			notReadyCondition = readyCondition
+			break
+		}
+	}
+
+	if notReadyCTP != nil {
+		// Set overall condition to not ready based on the first non-ready CTP
+		var message, reason string
+		if notReadyCondition == nil {
+			message = fmt.Sprintf("ChangeTransferPolicy %s has no Ready condition", notReadyCTP.Name)
+			reason = string(conditions.ChangeTransferPolicyReconciliationError)
+		} else {
+			message = notReadyCondition.Message
+			reason = notReadyCondition.Reason
+		}
+
+		condition := metav1.Condition{
+			Type:               string(conditions.PsChangeTransferPolicyReady),
+			Status:             metav1.ConditionFalse,
+			Reason:             reason,
+			Message:            message,
+			ObservedGeneration: ps.Generation,
+		}
+		meta.SetStatusCondition(&ps.Status.Conditions, condition)
+	} else {
+		// All CTPs are ready
+		condition := metav1.Condition{
+			Type:               string(conditions.PsChangeTransferPolicyReady),
+			Status:             metav1.ConditionTrue,
+			Reason:             string(conditions.ChangeTransferPolicyReconciliationSuccess),
+			Message:            "All ChangeTransferPolicies are ready",
+			ObservedGeneration: ps.Generation,
+		}
+		meta.SetStatusCondition(&ps.Status.Conditions, condition)
+	}
+
 	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to merge PRs: %w", err)
@@ -102,8 +208,6 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
 	}
-
-	logger.Info("Reconciling PromotionStrategy End", "duration", time.Since(startTime))
 
 	requeueDuration, err := r.SettingsMgr.GetPromotionStrategyRequeueDuration(ctx)
 	if err != nil {

@@ -23,6 +23,9 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"k8s.io/apimachinery/pkg/api/meta"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -74,13 +77,69 @@ type ChangeTransferPolicyReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
-func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling ChangeTransferPolicy")
 	startTime := time.Now()
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
-	err := r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
+
+	defer func() {
+		if ctp.Name == "" && ctp.Namespace == "" {
+			logger.V(4).Info("ChangeTransferPolicy not found, skipping reconciliation")
+			return
+		}
+		logger.Info("Reconciling ChangeTransferPolicy End", "duration", time.Since(startTime))
+		if err != nil {
+			logger.Error(err, "Reconciliation failed")
+			r.Recorder.Eventf(&promoterv1alpha1.ChangeTransferPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      req.Name,
+					Namespace: req.Namespace,
+				},
+			}, "Warning", "ReconcileError", "Reconciliation failed: %v", err)
+
+			// Set the Ready condition to false if there was an error
+			condition := metav1.Condition{
+				Type:    string(conditions.ChangeTransferPolicyReady),
+				Status:  metav1.ConditionFalse,
+				Reason:  string(conditions.ReconciliationError),
+				Message: fmt.Sprintf("Reconciliation failed: %v", err),
+			}
+			changed := meta.SetStatusCondition(&ctp.Status.Conditions, condition)
+			if changed {
+				if updateErr := r.Status().Update(ctx, &ctp); updateErr != nil {
+					logger.Error(updateErr, "Failed to update ChangeTransferPolicy status with error condition")
+				}
+			}
+		} else {
+			logger.Info("Reconciliation succeeded")
+			r.Recorder.Eventf(&promoterv1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      req.Name,
+					Namespace: req.Namespace,
+				},
+			}, "Normal", "ReconcileSuccess", "Reconciliation succeeded")
+
+			// Set the Ready condition to true if reconciliation succeeded
+			condition := metav1.Condition{
+				Type:    string(conditions.ChangeTransferPolicyReady),
+				Status:  metav1.ConditionTrue,
+				Reason:  string(conditions.ReconciliationSuccess),
+				Message: "Reconciliation succeeded",
+			}
+			changed := meta.SetStatusCondition(&ctp.Status.Conditions, condition)
+			if changed {
+				if updateErr := r.Status().Update(ctx, &ctp); updateErr != nil {
+					logger.Error(updateErr, "Failed to update ChangeTransferPolicy status with success condition")
+					result = ctrl.Result{}
+					err = fmt.Errorf("failed to update ChangeTransferPolicy status with success condition: %w", updateErr)
+				}
+			}
+		}
+	}()
+
+	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
 			logger.Info("ChangeTransferPolicy not found")
@@ -137,8 +196,6 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
 	}
-
-	logger.Info("Reconciling ChangeTransferPolicy End", "duration", time.Since(startTime))
 
 	requeueDuration, err := r.SettingsMgr.GetChangeTransferPolicyRequeueDuration(ctx)
 	if err != nil {
