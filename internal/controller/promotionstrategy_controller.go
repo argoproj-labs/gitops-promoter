@@ -25,8 +25,6 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
-	"k8s.io/apimachinery/pkg/api/meta"
-
 	"gopkg.in/yaml.v3"
 
 	"k8s.io/client-go/util/retry"
@@ -72,7 +70,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var ps promoterv1alpha1.PromotionStrategy
 
-	defer utils.HandleReconciliationResult(ctx, startTime, &ps, logger, r.Client, r.Recorder, &err, string(conditions.PromotionStrategyReady))
+	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, &err, string(conditions.PromotionStrategyReady))
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
@@ -98,51 +96,6 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
 	r.calculateStatus(&ps, ctps)
-
-	// clear the ps conditions before we start setting them
-	ps.Status.Conditions = []metav1.Condition{}
-	// Find the first non-ready ChangeTransferPolicy
-	var notReadyCTP *promoterv1alpha1.ChangeTransferPolicy
-	var notReadyCondition *metav1.Condition
-	for _, ctp := range ctps {
-		readyCondition := meta.FindStatusCondition(ctp.Status.Conditions, string(conditions.PromotionStrategyReady))
-		if readyCondition == nil || readyCondition.Status != metav1.ConditionTrue {
-			notReadyCTP = ctp
-			notReadyCondition = readyCondition
-			break
-		}
-	}
-
-	if notReadyCTP != nil {
-		// Set overall condition to not ready based on the first non-ready CTP
-		var message, reason string
-		if notReadyCondition == nil {
-			message = fmt.Sprintf("ChangeTransferPolicy %s has no Ready condition", notReadyCTP.Name)
-			reason = string(conditions.ChangeTransferPolicyReconciliationError)
-		} else {
-			message = notReadyCondition.Message
-			reason = notReadyCondition.Reason
-		}
-
-		condition := metav1.Condition{
-			Type:               string(conditions.PsChangeTransferPolicyReady),
-			Status:             metav1.ConditionFalse,
-			Reason:             reason,
-			Message:            message,
-			ObservedGeneration: ps.Generation,
-		}
-		meta.SetStatusCondition(&ps.Status.Conditions, condition)
-	} else {
-		// All CTPs are ready
-		condition := metav1.Condition{
-			Type:               string(conditions.PsChangeTransferPolicyReady),
-			Status:             metav1.ConditionTrue,
-			Reason:             string(conditions.ChangeTransferPolicyReconciliationSuccess),
-			Message:            "All ChangeTransferPolicies are ready",
-			ObservedGeneration: ps.Generation,
-		}
-		meta.SetStatusCondition(&ps.Status.Conditions, condition)
-	}
 
 	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctps)
 	if err != nil {

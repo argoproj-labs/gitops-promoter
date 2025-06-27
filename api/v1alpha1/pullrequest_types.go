@@ -75,6 +75,10 @@ type PullRequestStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+func (ps *PullRequest) GetConditions() *[]metav1.Condition {
+	return &ps.Status.Conditions
+}
+
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 

@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/util/retry"
 
@@ -67,13 +69,15 @@ type CommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
-func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling CommitStatus", "name", req.Name)
 	startTime := time.Now()
 
 	var cs promoterv1alpha1.CommitStatus
-	err := r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
+	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, &err, string(conditions.CommitStatusReady))
+
+	err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("CommitStatus not found")

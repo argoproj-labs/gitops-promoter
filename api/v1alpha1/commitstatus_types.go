@@ -71,6 +71,10 @@ type CommitStatusStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+func (cs *CommitStatus) GetConditions() *[]metav1.Condition {
+	return &cs.Status.Conditions
+}
+
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 

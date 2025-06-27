@@ -17,18 +17,20 @@ type (
 )
 
 type (
-	PullReqeustConditionType   string
-	PullReqeustConditionReason string
+	PullRequestConditionType   string
+	PullRequestConditionReason string
 )
 
 // PromotionStrategyConditionType values
 const (
-	PromotionStrategyReady      PromotionStrategyConditionType   = "Ready"
-	ReconciliationError         PromotionStrategyConditionReason = "ReconciliationError"
-	ReconciliationSuccess       PromotionStrategyConditionReason = "ReconciliationSuccess"
-	PsChangeTransferPolicyReady PromotionStrategyConditionType   = "ChangeTransferPoliciesReady"
+	ReconciliationError   PromotionStrategyConditionReason = "ReconciliationError"
+	ReconciliationSuccess PromotionStrategyConditionReason = "ReconciliationSuccess"
 
-	ChangeTransferPolicyReady                 ChangeTrasferPolicyConditionType   = "Ready"
-	ChangeTransferPolicyReconciliationError   ChangeTrasferPolicyConditionReason = "ReconciliationError"
-	ChangeTransferPolicyReconciliationSuccess ChangeTrasferPolicyConditionReason = "ReconciliationSuccess"
+	PromotionStrategyReady PromotionStrategyConditionType = "Ready"
+
+	ChangeTransferPolicyReady ChangeTrasferPolicyConditionType = "Ready"
+
+	PullRequestReady PullRequestConditionType = "Ready"
+
+	CommitStatusReady CommitStatusConditionType = "Ready"
 )
