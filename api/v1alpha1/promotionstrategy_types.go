@@ -116,6 +116,10 @@ type PromotionStrategyStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+func (ps *PromotionStrategy) GetConditions() *[]metav1.Condition {
+	return &ps.Status.Conditions
+}
+
 type EnvironmentStatus struct {
 	Branch   string            `json:"branch"`
 	Proposed CommitBranchState `json:"proposed"`

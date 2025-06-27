@@ -72,62 +72,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var ps promoterv1alpha1.PromotionStrategy
 
-	defer func() {
-		if ps.Name == "" && ps.Namespace == "" {
-			logger.V(4).Info("PromotionStrategy not found, skipping reconciliation")
-			return
-		}
-		logger.Info("Reconciling PromotionStrategy End", "duration", time.Since(startTime))
-		if err != nil {
-			logger.Error(err, "Reconciliation failed")
-			r.Recorder.Eventf(&promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      req.Name,
-					Namespace: req.Namespace,
-				},
-			}, "Warning", "ReconcileError", "Reconciliation failed: %v", err)
-
-			// Set the Ready condition to false if there was an error
-			condition := metav1.Condition{
-				Type:               string(conditions.PromotionStrategyReady),
-				Status:             metav1.ConditionFalse,
-				Reason:             string(conditions.ReconciliationError),
-				Message:            fmt.Sprintf("Reconciliation failed: %v", err),
-				ObservedGeneration: ps.Generation,
-			}
-			changed := meta.SetStatusCondition(&ps.Status.Conditions, condition)
-			if changed {
-				if updateErr := r.Status().Update(ctx, &ps); updateErr != nil {
-					logger.Error(updateErr, "Failed to update PromotionStrategy status with error condition")
-				}
-			}
-		} else {
-			logger.Info("Reconciliation succeeded")
-			r.Recorder.Eventf(&promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      req.Name,
-					Namespace: req.Namespace,
-				},
-			}, "Normal", "ReconcileSuccess", "Reconciliation succeeded")
-
-			// Set the Ready condition to true if reconciliation succeeded
-			condition := metav1.Condition{
-				Type:               string(conditions.PromotionStrategyReady),
-				Status:             metav1.ConditionTrue,
-				Reason:             string(conditions.ReconciliationSuccess),
-				Message:            "Reconciliation succeeded",
-				ObservedGeneration: ps.Generation,
-			}
-			changed := meta.SetStatusCondition(&ps.Status.Conditions, condition)
-			if changed {
-				if updateErr := r.Status().Update(ctx, &ps); updateErr != nil {
-					logger.Error(updateErr, "Failed to update PromotionStrategy status with success condition")
-					result = ctrl.Result{}
-					err = fmt.Errorf("failed to update PromotionStrategy status with success condition: %w", updateErr)
-				}
-			}
-		}
-	}()
+	defer utils.HandleReconciliationResultGeneric(ctx, startTime, &ps, logger, r.Client, r.Recorder, &err, string(conditions.PromotionStrategyReady))
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {

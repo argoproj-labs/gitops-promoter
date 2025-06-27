@@ -24,8 +24,6 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
-	"k8s.io/apimachinery/pkg/api/meta"
-
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -83,61 +81,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	startTime := time.Now()
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
-
-	defer func() {
-		if ctp.Name == "" && ctp.Namespace == "" {
-			logger.V(4).Info("ChangeTransferPolicy not found, skipping reconciliation")
-			return
-		}
-		logger.Info("Reconciling ChangeTransferPolicy End", "duration", time.Since(startTime))
-		if err != nil {
-			logger.Error(err, "Reconciliation failed")
-			r.Recorder.Eventf(&promoterv1alpha1.ChangeTransferPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      req.Name,
-					Namespace: req.Namespace,
-				},
-			}, "Warning", "ReconcileError", "Reconciliation failed: %v", err)
-
-			// Set the Ready condition to false if there was an error
-			condition := metav1.Condition{
-				Type:    string(conditions.ChangeTransferPolicyReady),
-				Status:  metav1.ConditionFalse,
-				Reason:  string(conditions.ReconciliationError),
-				Message: fmt.Sprintf("Reconciliation failed: %v", err),
-			}
-			changed := meta.SetStatusCondition(&ctp.Status.Conditions, condition)
-			if changed {
-				if updateErr := r.Status().Update(ctx, &ctp); updateErr != nil {
-					logger.Error(updateErr, "Failed to update ChangeTransferPolicy status with error condition")
-				}
-			}
-		} else {
-			logger.Info("Reconciliation succeeded")
-			r.Recorder.Eventf(&promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      req.Name,
-					Namespace: req.Namespace,
-				},
-			}, "Normal", "ReconcileSuccess", "Reconciliation succeeded")
-
-			// Set the Ready condition to true if reconciliation succeeded
-			condition := metav1.Condition{
-				Type:    string(conditions.ChangeTransferPolicyReady),
-				Status:  metav1.ConditionTrue,
-				Reason:  string(conditions.ReconciliationSuccess),
-				Message: "Reconciliation succeeded",
-			}
-			changed := meta.SetStatusCondition(&ctp.Status.Conditions, condition)
-			if changed {
-				if updateErr := r.Status().Update(ctx, &ctp); updateErr != nil {
-					logger.Error(updateErr, "Failed to update ChangeTransferPolicy status with success condition")
-					result = ctrl.Result{}
-					err = fmt.Errorf("failed to update ChangeTransferPolicy status with success condition: %w", updateErr)
-				}
-			}
-		}
-	}()
+	defer utils.HandleReconciliationResultGeneric(ctx, startTime, &ctp, logger, r.Client, r.Recorder, &err, string(conditions.PromotionStrategyReady))
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {

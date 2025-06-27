@@ -4,11 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/go-logr/logr"
 	"hash/fnv"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/client-go/tools/record"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
@@ -221,4 +226,74 @@ func AreCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPol
 		}
 	}
 	return true
+}
+
+// StatusConditionUpdater defines the interface for objects that can have their status conditions updated
+type StatusConditionUpdater interface {
+	client.Object
+	GetConditions() *[]metav1.Condition
+}
+
+// HandleReconciliationResultGeneric handles reconciliation results for any object with status conditions.
+func HandleReconciliationResultGeneric[T StatusConditionUpdater](
+	ctx context.Context,
+	startTime time.Time,
+	obj T,
+	logger logr.Logger,
+	client client.Client,
+	recorder record.EventRecorder,
+	err *error,
+	conditionType string,
+) {
+	if obj.GetName() == "" && obj.GetNamespace() == "" {
+		logger.V(4).Info(fmt.Sprintf("%s not found, skipping reconciliation", obj.GetObjectKind().GroupVersionKind().Kind))
+		return
+	}
+
+	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
+
+	conditions := obj.GetConditions()
+	if conditions == nil {
+		logger.Error(fmt.Errorf("conditions is nil"), "Cannot update status conditions")
+		return
+	}
+
+	if *err != nil {
+		logger.Error(*err, "Reconciliation failed")
+		recorder.Eventf(obj, "Warning", "ReconcileError", "Reconciliation failed: %v", *err)
+
+		condition := metav1.Condition{
+			Type:               conditionType,
+			Status:             metav1.ConditionFalse,
+			Reason:             string(promoterConditions.ReconciliationError),
+			Message:            fmt.Sprintf("Reconciliation failed: %v", *err),
+			ObservedGeneration: obj.GetGeneration(),
+		}
+
+		changed := meta.SetStatusCondition(conditions, condition)
+		if changed {
+			if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
+				logger.Error(updateErr, "Failed to update status with error condition")
+			}
+		}
+	} else {
+		logger.Info("Reconciliation succeeded")
+		recorder.Eventf(obj, "Normal", "ReconcileSuccess", "Reconciliation succeeded")
+
+		condition := metav1.Condition{
+			Type:               conditionType,
+			Status:             metav1.ConditionTrue,
+			Reason:             string(promoterConditions.ReconciliationSuccess),
+			Message:            "Reconciliation succeeded",
+			ObservedGeneration: obj.GetGeneration(),
+		}
+
+		changed := meta.SetStatusCondition(conditions, condition)
+		if changed {
+			if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
+				logger.Error(updateErr, "Failed to update status with success condition")
+				*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
+			}
+		}
+	}
 }
