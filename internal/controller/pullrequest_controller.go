@@ -68,7 +68,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	startTime := time.Now()
 
 	var pr promoterv1alpha1.PullRequest
-	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, &err, string(conditions.PullRequestReady))
+	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, &err, string(conditions.Ready))
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
 		if errors.IsNotFound(err) {

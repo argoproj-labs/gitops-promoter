@@ -46,6 +46,10 @@ type ArgoCDCommitStatusStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+func (cs *ArgoCDCommitStatus) GetConditions() *[]metav1.Condition {
+	return &cs.Status.Conditions
+}
+
 type ApplicationsSelected struct {
 	Namespace string            `json:"namespace"`
 	Name      string            `json:"name"`

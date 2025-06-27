@@ -75,7 +75,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	startTime := time.Now()
 
 	var cs promoterv1alpha1.CommitStatus
-	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, &err, string(conditions.CommitStatusReady))
+	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, &err, string(conditions.Ready))
 
 	err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 	if err != nil {

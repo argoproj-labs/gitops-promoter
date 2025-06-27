@@ -26,6 +26,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"k8s.io/client-go/tools/record"
+
 	"k8s.io/apimachinery/pkg/fields"
 
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -61,6 +64,7 @@ type aggregate struct {
 type ArgoCDCommitStatusReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
+	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
 }
 
@@ -78,11 +82,14 @@ type ArgoCDCommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
-func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling ArgoCDCommitStatus")
+	startTime := time.Now()
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
-	err := r.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
+	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.Client, r.Recorder, &err, string(conditions.Ready))
+
+	err = r.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
 			logger.Info("ArgoCDCommitStatus not found")

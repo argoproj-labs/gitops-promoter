@@ -81,7 +81,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	startTime := time.Now()
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
-	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &err, string(conditions.ChangeTransferPolicyReady))
+	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &err, string(conditions.Ready))
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {

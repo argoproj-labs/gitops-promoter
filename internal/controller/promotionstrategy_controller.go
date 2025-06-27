@@ -70,7 +70,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var ps promoterv1alpha1.PromotionStrategy
 
-	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, &err, string(conditions.PromotionStrategyReady))
+	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, &err, string(conditions.Ready))
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
