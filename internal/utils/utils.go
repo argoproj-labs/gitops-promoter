@@ -268,7 +268,7 @@ func HandleReconciliationResult(
 			*err = fmt.Errorf("failed to update status with error condition: %w", updateErr)
 		}
 	} else {
-		recorder.Eventf(obj, "Normal", "ReconcileSuccess", "Reconciliation succeeded")
+		recorder.Eventf(obj, "Normal", "ReconcileSuccess", "Reconciliation successful")
 
 		updateErr := updateCondition(ctx, obj, client, conditions, conditionType, metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess), "Reconciliation succeeded")
 		if updateErr != nil {
