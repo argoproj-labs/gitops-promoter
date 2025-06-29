@@ -129,8 +129,7 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (Branc
 		return BranchShas{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	p := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
-	logger.V(4).Info("git path", "path", p)
+	logger.V(4).Info("git path", "path", gitPath)
 	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "--progress", "-B", branch, "origin/"+branch)
 	if err != nil {
 		logger.Error(err, "could not git checkout", "gitError", stderr)
