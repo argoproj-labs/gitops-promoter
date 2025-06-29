@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"io"
 	"net/http"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+
 	"github.com/tidwall/gjson"
 
 	"k8s.io/apimachinery/pkg/fields"
-
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controllerruntime "sigs.k8s.io/controller-runtime/pkg/manager"
@@ -72,7 +72,9 @@ func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	// Record the webhook call metrics. // We use a deferred function to ensure that the metrics are recorded even if an error occurs.
 	// We also subtract the update duration from the total time to get a more accurate measurement of how long actual
 	// processing took.
-	defer metrics.RecordWebhookCall(ctpFound, responseCode, time.Since(startTime)-updateDuration)
+	defer func() {
+		metrics.RecordWebhookCall(ctpFound, responseCode, time.Since(startTime)-updateDuration)
+	}()
 
 	if r.Method != http.MethodPost {
 		responseCode = http.StatusMethodNotAllowed
