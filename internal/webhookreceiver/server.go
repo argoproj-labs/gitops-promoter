@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"io"
 	"net/http"
 	"time"
@@ -63,39 +64,61 @@ func (wr *webhookReceiver) Start(ctx context.Context, addr string) error {
 }
 
 func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
+	var responseCode int
+	var ctpFound bool
+	startTime := time.Now()
+	var updateDuration time.Duration
+
+	// Record the webhook call metrics. // We use a deferred function to ensure that the metrics are recorded even if an error occurs.
+	// We also subtract the update duration from the total time to get a more accurate measurement of how long actual
+	// processing took.
+	defer metrics.RecordWebhookCall(ctpFound, responseCode, time.Since(startTime)-updateDuration)
+
 	if r.Method != http.MethodPost {
-		http.Error(w, "must be a POST request", http.StatusMethodNotAllowed)
+		responseCode = http.StatusMethodNotAllowed
+		http.Error(w, "must be a POST request", responseCode)
 		return
 	}
 	// TODO: add a configurable payload max side for DoS protection.
 	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "error reading body", http.StatusInternalServerError)
+		responseCode = http.StatusInternalServerError
+		http.Error(w, "error reading body", responseCode)
 		return
 	}
 
 	ctp, err := wr.findChangeTransferPolicy(r.Context(), jsonBytes)
 	if err != nil {
 		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err)
-		w.WriteHeader(http.StatusNoContent)
+		responseCode = http.StatusNoContent
+		w.WriteHeader(responseCode)
 		return
 	}
 	if ctp == nil {
+		responseCode = http.StatusNoContent
+		w.WriteHeader(responseCode)
 		return
 	}
+
+	ctpFound = true
 
 	if ctp.Annotations == nil {
 		ctp.Annotations = make(map[string]string)
 	}
 	ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339)
+
+	startUpdate := time.Now()
 	err = wr.k8sClient.Update(r.Context(), ctp)
+	updateDuration = time.Since(startUpdate)
 	if err != nil {
 		logger.Error(err, fmt.Sprintf("failed to update ChangeTransferPolicy annotations '%s/%s' from webhook", ctp.Namespace, ctp.Name))
-		http.Error(w, "could not cause reconcile of ChangeTransferPolicy", http.StatusInternalServerError)
+		responseCode = http.StatusInternalServerError
+		http.Error(w, "could not cause reconcile of ChangeTransferPolicy", responseCode)
 	}
-	logger.Info("Triggered reconcile via webhook", "ChangeTransferPolicy", ctp.Namespace+"/"+ctp.Name)
+	logger.Info("Triggered reconcile of ChangeTransferPolicy via webhook", "namespace", ctp.Namespace, "name", ctp.Name)
 
-	w.WriteHeader(http.StatusNoContent)
+	responseCode = http.StatusNoContent
+	w.WriteHeader(responseCode)
 }
 
 func (wr *webhookReceiver) findChangeTransferPolicy(ctx context.Context, jsonBytes []byte) (*promoterv1alpha1.ChangeTransferPolicy, error) {
