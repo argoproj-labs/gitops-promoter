@@ -85,3 +85,16 @@ This metric is currently only produced for GitHub.
 Labels:
 
 * `scm_provider`: The name of the ScmProvider resource associated with the operation.
+
+## webhook_processing_duration_seconds
+
+A histogram of the duration of webhook processing.
+
+"Processing" refers to the time taken to handle a webhook request, including any logic to find a ChangeTransferPolicy.
+It excludes the time taken to call the k8s API to set the reconcile annotation on the ChangeTransferPolicy, since that
+isn't in the webhook server's control.
+
+Labels:
+
+* `ctp_found`: Whether a ChangeTransferPolicy was found for the webhook (true, false). May be false for error conditions, so check the response code.
+* `response_code`: The HTTP response code of the webhook processing. 204 is the success code, which may be returned even if no ChangeTransferPolicy was found.
