@@ -3,9 +3,9 @@
 // The EnvironmentOperations struct provides methods for interacting with a particular clone of a repository. It ensures
 // there is a separate clone for each environment to avoid concurrency issues.
 //
-// When implementing operations that do not require an environment-specific clone, create a static function accepts the
-// GitOperationsProvider and the GitRepository as parameters. This avoids the need to manage state to avoid concurrency
-// issues. See LsRemote for an example of such a function.
+// When implementing operations that do not require an environment-specific clone, create a static function that accepts
+// the GitOperationsProvider and the GitRepository as parameters. This avoids the need to manage state to avoid
+// concurrency issues. See LsRemote for an example of such a function.
 package git
 
 import (
