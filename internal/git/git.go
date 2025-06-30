@@ -58,10 +58,10 @@ type HydratorMetadata struct {
 	References []v1alpha1.RevisionReference `json:"references,omitempty"`
 }
 
-// NewOperations creates a new EnvironmentOperations instance. The activeBranch parameter is used to differentiate
+// NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter is used to differentiate
 // between different environments that might use the same GitRepository and avoid conflicts between concurrent
 // operations.
-func NewOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, repoRef v1alpha1.ObjectReference, obj v1.Object, activeBranch string) (*EnvironmentOperations, error) {
+func NewEnvironmentOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, repoRef v1alpha1.ObjectReference, obj v1.Object, activeBranch string) (*EnvironmentOperations, error) {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repoRef.Name})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
