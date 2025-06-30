@@ -36,4 +36,4 @@ ENV PATH="${PATH}:/git"
 RUN echo "${PATH}" >> /etc/bash.bashrc
 USER 65532:65532
 
-ENTRYPOINT ["/gitops-promoter"]
+ENTRYPOINT ["/gitops-promoter", "controller"]

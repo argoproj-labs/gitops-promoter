@@ -2637,6 +2637,7 @@ spec:
         - --leader-elect
         command:
         - /gitops-promoter
+        - controller
         image: quay.io/argoprojlabs/gitops-promoter:latest
         livenessProbe:
           httpGet:
