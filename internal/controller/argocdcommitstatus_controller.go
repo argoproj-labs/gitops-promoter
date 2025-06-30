@@ -159,6 +159,11 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShaForBranch(ctx context.Context, 
 		return nil, fmt.Errorf("failed to get git auth provider: %w", err)
 	}
 
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: argoCDCommitStatus.GetNamespace(), Name: repositoryRef.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
 	var mu sync.Mutex
 	g, ctx := errgroup.WithContext(ctx)
 	headShasByTargetBranch := make(map[string]string)
@@ -166,12 +171,7 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShaForBranch(ctx context.Context, 
 	for targetBranch := range targetBranches {
 		// Do this in parallel since it's network-bound.
 		g.Go(func() error {
-			gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, repositoryRef, &argoCDCommitStatus, targetBranch)
-			if err != nil {
-				return fmt.Errorf("failed to initialize git client: %w", err)
-			}
-
-			resolvedSha, err := gitOperation.LsRemote(ctx, targetBranch)
+			resolvedSha, err := git.LsRemote(ctx, gitAuthProvider, gitRepo, targetBranch)
 			if err != nil {
 				return fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranch, err)
 			}
