@@ -100,7 +100,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
 	}
-	gitOperations, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, ctp.Spec.RepositoryReference, &ctp, ctp.Spec.ActiveBranch)
+	gitOperations, err := git.NewEnvironmentOperations(ctx, r.Client, gitAuthProvider, ctp.Spec.RepositoryReference, &ctp, ctp.Spec.ActiveBranch)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
 	}
@@ -205,7 +205,7 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 	}
 }
 
-func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.GitOperations) error {
+func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	logger := log.FromContext(ctx)
 
 	// TODO: consider parallelizing parts of this function that are network-bound work.
@@ -257,7 +257,7 @@ func (e *TooManyMatchingShaError) Error() string {
 	return "there are to many matching SHAs for the commit status"
 }
 
-func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.GitOperations, activeHydratedSha, proposedHydratedSha string) error {
+func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, activeHydratedSha, proposedHydratedSha string) error {
 	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeHydratedSha)
 	if err != nil {
 		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
@@ -313,6 +313,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:   status.Key,
 				Phase: string(csList.Items[0].Status.Phase),
+				Url:   csList.Items[0].Spec.Url,
 			})
 			found = true
 			phase = csList.Items[0].Status.Phase
@@ -342,6 +343,18 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			"toManyMatchingSha", tooManyMatchingShas,
 			"foundCount", len(csList.Items))
 	}
+
+	// Keep the URL from previous reconciliation where the phase was a success, if the commit status was not found, likely due to a sha mismatch.
+	// This is to ensure that the URL is not lost when the commit status is not found in the current reconciliation.
+	// We do not want to solve this with the code below please do no uncomment it. A better solution would be to come up with
+	// a standard that CommitStatus managers can use to informer the CTPs the URLs for the commit statuses for each environment.
+	// for _, ctpStatusState := range targetCommitBranchState.CommitStatuses { // nolint:gocritic
+	//	for i, calculatedCSState := range commitStatusesState {
+	//		if calculatedCSState.Key == ctpStatusState.Key && ctpStatusState.Url != "" {
+	//			commitStatusesState[i].Url = ctpStatusState.Url
+	//		}
+	//	}
+	//}
 	targetCommitBranchState.CommitStatuses = commitStatusesState
 
 	if tooManyMatchingShas {
@@ -350,7 +363,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 	return nil
 }
 
-func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.Context, gitOperations *git.GitOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.Context, gitOperations *git.EnvironmentOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
 		// There's nothing to promote.
 		return nil
@@ -548,7 +561,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 // gitMergeStrategyOurs tests if there is a conflict between the active and proposed branches. If there is, we
 // perform a merge with ours as the strategy. This is to prevent conflicts in the pull request by assuming that
 // the proposed branch is the source of truth.
-func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Context, gitOperations *git.GitOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Context, gitOperations *git.EnvironmentOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Testing for conflicts between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
 

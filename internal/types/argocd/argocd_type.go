@@ -1,98 +1,50 @@
-// +kubebuilder:skip
 package argocd
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-// TODO: trim down the struct to only the fields that are needed
+// This lets us use argocd as the package name.
+// +versionName=v1alpha1
 
-type ArgoCDApplication struct {
+// +kubebuilder:object:root=true
+
+type Application struct {
+	Status            ApplicationStatus `json:"status,omitempty"`
+	Spec              ApplicationSpec   `json:"spec"`
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata"`
-	Spec              ApplicationSpec   `json:"spec"`
-	Status            ApplicationStatus `json:"status,omitempty"`
 }
 
 type ApplicationSpec struct {
-	Destination    ApplicationDestination `json:"destination"`
-	Project        string                 `json:"project"`
-	SourceHydrator *SourceHydrator        `json:"sourceHydrator,omitempty"`
-}
-
-type ApplicationDestination struct {
-	Server    string `json:"server,omitempty"`
-	Namespace string `json:"namespace,omitempty"`
-	Name      string `json:"name,omitempty"`
+	SourceHydrator *SourceHydrator `json:"sourceHydrator,omitempty"`
 }
 
 type SyncStatus struct {
-	Status    SyncStatusCode `json:"status"`
-	Revision  string         `json:"revision,omitempty"`
-	Revisions []string       `json:"revisions,omitempty"`
+	Status   SyncStatusCode `json:"status"`
+	Revision string         `json:"revision,omitempty"`
 }
 
 type SourceHydrator struct {
 	DrySource  DrySource  `json:"drySource"`
 	SyncSource SyncSource `json:"syncSource"`
-	HydrateTo  *HydrateTo `json:"hydrateTo,omitempty"`
 }
 
 type DrySource struct {
-	RepoURL        string `json:"repoURL"`
-	TargetRevision string `json:"targetRevision"`
-	Path           string `json:"path"`
+	RepoURL string `json:"repoURL"`
 }
 
 type SyncSource struct {
 	TargetBranch string `json:"targetBranch"`
-	Path         string `json:"path"`
-}
-
-type HydrateTo struct {
-	TargetBranch string `json:"targetBranch"`
 }
 
 type ApplicationStatus struct {
-	Sync           SyncStatus           `json:"sync,omitempty"`
-	Health         HealthStatus         `json:"health,omitempty"`
-	SourceHydrator SourceHydratorStatus `json:"sourceHydrator,omitempty"`
+	Health HealthStatus `json:"health,omitempty"`
+	Sync   SyncStatus   `json:"sync,omitempty"`
 }
 
 // HealthStatus contains information about the currently observed health state of an application or resource
 type HealthStatus struct {
-	Status             HealthStatusCode `json:"status,omitempty"`
-	Message            string           `json:"message,omitempty"`
 	LastTransitionTime *metav1.Time     `json:"lastTransitionTime,omitempty"`
-}
-
-type SourceHydratorStatus struct {
-	LastSuccessfulOperation *SuccessfulHydrateOperation `json:"lastSuccessfulOperation,omitempty"`
-	CurrentOperation        *HydrateOperation           `json:"currentOperation,omitempty"`
-}
-
-// HydrateOperation contains information about the most recent hydrate operation
-type HydrateOperation struct {
-	StartedAt      metav1.Time           `json:"startedAt,omitempty"`
-	FinishedAt     *metav1.Time          `json:"finishedAt,omitempty"`
-	Phase          HydrateOperationPhase `json:"phase"`
-	Message        string                `json:"message"`
-	DrySHA         string                `json:"drySHA,omitempty"`
-	HydratedSHA    string                `json:"hydratedSHA,omitempty"`
-	SourceHydrator SourceHydrator        `json:"sourceHydrator,omitempty"`
-}
-
-type HydrateOperationPhase string
-
-const (
-	HydrateOperationPhaseHydrating HydrateOperationPhase = "Hydrating"
-	HydrateOperationPhaseFailed    HydrateOperationPhase = "Failed"
-	HydrateOperationPhaseHydrated  HydrateOperationPhase = "Hydrated"
-)
-
-// SuccessfulHydrateOperation contains information about the most recent successful hydrate operation
-type SuccessfulHydrateOperation struct {
-	DrySHA         string         `json:"drySHA,omitempty"`
-	HydratedSHA    string         `json:"hydratedSHA,omitempty"`
-	SourceHydrator SourceHydrator `json:"sourceHydrator,omitempty"`
+	Status             HealthStatusCode `json:"status,omitempty"`
 }
 
 type HealthStatusCode string
@@ -113,3 +65,16 @@ const (
 	SyncStatusCodeSynced    SyncStatusCode = "Synced"
 	SyncStatusCodeOutOfSync SyncStatusCode = "OutOfSync"
 )
+
+// +kubebuilder:object:root=true
+
+// ApplicationList contains a list of ArgoCDApplications.
+type ApplicationList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []Application `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&Application{}, &ApplicationList{})
+}

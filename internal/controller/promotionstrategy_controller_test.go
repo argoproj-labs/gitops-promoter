@@ -25,9 +25,6 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -36,6 +33,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -822,6 +820,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			_, err = runGitCmd(gitPath, "push", "-u", "origin", ctpDev.Spec.ActiveBranch)
 			Expect(err).NotTo(HaveOccurred())
 
+			By("Checking that there is no previous-environment commit status created, since no active checks are configured")
+			csList := promoterv1alpha1.CommitStatusList{}
+			err = k8sClient.List(ctx, &csList, client.MatchingLabels{
+				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(csList.Items)).To(Equal(0))
+
 			By("Checking that the pull request for the development environment is created")
 			Eventually(func(g Gomega) {
 				// Dev PR should exist
@@ -1317,6 +1323,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			proposedCommitStatusDevelopment.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "no-deployments-allowed",
 			}
+			proposedCommitStatusDevelopment.Spec.Url = "https://example.com/dev"
+
 			proposedCommitStatusStaging.Spec.Name = "no-deployments-allowed"
 			proposedCommitStatusStaging.Labels = map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "no-deployments-allowed",
@@ -1415,6 +1423,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())
+
+				g.Expect(len(ctpDev.Status.Proposed.CommitStatuses)).To(Not(BeZero()))
+				g.Expect(ctpDev.Status.Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
 			}, EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the development pull request has been merged and that staging, production pull request are still open")
@@ -1440,6 +1451,17 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
+			}, EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      promotionStrategy.Name,
+					Namespace: promotionStrategy.Namespace,
+				}, promotionStrategy)
+				g.Expect(err).To(Succeed())
+				g.Expect(len(promotionStrategy.Status.Environments) > 0).To(BeTrue())
+				g.Expect(len(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses) > 0).To(BeTrue())
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
 			}, EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
@@ -1733,14 +1755,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
 
-				err = unstructured.SetNestedField(argoCDAppDev.Object, string(argocd.SyncStatusCodeSynced), "status", "sync", "status")
-				Expect(err).To(Succeed())
-				err = unstructured.SetNestedField(argoCDAppDev.Object, string(argocd.HealthStatusHealthy), "status", "health", "status")
-				Expect(err).To(Succeed())
-				err = unstructured.SetNestedField(argoCDAppDev.Object, ctpDev.Status.Active.Hydrated.Sha, "status", "sync", "revision")
-				Expect(err).To(Succeed())
-				err = unstructured.SetNestedField(argoCDAppDev.Object, metav1.Time{Time: time.Now().Add(-(6 * time.Second))}.ToUnstructured(), "status", "health", "lastTransitionTime")
-				Expect(err).To(Succeed())
+				argoCDAppDev.Status.Sync.Status = argocd.SyncStatusCodeSynced
+				argoCDAppDev.Status.Health.Status = argocd.HealthStatusHealthy
+				argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
+				argoCDAppDev.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
 				err = k8sClient.Update(ctx, &argoCDAppDev)
 				Expect(err).To(Succeed())
 
@@ -1749,7 +1767,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
-				g.Expect(err).To(HaveOccurred())
+				g.Expect(err).To(HaveOccurred(), "Staging PR should be closed since the dev app is healthy")
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
@@ -1771,19 +1789,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpStaging)
 				g.Expect(err).To(Succeed())
 
-				err = unstructured.SetNestedField(argoCDAppStaging.Object, string(argocd.SyncStatusCodeSynced), "status", "sync", "status")
-				Expect(err).To(Succeed())
-				err = unstructured.SetNestedField(argoCDAppStaging.Object, string(argocd.HealthStatusHealthy), "status", "health", "status")
-				Expect(err).To(Succeed())
-				err = unstructured.SetNestedField(argoCDAppStaging.Object, ctpStaging.Status.Active.Hydrated.Sha, "status", "sync", "revision")
-				Expect(err).To(Succeed())
+				argoCDAppStaging.Status.Sync.Status = argocd.SyncStatusCodeSynced
+				argoCDAppStaging.Status.Health.Status = argocd.HealthStatusHealthy
+				argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
 				if time.Now().After(timeDelay) {
-					err = unstructured.SetNestedField(argoCDAppStaging.Object, metav1.Time{Time: time.Now().Add(-(6 * time.Second))}.ToUnstructured(), "status", "health", "lastTransitionTime")
-					Expect(err).To(Succeed())
+					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
 					waitedForDelay = true
 				} else {
-					err = unstructured.SetNestedField(argoCDAppStaging.Object, metav1.Time{Time: time.Now()}.ToUnstructured(), "status", "health", "lastTransitionTime")
-					Expect(err).To(Succeed())
+					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now()}
 				}
 				err = k8sClient.Update(ctx, &argoCDAppStaging)
 				Expect(err).To(Succeed())
@@ -1905,18 +1918,18 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 	return name, scmSecret, scmProvider, gitRepo, commitStatusDevelopment, commitStatusStaging, promotionStrategy
 }
 
-func argocdApplications(namespace string, name string) (unstructured.Unstructured, unstructured.Unstructured, unstructured.Unstructured) {
+func argocdApplications(namespace string, name string) (argocd.Application, argocd.Application, argocd.Application) {
 	environments := []string{"development", "staging", "production"}
-	unArgocdApplications := []unstructured.Unstructured{}
-	for _, environment := range environments {
-		nameAppDev := name + "-" + environment
-		argoCDAppDev := argocd.ArgoCDApplication{
+	apps := make([]argocd.Application, len(environments))
+	for i, environment := range environments {
+		envAppName := name + "-" + environment
+		envApp := argocd.Application{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "Application",
 				APIVersion: "argoproj.io/v1alpha1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      nameAppDev,
+				Name:      envAppName,
 				Namespace: namespace,
 				Labels: map[string]string{
 					"app": name,
@@ -1931,12 +1944,6 @@ func argocdApplications(namespace string, name string) (unstructured.Unstructure
 						TargetBranch: "environment/" + environment,
 					},
 				},
-				Destination: argocd.ApplicationDestination{
-					Name:      "in-cluster",
-					Namespace: "default",
-					Server:    "https://kubernetes.default.svc",
-				},
-				Project: "default",
 			},
 			Status: argocd.ApplicationStatus{
 				Sync: argocd.SyncStatus{
@@ -1948,11 +1955,7 @@ func argocdApplications(namespace string, name string) (unstructured.Unstructure
 				},
 			},
 		}
-		argoCDAppDevUnstructured := unstructured.Unstructured{}
-		ulObject, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&argoCDAppDev)
-		argoCDAppDevUnstructured.SetUnstructuredContent(ulObject)
-		Expect(err).NotTo(HaveOccurred())
-		unArgocdApplications = append(unArgocdApplications, argoCDAppDevUnstructured)
+		apps[i] = envApp
 	}
-	return unArgocdApplications[0], unArgocdApplications[1], unArgocdApplications[2]
+	return apps[0], apps[1], apps[2]
 }

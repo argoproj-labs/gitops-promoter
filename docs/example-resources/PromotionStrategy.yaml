@@ -21,16 +21,23 @@ spec:
 status:
   environments:
   - branch: environment/dev
-    active:
-      dry:
-        sha:
-        commitTime:
-      hydrated:
-        sha:
-        commitTime:
-      commitStatus:
-        sha:
+    commitStatuses:
+      - key:
         phase:
+        url:
+    dry:
+      author:
+      body:
+      commitTime:
+      repoURL:
+      sha:
+      subject:
+    hydrated:
+      author:
+      body:
+      commitTime:
+      sha:
+      subject:
     proposed:
       # same fields as active
     lastHealthyDryShas:

@@ -265,6 +265,9 @@ spec:
                           - success
                           - failure
                           type: string
+                        url:
+                          description: Url is the URL of the commit status
+                          type: string
                       required:
                       - key
                       - phase
@@ -415,6 +418,9 @@ spec:
                           - pending
                           - success
                           - failure
+                          type: string
+                        url:
+                          description: Url is the URL of the commit status
                           type: string
                       required:
                       - key
@@ -1175,6 +1181,9 @@ spec:
                                 - success
                                 - failure
                                 type: string
+                              url:
+                                description: Url is the URL of the commit status
+                                type: string
                             required:
                             - key
                             - phase
@@ -1345,6 +1354,9 @@ spec:
                                 - pending
                                 - success
                                 - failure
+                                type: string
+                              url:
+                                description: Url is the URL of the commit status
                                 type: string
                             required:
                             - key
@@ -2320,6 +2332,7 @@ spec:
         - --leader-elect
         command:
         - /gitops-promoter
+        - controller
         image: quay.io/argoprojlabs/gitops-promoter:latest
         livenessProbe:
           httpGet:
