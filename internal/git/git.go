@@ -24,11 +24,10 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 )
 
-type GitOperations struct {
+type Operations struct {
 	gap         scms.GitOperationsProvider
 	gitRepo     *v1alpha1.GitRepository
 	scmProvider v1alpha1.GenericScmProvider
-	pathContext string
 }
 
 // HydratorMetadata contains metadata about the commit that is used to hydrate a branch. It is used to store
@@ -49,7 +48,7 @@ type HydratorMetadata struct {
 	References []v1alpha1.RevisionReference `json:"references,omitempty"`
 }
 
-func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, repoRef v1alpha1.ObjectReference, obj v1.Object, pathConext string) (*GitOperations, error) {
+func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, repoRef v1alpha1.ObjectReference, obj v1.Object) (*Operations, error) {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repoRef.Name})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
@@ -60,19 +59,18 @@ func NewGitOperations(ctx context.Context, k8sClient client.Client, gap scms.Git
 		return nil, fmt.Errorf("failed to get ScmProvider: %w", err)
 	}
 
-	gitOperations := GitOperations{
+	gitOperations := Operations{
 		gap:         gap,
 		scmProvider: scmProvider,
 		gitRepo:     gitRepo,
-		pathContext: pathConext,
 	}
 
 	return &gitOperations, nil
 }
 
 // CloneRepo clones the gitRepo to a temporary directory if needed does nothing if the repo is already cloned.
-func (g *GitOperations) CloneRepo(ctx context.Context) error {
-	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) != "" {
+func (g *Operations) CloneRepo(ctx context.Context) error {
+	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)) != "" {
 		// Already cloned
 		return nil
 	}
@@ -112,7 +110,7 @@ func (g *GitOperations) CloneRepo(ctx context.Context) error {
 
 	logger.V(4).Info("Cloned repo successful", "repo", g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 
-	gitpaths.Set(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext, path)
+	gitpaths.Set(g.gap.GetGitHttpsRepoUrl(*g.gitRepo), path)
 
 	return nil
 }
@@ -122,14 +120,14 @@ type BranchShas struct {
 	Hydrated string
 }
 
-func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (BranchShas, error) {
+func (g *Operations) GetBranchShas(ctx context.Context, branch string) (BranchShas, error) {
 	logger := log.FromContext(ctx)
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 	if gitPath == "" {
 		return BranchShas{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	p := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	p := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 	logger.V(4).Info("git path", "path", p)
 	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "--progress", "-B", branch, "origin/"+branch)
 	if err != nil {
@@ -180,10 +178,10 @@ func (g *GitOperations) GetBranchShas(ctx context.Context, branch string) (Branc
 	return shas, nil
 }
 
-func (g *GitOperations) GetShaMetadataFromFile(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
+func (g *Operations) GetShaMetadataFromFile(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
 	logger := log.FromContext(ctx)
 
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 	if gitPath == "" {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -214,10 +212,10 @@ func (g *GitOperations) GetShaMetadataFromFile(ctx context.Context, sha string) 
 	return commitState, nil
 }
 
-func (g *GitOperations) GetShaMetadataFromGit(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
+func (g *Operations) GetShaMetadataFromGit(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
 	// logger := log.FromContext(ctx)
 
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 	if gitPath == "" {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -254,10 +252,10 @@ func (g *GitOperations) GetShaMetadataFromGit(ctx context.Context, sha string) (
 }
 
 // GetShaBody retrieves the body of a commit given its SHA.
-func (g *GitOperations) GetShaBody(ctx context.Context, sha string) (string, error) {
+func (g *Operations) GetShaBody(ctx context.Context, sha string) (string, error) {
 	logger := log.FromContext(ctx)
 
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 	if gitPath == "" {
 		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -272,9 +270,9 @@ func (g *GitOperations) GetShaBody(ctx context.Context, sha string) (string, err
 	return strings.TrimSpace(stdout), nil
 }
 
-func (g *GitOperations) GetShaAuthor(ctx context.Context, sha string) (string, error) {
+func (g *Operations) GetShaAuthor(ctx context.Context, sha string) (string, error) {
 	logger := log.FromContext(ctx)
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 	if gitPath == "" {
 		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -289,9 +287,9 @@ func (g *GitOperations) GetShaAuthor(ctx context.Context, sha string) (string, e
 	return strings.TrimSpace(stdout), nil
 }
 
-func (g *GitOperations) GetShaSubject(ctx context.Context, sha string) (string, error) {
+func (g *Operations) GetShaSubject(ctx context.Context, sha string) (string, error) {
 	logger := log.FromContext(ctx)
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 	if gitPath == "" {
 		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -306,9 +304,9 @@ func (g *GitOperations) GetShaSubject(ctx context.Context, sha string) (string, 
 	return strings.TrimSpace(stdout), nil
 }
 
-func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {
+func (g *Operations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {
 	logger := log.FromContext(ctx)
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 	if gitPath == "" {
 		return v1.Time{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -329,11 +327,11 @@ func (g *GitOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, er
 	return v1.Time{Time: cTime}, nil
 }
 
-func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environmentBranch, environmentNextBranch string) error {
+func (g *Operations) PromoteEnvironmentWithMerge(ctx context.Context, environmentBranch, environmentNextBranch string) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Promoting environment with merge", "environmentBranch", environmentBranch, "environmentNextBranch", environmentNextBranch)
 
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 	if gitPath == "" {
 		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
@@ -354,7 +352,7 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
 
 	// Don't think this is needed
-	// _, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "pull", "--progress")
+	// _, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)), "pull", "--progress")
 	// if err != nil {
 	// 	logger.Error(err, "could not git pull", "gitError", stderr)
 	// 	return err
@@ -384,11 +382,11 @@ func (g *GitOperations) PromoteEnvironmentWithMerge(ctx context.Context, environ
 
 // IsPullRequestRequired will compare the environment branch with the next environment branch and return true if a PR is required.
 // The PR is required if the diff between the two branches contain edits to yaml files.
-func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNextBranch, environmentBranch string) (bool, error) {
+func (g *Operations) IsPullRequestRequired(ctx context.Context, environmentNextBranch, environmentBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
-	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext) == "" {
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
+	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)) == "" {
 		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
@@ -430,10 +428,10 @@ func (g *GitOperations) IsPullRequestRequired(ctx context.Context, environmentNe
 	return false, nil
 }
 
-func (g *GitOperations) LsRemote(ctx context.Context, branch string) (string, error) {
+func (g *Operations) LsRemote(ctx context.Context, branch string) (string, error) {
 	logger := log.FromContext(ctx)
 
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 	start := time.Now()
 	stdout, stderr, err := g.runCmd(ctx, gitPath, "ls-remote", g.gap.GetGitHttpsRepoUrl(*g.gitRepo), branch)
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationLsRemote, metrics.GitOperationResultFromError(err), time.Since(start))
@@ -451,7 +449,7 @@ func (g *GitOperations) LsRemote(ctx context.Context, branch string) (string, er
 	return resolvedSha, nil
 }
 
-func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...string) (string, string, error) {
+func (g *Operations) runCmd(ctx context.Context, directory string, args ...string) (string, string, error) {
 	user, err := g.gap.GetUser(ctx)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to get user: %w", err)
@@ -491,9 +489,9 @@ func (g *GitOperations) runCmd(ctx context.Context, directory string, args ...st
 // HasConflict checks if there is a merge conflict between the proposed branch and the active branch. It assumes that
 // origin/<branch> is currently fetched and updated in the local repository. This should happen via GetBranchShas function
 // earlier in the reconcile.
-func (g *GitOperations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
+func (g *Operations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
-	repoPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.pathContext)
+	repoPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo))
 
 	// Checkout the active branch
 	if _, stderr, err := g.runCmd(ctx, repoPath, "checkout", "--progress", "-B", activeBranch, "origin/"+activeBranch); err != nil {
@@ -524,25 +522,25 @@ func (g *GitOperations) HasConflict(ctx context.Context, proposedBranch, activeB
 	return false, nil
 }
 
-func (g *GitOperations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
+func (g *Operations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
 	logger := log.FromContext(ctx)
 
 	// Checkout the proposed branch
-	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "checkout", proposedBranch)
+	_, stderr, err := g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)), "checkout", proposedBranch)
 	if err != nil {
 		logger.Error(err, "Failed to checkout branch", "branch", proposedBranch, "stderr", stderr)
 		return fmt.Errorf("failed to checkout branch %q: %w", proposedBranch, err)
 	}
 
 	// Perform the merge with "ours" strategy
-	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "merge", "-s", "ours", activeBranch)
+	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)), "merge", "-s", "ours", activeBranch)
 	if err != nil {
 		logger.Error(err, "Failed to merge branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to merge branch %q into %q with 'ours' strategy: %w", activeBranch, proposedBranch, err)
 	}
 
 	// Push the changes to the remote repository
-	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.pathContext), "push", "origin", proposedBranch)
+	_, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)), "push", "origin", proposedBranch)
 	if err != nil {
 		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to push merged branch %q: %w", proposedBranch, err)

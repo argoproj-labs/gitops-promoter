@@ -166,7 +166,7 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShaForBranch(ctx context.Context, 
 	for targetBranch := range targetBranches {
 		// Do this in parallel since it's network-bound.
 		g.Go(func() error {
-			gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, repositoryRef, &argoCDCommitStatus, targetBranch)
+			gitOperation, err := git.NewGitOperations(ctx, r.Client, gitAuthProvider, repositoryRef, &argoCDCommitStatus)
 			if err != nil {
 				return fmt.Errorf("failed to initialize git client: %w", err)
 			}
