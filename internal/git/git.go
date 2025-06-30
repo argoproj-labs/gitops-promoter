@@ -435,7 +435,7 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	return false, nil
 }
 
-func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, branches ...string) ([]string, error) {
+func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, branches ...string) (map[string]string, error) {
 	logger := log.FromContext(ctx)
 
 	start := time.Now()
@@ -452,13 +452,14 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 	if len(lines) != len(branches) {
 		return nil, fmt.Errorf("expected %d lines from ls-remote, got %d: %s", len(branches), len(lines), stdout)
 	}
-	shas := make([]string, len(branches))
+	shas := make(map[string]string, len(branches))
 	for i := range lines {
-		sha, _, found := strings.Cut(lines[i], "\t")
+		sha, ref, found := strings.Cut(lines[i], "\t")
 		if !found {
 			return nil, fmt.Errorf("could not parse line %q from ls-remote output", lines[i])
 		}
-		shas[i] = sha
+		branch := strings.TrimPrefix(ref, "refs/heads/")
+		shas[branch] = sha
 	}
 
 	logger.Info("ls-remote called", "repoUrl", gap.GetGitHttpsRepoUrl(*gitRepo), "branches", branches, "sha", shas)

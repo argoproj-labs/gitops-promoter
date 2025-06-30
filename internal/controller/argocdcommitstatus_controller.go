@@ -162,14 +162,9 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShasForBranches(ctx context.Contex
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	resolvedShas, err := git.LsRemote(ctx, gitAuthProvider, gitRepo, targetBranches...)
+	headShasByTargetBranch, err := git.LsRemote(ctx, gitAuthProvider, gitRepo, targetBranches...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranches, err)
-	}
-
-	headShasByTargetBranch := make(map[string]string, len(targetBranches))
-	for i := range targetBranches {
-		headShasByTargetBranch[targetBranches[i]] = resolvedShas[i]
 	}
 
 	return headShasByTargetBranch, nil
