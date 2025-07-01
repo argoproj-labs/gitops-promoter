@@ -530,7 +530,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 			References: []promoterv1alpha1.RevisionReference{
 				{
 					Commit: &promoterv1alpha1.CommitMetadata{
-						Author:  "upstream <upstream@example.com",
+						Author:  "upstream <upstream@example.com>",
 						Date:    ptr.To(metav1.Now()),
 						Subject: "This is a fix for an upstream issue",
 						Body:    "This is a body of the commit",
