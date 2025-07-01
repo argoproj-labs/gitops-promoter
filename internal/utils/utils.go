@@ -247,7 +247,7 @@ func HandleReconciliationResult(
 
 	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
 	if obj.GetName() == "" && obj.GetNamespace() == "" {
-		// This happens when the Get in the reconciliation log returns "not found." It's expected and safe to skip.
+		// This happens when the Get in the Reconcile function returns "not found." It's expected and safe to skip.
 		logger.V(4).Info(obj.GetObjectKind().GroupVersionKind().Kind + " not found, skipping reconciliation")
 		return
 	}
