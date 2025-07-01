@@ -265,6 +265,8 @@ var _ = AfterSuite(func() {
 
 	err = os.RemoveAll(gitStoragePath)
 	Expect(err).NotTo(HaveOccurred())
+
+	time.Sleep(1 * time.Second) // Give some time for the git server to shutdown properly
 })
 
 type filterLogger struct{}
