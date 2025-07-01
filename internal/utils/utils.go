@@ -245,41 +245,37 @@ func HandleReconciliationResult(
 ) {
 	logger := log.FromContext(ctx)
 
+	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
 	if obj.GetName() == "" && obj.GetNamespace() == "" {
 		// This happens when the Get in the reconciliation log returns "not found." It's expected and safe to skip.
 		logger.V(4).Info(obj.GetObjectKind().GroupVersionKind().Kind + " not found, skipping reconciliation")
 		return
 	}
 
-	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
-
 	conditions := obj.GetConditions()
 	if conditions == nil {
-		logger.Error(errors.New("conditions is nil"), "Cannot update status conditions")
+		conditions = &[]metav1.Condition{}
+	}
+
+	if *err == nil {
+		recorder.Eventf(obj, "Normal", "ReconcileSuccess", "Reconciliation successful")
+		if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess), "Reconciliation succeeded"); updateErr != nil {
+			*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
+		}
 		return
 	}
 
-	if *err != nil {
-		if !k8serrors.IsConflict(*err) {
-			recorder.Eventf(obj, "Warning", "ReconcileError", "Reconciliation failed: %v", *err)
-		}
-		updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionFalse, string(promoterConditions.ReconciliationError), fmt.Sprintf("Reconciliation failed: %s", *err))
-		if updateErr != nil {
-			*err = fmt.Errorf("failed to update status with error condition: %w", updateErr)
-		}
-	} else {
-		recorder.Eventf(obj, "Normal", "ReconcileSuccess", "Reconciliation successful")
-
-		updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess), "Reconciliation succeeded")
-		if updateErr != nil {
-			*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
-		}
+	if !k8serrors.IsConflict(*err) {
+		recorder.Eventf(obj, "Warning", "ReconcileError", "Reconciliation failed: %v", *err)
+	}
+	if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionFalse, string(promoterConditions.ReconciliationError), fmt.Sprintf("Reconciliation failed: %s", *err)); updateErr != nil {
+		*err = fmt.Errorf("failed to update status with error condition: %w", updateErr)
 	}
 }
 
 func updateReadyCondition(ctx context.Context, obj StatusConditionUpdater, client client.Client, conditions *[]metav1.Condition, status metav1.ConditionStatus, reason, message string) error {
 	condition := metav1.Condition{
-		Type:               "Ready",
+		Type:               string(promoterConditions.Ready),
 		Status:             status,
 		Reason:             reason,
 		Message:            message,
