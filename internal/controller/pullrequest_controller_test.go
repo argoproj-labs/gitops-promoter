@@ -127,7 +127,7 @@ var _ = Describe("PullRequest Controller", func() {
 	Context("When reconciling a resource with a bad configuration", func() {
 		ctx := context.Background()
 
-		FIt("should successfully reconcile the resource and update conditions with the error", func() {
+		It("should successfully reconcile the resource and update conditions with the error", func() {
 			By("Reconciling the created resource")
 
 			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "bad-configuration-no-scm-secret", "default")
