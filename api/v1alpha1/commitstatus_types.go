@@ -55,7 +55,7 @@ type CommitStatusSpec struct {
 type CommitStatusStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	ObservedGeneration int64 `json:"observedGeneration"`
+
 	// Id is the unique identifier of the commit status, set by the SCM
 	Id  string `json:"id"`
 	Sha string `json:"sha"`

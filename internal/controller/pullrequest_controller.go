@@ -149,7 +149,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
-	pr.Status.ObservedGeneration = pr.Generation
 	if err := r.Status().Update(ctx, &pr); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update PullRequest status: %w", err)
 	}
