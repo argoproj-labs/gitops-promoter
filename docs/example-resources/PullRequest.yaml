@@ -13,7 +13,6 @@ spec:
   # Must be closed, merged, or open. Default is open.
   state:
 status:
-  observedGeneration: 123
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
     # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,

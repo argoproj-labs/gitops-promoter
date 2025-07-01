@@ -15,7 +15,6 @@ spec:
   # Optional URL to link to more information about the commit status.
   url: https://argocd.example.com/applications/example-app
 status:
-  observedGeneration: 123
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
     # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,
