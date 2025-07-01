@@ -146,12 +146,6 @@ spec:
                 description: Id is the unique identifier of the commit status, set
                   by the SCM
                 type: string
-              observedGeneration:
-                description: |-
-                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
-                format: int64
-                type: integer
               phase:
                 default: pending
                 enum:
@@ -163,7 +157,6 @@ spec:
                 type: string
             required:
             - id
-            - observedGeneration
             - phase
             - sha
             type: object

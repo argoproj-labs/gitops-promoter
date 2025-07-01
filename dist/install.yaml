@@ -945,12 +945,6 @@ spec:
                 description: Id is the unique identifier of the commit status, set
                   by the SCM
                 type: string
-              observedGeneration:
-                description: |-
-                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
-                format: int64
-                type: integer
               phase:
                 default: pending
                 enum:
@@ -962,7 +956,6 @@ spec:
                 type: string
             required:
             - id
-            - observedGeneration
             - phase
             - sha
             type: object
@@ -1916,10 +1909,6 @@ spec:
               id:
                 description: ID the id of the pull request
                 type: string
-              observedGeneration:
-                description: ObservedGeneration the generation observed by the controller
-                format: int64
-                type: integer
               prCreationTime:
                 description: PRCreationTime the time the PR was created
                 format: date-time
@@ -1932,8 +1921,6 @@ spec:
                 - merged
                 - open
                 type: string
-            required:
-            - observedGeneration
             type: object
         type: object
     served: true
