@@ -155,7 +155,7 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(pullRequest.Status.Conditions).To(HaveLen(1))
 				g.Expect(pullRequest.Status.Conditions[0].Type).To(Equal(string(conditions.Ready)))
 				g.Expect(meta.IsStatusConditionFalse(pullRequest.Status.Conditions, string(conditions.Ready))).To(BeTrue())
-				g.Expect(pullRequest.Status.Conditions[0].Reason).To(Equal(conditions.ReconciliationError))
+				g.Expect(pullRequest.Status.Conditions[0].Reason).To(Equal(string(conditions.ReconciliationError)))
 				g.Expect(pullRequest.Status.Conditions[0].Message).To(ContainSubstring("secret from ScmProvider not found"))
 			}, EventuallyTimeout).Should(Succeed())
 		})
