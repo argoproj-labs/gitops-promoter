@@ -18,8 +18,8 @@ package controller
 
 import (
 	"context"
-
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"k8s.io/apimachinery/pkg/api/meta"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -154,7 +154,7 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Status.Conditions).To(HaveLen(1))
 				g.Expect(pullRequest.Status.Conditions[0].Type).To(Equal(string(conditions.Ready)))
-				g.Expect(pullRequest.Status.Conditions[0].Status).To(Equal(v1.ConditionFalse))
+				g.Expect(meta.IsStatusConditionFalse(pullRequest.Status.Conditions, string(conditions.Ready))).To(BeTrue())
 				g.Expect(pullRequest.Status.Conditions[0].Reason).To(Equal(conditions.ReconciliationError))
 				g.Expect(pullRequest.Status.Conditions[0].Message).To(ContainSubstring("secret from ScmProvider not found"))
 			}, EventuallyTimeout).Should(Succeed())
