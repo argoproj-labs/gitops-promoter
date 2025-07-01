@@ -5,7 +5,7 @@ metadata:
 spec:
   gitRepositoryRef:
     name: example-git-repo
-  sha: 1234567890abcdef
+  sha: abcdef1234567890abcdef1234567890abcdef12
   name: argocd-app-health
   description: Argo CD application `example-app` is healthy
 
@@ -14,3 +14,21 @@ spec:
 
   # Optional URL to link to more information about the commit status.
   url: https://argocd.example.com/applications/example-app
+status:
+  observedGeneration: 123
+  conditions:
+    # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
+    # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,
+    # the condition will be True with a reason of ReconciliationSuccess. The Ready condition is essentially a way to show reconciliation
+    # errors to the user. This condition exists on all resources that have reconciliation logic.
+    - type: Ready
+      lastTransitionTime: 2023-10-01T00:00:00Z
+      message: Reconciliation succeeded
+      reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
+      status: "True" # "True," "False," or "Unknown"
+      # observedGeneration is the generation of the resource that was last reconciled. This is used to track if the
+      # resource has changed since the last reconciliation.
+      observedGeneration: 123
+  id: example-commit-status-id
+  phase: success # pending, success, or failure
+  sha: abcdef1234567890abcdef1234567890abcdef12

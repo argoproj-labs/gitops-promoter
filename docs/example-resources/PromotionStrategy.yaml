@@ -25,30 +25,35 @@ status:
     # the condition will be True with a reason of ReconciliationSuccess. The Ready condition is essentially a way to show reconciliation
     # errors to the user. This condition exists on all resources that have reconciliation logic.
     - type: Ready
+      lastTransitionTime: 2023-10-01T00:00:00Z
+      message: Reconciliation succeeded
+      reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
+      status: "True" # "True," "False," or "Unknown"
+      # observedGeneration is the generation of the resource that was last reconciled. This is used to track if the
+      # resource has changed since the last reconciliation.
+      observedGeneration: 123
   environments:
   - branch: environment/dev
-    commitStatuses:
-      - key:
-        phase:
-        url:
-    dry:
-      author:
-      body:
-      commitTime:
-      repoURL:
-      sha:
-      subject:
-    hydrated:
-      author:
-      body:
-      commitTime:
-      sha:
-      subject:
+    # The proposed and active fields are pulled directly from the status of the environment's ChangeTransferPolicy resource.
     proposed:
-      # same fields as active
+      dry:
+        author: "Author Name <author@example.com>"
+        body: "Body of the commit message (i.e. excluding the subject line)"
+        commitTime: 2023-10-01T00:00:00Z
+        repoURL: "https://git.example.com/org/repo.git"
+        sha: "abcdef1234567890abcdef1234567890abcdef12"
+        subject: "chore: Example commit subject line"
+      hydrated:
+        # The hydrated field contains the same fields as proposed.dry, but the contents correspond to a hydrated commit
+        # instead of a dry commit.
+      commitStatuses:
+        - key: example-key
+          phase: pending # pending, success, or failure
+    active:
+    # The active field contains the same fields as proposed.
     lastHealthyDryShas:
-    - sha:
-      time:
+    - sha: "abcdef1234567890abcdef1234567890abcdef12"
+      time: 2023-10-01T00:00:00Z
   - branch: environment/test
     # same fields as dev
   - branch: environment/prod
