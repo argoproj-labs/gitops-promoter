@@ -17,3 +17,6 @@ spec:
 
   gitlab:
     domain: gitlab.com # Optional
+
+  forgejo:
+    domain: forgejo.example.com
