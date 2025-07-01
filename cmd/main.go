@@ -141,7 +141,6 @@ func main() {
 	}
 
 	// Create the provider first, then the manager with the provider
-	setupLog.Info("Creating provider")
 	provider := kubeconfigprovider.New(providerOpts)
 
 	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
@@ -172,64 +171,64 @@ func main() {
 		panic("unable to start manager")
 	}
 
-	mgr := mcMgr.GetLocalManager()
+	localManager := mcMgr.GetLocalManager()
 
-	settingsMgr := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
+	settingsMgr := settings.NewManager(localManager.GetClient(), settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
 	})
 
 	if err = (&controller.PullRequestReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("PullRequest"),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("PullRequest"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create PullRequest controller")
 	}
 	if err = (&controller.CommitStatusReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("CommitStatus"),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("CommitStatus"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create CommitStatus controller")
 	}
 	if err = (&controller.RevertCommitReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("RevertCommit"),
-	}).SetupWithManager(mgr); err != nil {
+		Client:   localManager.GetClient(),
+		Scheme:   localManager.GetScheme(),
+		Recorder: localManager.GetEventRecorderFor("RevertCommit"),
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create RevertCommit controller")
 	}
 
 	if err = (&controller.PromotionStrategyReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("PromotionStrategy"),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create PromotionStrategy controller")
 	}
 	if err = (&controller.ScmProviderReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ScmProvider"),
-	}).SetupWithManager(mgr); err != nil {
+		Client:   localManager.GetClient(),
+		Scheme:   localManager.GetScheme(),
+		Recorder: localManager.GetEventRecorderFor("ScmProvider"),
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create ScmProvider controller")
 	}
 	if err = (&controller.GitRepositoryReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+		Client: localManager.GetClient(),
+		Scheme: localManager.GetScheme(),
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create GitRepository controller")
 	}
 
 	if err = (&controller.ChangeTransferPolicyReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("ChangeTransferPolicy"),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create ChangeTransferPolicy controller")
 	}
 
@@ -241,29 +240,29 @@ func main() {
 		panic("unable to create ArgoCDCommitStatus controller")
 	}
 	if err = (&controller.ControllerConfigurationReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+		Client: localManager.GetClient(),
+		Scheme: localManager.GetScheme(),
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create ControllerConfiguration controller")
 	}
 	if err = (&controller.ClusterScmProviderReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+		Client: localManager.GetClient(),
+		Scheme: localManager.GetScheme(),
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create ClusterScmProvider controller")
 	}
 	//+kubebuilder:scaffold:builder
 
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		panic("unable to set up health check")
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	if err := localManager.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		panic("unable to set up ready check")
 	}
 
 	processSignals := ctrl.SetupSignalHandler()
 
-	whr := webhookreceiver.NewWebhookReceiver(mgr)
+	whr := webhookreceiver.NewWebhookReceiver(localManager)
 
 	g, ctx := errgroup.WithContext(processSignals)
 
