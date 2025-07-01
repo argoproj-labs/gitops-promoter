@@ -10,5 +10,4 @@ type (
 const (
 	ReconciliationError   CommonReason = "ReconciliationError"
 	ReconciliationSuccess CommonReason = "ReconciliationSuccess"
-	Ready                 CommonType   = "Ready"
 )
