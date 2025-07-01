@@ -128,6 +128,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	clusters := r.KubeConfigProvider.ListClusters()
 	clusters = append(clusters, "") // add the local cluster
 	for _, clusterName := range clusters {
+		logger.Info("feching argocd applications from cluster", "cluster", clusterName)
 		cluster, err := r.Manager.GetCluster(ctx, clusterName)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to get cluster: %w", err)
