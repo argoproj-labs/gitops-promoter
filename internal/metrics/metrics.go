@@ -125,6 +125,22 @@ var (
 		},
 		scmCallRateLimitLabels,
 	)
+
+	webhookCallsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "webhook_calls_total",
+			Help: "A counter of webhook calls.",
+		},
+		[]string{"ctp_found", "response_code"},
+	)
+
+	webhookProcessingDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "webhook_processing_duration_seconds",
+			Help: "A histogram of the duration of webhook processing.",
+		},
+		[]string{"ctp_found", "response_code"},
+	)
 )
 
 func init() {
@@ -137,6 +153,7 @@ func init() {
 		scmCallsRateLimitLimit,
 		scmCallsRateLimitRemaining,
 		scmCallsRateLimitResetRemainingSeconds,
+		webhookProcessingDurationSeconds,
 	)
 }
 
@@ -173,4 +190,14 @@ func RecordSCMCall(gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOpe
 		scmCallsRateLimitRemaining.With(rateLimitLabels).Set(float64(rateLimit.Remaining))
 		scmCallsRateLimitResetRemainingSeconds.With(rateLimitLabels).Set(rateLimit.ResetRemaining.Seconds())
 	}
+}
+
+// RecordWebhookCall records the duration of webhook processing.
+func RecordWebhookCall(ctpFound bool, responseCode int, duration time.Duration) {
+	labels := prometheus.Labels{
+		"ctp_found":     strconv.FormatBool(ctpFound),
+		"response_code": strconv.Itoa(responseCode),
+	}
+	webhookCallsTotal.With(labels).Inc()
+	webhookProcessingDurationSeconds.With(labels).Observe(duration.Seconds())
 }
