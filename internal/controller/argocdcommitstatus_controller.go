@@ -20,16 +20,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
+	"maps"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"k8s.io/apimachinery/pkg/fields"
 
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/cespare/xxhash/v2"
@@ -79,6 +84,7 @@ type ArgoCDCommitStatusReconciler struct {
 	Manager            mcmanager.Manager
 	SettingsMgr        *settings.Manager
 	KubeConfigProvider *kubeconfig.Provider
+	localClient        client.Client
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -100,10 +106,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	logger.Info("Reconciling ArgoCDCommitStatus", "cluster", req.ClusterName, "namespace", req.Namespace, "name", req.Name)
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 
-	// localClient is a client for the local cluster
-	localClient := r.Manager.GetLocalManager().GetClient()
-
-	err := localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
+	err := r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
 			logger.Info("ArgoCDCommitStatus not found")
@@ -144,38 +147,32 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 	logger.V(4).Info("Found Applications", "appCount", len(apps.Items))
 
-	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, localClient, argoCDCommitStatus)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider: %w", err)
-	}
-
 	groupedArgoCDApps, err := r.groupArgoCDApplicationsWithPhase(&argoCDCommitStatus, apps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get Application: %w", err)
 	}
 
+	resolvedShas, err := r.getHeadShaForBranch(ctx, argoCDCommitStatus, maps.Keys(groupedArgoCDApps))
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get head shas for target branches: %w", err)
+	}
+
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
-		gitOperation, err := git.NewGitOperations(ctx, localClient, gitAuthProvider, repositoryRef, &argoCDCommitStatus, targetBranch)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
-		}
-
-		resolvedSha, err := gitOperation.LsRemote(ctx, targetBranch)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranch, err)
-		}
-
 		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
 
+		resolvedSha, ok := resolvedShas[targetBranch]
+		if !ok {
+			return ctrl.Result{}, fmt.Errorf("failed to resolve target branch %q: %w", targetBranch, err)
+		}
 		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha, mostRecentLastTransitionTime)
 
-		err = r.updateAggregatedCommitStatus(ctx, localClient, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
+		err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	err = localClient.Status().Update(ctx, &argoCDCommitStatus)
+	err = r.localClient.Status().Update(ctx, &argoCDCommitStatus)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status: %w", err)
 	}
@@ -186,6 +183,43 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil // Timer for now :(
+}
+
+// getHeadShaForBranch returns a map. The key is a branch name. The value is the resolved head sha for that branch.
+func (r *ArgoCDCommitStatusReconciler) getHeadShaForBranch(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranches iter.Seq[string]) (map[string]string, error) {
+	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, argoCDCommitStatus)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get git auth provider: %w", err)
+	}
+
+	var mu sync.Mutex
+	g, ctx := errgroup.WithContext(ctx)
+	headShasByTargetBranch := make(map[string]string)
+
+	for targetBranch := range targetBranches {
+		// Do this in parallel since it's network-bound.
+		g.Go(func() error {
+			gitOperation, err := git.NewGitOperations(ctx, r.localClient, gitAuthProvider, repositoryRef, &argoCDCommitStatus, targetBranch)
+			if err != nil {
+				return fmt.Errorf("failed to initialize git client: %w", err)
+			}
+
+			resolvedSha, err := gitOperation.LsRemote(ctx, targetBranch)
+			if err != nil {
+				return fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranch, err)
+			}
+
+			mu.Lock()
+			headShasByTargetBranch[targetBranch] = resolvedSha
+			mu.Unlock()
+			return nil
+		})
+	}
+	if err = g.Wait(); err != nil {
+		return nil, fmt.Errorf("failed to get head shas for target branches: %w", err)
+	}
+
+	return headShasByTargetBranch, nil
 }
 
 // groupArgoCDApplicationsWithPhase returns a map. The key is a branch name. The value is a list of apps configured for that target branch, along with the commit status for that one app.
@@ -359,11 +393,15 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager) error {
+	// Set the local client for interacting with manager cluster
+	r.localClient = mcMgr.GetLocalManager().GetClient()
+
 	app := &argocd.Application{}
 	err := mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
+			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
 		Watches(app, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(true),
@@ -377,14 +415,14 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager)
 	return nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, cl client.Client, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) error {
+func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) error {
 	logger := log.FromContext(ctx)
 
 	commitStatusName := targetBranch + "/health"
 	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argoCDCommitStatus.Name))
 
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
-	err := cl.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy)
+	err := r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy)
 	if err != nil {
 		return fmt.Errorf("failed to get PromotionStrategy object: %w", err)
 	}
@@ -413,43 +451,47 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	currentCommitStatus := promoterv1alpha1.CommitStatus{}
-	err = cl.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
+	err = r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("failed to get CommitStatus object: %w", err)
 		}
 		// Create
-		err = cl.Create(ctx, &desiredCommitStatus)
+		err = r.localClient.Create(ctx, &desiredCommitStatus)
 		logger.Info("Created ArgoCDCommitStatus", "name", desiredCommitStatus.Name)
 		if err != nil {
 			return fmt.Errorf("failed to create CommitStatus object: %w", err)
 		}
-	} else {
-		// Update
-		currentCommitStatus.Spec = desiredCommitStatus.Spec
-		err = cl.Update(ctx, &currentCommitStatus)
-		logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "sha", sha, "phase", phase, "desc", desc)
-		if err != nil {
-			return fmt.Errorf("failed to update CommitStatus object: %w", err)
-		}
+	}
+
+	if currentCommitStatus.Spec == desiredCommitStatus.Spec {
+		logger.V(4).Info("ArgoCDCommitStatus is already in sync")
+		return nil
+	}
+
+	currentCommitStatus.Spec = desiredCommitStatus.Spec
+	err = r.localClient.Update(ctx, &currentCommitStatus)
+	logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "sha", sha, "phase", phase, "desc", desc)
+	if err != nil {
+		return fmt.Errorf("failed to update CommitStatus object: %w", err)
 	}
 
 	return nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) getPromotionStrategy(ctx context.Context, cl client.Client, namespace string, promotionStrategyRef promoterv1alpha1.ObjectReference) (*promoterv1alpha1.PromotionStrategy, error) {
+func (r *ArgoCDCommitStatusReconciler) getPromotionStrategy(ctx context.Context, namespace string, promotionStrategyRef promoterv1alpha1.ObjectReference) (*promoterv1alpha1.PromotionStrategy, error) {
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
-	err := cl.Get(ctx, client.ObjectKey{Namespace: namespace, Name: promotionStrategyRef.Name}, &promotionStrategy)
+	err := r.localClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: promotionStrategyRef.Name}, &promotionStrategy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get PromotionStrategy object: %w", err)
 	}
 	return &promotionStrategy, nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, cl client.Client, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus) (scms.GitOperationsProvider, promoterv1alpha1.ObjectReference, error) {
+func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus) (scms.GitOperationsProvider, promoterv1alpha1.ObjectReference, error) {
 	logger := log.FromContext(ctx)
 
-	ps, err := r.getPromotionStrategy(ctx, cl, argoCDCommitStatus.GetNamespace(), argoCDCommitStatus.Spec.PromotionStrategyRef)
+	ps, err := r.getPromotionStrategy(ctx, argoCDCommitStatus.GetNamespace(), argoCDCommitStatus.Spec.PromotionStrategyRef)
 	if ps == nil {
 		return nil, promoterv1alpha1.ObjectReference{}, fmt.Errorf("PromotionStrategy is nil for ArgoCDCommitStatus %s", argoCDCommitStatus.Name)
 	}
@@ -457,7 +499,7 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, c
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get PromotionStrategy from ArgoCDCommitStatus %s: %w", argoCDCommitStatus.Name, err)
 	}
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, cl, r.SettingsMgr.GetControllerNamespace(), ps.Spec.RepositoryReference, ps)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.localClient, r.SettingsMgr.GetControllerNamespace(), ps.Spec.RepositoryReference, ps)
 	if err != nil {
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get ScmProvider and secret for PromotionStrategy %q: %w", ps.Name, err)
 	}
