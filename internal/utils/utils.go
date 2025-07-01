@@ -242,7 +242,6 @@ func HandleReconciliationResult(
 	client client.Client,
 	recorder record.EventRecorder,
 	err *error,
-	conditionType string,
 ) {
 	logger := log.FromContext(ctx)
 
@@ -263,23 +262,23 @@ func HandleReconciliationResult(
 		if !k8serrors.IsConflict(*err) {
 			recorder.Eventf(obj, "Warning", "ReconcileError", "Reconciliation failed: %v", *err)
 		}
-		updateErr := updateCondition(ctx, obj, client, conditions, conditionType, metav1.ConditionFalse, string(promoterConditions.ReconciliationError), fmt.Sprintf("Reconciliation failed: %s", *err))
+		updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionFalse, string(promoterConditions.ReconciliationError), fmt.Sprintf("Reconciliation failed: %s", *err))
 		if updateErr != nil {
 			*err = fmt.Errorf("failed to update status with error condition: %w", updateErr)
 		}
 	} else {
 		recorder.Eventf(obj, "Normal", "ReconcileSuccess", "Reconciliation successful")
 
-		updateErr := updateCondition(ctx, obj, client, conditions, conditionType, metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess), "Reconciliation succeeded")
+		updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess), "Reconciliation succeeded")
 		if updateErr != nil {
 			*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
 		}
 	}
 }
 
-func updateCondition(ctx context.Context, obj StatusConditionUpdater, client client.Client, conditions *[]metav1.Condition, conditionType string, status metav1.ConditionStatus, reason, message string) error {
+func updateReadyCondition(ctx context.Context, obj StatusConditionUpdater, client client.Client, conditions *[]metav1.Condition, status metav1.ConditionStatus, reason, message string) error {
 	condition := metav1.Condition{
-		Type:               conditionType,
+		Type:               "Ready",
 		Status:             status,
 		Reason:             reason,
 		Message:            message,

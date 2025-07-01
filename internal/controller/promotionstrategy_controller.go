@@ -24,7 +24,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"gopkg.in/yaml.v3"
 
 	"k8s.io/client-go/util/retry"
@@ -70,7 +69,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var ps promoterv1alpha1.PromotionStrategy
 
-	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, &err, string(conditions.Ready))
+	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {

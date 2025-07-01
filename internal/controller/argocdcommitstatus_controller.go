@@ -28,7 +28,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"golang.org/x/sync/errgroup"
 	"k8s.io/client-go/tools/record"
 
@@ -92,7 +91,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 	logger.Info("Reconciling ArgoCDCommitStatus")
 	startTime := time.Now()
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
-	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.Client, r.Recorder, &err, string(conditions.Ready))
+	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.Client, r.Recorder, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {

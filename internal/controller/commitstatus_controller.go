@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
-
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/util/retry"
 
@@ -75,7 +73,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	startTime := time.Now()
 
 	var cs promoterv1alpha1.CommitStatus
-	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, &err, string(conditions.Ready))
+	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 	if err != nil {

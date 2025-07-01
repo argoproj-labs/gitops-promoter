@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
-
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"k8s.io/client-go/tools/record"
 
@@ -68,7 +66,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	startTime := time.Now()
 
 	var pr promoterv1alpha1.PullRequest
-	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, &err, string(conditions.Ready))
+	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
 		if errors.IsNotFound(err) {
