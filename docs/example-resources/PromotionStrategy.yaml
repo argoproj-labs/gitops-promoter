@@ -19,6 +19,12 @@ spec:
       proposedCommitStatuses:
       - key: deployment-freeze
 status:
+  conditions:
+    # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
+    # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,
+    # the condition will be True with a reason of ReconciliationSuccess. The Ready condition is essentially a way to show reconciliation
+    # errors to the user. This condition exists on all resources that have reconciliation logic.
+    - type: Ready
   environments:
   - branch: environment/dev
     commitStatuses:

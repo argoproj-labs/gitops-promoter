@@ -67,13 +67,15 @@ type CommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
-func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling CommitStatus", "name", req.Name)
 	startTime := time.Now()
 
 	var cs promoterv1alpha1.CommitStatus
-	err := r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
+	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, &err)
+
+	err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("CommitStatus not found")
@@ -144,7 +146,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 
-	logger.Info("Reconciling CommitStatus End", "duration", time.Since(startTime))
 	return ctrl.Result{}, nil
 }
 

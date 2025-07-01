@@ -241,6 +241,7 @@ func runController(
 	if err = (&controller.ArgoCDCommitStatusReconciler{
 		Client:      mgr.GetClient(),
 		Scheme:      mgr.GetScheme(),
+		Recorder:    mgr.GetEventRecorderFor("ArgoCDCommitStatus"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(mgr); err != nil {
 		panic("unable to create ArgoCDCommitStatus controller")
