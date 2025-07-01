@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"k8s.io/apimachinery/pkg/api/meta"
 
