@@ -56,9 +56,6 @@ type PullRequestStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// ObservedGeneration the generation observed by the controller
-	ObservedGeneration int64 `json:"observedGeneration"`
-
 	// ID the id of the pull request
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open

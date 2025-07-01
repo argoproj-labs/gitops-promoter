@@ -86,12 +86,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
 	}
 
-	// We use observed generation pattern here to avoid provider API calls.
-	if cs.Status.ObservedGeneration == cs.Generation {
-		logger.Info("No need to reconcile")
-		return ctrl.Result{}, nil
-	}
-
 	// empty phase should be impossible due to schema validation
 	if cs.Spec.Sha == "" || cs.Spec.Phase == "" {
 		logger.Info("Skip setting commit status, missing sha or phase", "sha", cs.Spec.Sha, "phase", cs.Spec.Phase)
@@ -123,7 +117,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
 		}
 
-		newCs.Status.ObservedGeneration = newCs.Generation
 		err = r.Status().Update(ctx, &newCs)
 		if err != nil {
 			if errors.IsConflict(err) {
