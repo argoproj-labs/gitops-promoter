@@ -15,4 +15,4 @@ ignore:
   - 'dist'
   - 'hack'
   - 'internal/scms/mock'
-
+  - '**/zz_generated.*'
