@@ -435,24 +435,36 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	return false, nil
 }
 
-func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, branch string) (string, error) {
+func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, branches ...string) (map[string]string, error) {
 	logger := log.FromContext(ctx)
 
 	start := time.Now()
-	stdout, stderr, err := runCmd(ctx, gap, "", "ls-remote", gap.GetGitHttpsRepoUrl(*gitRepo), branch)
+	args := []string{"ls-remote", "--heads", gap.GetGitHttpsRepoUrl(*gitRepo)}
+	args = append(args, branches...)
+	stdout, stderr, err := runCmd(ctx, gap, "", args...)
 	metrics.RecordGitOperation(gitRepo, metrics.GitOperationLsRemote, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not git ls-remote", "gitError", stderr)
-		return "", err
+		return nil, err
 	}
-	if len(strings.Split(stdout, "\t")) == 0 {
-		return "", fmt.Errorf("no sha found for branch %q", branch)
+	stdout = strings.TrimSpace(stdout)
+	lines := strings.Split(stdout, "\n")
+	if len(lines) != len(branches) {
+		return nil, fmt.Errorf("expected %d lines from ls-remote, got %d: %s", len(branches), len(lines), stdout)
+	}
+	shas := make(map[string]string, len(branches))
+	for i := range lines {
+		sha, ref, found := strings.Cut(lines[i], "\t")
+		if !found {
+			return nil, fmt.Errorf("could not parse line %q from ls-remote output", lines[i])
+		}
+		branch := strings.TrimPrefix(ref, "refs/heads/")
+		shas[branch] = sha
 	}
 
-	resolvedSha := strings.Split(stdout, "\t")[0]
-	logger.Info("ls-remote called", "repoUrl", gap.GetGitHttpsRepoUrl(*gitRepo), "branch", branch, "sha", resolvedSha)
+	logger.Info("ls-remote called", "repoUrl", gap.GetGitHttpsRepoUrl(*gitRepo), "branches", branches, "shas", shas)
 
-	return resolvedSha, nil
+	return shas, nil
 }
 
 func (g *EnvironmentOperations) runCmd(ctx context.Context, directory string, args ...string) (string, string, error) {

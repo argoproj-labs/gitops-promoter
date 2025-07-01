@@ -20,15 +20,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"iter"
 	"maps"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 
 	"k8s.io/apimachinery/pkg/fields"
 
@@ -119,7 +117,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to get Application: %w", err)
 	}
 
-	resolvedShas, err := r.getHeadShaForBranch(ctx, argoCDCommitStatus, maps.Keys(groupedArgoCDApps))
+	resolvedShas, err := r.getHeadShasForBranches(ctx, argoCDCommitStatus, slices.Collect(maps.Keys(groupedArgoCDApps)))
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get head shas for target branches: %w", err)
 	}
@@ -152,8 +150,8 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil // Timer for now :(
 }
 
-// getHeadShaForBranch returns a map. The key is a branch name. The value is the resolved head sha for that branch.
-func (r *ArgoCDCommitStatusReconciler) getHeadShaForBranch(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranches iter.Seq[string]) (map[string]string, error) {
+// getHeadShasForBranches returns a map. The key is a branch name. The value is the resolved head sha for that branch.
+func (r *ArgoCDCommitStatusReconciler) getHeadShasForBranches(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranches []string) (map[string]string, error) {
 	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, argoCDCommitStatus)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get git auth provider: %w", err)
@@ -164,26 +162,9 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShaForBranch(ctx context.Context, 
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	var mu sync.Mutex
-	g, ctx := errgroup.WithContext(ctx)
-	headShasByTargetBranch := make(map[string]string)
-
-	for targetBranch := range targetBranches {
-		// Do this in parallel since it's network-bound.
-		g.Go(func() error {
-			resolvedSha, err := git.LsRemote(ctx, gitAuthProvider, gitRepo, targetBranch)
-			if err != nil {
-				return fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranch, err)
-			}
-
-			mu.Lock()
-			headShasByTargetBranch[targetBranch] = resolvedSha
-			mu.Unlock()
-			return nil
-		})
-	}
-	if err = g.Wait(); err != nil {
-		return nil, fmt.Errorf("failed to get head shas for target branches: %w", err)
+	headShasByTargetBranch, err := git.LsRemote(ctx, gitAuthProvider, gitRepo, targetBranches...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranches, err)
 	}
 
 	return headShasByTargetBranch, nil
