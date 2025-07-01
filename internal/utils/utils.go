@@ -246,6 +246,7 @@ func HandleReconciliationResult(
 	logger := log.FromContext(ctx)
 
 	if obj.GetName() == "" && obj.GetNamespace() == "" {
+		// This happens when the Get in the reconciliation log returns "not found." It's expected and safe to skip.
 		logger.V(4).Info(obj.GetObjectKind().GroupVersionKind().Kind + " not found, skipping reconciliation")
 		return
 	}
