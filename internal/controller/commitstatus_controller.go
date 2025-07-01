@@ -104,20 +104,19 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// creating and updating commit status and the API is very simple we try to avoid conflicts to update the status as
 	// soon as possible.
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		newCs := promoterv1alpha1.CommitStatus{}
 		// TODO: consider skipping Get on the initial attempt. The object we already got might be up to date.
-		err = r.Get(ctx, req.NamespacedName, &newCs, &client.GetOptions{})
+		err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
 		}
 
 		// TODO: consider pulling this outside the retry loop and instead using the reconcile requeue to handle SCM errors.
-		_, err = commitStatusProvider.Set(ctx, &newCs)
+		_, err = commitStatusProvider.Set(ctx, &cs)
 		if err != nil {
 			return fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
 		}
 
-		err = r.Status().Update(ctx, &newCs)
+		err = r.Status().Update(ctx, &cs)
 		if err != nil {
 			if errors.IsConflict(err) {
 				logger.Info("Conflict while updating CommitStatus status. Retrying")
@@ -127,7 +126,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return err
 		}
 
-		err = r.triggerReconcileChangeTransferPolicy(ctx, newCs, oldSha, cs.Spec.Sha)
+		err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
 		if err != nil {
 			return fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
 		}
