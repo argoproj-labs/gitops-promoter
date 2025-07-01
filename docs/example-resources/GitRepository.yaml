@@ -3,8 +3,20 @@ kind: GitRepository
 metadata:
   name: example-git-repository
 spec:
-  owner:
-  name:
+  # Only one of the git providers should be specified.
+  github:
+    name:
+    owner:
+
+  gitlab:
+    name:
+    namespace:
+    projectId:
+
+  forgejo:
+    name:
+    owner:
+
   scmProviderRef:
     kind: ScmProvider
     name: example-scm-provider

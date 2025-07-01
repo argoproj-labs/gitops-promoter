@@ -12,3 +12,17 @@ spec:
 
   # Must be closed, merged, or open. Default is open.
   state:
+status:
+  conditions:
+    # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
+    # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,
+    # the condition will be True with a reason of ReconciliationSuccess. The Ready condition is essentially a way to show reconciliation
+    # errors to the user. This condition exists on all resources that have reconciliation logic.
+    - type: Ready
+      lastTransitionTime: 2023-10-01T00:00:00Z
+      message: Reconciliation succeeded
+      reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
+      status: "True" # "True," "False," or "Unknown"
+      # observedGeneration is the generation of the resource that was last reconciled. This is used to track if the
+      # resource has changed since the last reconciliation.
+      observedGeneration: 123
