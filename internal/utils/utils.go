@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"k8s.io/client-go/util/retry"
 	"regexp"
 	"slices"
 	"strconv"
@@ -19,11 +20,11 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	k8sClient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Client, repositoryRef *promoterv1alpha1.GitRepository, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, error) {
+func GetScmProviderFromGitRepository(ctx context.Context, k8sClient k8sClient.Client, repositoryRef *promoterv1alpha1.GitRepository, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, error) {
 	logger := log.FromContext(ctx)
 
 	var provider promoterv1alpha1.GenericScmProvider
@@ -31,11 +32,11 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 	switch kind {
 	case promoterv1alpha1.ClusterScmProviderKind:
 		var scmProvider promoterv1alpha1.ClusterScmProvider
-		objectKey := client.ObjectKey{
+		objectKey := k8sClient.ObjectKey{
 			Name: repositoryRef.Spec.ScmProviderRef.Name,
 		}
 
-		err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
+		err := k8sClient.Get(ctx, objectKey, &scmProvider, &k8sClient.GetOptions{})
 		if err != nil {
 			logger.Error(err, "failed to get ClusterScmProvider", "name", objectKey.Name)
 			return nil, fmt.Errorf("failed to get ClusterScmProvider: %w", err)
@@ -43,12 +44,12 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 		provider = &scmProvider
 	case promoterv1alpha1.ScmProviderKind:
 		var scmProvider promoterv1alpha1.ScmProvider
-		objectKey := client.ObjectKey{
+		objectKey := k8sClient.ObjectKey{
 			Namespace: obj.GetNamespace(),
 			Name:      repositoryRef.Spec.ScmProviderRef.Name,
 		}
 
-		err := k8sClient.Get(ctx, objectKey, &scmProvider, &client.GetOptions{})
+		err := k8sClient.Get(ctx, objectKey, &scmProvider, &k8sClient.GetOptions{})
 		if err != nil {
 			logger.Error(err, "failed to get ScmProvider", "namespace", obj.GetNamespace(), "name", objectKey.Name)
 			return nil, fmt.Errorf("failed to get ScmProvider: %w", err)
@@ -69,7 +70,7 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 }
 
 // GetGitRepositoryFromObjectKey returns the GitRepository object from the repository reference
-func GetGitRepositoryFromObjectKey(ctx context.Context, k8sClient client.Client, objectKey client.ObjectKey) (*promoterv1alpha1.GitRepository, error) {
+func GetGitRepositoryFromObjectKey(ctx context.Context, k8sClient k8sClient.Client, objectKey k8sClient.ObjectKey) (*promoterv1alpha1.GitRepository, error) {
 	var gitRepo promoterv1alpha1.GitRepository
 	err := k8sClient.Get(ctx, objectKey, &gitRepo)
 	if err != nil {
@@ -79,9 +80,9 @@ func GetGitRepositoryFromObjectKey(ctx context.Context, k8sClient client.Client,
 	return &gitRepo, nil
 }
 
-func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
+func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient k8sClient.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
 	logger := log.FromContext(ctx)
-	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
+	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, k8sClient.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
@@ -99,7 +100,7 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 	}
 
 	var secret v1.Secret
-	objectKey := client.ObjectKey{
+	objectKey := k8sClient.ObjectKey{
 		Namespace: secretNamespace,
 		Name:      scmProvider.GetSpec().SecretRef.Name,
 	}
@@ -230,7 +231,7 @@ func AreCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPol
 
 // StatusConditionUpdater defines the interface for objects that can have their status conditions updated
 type StatusConditionUpdater interface {
-	client.Object
+	k8sClient.Object
 	GetConditions() *[]metav1.Condition
 }
 
@@ -239,7 +240,7 @@ func HandleReconciliationResult(
 	ctx context.Context,
 	startTime time.Time,
 	obj StatusConditionUpdater,
-	client client.Client,
+	client k8sClient.Client,
 	recorder record.EventRecorder,
 	err *error,
 ) {
@@ -273,19 +274,34 @@ func HandleReconciliationResult(
 	}
 }
 
-func updateReadyCondition(ctx context.Context, obj StatusConditionUpdater, client client.Client, conditions *[]metav1.Condition, status metav1.ConditionStatus, reason, message string) error {
-	condition := metav1.Condition{
-		Type:               string(promoterConditions.Ready),
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: obj.GetGeneration(),
-	}
+func updateReadyCondition(ctx context.Context, obj StatusConditionUpdater, client k8sClient.Client, conditions *[]metav1.Condition, status metav1.ConditionStatus, reason, message string) error {
+	// We use a retry loop to handle potential conflicts when updating the status condition. This is necessary mainly for
+	// the CommitStatus resource, which is updated by other controllers (e.g., ArgoCDCommitStatusController) and can
+	// lead to conflict loops.
+	err := retry.RetryOnConflict(
+		retry.DefaultRetry,
+		func() error {
+			// Get the latest version of the object to avoid conflicts
+			if getErr := client.Get(ctx, k8sClient.ObjectKeyFromObject(obj), obj); getErr != nil {
+				return fmt.Errorf("failed to get object for status update: %w", getErr)
+			}
 
-	if changed := meta.SetStatusCondition(conditions, condition); changed {
-		if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
-			return fmt.Errorf("failed to update status condition: %w", updateErr)
-		}
-	}
-	return nil
+			condition := metav1.Condition{
+				Type:               string(promoterConditions.Ready),
+				Status:             status,
+				Reason:             reason,
+				Message:            message,
+				ObservedGeneration: obj.GetGeneration(),
+			}
+
+			if changed := meta.SetStatusCondition(conditions, condition); changed {
+				if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
+					return fmt.Errorf("failed to update status condition: %w", updateErr)
+				}
+			}
+
+			return nil
+		})
+
+	return err
 }
