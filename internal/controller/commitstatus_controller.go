@@ -100,42 +100,21 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// We need the old sha to trigger the reconcile of the change transfer policy
 	oldSha := cs.Status.Sha
 
-	// We use retry on conflict to avoid conflicts when updating the status because so many other controllers will be
-	// creating and updating commit status and the API is very simple we try to avoid conflicts to update the status as
-	// soon as possible.
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// TODO: consider skipping Get on the initial attempt. The object we already got might be up to date.
-		err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
-		}
-
-		// TODO: consider pulling this outside the retry loop and instead using the reconcile requeue to handle SCM errors.
-		_, err = commitStatusProvider.Set(ctx, &cs)
-		if err != nil {
-			return fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
-		}
-
-		err = r.Status().Update(ctx, &cs)
-		if err != nil {
-			if errors.IsConflict(err) {
-				logger.Info("Conflict while updating CommitStatus status. Retrying")
-			}
-			// Don't wrap this error, it'll be wrapped one level up.
-			//nolint: wrapcheck
-			return err
-		}
-
-		err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
-		if err != nil {
-			return fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
-		}
-
-		return nil
-	})
+	_, err = commitStatusProvider.Set(ctx, &cs)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus %q, %w", req.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
 	}
+
+	err = r.Status().Update(ctx, &cs)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus status %q: %w", req.Name, err)
+	}
+
+	err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
+	}
+
 	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 
 	return ctrl.Result{}, nil
