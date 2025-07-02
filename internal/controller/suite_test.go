@@ -34,16 +34,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
+	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"go.uber.org/zap/zapcore"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
-	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
-
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -80,6 +80,7 @@ var (
 const (
 	EventuallyTimeout   = 90 * time.Second
 	WebhookReceiverPort = 3333
+	ApiServerPort       = 8088
 )
 
 func TestControllers(t *testing.T) {
@@ -157,6 +158,24 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	webhookReceiverPort := WebhookReceiverPort + GinkgoParallelProcess()
+	whr := webhookreceiver.NewWebhookReceiver(k8sManager)
+	go func() {
+		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
+		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
+	}()
+
+	apiServerPort := ApiServerPort + GinkgoParallelProcess()
+	ws := webserver.NewWebServer(k8sManager)
+	go func() {
+		err = ws.Start(ctx, fmt.Sprintf(":%d", apiServerPort))
+		Expect(err).ToNot(HaveOccurred(), "failed to start webserver")
+		// err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		// Expect(err).ToNot(HaveOccurred(), "failed to start webserver")
+	}()
+	err = ws.SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), settings.ManagerConfig{
 		ControllerNamespace: "default",
 	})
@@ -221,13 +240,6 @@ var _ = BeforeSuite(func() {
 		Recorder:    k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
-
-	webhookReceiverPort := WebhookReceiverPort + GinkgoParallelProcess()
-	whr := webhookreceiver.NewWebhookReceiver(k8sManager)
-	go func() {
-		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
-		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
-	}()
 
 	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{
 		ObjectMeta: metav1.ObjectMeta{

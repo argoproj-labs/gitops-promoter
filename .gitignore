@@ -38,3 +38,5 @@ junit.xml
 release_dist
 
 venv
+
+node_modules/
