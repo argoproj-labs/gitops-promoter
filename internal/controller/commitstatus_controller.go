@@ -67,13 +67,15 @@ type CommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
-func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling CommitStatus", "name", req.Name)
 	startTime := time.Now()
 
 	var cs promoterv1alpha1.CommitStatus
-	err := r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
+	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, &err)
+
+	err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("CommitStatus not found")
@@ -82,12 +84,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 		logger.Error(err, "failed to get CommitStatus")
 		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
-	}
-
-	// We use observed generation pattern here to avoid provider API calls.
-	if cs.Status.ObservedGeneration == cs.Generation {
-		logger.Info("No need to reconcile")
-		return ctrl.Result{}, nil
 	}
 
 	// empty phase should be impossible due to schema validation
@@ -104,47 +100,23 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// We need the old sha to trigger the reconcile of the change transfer policy
 	oldSha := cs.Status.Sha
 
-	// We use retry on conflict to avoid conflicts when updating the status because so many other controllers will be
-	// creating and updating commit status and the API is very simple we try to avoid conflicts to update the status as
-	// soon as possible.
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		newCs := promoterv1alpha1.CommitStatus{}
-		// TODO: consider skipping Get on the initial attempt. The object we already got might be up to date.
-		err = r.Get(ctx, req.NamespacedName, &newCs, &client.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
-		}
-
-		// TODO: consider pulling this outside the retry loop and instead using the reconcile requeue to handle SCM errors.
-		_, err = commitStatusProvider.Set(ctx, &newCs)
-		if err != nil {
-			return fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
-		}
-
-		newCs.Status.ObservedGeneration = newCs.Generation
-		err = r.Status().Update(ctx, &newCs)
-		if err != nil {
-			if errors.IsConflict(err) {
-				logger.Info("Conflict while updating CommitStatus status. Retrying")
-			}
-			// Don't wrap this error, it'll be wrapped one level up.
-			//nolint: wrapcheck
-			return err
-		}
-
-		err = r.triggerReconcileChangeTransferPolicy(ctx, newCs, oldSha, cs.Spec.Sha)
-		if err != nil {
-			return fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
-		}
-
-		return nil
-	})
+	_, err = commitStatusProvider.Set(ctx, &cs)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus %q, %w", req.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
 	}
+
+	err = r.Status().Update(ctx, &cs)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus status %q: %w", req.Name, err)
+	}
+
+	err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
+	}
+
 	r.Recorder.Eventf(&cs, "Normal", "CommitStatusSet", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 
-	logger.Info("Reconciling CommitStatus End", "duration", time.Since(startTime))
 	return ctrl.Result{}, nil
 }
 

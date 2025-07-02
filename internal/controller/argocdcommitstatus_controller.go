@@ -20,17 +20,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"iter"
 	"maps"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"golang.org/x/sync/errgroup"
-
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/client-go/tools/record"
 
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -82,6 +81,7 @@ type appRevisionKey struct {
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
 	Manager            mcmanager.Manager
+	Recorder           record.EventRecorder
 	SettingsMgr        *settings.Manager
 	KubeConfigProvider *kubeconfig.Provider
 	localClient        client.Client
@@ -101,12 +101,15 @@ type ArgoCDCommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
-func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (ctrl.Result, error) {
+func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling ArgoCDCommitStatus", "cluster", req.ClusterName, "namespace", req.Namespace, "name", req.Name)
+	startTime := time.Now()
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 
-	err := r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
+	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, &err)
+
+	err = r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
 			logger.Info("ArgoCDCommitStatus not found")
@@ -153,7 +156,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to get Application: %w", err)
 	}
 
-	resolvedShas, err := r.getHeadShaForBranch(ctx, argoCDCommitStatus, maps.Keys(groupedArgoCDApps))
+	resolvedShas, err := r.getHeadShasForBranches(ctx, argoCDCommitStatus, slices.Collect(maps.Keys(groupedArgoCDApps)))
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get head shas for target branches: %w", err)
 	}
@@ -186,38 +189,21 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil // Timer for now :(
 }
 
-// getHeadShaForBranch returns a map. The key is a branch name. The value is the resolved head sha for that branch.
-func (r *ArgoCDCommitStatusReconciler) getHeadShaForBranch(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranches iter.Seq[string]) (map[string]string, error) {
+// getHeadShasForBranches returns a map. The key is a branch name. The value is the resolved head sha for that branch.
+func (r *ArgoCDCommitStatusReconciler) getHeadShasForBranches(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranches []string) (map[string]string, error) {
 	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, argoCDCommitStatus)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get git auth provider: %w", err)
 	}
 
-	var mu sync.Mutex
-	g, ctx := errgroup.WithContext(ctx)
-	headShasByTargetBranch := make(map[string]string)
-
-	for targetBranch := range targetBranches {
-		// Do this in parallel since it's network-bound.
-		g.Go(func() error {
-			gitOperation, err := git.NewGitOperations(ctx, r.localClient, gitAuthProvider, repositoryRef, &argoCDCommitStatus, targetBranch)
-			if err != nil {
-				return fmt.Errorf("failed to initialize git client: %w", err)
-			}
-
-			resolvedSha, err := gitOperation.LsRemote(ctx, targetBranch)
-			if err != nil {
-				return fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranch, err)
-			}
-
-			mu.Lock()
-			headShasByTargetBranch[targetBranch] = resolvedSha
-			mu.Unlock()
-			return nil
-		})
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.localClient, client.ObjectKey{Namespace: argoCDCommitStatus.GetNamespace(), Name: repositoryRef.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
-	if err = g.Wait(); err != nil {
-		return nil, fmt.Errorf("failed to get head shas for target branches: %w", err)
+
+	headShasByTargetBranch, err := git.LsRemote(ctx, gitAuthProvider, gitRepo, targetBranches...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranches, err)
 	}
 
 	return headShasByTargetBranch, nil

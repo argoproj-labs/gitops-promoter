@@ -10,3 +10,4 @@ spec:
   promotionStrategyRequeueDuration: "5m"
   changeTransferPolicyRequeueDuration: "5m"
   argocdCommitStatusRequeueDuration: "15s"
+  pullRequestRequeueDuration: "15s"

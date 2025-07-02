@@ -9,6 +9,11 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
+
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/client-go/tools/record"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	v1 "k8s.io/api/core/v1"
@@ -221,4 +226,66 @@ func AreCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPol
 		}
 	}
 	return true
+}
+
+// StatusConditionUpdater defines the interface for objects that can have their status conditions updated
+type StatusConditionUpdater interface {
+	client.Object
+	GetConditions() *[]metav1.Condition
+}
+
+// HandleReconciliationResult handles reconciliation results for any object with status conditions.
+func HandleReconciliationResult(
+	ctx context.Context,
+	startTime time.Time,
+	obj StatusConditionUpdater,
+	client client.Client,
+	recorder record.EventRecorder,
+	err *error,
+) {
+	logger := log.FromContext(ctx)
+
+	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
+	if obj.GetName() == "" && obj.GetNamespace() == "" {
+		// This happens when the Get in the Reconcile function returns "not found." It's expected and safe to skip.
+		logger.V(4).Info(obj.GetObjectKind().GroupVersionKind().Kind + " not found, skipping reconciliation")
+		return
+	}
+
+	conditions := obj.GetConditions()
+	if conditions == nil {
+		conditions = &[]metav1.Condition{}
+	}
+
+	if *err == nil {
+		recorder.Eventf(obj, "Normal", "ReconcileSuccess", "Reconciliation successful")
+		if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess), "Reconciliation succeeded"); updateErr != nil {
+			*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
+		}
+		return
+	}
+
+	if !k8serrors.IsConflict(*err) {
+		recorder.Eventf(obj, "Warning", "ReconcileError", "Reconciliation failed: %v", *err)
+	}
+	if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionFalse, string(promoterConditions.ReconciliationError), fmt.Sprintf("Reconciliation failed: %s", *err)); updateErr != nil {
+		*err = fmt.Errorf("failed to update status with error condition: %w", updateErr)
+	}
+}
+
+func updateReadyCondition(ctx context.Context, obj StatusConditionUpdater, client client.Client, conditions *[]metav1.Condition, status metav1.ConditionStatus, reason, message string) error {
+	condition := metav1.Condition{
+		Type:               string(promoterConditions.Ready),
+		Status:             status,
+		Reason:             reason,
+		Message:            message,
+		ObservedGeneration: obj.GetGeneration(),
+	}
+
+	if changed := meta.SetStatusCondition(conditions, condition); changed {
+		if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
+			return fmt.Errorf("failed to update status condition: %w", updateErr)
+		}
+	}
+	return nil
 }

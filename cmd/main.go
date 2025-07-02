@@ -25,6 +25,7 @@ import (
 	"runtime/debug"
 	"syscall"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"go.uber.org/zap/zapcore"
 	"golang.org/x/sync/errgroup"
@@ -68,36 +69,60 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 }
 
-func main() {
+func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
-	var clientConfig clientcmd.ClientConfig
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
-	flag.StringVar(&pprofAddr, "pprof-bind-address", "",
-		"The address the pprof endpoint binds to. If unset, pprof is disabled.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&secureMetrics, "metrics-secure", false,
-		"If set the metrics endpoint is served securely")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	opts := zap.Options{
 		Development: true,
 		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
 	}
 	opts.BindFlags(flag.CommandLine)
-	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	cmd := &cobra.Command{
+		Use:   "controller",
+		Short: "GitOps Promoter controller",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			flag.Parse()
+			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+			return runController(
+				metricsAddr,
+				probeAddr,
+				pprofAddr,
+				enableLeaderElection,
+				secureMetrics,
+				enableHTTP2,
+				clientConfig,
+			)
+		},
+	}
 
-	clientConfig = addKubectlFlags(pflag.CommandLine)
+	cmd.Flags().StringVar(&metricsAddr, "metrics-bind-address", ":9080", "The address the metric endpoint binds to.")
+	cmd.Flags().StringVar(&probeAddr, "health-probe-bind-address", ":9081", "The address the probe endpoint binds to.")
+	cmd.Flags().StringVar(&pprofAddr, "pprof-bind-address", "",
+		"The address the pprof endpoint binds to. If unset, pprof is disabled.")
+	cmd.Flags().BoolVar(&enableLeaderElection, "leader-elect", false,
+		"Enable leader election for controller manager. "+
+			"Enabling this will ensure there is only one active controller manager.")
+	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", false, "If set the metrics endpoint is served securely")
+	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
+		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 
+	return cmd
+}
+
+func runController(
+	metricsAddr string,
+	probeAddr string,
+	pprofAddr string,
+	enableLeaderElection bool,
+	secureMetrics bool,
+	enableHTTP2 bool,
+	clientConfig clientcmd.ClientConfig,
+) error {
 	controllerNamespace, _, err := clientConfig.Namespace()
 	if err != nil {
 		setupLog.Error(err, "failed to get namespace")
@@ -222,7 +247,6 @@ func main() {
 	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create GitRepository controller")
 	}
-
 	if err = (&controller.ChangeTransferPolicyReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
@@ -236,6 +260,7 @@ func main() {
 		Manager:            mcMgr,
 		SettingsMgr:        settingsMgr,
 		KubeConfigProvider: provider,
+		Recorder:           localManager.GetEventRecorderFor("ArgoCDCommitStatus"),
 	}).SetupWithManager(mcMgr); err != nil {
 		panic("unable to create ArgoCDCommitStatus controller")
 	}
@@ -298,6 +323,35 @@ func main() {
 			setupLog.Error(err, "failed to cleanup directory")
 		}
 		setupLog.Info("cleaning directory", "directory", path)
+	}
+	return nil
+}
+
+func newDashboardCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "dashboard",
+		Short: "GitOps Promoter dashboard",
+		Run: func(cmd *cobra.Command, args []string) {
+			cmd.Println("Dashboard is not implemented yet.")
+		},
+	}
+}
+
+func newCommand() *cobra.Command {
+	var clientConfig clientcmd.ClientConfig
+	cmd := &cobra.Command{
+		Use:   "promoter",
+		Short: "GitOps Promoter",
+	}
+	clientConfig = addKubectlFlags(cmd.PersistentFlags())
+	cmd.AddCommand(newControllerCommand(clientConfig))
+	cmd.AddCommand(newDashboardCommand())
+	return cmd
+}
+
+func main() {
+	if err := newCommand().Execute(); err != nil {
+		os.Exit(1)
 	}
 }
 

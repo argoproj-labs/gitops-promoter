@@ -1462,6 +1462,44 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(len(promotionStrategy.Status.Environments) > 0).To(BeTrue())
 				g.Expect(len(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses) > 0).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
+
+				for _, environment := range promotionStrategy.Status.Environments {
+
+					g.Expect(environment.Proposed.Dry.Author).To(Equal("testuser <testmail@test.com>"))
+					g.Expect(environment.Proposed.Dry.Subject).To(Equal("added fake manifests commit with timestamp"))
+					g.Expect(environment.Proposed.Dry.Body).To(Equal(""))
+
+					g.Expect(environment.Proposed.Hydrated.Author).To(Equal("testuser"))
+					g.Expect(environment.Proposed.Hydrated.Subject).To(ContainSubstring("added pending commit from dry sha"))
+					g.Expect(environment.Proposed.Hydrated.Body).To(Equal(""))
+
+					g.Expect(environment.Proposed.Dry.References).To(HaveLen(1))
+					g.Expect(environment.Proposed.Dry.References[0].Commit.Subject).To(Equal("This is a fix for an upstream issue"))
+					g.Expect(environment.Proposed.Dry.References[0].Commit.Body).To(Equal("This is a body of the commit"))
+					g.Expect(environment.Proposed.Dry.References[0].Commit.RepoURL).To(Equal("https://github.com/upstream/repo"))
+					g.Expect(environment.Proposed.Dry.References[0].Commit.Sha).To(Equal("c4c862564afe56abf8cc8ac683eee3dc8bf96108"))
+				}
+
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Subject).To(Equal("added fake manifests commit with timestamp"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Body).To(Equal(""))
+
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("added pending commit from dry sha"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Body).To(Equal(""))
+
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References).To(HaveLen(1))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References[0].Commit.Subject).To(Equal("This is a fix for an upstream issue"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References[0].Commit.Body).To(Equal("This is a body of the commit"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References[0].Commit.RepoURL).To(Equal("https://github.com/upstream/repo"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References[0].Commit.Sha).To(Equal("c4c862564afe56abf8cc8ac683eee3dc8bf96108"))
+
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Author).To(Equal(""))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Subject).To(Equal(""))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Body).To(Equal(""))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Author).To(Equal("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("initial commit"))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(Equal(""))
 			}, EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())

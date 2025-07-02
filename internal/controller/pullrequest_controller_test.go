@@ -19,6 +19,9 @@ package controller
 import (
 	"context"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"k8s.io/apimachinery/pkg/api/meta"
+
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -42,10 +45,10 @@ var _ = Describe("PullRequest Controller", func() {
 				Namespace: "default",
 			}
 
-			pullRequest.Spec.Title = "Initial Title"
+			pullRequest.Spec.Title = "This is the initial title"
 			pullRequest.Spec.TargetBranch = "development"
 			pullRequest.Spec.SourceBranch = "development-next"
-			pullRequest.Spec.Description = "Initial Description"
+			pullRequest.Spec.Description = "Pull Request for testing errors"
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -118,6 +121,43 @@ var _ = Describe("PullRequest Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When reconciling a resource with a bad configuration", func() {
+		ctx := context.Background()
+
+		It("should successfully reconcile the resource and update conditions with the error", func() {
+			By("Reconciling the created resource")
+
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "bad-configuration-no-scm-secret", "default")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			scmProvider.Spec.SecretRef = &v1.LocalObjectReference{Name: "non-existing-secret"}
+
+			pullRequest.Spec.Title = "Initial Title"
+			pullRequest.Spec.TargetBranch = "development"
+			pullRequest.Spec.SourceBranch = "development-next"
+			pullRequest.Spec.Description = "Initial Description"
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Checking the PullRequest status conditions have an error condition")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.Conditions).To(HaveLen(1))
+				g.Expect(pullRequest.Status.Conditions[0].Type).To(Equal(string(conditions.Ready)))
+				g.Expect(meta.IsStatusConditionFalse(pullRequest.Status.Conditions, string(conditions.Ready))).To(BeTrue())
+				g.Expect(pullRequest.Status.Conditions[0].Reason).To(Equal(string(conditions.ReconciliationError)))
+				g.Expect(pullRequest.Status.Conditions[0].Message).To(ContainSubstring("secret from ScmProvider not found"))
 			}, EventuallyTimeout).Should(Succeed())
 		})
 	})

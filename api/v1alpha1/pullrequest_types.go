@@ -56,9 +56,6 @@ type PullRequestStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// ObservedGeneration the generation observed by the controller
-	ObservedGeneration int64 `json:"observedGeneration"`
-
 	// ID the id of the pull request
 	ID string `json:"id,omitempty"`
 	// State of the merge request closed/merged/open
@@ -66,6 +63,17 @@ type PullRequestStatus struct {
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime the time the PR was created
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
+
+	// Conditions Represents the observations of the current state.
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+func (ps *PullRequest) GetConditions() *[]metav1.Condition {
+	return &ps.Status.Conditions
 }
 
 //+kubebuilder:object:root=true
