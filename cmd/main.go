@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"runtime/debug"
 	"syscall"
@@ -32,6 +33,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
@@ -161,8 +163,8 @@ func runController(
 	// Create the kubeconfig provider with options
 	providerOpts := kubeconfigprovider.Options{
 		Namespace:             controllerNamespace,
-		KubeconfigSecretLabel: "sigs.k8s.io/multicluster-runtime-kubeconfig",
-		KubeconfigSecretKey:   "kubeconfig",
+		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
+		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
 	}
 
 	// Create the provider first, then the manager with the provider
@@ -301,7 +303,7 @@ func runController(
 	})
 
 	g.Go(func() error {
-		if err := ignoreCanceled(whr.Start(processSignals, ":3333")); err != nil {
+		if err := ignoreCanceled(whr.Start(processSignals, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil {
 			setupLog.Error(err, "unable to start webhook receiver")
 			return err
 		}

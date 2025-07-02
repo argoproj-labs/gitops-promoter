@@ -48,6 +48,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -85,14 +86,6 @@ var (
 	cancel           context.CancelFunc
 	ctx              context.Context
 	gitServerPort    string
-)
-
-const (
-	EventuallyTimeout         = 90 * time.Second
-	WebhookReceiverPort       = 3333
-	kubeconfigSecretNamespace = "default"
-	kubeconfigSecretLabel     = "kubeconfig"
-	kubeconfigSecretKey       = "kubeconfig"
 )
 
 func TestControllers(t *testing.T) {
@@ -141,9 +134,9 @@ var _ = BeforeSuite(func() {
 
 	// kubeconfig provider
 	kubeconfigProvider := kubeconfigprovider.New(kubeconfigprovider.Options{
-		Namespace:             kubeconfigSecretNamespace,
-		KubeconfigSecretLabel: kubeconfigSecretLabel,
-		KubeconfigSecretKey:   kubeconfigSecretKey,
+		Namespace:             constants.KubeconfigSecretNamespace,
+		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
+		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
 	})
 
 	//nolint:fatcontext
@@ -151,10 +144,10 @@ var _ = BeforeSuite(func() {
 
 	// Create kubeconfig secret for dev and staging test environments in the local cluster
 	// Secrets used by the kubeconfig provider controller to access the other clusters
-	err = createKubeconfigSecret(ctx, "testenv-dev", kubeconfigSecretNamespace, cfgDev, k8sClient)
+	err = createKubeconfigSecret(ctx, "testenv-dev", constants.KubeconfigSecretNamespace, cfgDev, k8sClient)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = createKubeconfigSecret(ctx, "testenv-staging", kubeconfigSecretNamespace, cfgStaging, k8sClient)
+	err = createKubeconfigSecret(ctx, "testenv-staging", constants.KubeconfigSecretNamespace, cfgStaging, k8sClient)
 	Expect(err).NotTo(HaveOccurred())
 
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
@@ -236,7 +229,7 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(multiClusterManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	webhookReceiverPort := WebhookReceiverPort + GinkgoParallelProcess()
+	webhookReceiverPort := constants.WebhookReceiverPort + GinkgoParallelProcess()
 	whr := webhookreceiver.NewWebhookReceiver(k8sManager)
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
@@ -268,7 +261,7 @@ var _ = BeforeSuite(func() {
 		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
 	}()
 
-	Eventually(kubeconfigProvider.ListClusters, EventuallyTimeout).Should(HaveLen(2))
+	Eventually(kubeconfigProvider.ListClusters, constants.EventuallyTimeout).Should(HaveLen(2))
 })
 
 var _ = AfterSuite(func() {
@@ -650,7 +643,7 @@ func simulateWebhook(ctx context.Context, k8sClient client.Client, ctp *promoter
 		ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = metav1.Now().Format(time.RFC3339)
 		err = k8sClient.Update(ctx, ctp)
 		g.Expect(err).To(Succeed())
-	}, EventuallyTimeout).Should(Succeed())
+	}, constants.EventuallyTimeout).Should(Succeed())
 }
 
 func createKubeConfig(cfg *rest.Config) ([]byte, error) {
@@ -696,12 +689,12 @@ func createKubeconfigSecret(ctx context.Context, name string, namespace string, 
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
-				kubeconfigSecretLabel: "true",
+				constants.KubeconfigSecretLabel: "true",
 			},
 		},
 	}
 	secret.Data = map[string][]byte{
-		kubeconfigSecretKey: kubeconfigData,
+		constants.KubeconfigSecretKey: kubeconfigData,
 	}
 	if err := cl.Create(ctx, secret); err != nil {
 		return fmt.Errorf("failed to create kubeconfig secret %s/%s: %w", namespace, name, err)
