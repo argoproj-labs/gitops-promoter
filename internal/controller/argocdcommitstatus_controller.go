@@ -315,11 +315,13 @@ func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregate
 func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
 	return func(clusterName string, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
 		return handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, argoCDApplication client.Object) []mcreconcile.Request {
+			logger := log.FromContext(ctx)
+
 			application := &argocd.Application{}
 
 			// fetch the ArgoCDApplication from the cluster
 			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
-				log.FromContext(ctx).Error(err, "failed to get ArgoCDApplication")
+				logger.Error(err, "failed to get ArgoCDApplication")
 				return nil
 			}
 
@@ -346,7 +348,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 			// lookup the ArgoCDCommitStatus objects in the local cluster
 			var argoCDCommitStatusList promoterv1alpha1.ArgoCDCommitStatusList
 			if err := mgr.GetLocalManager().GetClient().List(ctx, &argoCDCommitStatusList, &client.ListOptions{}); err != nil {
-				log.FromContext(ctx).Error(err, "failed to list ArgoCDCommitStatus objects")
+				logger.Error(err, "failed to list ArgoCDCommitStatus objects")
 				return nil
 			}
 
@@ -355,10 +357,10 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 			for _, argoCDCommitStatus := range argoCDCommitStatusList.Items {
 				selector, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
 				if err != nil {
-					log.FromContext(ctx).Error(err, "failed to parse label selector")
+					logger.Error(err, "failed to parse label selector")
 				}
 				if err == nil && selector.Matches(fields.Set(application.GetLabels())) {
-					log.FromContext(ctx).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
+					logger.Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
 						"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
 						"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
 
@@ -371,7 +373,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 				}
 			}
 
-			log.FromContext(ctx).V(4).Info("No ArgoCDCommitStatus found for ArgoCD application",
+			logger.V(4).Info("No ArgoCDCommitStatus found for ArgoCD application",
 				"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName())
 			return nil
 		})
@@ -383,14 +385,13 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager)
 	// Set the local client for interacting with manager cluster
 	r.localClient = mcMgr.GetLocalManager().GetClient()
 
-	app := &argocd.Application{}
 	err := mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
-		Watches(app, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
+		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(true),
 		).
