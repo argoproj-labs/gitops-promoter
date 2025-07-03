@@ -246,6 +246,8 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 }
 
 func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) error {
+	logger := log.FromContext(ctx)
+
 	// TODO: do we like this name proposed-<name>?
 	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
 	proposedCSObjectKey := client.ObjectKey{Namespace: ctp.Namespace, Name: csName}
@@ -318,6 +320,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		if err != nil {
 			return fmt.Errorf("failed to update previous environments CommitStatus: %w", err)
 		}
+		logger.Info("Updated previous environment CommitStatus", "commitStatusName", updatedCS.Name, "phase", updatedCS.Spec.Phase, "sha", updatedCS.Spec.Sha)
 	}
 
 	return nil
@@ -344,16 +347,36 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		previousEnvironmentStatus := ps.Status.Environments[i-1]
 		currentEnvironmentStatus := ps.Status.Environments[i]
 
-		activeChecksPassed := utils.AreCommitStatusesPassing(previousEnvironmentStatus.Active.CommitStatuses) &&
-			previousEnvironmentStatus.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha &&
-			(previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time) ||
-				previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: previousEnvironmentStatus.Active.Dry.CommitTime.Time}))
+		// The previous environment's active commit statuses must be passing.
+		previousEnvironmentPassing := utils.AreCommitStatusesPassing(previousEnvironmentStatus.Active.CommitStatuses)
+
+		// The previous environment's dry sha must match the current environment's proposed dry sha. Gotta be trying to
+		// promote the same thing we're looking at in the previous environment.
+		previousEnvironmentDryShaMatches := previousEnvironmentStatus.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha
+
+		// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
+		// time. Basically, we can't move back in time.
+		previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: previousEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
+			previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
+
+		activeChecksPassed := previousEnvironmentPassing && previousEnvironmentDryShaMatches && previousEnvironmentDryShaEqualOrNewer
 
 		commitStatusPhase := promoterv1alpha1.CommitPhasePending
 		if activeChecksPassed {
-			logger.V(4).Info("Checks passed, setting previous environment check to success", "branch", ctp.Spec.ActiveBranch)
 			commitStatusPhase = promoterv1alpha1.CommitPhaseSuccess
 		}
+
+		logger.V(4).Info("Setting previous environment CommitStatus phase",
+			"phase", commitStatusPhase,
+			"activeBranch", ctp.Spec.ActiveBranch,
+			"proposedDrySha", ctp.Status.Proposed.Dry.Sha,
+			"proposedHydratedSha", ctp.Status.Proposed.Hydrated.Sha,
+			"previousEnvironmentActiveDrySha", previousEnvironmentStatus.Active.Dry.Sha,
+			"previousEnvironmentActiveHydratedSha", previousEnvironmentStatus.Active.Hydrated.Sha,
+			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch,
+			"previousEnvironmentPassing", previousEnvironmentPassing,
+			"previousEnvironmentDryShaMatches", previousEnvironmentDryShaMatches,
+			"previousEnvironmentDryShaEqualOrNewer", previousEnvironmentDryShaEqualOrNewer)
 
 		// Since there is at least one configured active check, and since this is not the first environment,
 		// we should not create a commit status for the previous environment.

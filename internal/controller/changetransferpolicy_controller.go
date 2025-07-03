@@ -181,6 +181,9 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 				// TODO: use a custom predicate to only trigger on the specific annotation change.
 				predicate.AnnotationChangedPredicate{},
 			))).
+		// This controller intentionally doesn't have a .Owns for CommitStatuses. Every reconcile of a CommitStatus
+		// checks whether it needs to update a related ChangeTransferPolicy by setting an annotation. Avoiding .Owns
+		// here avoids duplicate reconciliations.
 		Owns(&promoterv1alpha1.PullRequest{}).
 		Complete(r)
 	if err != nil {
