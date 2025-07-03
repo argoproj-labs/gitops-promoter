@@ -174,7 +174,13 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 	}
 
 	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.ChangeTransferPolicy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&promoterv1alpha1.ChangeTransferPolicy{},
+			builder.WithPredicates(predicate.Or(
+				predicate.GenerationChangedPredicate{},
+				// Webhooks trigger reconciliations by bumping an annotation.
+				// TODO: use a custom predicate to only trigger on the specific annotation change.
+				predicate.AnnotationChangedPredicate{},
+			))).
 		Owns(&promoterv1alpha1.PullRequest{}).
 		Complete(r)
 	if err != nil {
