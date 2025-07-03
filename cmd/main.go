@@ -317,11 +317,10 @@ func newCommand() *cobra.Command {
 	}
 
 	// Create a temporary flag.FlagSet to bind zap options
-	tempFlagSet := flag.NewFlagSet("", flag.ContinueOnError)
-	opts.BindFlags(tempFlagSet)
-
+	tmpZapFlagSet := flag.NewFlagSet("", flag.ContinueOnError)
+	opts.BindFlags(tmpZapFlagSet)
 	// Transfer flags from the temporary FlagSet to cobra's pflag.FlagSet
-	tempFlagSet.VisitAll(func(f *flag.Flag) {
+	tmpZapFlagSet.VisitAll(func(f *flag.Flag) {
 		cmd.PersistentFlags().AddGoFlag(f)
 	})
 
