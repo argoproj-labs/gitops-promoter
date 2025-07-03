@@ -71,18 +71,11 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
-	opts := zap.Options{
-		Development: true,
-		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
-	}
-	opts.BindFlags(flag.CommandLine)
 
 	cmd := &cobra.Command{
 		Use:   "controller",
 		Short: "GitOps Promoter controller",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			flag.Parse()
-			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 			return runController(
 				metricsAddr,
 				probeAddr,
@@ -309,10 +302,29 @@ func newDashboardCommand() *cobra.Command {
 
 func newCommand() *cobra.Command {
 	var clientConfig clientcmd.ClientConfig
+
+	opts := zap.Options{
+		Development: true,
+		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
+	}
+
 	cmd := &cobra.Command{
 		Use:   "promoter",
 		Short: "GitOps Promoter",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+		},
 	}
+
+	// Zap only operates on go-type flags. Cobra doesn't give us direct access to those flags.
+	// So we apply the zap flags to a temp go flags set and then transfer them to the cobra flags.
+	tmpZapFlagSet := flag.NewFlagSet("", flag.ContinueOnError)
+	opts.BindFlags(tmpZapFlagSet)
+	// Transfer flags from the temporary FlagSet to cobra's pflag.FlagSet
+	tmpZapFlagSet.VisitAll(func(f *flag.Flag) {
+		cmd.PersistentFlags().AddGoFlag(f)
+	})
+
 	clientConfig = addKubectlFlags(cmd.PersistentFlags())
 	cmd.AddCommand(newControllerCommand(clientConfig))
 	cmd.AddCommand(newDashboardCommand())
