@@ -24,8 +24,10 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -61,7 +63,7 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 // SetupWithManager sets up the controller with the Manager.
 func (r *ScmProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.ScmProvider{}).
+		For(&promoterv1alpha1.ScmProvider{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)

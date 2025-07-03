@@ -236,7 +236,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 			return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", ctp.Name, err)
 		}
 		logger.Info("Reconcile of ChangeTransferPolicy triggered", "ChangeTransferPolicy", ctp.Name,
-			"phase", cs.Spec.Phase, "proposedHydratedSha", ctp.Status.Proposed.Hydrated.Sha, "activeHydratedSha", ctp.Status.Active.Hydrated.Sha)
+			"sha", cs.Spec.Sha, "phase", cs.Spec.Phase, "proposedHydratedSha", ctp.Status.Proposed.Hydrated.Sha, "activeHydratedSha", ctp.Status.Active.Hydrated.Sha)
 	}
 
 	return nil
