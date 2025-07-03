@@ -470,7 +470,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 
 		// Happens when there is no hydrator.metadata on the active branch such as when the branch was just initialized and is empty
-		It("should successfully reconcile the resource with no active dry sha", func() {
+		FIt("should successfully reconcile the resource with no active dry sha", func() {
 			By("Creating the resources")
 
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
