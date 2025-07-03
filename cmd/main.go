@@ -19,18 +19,19 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"go.uber.org/zap/zapcore"
 	"os"
 	"runtime/debug"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"syscall"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
-	"go.uber.org/zap/zapcore"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -42,12 +43,10 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -71,18 +70,11 @@ func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var pprofAddr string
-	opts := zap.Options{
-		Development: true,
-		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
-	}
-	opts.BindFlags(flag.CommandLine)
 
 	cmd := &cobra.Command{
 		Use:   "controller",
 		Short: "GitOps Promoter controller",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			flag.Parse()
-			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 			return runController(
 				metricsAddr,
 				probeAddr,
@@ -309,10 +301,29 @@ func newDashboardCommand() *cobra.Command {
 
 func newCommand() *cobra.Command {
 	var clientConfig clientcmd.ClientConfig
+
+	opts := zap.Options{
+		Development: true,
+		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
+	}
+
 	cmd := &cobra.Command{
 		Use:   "promoter",
 		Short: "GitOps Promoter",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+		},
 	}
+
+	// Create a temporary flag.FlagSet to bind zap options
+	tempFlagSet := flag.NewFlagSet("", flag.ContinueOnError)
+	opts.BindFlags(tempFlagSet)
+
+	// Transfer flags from the temporary FlagSet to cobra's pflag.FlagSet
+	tempFlagSet.VisitAll(func(f *flag.Flag) {
+		cmd.PersistentFlags().AddGoFlag(f)
+	})
+
 	clientConfig = addKubectlFlags(cmd.PersistentFlags())
 	cmd.AddCommand(newControllerCommand(clientConfig))
 	cmd.AddCommand(newDashboardCommand())
@@ -320,7 +331,8 @@ func newCommand() *cobra.Command {
 }
 
 func main() {
-	if err := newCommand().Execute(); err != nil {
+	cmd := newCommand()
+	if err := cmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
