@@ -316,7 +316,8 @@ func newCommand() *cobra.Command {
 		},
 	}
 
-	// Create a temporary flag.FlagSet to bind zap options
+	// Zap only operates on go-type flags. Cobra doesn't give us direct access to those flags.
+	// So we apply the zap flags to a temp go flags set and then transfer them to the cobra flags.
 	tmpZapFlagSet := flag.NewFlagSet("", flag.ContinueOnError)
 	opts.BindFlags(tmpZapFlagSet)
 	// Transfer flags from the temporary FlagSet to cobra's pflag.FlagSet
