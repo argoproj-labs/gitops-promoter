@@ -12,21 +12,17 @@ fi
 
 NEW_VERSION="$1"
 
-# Use platform-independent sed (BSD/macOS and GNU/Linux)
-sed_inplace() {
-  if sed --version 2>/dev/null | grep -q GNU; then
-    sed -i "$@"
-  else
-    sed -i '' "$@"
-  fi
+# Portable sed replacement: write to temp file, then move back
+sed_replace() {
+  local pattern="$1"
+  local file="$2"
+  local tmpfile="${file}.tmp.$$"
+  sed "$pattern" "$file" > "$tmpfile" && mv "$tmpfile" "$file"
 }
 
-# Example: replace all occurrences of vX.Y.Z with the new version (vNEW_VERSION)
-sed_inplace "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$NEW_VERSION/g" docs/getting-started.md
-git add docs/getting-started.md
-
-sed_inplace "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/v$NEW_VERSION/g" docs/tutorial-argocd-apps.md
-git add docs/tutorial-argocd-apps.md
+# Replace all occurrences of vX.Y.Z with the new version (vNEW_VERSION)
+sed_replace "s/v[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/v$NEW_VERSION/g" docs/getting-started.md
+sed_replace "s/v[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/v$NEW_VERSION/g" docs/tutorial-argocd-apps.md
 
 echo "Bumped manifest versions to v$NEW_VERSION in docs."
 
