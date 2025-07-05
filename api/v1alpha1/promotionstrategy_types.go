@@ -135,12 +135,6 @@ type HealthyDryShas struct {
 	Time metav1.Time `json:"time"`
 }
 
-type PromotionStrategyBranchStateStatus struct {
-	Dry          CommitShaState                `json:"dry"`
-	Hydrated     CommitShaState                `json:"hydrated"`
-	CommitStatus PromotionStrategyCommitStatus `json:"commitStatus"`
-}
-
 type PromotionStrategyCommitStatus struct {
 	Sha string `json:"sha"`
 	// +kubebuilder:validation:Enum:=pending;success;failure
