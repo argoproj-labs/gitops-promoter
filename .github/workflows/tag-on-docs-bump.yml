@@ -22,11 +22,10 @@ jobs:
       - name: Extract version from commit message
         id: extract_version
         run: |
-          VERSION=$(echo "${{ github.event.head_commit.message }}" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
+          VERSION=$(echo "${{ github.event.head_commit.message }}" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Create tag
         if: steps.extract_version.outputs.version != ''
         run: |
           git tag ${{ steps.extract_version.outputs.version }}
           git push origin ${{ steps.extract_version.outputs.version }}
-
