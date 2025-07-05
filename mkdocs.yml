@@ -34,3 +34,5 @@ nav:
   - Metrics: metrics.md
   - Tool Comparison: tool-comparison.md
   - FAQs: faqs.md
+  - Tutorials:
+      - Argo CD Apps: tutorial-argocd-apps.md
