@@ -1,0 +1,37 @@
+name: Bump Docs Manifests
+
+on:
+  workflow_dispatch:
+    inputs:
+      new_version:
+        description: 'New version (e.g. 1.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: write  # for creating PRs and pushing changes
+  pull-requests: write  # for opening PRs
+
+jobs:
+  bump-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Bump manifest versions in docs
+        run: |
+          chmod +x hack/bump-docs-manifests.sh
+          ./hack/bump-docs-manifests.sh ${{ github.event.inputs.new_version }}
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
+          title: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
+          body: "Automated PR to bump manifest versions in documentation."
+          branch: "bump-docs-manifests/v${{ github.event.inputs.new_version }}"
+          delete-branch: true
+
