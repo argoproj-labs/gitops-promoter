@@ -279,6 +279,7 @@ metadata:
   name: demo-github
 spec:
   activeCommitStatuses:
+  # The ArgoCDCommitStatus CR will maintain this commit status based on the application health.
   - key: argocd-health
   environments:
     - autoMerge: true
