@@ -179,6 +179,7 @@ metadata:
   name: ${env}-helm-guestbook
   namespace: argocd
   labels:
+    # This label allows the ArgoCDCommitStatus to find the applications.
     app-name: helm-guestbook
 spec:
   project: default
