@@ -1166,7 +1166,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+			drySha, _ := makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 			simulateWebhook(ctx, k8sClient, &ctpDev)
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
 			simulateWebhook(ctx, k8sClient, &ctpProd)
@@ -1180,6 +1180,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestDev)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				// Dev CTP's active dry sha should be the one we committed.
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha))
 
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -1204,13 +1212,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, activeCommitStatusDevelopment)
 				g.Expect(err).To(Succeed())
 
-				_, err = runGitCmd(gitPath, "fetch")
-				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
-				Expect(err).NotTo(HaveOccurred())
-				sha = strings.TrimSpace(sha)
-
-				g.Expect(sha).To(Not(Equal("")))
+				sha := ctpDev.Status.Active.Hydrated.Sha
 				activeCommitStatusDevelopment.Spec.Sha = sha
 				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
