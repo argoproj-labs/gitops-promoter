@@ -23,6 +23,7 @@ import (
 	"runtime/debug"
 	"syscall"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"go.uber.org/zap/zapcore"
@@ -174,6 +175,35 @@ func runController(
 		panic("unable to start manager")
 	}
 
+	processSignals := ctrl.SetupSignalHandler()
+
+	whr := webhookreceiver.NewWebhookReceiver(mgr)
+	go func() {
+		err = whr.Start(processSignals, ":3333")
+		if err != nil {
+			setupLog.Error(err, "unable to start webhook receiver")
+			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+			if err != nil {
+				setupLog.Error(err, "unable to kill process")
+			}
+		}
+	}()
+
+	ws := webserver.NewWebServer(mgr)
+	go func() {
+		err = ws.Start(processSignals, ":8088")
+		if err != nil {
+			setupLog.Error(err, "unable to start web server")
+			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+			if err != nil {
+				setupLog.Error(err, "unable to kill process")
+			}
+		}
+	}()
+	if err = ws.SetupWithManager(mgr); err != nil {
+		panic("unable to create WebServer controller")
+	}
+
 	settingsMgr := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
 	})
@@ -259,20 +289,6 @@ func runController(
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		panic("unable to set up ready check")
 	}
-
-	processSignals := ctrl.SetupSignalHandler()
-
-	whr := webhookreceiver.NewWebhookReceiver(mgr)
-	go func() {
-		err = whr.Start(processSignals, ":3333")
-		if err != nil {
-			setupLog.Error(err, "unable to start webhook receiver")
-			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-			if err != nil {
-				setupLog.Error(err, "unable to kill process")
-			}
-		}
-	}()
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(processSignals); err != nil {
