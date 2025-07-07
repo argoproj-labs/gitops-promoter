@@ -145,7 +145,8 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	// If there was a direct push to the active branch, we want to requeue the reconciliation after a short delay to
 	// allow the CTP to pick up the new state of the active branch. (Merges via PRs should trigger reconciliations since
 	// the CTP controller owns the PR object and will be notified when the PR is merged.)
-	requeueDuration := 1 * time.Second
+	// There's nothing special about 1ns, it just has to be > 0.
+	requeueDuration := 1 * time.Nanosecond
 	if !directPushWasPerformed {
 		requeueDuration, err = r.SettingsMgr.GetChangeTransferPolicyRequeueDuration(ctx)
 		if err != nil {
@@ -154,7 +155,6 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	return ctrl.Result{
-		Requeue:      true,
 		RequeueAfter: requeueDuration,
 	}, nil
 }
