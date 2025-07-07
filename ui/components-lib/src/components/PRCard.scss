@@ -1,0 +1,112 @@
+@use '../styles/colors' as *;
+@use './CardCommon';
+
+.pr-card {
+  background: white;
+  padding: 20px 20px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin-bottom: 38px;
+  border-radius: 8px;
+  border-left: 5px solid $argo-color-gray-5;
+  position: relative;
+  width: 380px;
+  max-width: 100%;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: -38px;
+    width: 0;
+    height: 38px;
+    border-left: 2px solid $argo-color-gray-5;
+  }
+
+}
+
+.pr-card__header {
+  display: flex;
+  align-items: center;
+  gap:25px;
+
+}
+
+.pr-card--pending {
+  border-left-color: $argo-running;
+  color: $argo-running;
+}
+.pr-card--merged {
+  border-left-color: $argo-merged;
+  color: $argo-merged;
+}
+.pr-card--success {
+  border-left-color: $argo-success;
+  color: $argo-success;
+}
+
+.pr-card--failure {
+  border-left-color: $argo-failed;
+  color: $argo-failed;
+}
+.pr-card--promoted {
+  border-left-color: $argo-success;
+  color: $argo-success;
+}
+
+.pr-card--pending-promotion {
+  animation: none;
+  box-shadow: none;
+  border-color: inherit !important;
+  
+}
+
+
+.pr-card__body {
+  width: 100%;
+  font-size: 13px;
+  font-weight: 400;
+  margin-top: 20px;
+
+}
+
+
+.pr-card__icon {
+  position: absolute;
+  font-size: 2.0em;
+  color: inherit;
+  width: 45px;
+  margin-left: -5px;
+  font-weight: bold;
+}
+
+.pr-card__pr-icon-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  span {
+    font-size: 12px;
+    text-decoration: none;
+  }
+}
+
+.pr-card__progress {
+  width: 45px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -5px;
+}
+
+.pr-card .card-value {
+  margin-left: 3px;
+}
+
+
+
+
+
+

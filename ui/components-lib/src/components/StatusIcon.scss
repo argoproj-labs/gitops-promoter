@@ -1,0 +1,29 @@
+@use '../styles/colors' as *;
+
+
+.status-icon {
+  font-size: 1.3em;
+  vertical-align: middle;
+
+  &.status-success {
+    color: $argo-success;
+  }
+  &.status-pending {
+    color: $argo-running;
+  }
+  &.status-failure {
+    color: $argo-failed;
+  }
+  &.status-unknown {
+    color: $argo-color-gray-5;
+  }
+}
+
+.fa-spin {
+  animation: fa-spin 2s infinite linear;
+}
+
+@keyframes fa-spin {
+  0% { transform: rotate(0deg);}
+  100% { transform: rotate(360deg);}
+} 

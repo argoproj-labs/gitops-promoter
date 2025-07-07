@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "jsx": "react",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": false,
+    "outDir": "dist",
+    "composite": true,
+    "lib": ["DOM", "ES2020", "ESNext.AsyncIterable"],
+    "baseUrl": ".",
+    "rootDir": ".",
+    "paths": {
+      "@shared/*": ["../../shared/src/*"]
+    }
+  },
+  "references": [
+    { "path": "../shared" }
+  ],
+  "include": ["src", "../../shared/src"],
+  "exclude": ["node_modules", "dist"]
+} 
