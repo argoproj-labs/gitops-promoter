@@ -26,6 +26,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -75,7 +76,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
 				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).ToNot(Equal(""))
 				g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).ToNot(Equal(""))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
 			prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
@@ -89,7 +90,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding another pending commit")
 			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
@@ -104,7 +105,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
@@ -113,7 +114,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
 				err = k8sClient.Update(ctx, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				typeNamespacedNamePR := types.NamespacedName{
@@ -122,7 +123,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
 		It("should successfully reconcile the resource - with a pending commit with commit status checks", func() {
@@ -173,7 +174,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, commitStatus)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
@@ -186,7 +187,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).To(Equal(sha))
 				g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
 				g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("success"))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
 			prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
@@ -197,7 +198,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
 				err = k8sClient.Update(ctx, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				typeNamespacedNamePR := types.NamespacedName{
@@ -206,11 +207,11 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
 		It("webhook should modify annotation", func() {
-			webhookPort := WebhookReceiverPort + GinkgoParallelProcess()
+			webhookPort := constants.WebhookReceiverPort + GinkgoParallelProcess()
 			webhookURL := fmt.Sprintf("http://localhost:%d/", webhookPort)
 
 			name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy := changeTransferPolicyResources(ctx, "ctp-webhook", "default")
@@ -243,7 +244,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
 				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).ToNot(Equal(""))
 				g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).ToNot(Equal(""))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
 			prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
@@ -257,7 +258,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			// Make http request
 			jsonStr := []byte(fmt.Sprintf(`{"before":"%s", "pusher":""}`, changeTransferPolicy.Status.Proposed.Hydrated.Sha))
@@ -279,7 +280,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				t, err := time.Parse(time.RFC3339Nano, changeTransferPolicy.Annotations[promoterv1alpha1.ReconcileAtAnnotation])
 				g.Expect(err).To(Succeed())
 				g.Expect(t).Should(BeTemporally("~", time.Now(), 3*time.Second))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
 		// Happens if the active branch does not have a hydrator.metadata such as when the branch was just created
@@ -316,7 +317,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
 				g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).ToNot(Equal(""))
 				g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).ToNot(Equal(""))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			var pr promoterv1alpha1.PullRequest
 			prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
@@ -330,7 +331,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding another pending commit")
 			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
@@ -345,7 +346,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
@@ -354,7 +355,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(true)
 				err = k8sClient.Update(ctx, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				typeNamespacedNamePR := types.NamespacedName{
@@ -363,7 +364,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 })

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -164,7 +165,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
@@ -184,7 +185,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -204,7 +205,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				g.Expect(ctpDev.Status.Active.Hydrated.Subject).To(Equal("initial commit"))
 				g.Expect(ctpDev.Status.Active.Hydrated.Body).To(Equal(""))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				// Staging PR should exist
@@ -214,7 +215,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				// Production PR should exist
@@ -224,7 +225,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Checking that the pull request for the development, staging, and production environments are closed")
 			Eventually(func(g Gomega) {
@@ -252,7 +253,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestProd)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
@@ -396,7 +397,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
@@ -416,7 +417,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				// Staging PR should exist
@@ -426,7 +427,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				// Production PR should exist
@@ -436,7 +437,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Checking that the pull request for the development, staging, and production environments are closed")
 			Eventually(func(g Gomega) {
@@ -464,7 +465,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestProd)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
@@ -595,7 +596,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
@@ -615,7 +616,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				// Staging PR should exist
@@ -625,7 +626,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				// Production PR should exist
@@ -635,7 +636,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Checking that the pull request for the development, staging, and production environments are closed")
 			Eventually(func(g Gomega) {
@@ -663,7 +664,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestProd)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
@@ -790,7 +791,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[2].Proposed.Hydrated.Sha).To(Equal(ctpProd.Status.Proposed.Hydrated.Sha))
 				// Success due to PromotionStrategy not having any CommitStatuses configured
 				g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[2].Proposed.CommitStatuses)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
@@ -837,7 +838,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				// Staging PR should exist
@@ -847,7 +848,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestStaging)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				// Production PR should exist
@@ -857,7 +858,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Checking that the pull request for the development, staging, and production environments are closed")
 			Eventually(func(g Gomega) {
@@ -885,7 +886,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestProd)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
@@ -989,7 +990,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
@@ -1019,7 +1020,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(sha))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the staging pull request has been merged and the production pull request is still open")
 			Eventually(func(g Gomega) {
@@ -1037,7 +1038,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
@@ -1081,7 +1082,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err = k8sClient.Update(ctx, activeCommitStatusStaging)
 				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the production pull request has been merged")
 			Eventually(func(g Gomega) {
@@ -1092,7 +1093,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestProd)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
@@ -1201,7 +1202,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
@@ -1225,7 +1226,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(sha))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the staging pull request has been merged and the production pull request is still open")
 			Eventually(func(g Gomega) {
@@ -1243,7 +1244,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
@@ -1287,7 +1288,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err = k8sClient.Update(ctx, activeCommitStatusStaging)
 				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the production pull request has been merged")
 			Eventually(func(g Gomega) {
@@ -1298,7 +1299,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestProd)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
@@ -1395,7 +1396,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
@@ -1428,7 +1429,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				g.Expect(len(ctpDev.Status.Proposed.CommitStatuses)).To(Not(BeZero()))
 				g.Expect(ctpDev.Status.Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the development pull request has been merged and that staging, production pull request are still open")
 			Eventually(func(g Gomega) {
@@ -1453,7 +1454,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1502,7 +1503,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Author).To(Equal("testuser"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("initial commit"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(Equal(""))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
@@ -1595,7 +1596,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
@@ -1625,7 +1626,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the development pull request has been merged and that staging, production pull request are still open")
 			Eventually(func(g Gomega) {
@@ -1650,7 +1651,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
@@ -1717,7 +1718,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: argoCDAppDev.GetNamespace(),
 					}, &commitStatus)
 					g.Expect(err).To(Succeed())
-				}, EventuallyTimeout).Should(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
 			}
 
 			// We should now get PRs created for the ChangeTransferPolicies
@@ -1749,7 +1750,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpProd)
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpProd.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch))))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding a pending commit")
 			gitPath, err := os.MkdirTemp("", "*")
@@ -1785,7 +1786,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the development Argo CD application to synced and health we should close staging PR")
 			Eventually(func(g Gomega) {
@@ -1816,7 +1817,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestProd)
 				g.Expect(err).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the staging Argo CD application to synced and health we should close production PR")
 
@@ -1848,13 +1849,211 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestProd)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 			Expect(waitedForDelay).To(BeTrue())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argoCDAppDev)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argoCDAppStaging)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &argoCDAppProduction)).To(Succeed())
+		})
+
+		It("should successfully reconcile the resource across clusters", func() {
+			// Skip("Skipping test because of flakiness")
+			By("Creating the resource")
+			plainName := "mc-promo-strategy-with-active-commit-status-argocdcommitstatus"
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, plainName, "default")
+			setupInitialTestGitRepoOnServer(name, name)
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{
+					Key: argocdCSLabel,
+				},
+			}
+
+			argocdCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: namespace,
+				},
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: promotionStrategy.Name,
+					},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": plainName},
+					},
+				},
+			}
+
+			argoCDAppDev, argoCDAppStaging, argoCDAppProduction := argocdApplications(namespace, plainName)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &argocdCommitStatus)).To(Succeed())
+			Expect(k8sClientDev.Create(ctx, &argoCDAppDev)).To(Succeed())
+			Expect(k8sClientStaging.Create(ctx, &argoCDAppStaging)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
+
+			By("Checking that the CommitStatus for each environment is created from ArgoCDCommitStatus")
+
+			// Expect(err).To(Succeed())
+			for _, environment := range promotionStrategy.Spec.Environments {
+				commitStatus := promoterv1alpha1.CommitStatus{}
+				commitStatusName := environment.Branch + "/health"
+				resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argocdCommitStatus.Name))
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      resourceName,
+						Namespace: argoCDAppDev.GetNamespace(),
+					}, &commitStatus)
+					g.Expect(err).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+
+			// We should now get PRs created for the ChangeTransferPolicies
+			// Check that ProposedCommit are created
+			ctpDev := promoterv1alpha1.ChangeTransferPolicy{}
+			ctpStaging := promoterv1alpha1.ChangeTransferPolicy{}
+			ctpProd := promoterv1alpha1.ChangeTransferPolicy{}
+
+			By("Checking that all the ChangeTransferPolicies and PRs are created and in their proper state")
+			Eventually(func(g Gomega) {
+				// Make sure CTP's are created
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch))))
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch))))
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch))))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Adding a pending commit")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
+			simulateWebhook(ctx, k8sClient, &ctpDev)
+			simulateWebhook(ctx, k8sClient, &ctpStaging)
+			simulateWebhook(ctx, k8sClient, &ctpProd)
+
+			pullRequestDev := promoterv1alpha1.PullRequest{}
+			pullRequestStaging := promoterv1alpha1.PullRequest{}
+			pullRequestProd := promoterv1alpha1.PullRequest{}
+			Eventually(func(g Gomega) {
+				// Dev PR should be closed because it is the lowest level environment
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestDev)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(Succeed())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Updating the development Argo CD application to synced and health we should close staging PR")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				argoCDAppDev.Status.Sync.Status = argocd.SyncStatusCodeSynced
+				argoCDAppDev.Status.Health.Status = argocd.HealthStatusHealthy
+				argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
+				argoCDAppDev.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
+				err = k8sClientDev.Update(ctx, &argoCDAppDev)
+				Expect(err).To(Succeed())
+
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Updating the staging Argo CD application to synced and health we should close production PR")
+
+			timeDelay := time.Now().Add(10 * time.Second)
+			waitedForDelay := false
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+
+				argoCDAppStaging.Status.Sync.Status = argocd.SyncStatusCodeSynced
+				argoCDAppStaging.Status.Health.Status = argocd.HealthStatusHealthy
+				argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
+				if time.Now().After(timeDelay) {
+					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
+					waitedForDelay = true
+				} else {
+					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now()}
+				}
+				err = k8sClientStaging.Update(ctx, &argoCDAppStaging)
+				Expect(err).To(Succeed())
+
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			Expect(waitedForDelay).To(BeTrue())
+
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
+			Expect(k8sClientDev.Delete(ctx, &argoCDAppDev)).To(Succeed())
+			Expect(k8sClientStaging.Delete(ctx, &argoCDAppStaging)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argoCDAppProduction)).To(Succeed())
 		})
 	})
