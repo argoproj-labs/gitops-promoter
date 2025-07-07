@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"k8s.io/apimachinery/pkg/api/meta"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -58,32 +59,32 @@ var _ = Describe("PullRequest Controller", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-			}, EventuallyTimeout)
+			}, constants.EventuallyTimeout)
 
 			By("Reconciling updating of the PullRequest")
 			Eventually(func(g Gomega) {
 				_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				pullRequest.Spec.Title = "Updated Title"
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
-			}, EventuallyTimeout)
+			}, constants.EventuallyTimeout)
 
 			Eventually(func(g Gomega) {
 				Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Spec.Title).To(Equal("Updated Title"))
-			}, EventuallyTimeout)
+			}, constants.EventuallyTimeout)
 
 			By("Reconciling merging of the PullRequest")
 			Eventually(func(g Gomega) {
 				_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				pullRequest.Spec.State = "merged"
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
-			}, EventuallyTimeout)
+			}, constants.EventuallyTimeout)
 		})
 		It("should successfully reconcile the resource when closing", func() {
 			By("Reconciling the created resource")
@@ -108,20 +109,20 @@ var _ = Describe("PullRequest Controller", func() {
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Reconciling closing of the PullRequest")
 			Eventually(func(g Gomega) {
 				_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				pullRequest.Spec.State = "closed"
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 
@@ -158,7 +159,7 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(meta.IsStatusConditionFalse(pullRequest.Status.Conditions, string(conditions.Ready))).To(BeTrue())
 				g.Expect(pullRequest.Status.Conditions[0].Reason).To(Equal(string(conditions.ReconciliationError)))
 				g.Expect(pullRequest.Status.Conditions[0].Message).To(ContainSubstring("secret from ScmProvider not found"))
-			}, EventuallyTimeout).Should(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 })

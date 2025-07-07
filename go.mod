@@ -22,12 +22,14 @@ require (
 	github.com/tidwall/gjson v1.18.0
 	gitlab.com/gitlab-org/api/client-go v0.133.0
 	go.uber.org/zap v1.27.0
+	golang.org/x/sync v0.15.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.33.2
 	k8s.io/apimachinery v0.33.2
 	k8s.io/client-go v0.33.2
 	k8s.io/utils v0.0.0-20250321185631-1f6e0b77f77e
 	sigs.k8s.io/controller-runtime v0.21.0
+	sigs.k8s.io/multicluster-runtime v0.20.4-alpha.7.0.20250705163125-05a6f78c3d0e
 )
 
 require (
@@ -47,7 +49,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.21.1 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.1 // indirect
-	github.com/gofrs/uuid v4.4.0+incompatible // indirect
+	github.com/gofrs/uuid v4.0.0+incompatible // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/google/btree v1.1.3 // indirect
@@ -81,7 +83,6 @@ require (
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.15.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.26.0 // indirect

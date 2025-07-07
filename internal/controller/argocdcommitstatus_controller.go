@@ -28,11 +28,10 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/tools/record"
 
-	"k8s.io/apimachinery/pkg/fields"
-
-	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -49,13 +48,23 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
+	mchandler "sigs.k8s.io/multicluster-runtime/pkg/handler"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
+	"sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+// var syncMap sync.Map
+var (
+	rwMutex sync.RWMutex
+	revMap  = make(map[appRevisionKey]string)
 )
 
 type aggregate struct {
@@ -63,12 +72,19 @@ type aggregate struct {
 	commitStatus *promoterv1alpha1.CommitStatus
 }
 
+type appRevisionKey struct {
+	clusterName string
+	namespace   string
+	name        string
+}
+
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
-	client.Client
-	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
-	SettingsMgr *settings.Manager
+	Manager            mcmanager.Manager
+	Recorder           record.EventRecorder
+	SettingsMgr        *settings.Manager
+	KubeConfigProvider *kubeconfig.Provider
+	localClient        client.Client
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -85,14 +101,15 @@ type ArgoCDCommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.1/pkg/reconcile
-func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
+func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreconcile.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling ArgoCDCommitStatus")
+	logger.Info("Reconciling ArgoCDCommitStatus", "cluster", req.ClusterName, "namespace", req.Namespace, "name", req.Name)
 	startTime := time.Now()
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
-	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.Client, r.Recorder, &err)
 
-	err = r.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
+	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, &err)
+
+	err = r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
 			logger.Info("ArgoCDCommitStatus not found")
@@ -109,11 +126,27 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
 	var apps argocd.ApplicationList
-	err = r.List(ctx, &apps, &client.ListOptions{
-		LabelSelector: ls,
-	})
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to list Applications: %w", err)
+
+	// list clusters so we can query argocd applications from all clusters
+	clusters := r.KubeConfigProvider.ListClusters()
+	clusters = append(clusters, "") // add the local cluster
+	for _, clusterName := range clusters {
+		logger.Info("feching argocd applications from cluster", "cluster", clusterName)
+		cluster, err := r.Manager.GetCluster(ctx, clusterName)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to get cluster: %w", err)
+		}
+		clusterClient := cluster.GetClient()
+
+		clusterArgoCDApps := argocd.ApplicationList{}
+		err = clusterClient.List(ctx, &clusterArgoCDApps, &client.ListOptions{
+			LabelSelector: ls,
+		})
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to list ArgoCDApplications: %w", err)
+		}
+
+		apps.Items = append(apps.Items, clusterArgoCDApps.Items...)
 	}
 
 	logger.V(4).Info("Found Applications", "appCount", len(apps.Items))
@@ -143,7 +176,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 	}
 
-	err = r.Status().Update(ctx, &argoCDCommitStatus)
+	err = r.localClient.Status().Update(ctx, &argoCDCommitStatus)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status: %w", err)
 	}
@@ -163,7 +196,7 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShasForBranches(ctx context.Contex
 		return nil, fmt.Errorf("failed to get git auth provider: %w", err)
 	}
 
-	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: argoCDCommitStatus.GetNamespace(), Name: repositoryRef.Name})
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.localClient, client.ObjectKey{Namespace: argoCDCommitStatus.GetNamespace(), Name: repositoryRef.Name})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
@@ -279,78 +312,94 @@ func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregate
 	return mostRecentLastTransitionTime
 }
 
-// var syncMap sync.Map
-var (
-	rwMutex sync.RWMutex
-	revMap  = make(map[string]string)
-)
+func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
+	return func(clusterName string, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
+		return handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, argoCDApplication client.Object) []mcreconcile.Request {
+			logger := log.FromContext(ctx)
 
-func lookupArgoCDCommitStatusFromArgoCDApplication(c client.Client) func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
-	return func(ctx context.Context, argoCDApplication client.Object) []reconcile.Request {
-		var application argocd.Application
-		if err := c.Get(ctx, client.ObjectKey{Namespace: argoCDApplication.GetNamespace(), Name: argoCDApplication.GetName()}, &application, &client.GetOptions{}); err != nil {
-			if k8s_errors.IsNotFound(err) {
-				log.FromContext(ctx).V(4).Info("Application not found", "application", argoCDApplication.GetName(), "app-namespace", argoCDApplication.GetNamespace())
+			application := &argocd.Application{}
+
+			// fetch the ArgoCDApplication from the cluster
+			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
+				logger.Error(err, "failed to get ArgoCDApplication")
 				return nil
 			}
-			log.FromContext(ctx).Error(err, "failed to get Application", "application", argoCDApplication.GetName(), "app-namespace", argoCDApplication.GetNamespace())
-			return nil
-		}
 
-		appKey := application.GetNamespace() + "/" + application.GetName()
-
-		rwMutex.RLock()
-		appRef := revMap[appKey]
-		rwMutex.RUnlock()
-
-		if appRef == application.Status.Sync.Revision && (application.Status.Health.LastTransitionTime == nil || time.Since(application.Status.Health.LastTransitionTime.Time) >= 10*time.Second) {
-			// No change in-app revision, and the last transition time is more than 10 seconds ago, let's not add this to the queue
-			return nil
-		}
-
-		rwMutex.Lock()
-		revMap[appKey] = application.Status.Sync.Revision
-		rwMutex.Unlock()
-
-		var argoCDCommitStatusList promoterv1alpha1.ArgoCDCommitStatusList
-		if err := c.List(ctx, &argoCDCommitStatusList, &client.ListOptions{}); err != nil {
-			log.FromContext(ctx).Error(err, "failed to list ArgoCDCommitStatus objects")
-			return nil
-		}
-
-		// TODO: is there some way to do this without a loop? Can we use a field indexer? The one issue with field indexers is that
-		// they can not be used with lists (aka label selectors) so how else can we lookup.
-		for _, argoCDCommitStatus := range argoCDCommitStatusList.Items {
-			selector, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
-			if err != nil {
-				log.FromContext(ctx).Error(err, "failed to parse label selector")
+			// if clusterName is empty, then cluster == local cluster
+			appKey := appRevisionKey{
+				clusterName: clusterName,
+				namespace:   application.GetNamespace(),
+				name:        application.GetName(),
 			}
-			if err == nil && selector.Matches(fields.Set(application.GetLabels())) {
-				log.FromContext(ctx).Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
-					"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
-					"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
 
-				return []reconcile.Request{{
-					NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
-				}}
+			rwMutex.RLock()
+			appRef := revMap[appKey]
+			rwMutex.RUnlock()
+
+			if appRef == application.Status.Sync.Revision && (application.Status.Health.LastTransitionTime == nil || time.Since(application.Status.Health.LastTransitionTime.Time) >= 10*time.Second) {
+				// No change in-app revision, and the last transition time is more than 10 seconds ago, let's not add this to the queue
+				return nil
 			}
-		}
 
-		log.FromContext(ctx).V(4).Info("No ArgoCDCommitStatus found for ArgoCD application",
-			"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName())
-		return nil
+			rwMutex.Lock()
+			revMap[appKey] = application.Status.Sync.Revision
+			rwMutex.Unlock()
+
+			// lookup the ArgoCDCommitStatus objects in the local cluster
+			var argoCDCommitStatusList promoterv1alpha1.ArgoCDCommitStatusList
+			if err := mgr.GetLocalManager().GetClient().List(ctx, &argoCDCommitStatusList, &client.ListOptions{}); err != nil {
+				logger.Error(err, "failed to list ArgoCDCommitStatus objects")
+				return nil
+			}
+
+			// TODO: is there some way to do this without a loop? Can we use a field indexer? The one issue with field indexers is that
+			// they can not be used with lists (aka label selectors) so how else can we lookup.
+			for _, argoCDCommitStatus := range argoCDCommitStatusList.Items {
+				selector, err := metav1.LabelSelectorAsSelector(argoCDCommitStatus.Spec.ApplicationSelector)
+				if err != nil {
+					logger.Error(err, "failed to parse label selector")
+				}
+				if err == nil && selector.Matches(fields.Set(application.GetLabels())) {
+					logger.Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
+						"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
+						"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
+
+					return []mcreconcile.Request{{
+						Request: reconcile.Request{
+							NamespacedName: client.ObjectKeyFromObject(&argoCDCommitStatus),
+						},
+						ClusterName: clusterName,
+					}}
+				}
+			}
+
+			logger.V(4).Info("No ArgoCDCommitStatus found for ArgoCD application",
+				"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName())
+			return nil
+		})
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.ArgoCDCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&argocd.Application{}, handler.TypedEnqueueRequestsFromMapFunc(lookupArgoCDCommitStatusFromArgoCDApplication(r.Client))).
+func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager) error {
+	// Set the local client for interacting with manager cluster
+	r.localClient = mcMgr.GetLocalManager().GetClient()
+
+	err := mcbuilder.ControllerManagedBy(mcMgr).
+		For(&promoterv1alpha1.ArgoCDCommitStatus{},
+			mcbuilder.WithEngageWithLocalCluster(true),
+			mcbuilder.WithEngageWithProviderClusters(false),
+			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
+		).
+		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
+			mcbuilder.WithEngageWithLocalCluster(true),
+			mcbuilder.WithEngageWithProviderClusters(true),
+		).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
+
 	return nil
 }
 
@@ -361,7 +410,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argoCDCommitStatus.Name))
 
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy, &client.GetOptions{})
+	err := r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy)
 	if err != nil {
 		return fmt.Errorf("failed to get PromotionStrategy object: %w", err)
 	}
@@ -390,13 +439,13 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	currentCommitStatus := promoterv1alpha1.CommitStatus{}
-	err = r.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
+	err = r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("failed to get CommitStatus object: %w", err)
 		}
 		// Create
-		err = r.Create(ctx, &desiredCommitStatus)
+		err = r.localClient.Create(ctx, &desiredCommitStatus)
 		logger.Info("Created ArgoCDCommitStatus", "name", desiredCommitStatus.Name)
 		if err != nil {
 			return fmt.Errorf("failed to create CommitStatus object: %w", err)
@@ -409,7 +458,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	currentCommitStatus.Spec = desiredCommitStatus.Spec
-	err = r.Update(ctx, &currentCommitStatus)
+	err = r.localClient.Update(ctx, &currentCommitStatus)
 	logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "sha", sha, "phase", phase, "desc", desc)
 	if err != nil {
 		return fmt.Errorf("failed to update CommitStatus object: %w", err)
@@ -420,7 +469,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 
 func (r *ArgoCDCommitStatusReconciler) getPromotionStrategy(ctx context.Context, namespace string, promotionStrategyRef promoterv1alpha1.ObjectReference) (*promoterv1alpha1.PromotionStrategy, error) {
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
-	err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: promotionStrategyRef.Name}, &promotionStrategy, &client.GetOptions{})
+	err := r.localClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: promotionStrategyRef.Name}, &promotionStrategy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get PromotionStrategy object: %w", err)
 	}
@@ -438,7 +487,7 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get PromotionStrategy from ArgoCDCommitStatus %s: %w", argoCDCommitStatus.Name, err)
 	}
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ps.Spec.RepositoryReference, ps)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.localClient, r.SettingsMgr.GetControllerNamespace(), ps.Spec.RepositoryReference, ps)
 	if err != nil {
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get ScmProvider and secret for PromotionStrategy %q: %w", ps.Name, err)
 	}
