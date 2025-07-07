@@ -3,8 +3,11 @@ name: release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+    paths:
+      - 'docs/getting-started.md'
+      - 'docs/tutorial-argocd-apps.md'
 env:
   # If set in the repo env vars it will use this tag to build the release notes.
   # Useful when creating a release tag after a release candidate tags phase.
@@ -17,16 +20,28 @@ defaults:
 jobs:
   release:
     runs-on: ubuntu-24.04
-    if: github.repository == 'argoproj-labs/gitops-promoter'
+    if: |
+      ${{github.repository == 'argoproj-labs/gitops-promoter' && contains(github.event.head_commit.message, 'docs: bump manifest versions to v')}}
     name: Release
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
+
+      - name: Extract version from commit message
+        id: extract_version
+        run: |
+          VERSION=$(echo "${{ github.event.head_commit.message }}" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Create tag
+        if: steps.extract_version.outputs.version != ''
+        run: |
+          git tag ${{ steps.extract_version.outputs.version }}
+          git push origin ${{ steps.extract_version.outputs.version }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Setup Go
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
