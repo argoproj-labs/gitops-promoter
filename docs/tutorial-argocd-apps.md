@@ -35,7 +35,7 @@ Confirm that your access works with `kubectl get nodes`. Nodes should have a nam
 
 > More information in [Argo CD official documentation](https://argo-cd.readthedocs.io/en/stable/getting_started/)
 >
-> More information on the [Argo CD hydrator](https://argo-cd.readthedocs.io/en/stable/user-guide/source-hydrator/)
+> More information on the [Argo CD Source Hydrator](https://argo-cd.readthedocs.io/en/stable/user-guide/source-hydrator/)
 
 ```bash
 kubectl create namespace argocd
@@ -111,6 +111,12 @@ If you want to set up the webhook, read [Getting started](./getting-started.md) 
 
     See the [default config](https://github.com/argoproj-labs/gitops-promoter/blob/65d5905c51acac5d1caf3af01ceb0747795207e5/config/config/controllerconfiguration.yaml#L14-L17) for the config location.
 
+    ```shell
+    kubectl patch -n promoter-system controllerconfiguration promoter-controller-configuration \
+      --type merge \
+      -p '{"spec": {"promotionStrategyRequeueDuration": "30s", "changeTransferPolicyRequeueDuration": "30s", "argocdCommitStatusRequeueDuration": "30s", "pullRequestRequeueDuration": "30s"}}'
+    ```
+
 #### Generate a key
 
 In the app config, in the section General. Under Private keys. Click on Generate a private key.
@@ -172,6 +178,9 @@ kind: Application
 metadata:
   name: ${env}-helm-guestbook
   namespace: argocd
+  labels:
+    # This label allows the ArgoCDCommitStatus to find the applications.
+    app-name: helm-guestbook
 spec:
   project: default
   destination:
@@ -200,7 +209,12 @@ done
 
 If you go to the Argo CD UI, in the applications, you should now see the "SOURCE HYDRATOR" section in the header.
 
-It shuold have the message "from HEAD (...) to environment/development-next (...)"
+It should have the message "from HEAD (...) to environment/development-next (...)"
+
+!!! important
+
+    The Application will have an error under "APP CONDITIONS" that "app path does not exist." That's because the
+    Promoter has not yet moved the hydrated manifests to the syncSource branches. That's the next step.
 
 This means three things in case of a change in the main branch:
 
@@ -255,7 +269,7 @@ EOF
 
 ## Create the promotion strategy
 
-Finally, create the promotion strategy.
+Create the promotion strategy.
 
 ```bash
 cat << EOF | kubectl apply -f-
@@ -264,6 +278,9 @@ kind: PromotionStrategy
 metadata:
   name: demo-github
 spec:
+  activeCommitStatuses:
+  # The ArgoCDCommitStatus CR will maintain this commit status based on the application health.
+  - key: argocd-health
   environments:
     - autoMerge: true
       branch: environment/development
@@ -273,6 +290,24 @@ spec:
       branch: environment/prod
   gitRepositoryRef:
     name: github-argocd-example-apps
+EOF
+```
+
+Finally, create an ArgoCDCommitStatus resource to monitor the status of the Argo CD applications and maintain the
+`argocd-health` commit status.
+
+```bash
+cat << EOF | kubectl apply -f-
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ArgoCDCommitStatus
+metadata:
+  name: argocd-health
+spec:
+  promotionStrategyRef:
+    name: demo-github
+  applicationSelector:
+    matchLabels:
+      app-name: helm-guestbook
 EOF
 ```
 
@@ -294,4 +329,4 @@ Try editing the main branch: number of replicas, helm templates... And see the P
 
 !!! note
 
-    Since we are not using the webhook. It can takes 5 to 15 minutes to complete the cycle.
+    Since we are not using the webhook. It can takes 5 to 15 minutes to complete the cycle unless you've set the requeue duration to a lower value.
