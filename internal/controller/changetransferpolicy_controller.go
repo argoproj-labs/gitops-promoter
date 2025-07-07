@@ -248,7 +248,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set proposed commit status state: %w", err)
 	}
 
-	err = r.setPullRequestState(ctp)
+	err = r.setPullRequestState(ctx, ctp)
 	if err != nil {
 		return fmt.Errorf("failed to set pull request status state: %w", err)
 	}
@@ -368,9 +368,9 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 	return nil
 }
 
-func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	pr := &promoterv1alpha1.PullRequestList{}
-	err := r.List(context.TODO(), pr, &client.ListOptions{LabelSelector: labels.SelectorFromSet(map[string]string{
+	err := r.List(ctx, pr, &client.ListOptions{LabelSelector: labels.SelectorFromSet(map[string]string{
 		promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
 		promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
 		promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),

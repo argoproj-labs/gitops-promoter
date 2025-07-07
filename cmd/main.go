@@ -17,21 +17,28 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
-	"github.com/argoproj-labs/gitops-promoter/internal/controller"
-	"go.uber.org/zap/zapcore"
+	"fmt"
 	"os"
 	"runtime/debug"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"syscall"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"go.uber.org/zap/zapcore"
+
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -45,6 +52,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
+	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
@@ -145,7 +154,17 @@ func runController(
 		TLSOpts: tlsOpts,
 	})
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	// Create the kubeconfig provider with options
+	providerOpts := kubeconfigprovider.Options{
+		Namespace:             controllerNamespace,
+		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
+		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
+	}
+
+	// Create the provider first, then the manager with the provider
+	provider := kubeconfigprovider.New(providerOpts)
+
+	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
@@ -169,116 +188,131 @@ func runController(
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
 	})
-	if err != nil || mgr == nil {
+	if err != nil || mcMgr == nil {
 		panic("unable to start manager")
 	}
 
-	settingsMgr := settings.NewManager(mgr.GetClient(), settings.ManagerConfig{
+	localManager := mcMgr.GetLocalManager()
+
+	settingsMgr := settings.NewManager(localManager.GetClient(), settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
 	})
 
 	if err = (&controller.PullRequestReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("PullRequest"),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("PullRequest"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create PullRequest controller")
 	}
 	if err = (&controller.CommitStatusReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("CommitStatus"),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("CommitStatus"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create CommitStatus controller")
 	}
 	if err = (&controller.RevertCommitReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("RevertCommit"),
-	}).SetupWithManager(mgr); err != nil {
+		Client:   localManager.GetClient(),
+		Scheme:   localManager.GetScheme(),
+		Recorder: localManager.GetEventRecorderFor("RevertCommit"),
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create RevertCommit controller")
 	}
 
 	if err = (&controller.PromotionStrategyReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("PromotionStrategy"),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create PromotionStrategy controller")
 	}
 	if err = (&controller.ScmProviderReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ScmProvider"),
-	}).SetupWithManager(mgr); err != nil {
+		Client:   localManager.GetClient(),
+		Scheme:   localManager.GetScheme(),
+		Recorder: localManager.GetEventRecorderFor("ScmProvider"),
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create ScmProvider controller")
 	}
 	if err = (&controller.GitRepositoryReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+		Client: localManager.GetClient(),
+		Scheme: localManager.GetScheme(),
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create GitRepository controller")
 	}
 	if err = (&controller.ChangeTransferPolicyReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("ChangeTransferPolicy"),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create ChangeTransferPolicy controller")
 	}
+
 	if err = (&controller.ArgoCDCommitStatusReconciler{
-		Client:      mgr.GetClient(),
-		Scheme:      mgr.GetScheme(),
-		Recorder:    mgr.GetEventRecorderFor("ArgoCDCommitStatus"),
-		SettingsMgr: settingsMgr,
-	}).SetupWithManager(mgr); err != nil {
+		Manager:            mcMgr,
+		SettingsMgr:        settingsMgr,
+		KubeConfigProvider: provider,
+		Recorder:           localManager.GetEventRecorderFor("ArgoCDCommitStatus"),
+	}).SetupWithManager(mcMgr); err != nil {
 		panic("unable to create ArgoCDCommitStatus controller")
 	}
 	if err = (&controller.ControllerConfigurationReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+		Client: localManager.GetClient(),
+		Scheme: localManager.GetScheme(),
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create ControllerConfiguration controller")
 	}
 	if err = (&controller.ClusterScmProviderReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+		Client: localManager.GetClient(),
+		Scheme: localManager.GetScheme(),
+	}).SetupWithManager(localManager); err != nil {
 		panic("unable to create ClusterScmProvider controller")
 	}
 	//+kubebuilder:scaffold:builder
 
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		panic("unable to set up health check")
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	if err := localManager.AddReadyzCheck("readyz", healthz.Ping); err != nil {
 		panic("unable to set up ready check")
 	}
 
 	processSignals := ctrl.SetupSignalHandler()
 
-	whr := webhookreceiver.NewWebhookReceiver(mgr)
-	go func() {
-		err = whr.Start(processSignals, ":3333")
-		if err != nil {
-			setupLog.Error(err, "unable to start webhook receiver")
-			err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-			if err != nil {
-				setupLog.Error(err, "unable to kill process")
-			}
+	whr := webhookreceiver.NewWebhookReceiver(localManager)
+
+	g, ctx := errgroup.WithContext(processSignals)
+
+	g.Go(func() error {
+		setupLog.Info("starting manager")
+		if err := ignoreCanceled(mcMgr.Start(ctx)); err != nil {
+			setupLog.Error(err, "unable to start manager")
+			return err
 		}
-	}()
+		return nil
+	})
 
-	setupLog.Info("starting manager")
-	if err := mgr.Start(processSignals); err != nil {
-		panic("problem running manager")
+	g.Go(func() error {
+		if err := ignoreCanceled(whr.Start(processSignals, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil {
+			setupLog.Error(err, "unable to start webhook receiver")
+			return err
+		}
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		setupLog.Error(err, "unable to start")
+		err = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		if err != nil {
+			setupLog.Error(err, "unable to kill process")
+		}
 	}
-	setupLog.Info("Cleaning up cloned directories")
 
+	setupLog.Info("Cleaning up cloned directories")
 	for _, path := range gitpaths.GetValues() {
 		err := os.RemoveAll(path)
 		if err != nil {
@@ -315,12 +349,12 @@ func newCommand() *cobra.Command {
 		},
 	}
 
-	// Create a temporary flag.FlagSet to bind zap options
-	tempFlagSet := flag.NewFlagSet("", flag.ContinueOnError)
-	opts.BindFlags(tempFlagSet)
-
+	// Zap only operates on go-type flags. Cobra doesn't give us direct access to those flags.
+	// So we apply the zap flags to a temp go flags set and then transfer them to the cobra flags.
+	tmpZapFlagSet := flag.NewFlagSet("", flag.ContinueOnError)
+	opts.BindFlags(tmpZapFlagSet)
 	// Transfer flags from the temporary FlagSet to cobra's pflag.FlagSet
-	tempFlagSet.VisitAll(func(f *flag.Flag) {
+	tmpZapFlagSet.VisitAll(func(f *flag.Flag) {
 		cmd.PersistentFlags().AddGoFlag(f)
 	})
 
@@ -345,4 +379,11 @@ func addKubectlFlags(flags *pflag.FlagSet) clientcmd.ClientConfig {
 	flags.StringVar(&loadingRules.ExplicitPath, "kubeconfig", "", "Path to a kube config. Only required if out-of-cluster")
 	clientcmd.BindOverrideFlags(&overrides, flags, kflags)
 	return clientcmd.NewInteractiveDeferredLoadingClientConfig(loadingRules, &overrides, os.Stdin)
+}
+
+func ignoreCanceled(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return nil
+	}
+	return err
 }
