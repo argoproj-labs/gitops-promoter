@@ -4,8 +4,6 @@ go 1.24.0
 
 toolchain go1.24.1
 
-replace sigs.k8s.io/multicluster-runtime => github.com/FourFifthsCode/multicluster-runtime v0.20.5-alpha.kubeconfigprovider2
-
 require (
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.2.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.16.0
@@ -31,7 +29,7 @@ require (
 	k8s.io/client-go v0.33.2
 	k8s.io/utils v0.0.0-20250321185631-1f6e0b77f77e
 	sigs.k8s.io/controller-runtime v0.21.0
-	sigs.k8s.io/multicluster-runtime v0.20.5-alpha.kubeconfigprovider2
+	sigs.k8s.io/multicluster-runtime v0.20.4-alpha.7.0.20250705163125-05a6f78c3d0e
 )
 
 require (
