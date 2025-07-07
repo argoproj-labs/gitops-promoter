@@ -116,12 +116,20 @@ type ChangeTransferPolicyStatus struct {
 	Proposed CommitBranchState `json:"proposed,omitempty"`
 	Active   CommitBranchState `json:"active,omitempty"`
 
+	PullRequest *PullRequestReportedState `json:"pullRequest,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+type PullRequestReportedState struct {
+	ID             string           `json:"id,omitempty"`
+	State          PullRequestState `json:"state,omitempty"`
+	PRCreationTime metav1.Time      `json:"prCreationTime,omitempty"`
 }
 
 func (ps *ChangeTransferPolicy) GetConditions() *[]metav1.Condition {

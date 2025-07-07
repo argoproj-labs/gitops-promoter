@@ -248,6 +248,11 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set proposed commit status state: %w", err)
 	}
 
+	err = r.setPullRequestState(ctp)
+	if err != nil {
+		return fmt.Errorf("failed to set pull request status state: %w", err)
+	}
+
 	return nil
 }
 
@@ -360,6 +365,35 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 	if tooManyMatchingShas {
 		return &TooManyMatchingShaError{}
 	}
+	return nil
+}
+
+func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	pr := &promoterv1alpha1.PullRequestList{}
+	err := r.List(context.TODO(), pr, &client.ListOptions{LabelSelector: labels.SelectorFromSet(map[string]string{
+		promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+		promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+		promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+	})})
+	if err != nil {
+		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %q status update: %w", ctp.Name, err)
+	}
+	if len(pr.Items) == 0 {
+		ctp.Status.PullRequest = nil
+		return nil // No pull request exists, nothing to update
+	}
+
+	if len(pr.Items) > 1 {
+		return fmt.Errorf("found more than one PullRequest for ChangeTransferPolicy %q, this is not expected", ctp.Name)
+	}
+
+	if ctp.Status.PullRequest == nil {
+		ctp.Status.PullRequest = &promoterv1alpha1.PullRequestReportedState{}
+	}
+	ctp.Status.PullRequest.ID = pr.Items[0].Status.ID
+	ctp.Status.PullRequest.State = pr.Items[0].Status.State
+	ctp.Status.PullRequest.PRCreationTime = pr.Items[0].Status.PRCreationTime
+
 	return nil
 }
 
