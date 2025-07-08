@@ -687,6 +687,12 @@ spec:
                     format: date-time
                     type: string
                   state:
+                    enum:
+                    - closed
+                    - merged
+                    - open
+                    type: string
+                  url:
                     type: string
                 type: object
             type: object
@@ -1756,6 +1762,12 @@ spec:
                           format: date-time
                           type: string
                         state:
+                          enum:
+                          - closed
+                          - merged
+                          - open
+                          type: string
+                        url:
                           type: string
                       type: object
                   required:

@@ -128,7 +128,8 @@ type ChangeTransferPolicyStatus struct {
 }
 
 type PullRequestCommonStatus struct {
-	ID             string           `json:"id,omitempty"`
+	ID string `json:"id,omitempty"`
+	// +kubebuilder:validation:Enum=closed;merged;open
 	State          PullRequestState `json:"state,omitempty"`
 	PRCreationTime metav1.Time      `json:"prCreationTime,omitempty"`
 	Url            string           `json:"url,omitempty"`
