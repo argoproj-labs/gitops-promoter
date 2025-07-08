@@ -445,7 +445,7 @@ func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.C
 func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	logger := log.FromContext(ctx)
 	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
-		// If the proposed dry sha is different from the active dry sha, create a pull request
+		// If the proposed dry sha is the same as the active dry sha, no need to create a pull request
 		return nil
 	}
 
@@ -485,65 +485,65 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		Name:      prName,
 	}, &pr)
 	if err != nil {
-		if k8s_errors.IsNotFound(err) {
-			// TODO: move some of the below code into a utility function. It's a bit verbose for being nested this deeply.
-			// The code below sets the ownership for the PullRequest Object
-			kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
-			gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-			controllerRef := metav1.NewControllerRef(ctp, gvk)
-
-			pr = promoterv1alpha1.PullRequest{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:            prName,
-					Namespace:       ctp.Namespace,
-					OwnerReferences: []metav1.OwnerReference{*controllerRef},
-					Labels: map[string]string{
-						promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-						promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-						promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-					},
-				},
-				Spec: promoterv1alpha1.PullRequestSpec{
-					RepositoryReference: ctp.Spec.RepositoryReference,
-					Title:               title,
-					TargetBranch:        ctp.Spec.ActiveBranch,
-					SourceBranch:        ctp.Spec.ProposedBranch,
-					Description:         description,
-					State:               "open",
-				},
-			}
-			err = r.Create(ctx, &pr)
-			if err != nil {
-				return fmt.Errorf("failed to create PR from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
-			}
-			r.Recorder.Event(ctp, "Normal", constants.PullRequestCreatedReason, fmt.Sprintf(constants.PullRequestCreatedMessage, pr.Name))
-			logger.V(4).Info("Created pull request")
-		} else {
+		if !k8s_errors.IsNotFound(err) {
 			return fmt.Errorf("failed to get PR %q: %w", prName, err)
 		}
-	} else {
-		// Pull Request already exists, update it.
-		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			prUpdated := promoterv1alpha1.PullRequest{}
-			// TODO: consider skipping this Get on the first attempt, the object we already got might be up to date.
-			err = r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Name}, &prUpdated)
-			if err != nil {
-				return fmt.Errorf("failed to get PR %q: %w", pr.Name, err)
-			}
-			prUpdated.Spec.RepositoryReference = ctp.Spec.RepositoryReference
-			prUpdated.Spec.Title = title
-			prUpdated.Spec.TargetBranch = ctp.Spec.ActiveBranch
-			prUpdated.Spec.SourceBranch = ctp.Spec.ProposedBranch
-			prUpdated.Spec.Description = description
-			return r.Update(ctx, &prUpdated)
-		})
-		if err != nil {
-			return fmt.Errorf("failed to update PR %q: %w", pr.Name, err)
+
+		// TODO: move some of the below code into a utility function. It's a bit verbose for being nested this deeply.
+		// The code below sets the ownership for the PullRequest Object
+		kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
+		gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+		controllerRef := metav1.NewControllerRef(ctp, gvk)
+
+		pr = promoterv1alpha1.PullRequest{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            prName,
+				Namespace:       ctp.Namespace,
+				OwnerReferences: []metav1.OwnerReference{*controllerRef},
+				Labels: map[string]string{
+					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+				},
+			},
+			Spec: promoterv1alpha1.PullRequestSpec{
+				RepositoryReference: ctp.Spec.RepositoryReference,
+				Title:               title,
+				TargetBranch:        ctp.Spec.ActiveBranch,
+				SourceBranch:        ctp.Spec.ProposedBranch,
+				Description:         description,
+				State:               "open",
+			},
 		}
-		// r.Recorder.Event(ctp, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
-		logger.V(4).Info("Updated pull request resource")
+		err = r.Create(ctx, &pr)
+		if err != nil {
+			return fmt.Errorf("failed to create PR from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+		}
+		r.Recorder.Event(ctp, "Normal", constants.PullRequestCreatedReason, fmt.Sprintf(constants.PullRequestCreatedMessage, pr.Name))
+		logger.V(4).Info("Created pull request")
+		return nil
 	}
 
+	// Pull Request already exists, update it.
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		prUpdated := promoterv1alpha1.PullRequest{}
+		// TODO: consider skipping this Get on the first attempt, the object we already got might be up to date.
+		err = r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Name}, &prUpdated)
+		if err != nil {
+			return fmt.Errorf("failed to get PR %q: %w", pr.Name, err)
+		}
+		prUpdated.Spec.RepositoryReference = ctp.Spec.RepositoryReference
+		prUpdated.Spec.Title = title
+		prUpdated.Spec.TargetBranch = ctp.Spec.ActiveBranch
+		prUpdated.Spec.SourceBranch = ctp.Spec.ProposedBranch
+		prUpdated.Spec.Description = description
+		return r.Update(ctx, &prUpdated)
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update PR %q: %w", pr.Name, err)
+	}
+	// r.Recorder.Event(ctp, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
+	logger.V(4).Info("Updated pull request resource")
 	return nil
 }
 
