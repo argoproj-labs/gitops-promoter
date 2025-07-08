@@ -392,6 +392,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 		promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
 		promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
 	})})
+	utils.GetPullRequestName(ctx, ctp.Spec.RepositoryReference.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	if err != nil {
 		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %q status update: %w", ctp.Name, err)
 	}
