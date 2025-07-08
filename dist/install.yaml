@@ -677,6 +677,22 @@ spec:
                         type: string
                     type: object
                 type: object
+              pullRequest:
+                description: PullRequest is the state of the pull request that was
+                  created for this ChangeTransferPolicy.
+                properties:
+                  id:
+                    type: string
+                  prCreationTime:
+                    format: date-time
+                    type: string
+                  state:
+                    enum:
+                    - closed
+                    - merged
+                    - open
+                    type: string
+                type: object
             type: object
         type: object
     served: true
@@ -1733,6 +1749,22 @@ spec:
                                 message
                               type: string
                           type: object
+                      type: object
+                    pullRequest:
+                      description: PullRequest is the state of the pull request that
+                        was created for this environment.
+                      properties:
+                        id:
+                          type: string
+                        prCreationTime:
+                          format: date-time
+                          type: string
+                        state:
+                          enum:
+                          - closed
+                          - merged
+                          - open
+                          type: string
                       type: object
                   required:
                   - active

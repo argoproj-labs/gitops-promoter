@@ -58,8 +58,9 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		return "", errors.New("pull request is nil")
 	}
 
+	id = strconv.Itoa(len(pullRequests) + 1)
 	pullRequests[pr.getMapKey(*pullRequestCopy, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)] = PullRequestProviderState{
-		ID:    strconv.Itoa(len(pullRequests) + 1),
+		ID:    id,
 		State: v1alpha1.PullRequestOpen,
 	}
 

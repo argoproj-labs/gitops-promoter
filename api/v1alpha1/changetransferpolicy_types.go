@@ -116,12 +116,22 @@ type ChangeTransferPolicyStatus struct {
 	Proposed CommitBranchState `json:"proposed,omitempty"`
 	Active   CommitBranchState `json:"active,omitempty"`
 
+	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
+	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+type PullRequestCommonStatus struct {
+	ID string `json:"id,omitempty"`
+	// +kubebuilder:validation:Enum=closed;merged;open
+	State          PullRequestState `json:"state,omitempty"`
+	PRCreationTime metav1.Time      `json:"prCreationTime,omitempty"`
 }
 
 func (ps *ChangeTransferPolicy) GetConditions() *[]metav1.Condition {

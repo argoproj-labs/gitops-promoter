@@ -26,16 +26,19 @@ import (
 	"runtime/debug"
 	"syscall"
 
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
+	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"go.uber.org/zap/zapcore"
-	"golang.org/x/sync/errgroup"
+
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"golang.org/x/sync/errgroup"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -47,14 +50,12 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -364,7 +365,8 @@ func newCommand() *cobra.Command {
 }
 
 func main() {
-	if err := newCommand().Execute(); err != nil {
+	cmd := newCommand()
+	if err := cmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
