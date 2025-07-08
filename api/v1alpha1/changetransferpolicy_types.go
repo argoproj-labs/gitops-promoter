@@ -116,6 +116,7 @@ type ChangeTransferPolicyStatus struct {
 	Proposed CommitBranchState `json:"proposed,omitempty"`
 	Active   CommitBranchState `json:"active,omitempty"`
 
+	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestReportedState `json:"pullRequest,omitempty"`
 
 	// Conditions Represents the observations of the current state.

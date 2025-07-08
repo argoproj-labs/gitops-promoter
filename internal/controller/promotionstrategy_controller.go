@@ -236,6 +236,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 		ps.Status.Environments[i].Branch = ctp.Spec.ActiveBranch
 		ps.Status.Environments[i].Active = ctp.Status.Active
 		ps.Status.Environments[i].Proposed = ctp.Status.Proposed
+		ps.Status.Environments[i].PullRequest = ctp.Status.PullRequest
 
 		// TODO: actually implement keeping track of healthy dry sha's
 		// We only want to keep the last 10 healthy dry sha's

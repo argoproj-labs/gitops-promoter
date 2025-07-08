@@ -470,6 +470,8 @@ spec:
                     type: object
                 type: object
               pullRequest:
+                description: PullRequest is the state of the pull request that was
+                  created for this ChangeTransferPolicy.
                 properties:
                   id:
                     type: string

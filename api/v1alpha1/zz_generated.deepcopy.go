@@ -652,6 +652,11 @@ func (in *EnvironmentStatus) DeepCopyInto(out *EnvironmentStatus) {
 	*out = *in
 	in.Proposed.DeepCopyInto(&out.Proposed)
 	in.Active.DeepCopyInto(&out.Active)
+	if in.PullRequest != nil {
+		in, out := &in.PullRequest, &out.PullRequest
+		*out = new(PullRequestReportedState)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.LastHealthyDryShas != nil {
 		in, out := &in.LastHealthyDryShas, &out.LastHealthyDryShas
 		*out = make([]HealthyDryShas, len(*in))
