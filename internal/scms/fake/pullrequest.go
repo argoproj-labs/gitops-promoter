@@ -198,3 +198,20 @@ func (pr *PullRequest) runGitCmd(gitPath string, args ...string) error {
 
 	return nil
 }
+
+func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest *v1alpha1.PullRequest) (string, error) {
+	logger := log.FromContext(ctx)
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return "", fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	if prState, ok := pullRequests[prKey]; ok {
+		return fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, prState.ID), nil
+	}
+
+	logger.Info("Pull request not found", "pullRequest", pullRequest)
+	return "", errors.New("pull request not found")
+}

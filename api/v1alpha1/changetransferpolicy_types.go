@@ -131,6 +131,7 @@ type PullRequestCommonStatus struct {
 	ID             string           `json:"id,omitempty"`
 	State          PullRequestState `json:"state,omitempty"`
 	PRCreationTime metav1.Time      `json:"prCreationTime,omitempty"`
+	Url            string           `json:"url,omitempty"`
 }
 
 func (ps *ChangeTransferPolicy) GetConditions() *[]metav1.Condition {

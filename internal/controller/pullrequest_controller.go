@@ -95,7 +95,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	logger.Info("Checking for open PR on provider")
-	found, id, err := provider.FindOpen(ctx, &pr)
+	found, foundState, err := provider.FindOpen(ctx, &pr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
 	}
@@ -103,7 +103,9 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Calculate the state of the PR based on the provider, if found we have to be open
 	if found {
 		pr.Status.State = promoterv1alpha1.PullRequestOpen
-		pr.Status.ID = id
+		pr.Status.ID = foundState.ID
+		pr.Status.PRCreationTime = foundState.PRCreationTime
+		pr.Status.Url = foundState.Url
 	} else if pr.Status.ID != "" {
 		// If we don't find the PR, but we have an ID, it means it was deleted on the provider side
 		if err := r.Delete(ctx, &pr); err != nil {
@@ -230,6 +232,13 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 	pr.Status.State = promoterv1alpha1.PullRequestOpen
 	pr.Status.PRCreationTime = metav1.Now()
 	pr.Status.ID = id
+
+	url, err := provider.GetUrl(ctx, pr)
+	if err != nil {
+		return fmt.Errorf("failed to get pull request URL: %w", err)
+	}
+	pr.Status.Url = url
+
 	return nil
 }
 

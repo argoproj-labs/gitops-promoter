@@ -1945,6 +1945,9 @@ spec:
                 - merged
                 - open
                 type: string
+              url:
+                description: Url is the URL of the pull request.
+                type: string
             type: object
         type: object
     served: true

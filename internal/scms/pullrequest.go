@@ -11,5 +11,6 @@ type PullRequestProvider interface {
 	Close(ctx context.Context, pullRequest *v1alpha1.PullRequest) error
 	Update(ctx context.Context, title, description string, pullRequest *v1alpha1.PullRequest) error
 	Merge(ctx context.Context, commitMessage string, pullRequest *v1alpha1.PullRequest) error
-	FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, string, error)
+	FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error)
+	GetUrl(ctx context.Context, pullRequest *v1alpha1.PullRequest) (string, error)
 }

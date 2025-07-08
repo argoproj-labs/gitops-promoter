@@ -3,6 +3,7 @@ package gitlab
 import (
 	"context"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strconv"
 	"time"
 
@@ -257,8 +258,20 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 	if len(mrs) > 0 {
 		prObj.Status.ID = strconv.Itoa(mrs[0].IID)
 		prObj.Status.State = mapMergeRequestState(mrs[0].State)
+
+		url, err := pr.GetUrl(ctx, prObj)
+		if err != nil {
+			return false, "", fmt.Errorf("failed to get pull request URL: %w", err)
+		}
+		prObj.Status.Url = url
+		prObj.Status.PRCreationTime = metav1.Time{Time: *mrs[0].CreatedAt}
+
 		return true, prObj.Status.ID, nil
 	}
 
 	return false, "", nil
+}
+
+func (pr *PullRequest) GetUrl(ctx context.Context, prObj *v1alpha1.PullRequest) (string, error) {
+	return "", nil
 }

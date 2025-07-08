@@ -63,6 +63,8 @@ type PullRequestStatus struct {
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime the time the PR was created
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
+	// Url is the URL of the pull request.
+	Url string `json:"url,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type

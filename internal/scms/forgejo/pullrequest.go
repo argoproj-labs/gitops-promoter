@@ -3,6 +3,7 @@ package forgejo
 import (
 	"context"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strconv"
 	"time"
 
@@ -203,19 +204,26 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 
-	for _, pr := range prs {
-		if pr.Head.Name != prObj.Spec.SourceBranch ||
-			pr.Base.Name != prObj.Spec.TargetBranch {
+	for _, prItem := range prs {
+		if prItem.Head.Name != prObj.Spec.SourceBranch ||
+			prItem.Base.Name != prObj.Spec.TargetBranch {
 			continue
 		}
 
-		prState, err := forgejoPullRequestStateToPullRequestState(*pr)
+		prState, err := forgejoPullRequestStateToPullRequestState(*prItem)
 		if err != nil {
 			return false, "", err
 		}
 
-		prObj.Status.ID = strconv.FormatInt(pr.Index, 10)
+		prObj.Status.ID = strconv.FormatInt(prItem.Index, 10)
 		prObj.Status.State = prState
+
+		url, err := pr.GetUrl(ctx, prObj)
+		if err != nil {
+			return false, "", fmt.Errorf("failed to get pull request URL: %w", err)
+		}
+		prObj.Status.Url = url
+		prObj.Status.PRCreationTime = metav1.Time{Time: *prItem.Created}
 		return true, prObj.Status.ID, nil
 	}
 
@@ -236,4 +244,8 @@ func checkOpenPR(ctx context.Context, pr *PullRequest, repo *promoterv1alpha1.Gi
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 
 	return existingPr.State != forgejo.StateOpen, nil
+}
+
+func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest *promoterv1alpha1.PullRequest) (string, error) {
+	return "", nil
 }

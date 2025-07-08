@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strconv"
 	"time"
 
@@ -176,7 +177,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	return nil
 }
 
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, string, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
@@ -203,8 +204,30 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 	if len(pullRequests) > 0 {
 		pullRequest.Status.ID = strconv.Itoa(*pullRequests[0].Number)
 		pullRequest.Status.State = v1alpha1.PullRequestState(*pullRequests[0].State)
+		url, err := pr.GetUrl(ctx, pullRequest)
+		if err != nil {
+			return false, "", fmt.Errorf("failed to get pull request URL: %w", err)
+		}
+		pullRequest.Status.Url = url
+		pullRequest.Status.PRCreationTime = metav1.Time{Time: pullRequests[0].CreatedAt.Time}
 		return true, pullRequest.Status.ID, nil
 	}
 
 	return false, "", nil
+}
+
+// GetUrl returns a hard coded URL for the pull request.
+func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest *v1alpha1.PullRequest) (string, error) {
+	gitRepo, _ := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+
+	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert PR number to int when generating pull reqest url: %w", err)
+	}
+
+	if pr.client.BaseURL.Host == "api.github.com" {
+		return fmt.Sprintf("%s/%s/%s/pull/%d", "https://github.com", gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
+	}
+
+	return fmt.Sprintf("https://%s/%s/%s/pull/%d", pr.client.BaseURL.Host, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
 }
