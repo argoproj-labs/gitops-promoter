@@ -3,9 +3,10 @@ package forgejo
 import (
 	"context"
 	"fmt"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strconv"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	forgejo "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2"
 	k8sV1 "k8s.io/api/core/v1"
