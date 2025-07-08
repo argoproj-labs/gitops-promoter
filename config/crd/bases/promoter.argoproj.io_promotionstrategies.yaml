@@ -564,6 +564,10 @@ spec:
                           format: date-time
                           type: string
                         state:
+                          enum:
+                          - closed
+                          - merged
+                          - open
                           type: string
                       type: object
                   required:
