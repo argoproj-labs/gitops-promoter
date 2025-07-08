@@ -192,7 +192,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return false, "", fmt.Errorf("failed to list pull requests: %w", err)
+		return false, v1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -202,18 +202,21 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 	logger.V(4).Info("github response status",
 		"status", response.Status)
 	if len(pullRequests) > 0 {
-		pullRequest.Status.ID = strconv.Itoa(*pullRequests[0].Number)
-		pullRequest.Status.State = v1alpha1.PullRequestState(*pullRequests[0].State)
 		url, err := pr.GetUrl(ctx, pullRequest)
 		if err != nil {
-			return false, "", fmt.Errorf("failed to get pull request URL: %w", err)
+			return false, v1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to get pull request URL: %w", err)
 		}
-		pullRequest.Status.Url = url
-		pullRequest.Status.PRCreationTime = metav1.Time{Time: pullRequests[0].CreatedAt.Time}
-		return true, pullRequest.Status.ID, nil
+
+		prStatus := v1alpha1.PullRequestCommonStatus{
+			ID:             strconv.Itoa(*pullRequests[0].Number),
+			State:          v1alpha1.PullRequestState(*pullRequests[0].State),
+			PRCreationTime: metav1.Time{Time: pullRequests[0].CreatedAt.Time},
+			Url:            url,
+		}
+		return true, prStatus, nil
 	}
 
-	return false, "", nil
+	return false, v1alpha1.PullRequestCommonStatus{}, nil
 }
 
 // GetUrl returns a hard coded URL for the pull request.

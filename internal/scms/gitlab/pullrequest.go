@@ -220,7 +220,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *v
 	return nil
 }
 
-func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest) (bool, string, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
@@ -229,7 +229,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 		Name:      prObj.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return false, "", fmt.Errorf("failed to get repo: %w", err)
+		return false, v1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to get repo: %w", err)
 	}
 
 	options := &gitlab.ListMergeRequestsOptions{
@@ -244,7 +244,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return false, "", fmt.Errorf("failed to list pull requests: %w", err)
+		return false, v1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
 	logGitLabRateLimitsIfAvailable(
@@ -256,20 +256,22 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 		"status", resp.Status)
 
 	if len(mrs) > 0 {
-		prObj.Status.ID = strconv.Itoa(mrs[0].IID)
-		prObj.Status.State = mapMergeRequestState(mrs[0].State)
-
 		url, err := pr.GetUrl(ctx, prObj)
 		if err != nil {
-			return false, "", fmt.Errorf("failed to get pull request URL: %w", err)
+			return false, v1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to get pull request URL: %w", err)
 		}
-		prObj.Status.Url = url
-		prObj.Status.PRCreationTime = metav1.Time{Time: *mrs[0].CreatedAt}
 
-		return true, prObj.Status.ID, nil
+		pullRequestStatus := v1alpha1.PullRequestCommonStatus{
+			ID:             strconv.Itoa(mrs[0].IID),
+			State:          mapMergeRequestState(mrs[0].State),
+			Url:            url,
+			PRCreationTime: metav1.Time{Time: *mrs[0].CreatedAt},
+		}
+
+		return true, pullRequestStatus, nil
 	}
 
-	return false, "", nil
+	return false, v1alpha1.PullRequestCommonStatus{}, nil
 }
 
 func (pr *PullRequest) GetUrl(ctx context.Context, prObj *v1alpha1.PullRequest) (string, error) {

@@ -145,11 +145,17 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	return nil
 }
 
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, string, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
 	mutexPR.RLock()
 	found, id := pr.findOpen(ctx, pullRequest)
 	mutexPR.RUnlock()
-	return found, id, nil
+
+	prState := v1alpha1.PullRequestCommonStatus{
+		ID:    id,
+		State: v1alpha1.PullRequestOpen,
+		Url:   fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", pullRequest.Spec.RepositoryReference.Name, pullRequest.Spec.SourceBranch, id),
+	}
+	return found, prState, nil
 }
 
 func (pr *PullRequest) findOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, string) {
