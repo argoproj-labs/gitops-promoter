@@ -117,7 +117,7 @@ type ChangeTransferPolicyStatus struct {
 	Active   CommitBranchState `json:"active,omitempty"`
 
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
-	PullRequest *PullRequestReportedState `json:"pullRequest,omitempty"`
+	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
@@ -127,7 +127,7 @@ type ChangeTransferPolicyStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
-type PullRequestReportedState struct {
+type PullRequestCommonStatus struct {
 	ID             string           `json:"id,omitempty"`
 	State          PullRequestState `json:"state,omitempty"`
 	PRCreationTime metav1.Time      `json:"prCreationTime,omitempty"`

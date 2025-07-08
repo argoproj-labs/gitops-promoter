@@ -126,7 +126,7 @@ type EnvironmentStatus struct {
 	Active   CommitBranchState `json:"active"`
 
 	// PullRequest is the state of the pull request that was created for this environment.
-	PullRequest *PullRequestReportedState `json:"pullRequest,omitempty"`
+	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
 
 	// +kubebuilder:validation:Optional
 	LastHealthyDryShas []HealthyDryShas `json:"lastHealthyDryShas"`

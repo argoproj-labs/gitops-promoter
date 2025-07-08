@@ -405,7 +405,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	}
 
 	if ctp.Status.PullRequest == nil {
-		ctp.Status.PullRequest = &promoterv1alpha1.PullRequestReportedState{}
+		ctp.Status.PullRequest = &promoterv1alpha1.PullRequestCommonStatus{}
 	}
 	ctp.Status.PullRequest.ID = pr.Items[0].Status.ID
 	ctp.Status.PullRequest.State = pr.Items[0].Status.State
