@@ -275,5 +275,14 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 }
 
 func (pr *PullRequest) GetUrl(ctx context.Context, prObj *v1alpha1.PullRequest) (string, error) {
-	return "", nil
+	// Get the URL for the pull request using string formatting
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+		Namespace: prObj.Namespace,
+		Name:      prObj.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to get repo: %w", err)
+	}
+
+	return fmt.Sprintf("https://%s/%s/%s/-/merge_requests/%s", pr.client.BaseURL(), repo.Spec.GitLab.Namespace, repo.Spec.GitLab.Name, prObj.Status.ID), nil
 }

@@ -21,6 +21,7 @@ import (
 type PullRequest struct {
 	foregejoClient *forgejo.Client
 	k8sClient      k8sClient.Client
+	domain         string
 }
 
 var _ scms.PullRequestProvider = &PullRequest{}
@@ -34,6 +35,7 @@ func NewForgejoPullRequestProvider(k8sClient k8sClient.Client, secret k8sV1.Secr
 	return &PullRequest{
 		foregejoClient: client,
 		k8sClient:      k8sClient,
+		domain:         domain,
 	}, nil
 }
 
@@ -249,5 +251,10 @@ func checkOpenPR(ctx context.Context, pr *PullRequest, repo *promoterv1alpha1.Gi
 }
 
 func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest *promoterv1alpha1.PullRequest) (string, error) {
-	return "", nil
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return "", fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	return fmt.Sprintf("https://%s/%s/%s/pulls/%s", pr.domain, gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, pullRequest.Status.ID), nil
 }
