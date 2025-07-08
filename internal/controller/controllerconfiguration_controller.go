@@ -22,8 +22,10 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -58,7 +60,7 @@ func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req c
 // SetupWithManager sets up the controller with the Manager.
 func (r *ControllerConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.ControllerConfiguration{}).
+		For(&promoterv1alpha1.ControllerConfiguration{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("controllerconfiguration").
 		Complete(r)
 	if err != nil {
