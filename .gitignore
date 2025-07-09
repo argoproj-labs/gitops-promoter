@@ -38,8 +38,6 @@ junit.xml
 release_dist
 
 venv
-<<<<<<< HEAD
-=======
 
 node_modules/
 
@@ -60,4 +58,3 @@ yarn-error.log*
 
 .env
 .vite/
->>>>>>> 5834716 (Added UI)
