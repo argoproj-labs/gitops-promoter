@@ -132,7 +132,8 @@ type PullRequestCommonStatus struct {
 	// +kubebuilder:validation:Enum=closed;merged;open
 	State          PullRequestState `json:"state,omitempty"`
 	PRCreationTime metav1.Time      `json:"prCreationTime,omitempty"`
-	Url            string           `json:"url,omitempty"`
+	// Url is the URL of the pull request.
+	Url string `json:"url,omitempty"`
 }
 
 func (ps *ChangeTransferPolicy) GetConditions() *[]metav1.Condition {

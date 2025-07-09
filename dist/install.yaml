@@ -693,6 +693,7 @@ spec:
                     - open
                     type: string
                   url:
+                    description: Url is the URL of the pull request.
                     type: string
                 type: object
             type: object
@@ -1768,6 +1769,7 @@ spec:
                           - open
                           type: string
                         url:
+                          description: Url is the URL of the pull request.
                           type: string
                       type: object
                   required:

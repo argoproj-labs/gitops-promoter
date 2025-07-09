@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
 	ginkgov2 "github.com/onsi/ginkgo/v2"
@@ -151,9 +153,10 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 	mutexPR.RUnlock()
 
 	prState := v1alpha1.PullRequestCommonStatus{
-		ID:    id,
-		State: v1alpha1.PullRequestOpen,
-		Url:   fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", pullRequest.Spec.RepositoryReference.Name, pullRequest.Spec.SourceBranch, id),
+		ID:             id,
+		State:          v1alpha1.PullRequestOpen,
+		Url:            fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", pullRequest.Spec.RepositoryReference.Name, pullRequest.Spec.SourceBranch, id),
+		PRCreationTime: metav1.Now(),
 	}
 	return found, prState, nil
 }
