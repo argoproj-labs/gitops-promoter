@@ -25,15 +25,13 @@ jobs:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: ui/dashboard/package-lock.json
-      - name: Get dependencies
-        run: go mod download
       - name: Install UI dependencies and build
         run: |
-          cd ui/components-lib
-          npm ci
-          cd ../dashboard
-          npm ci
-          npm run build
+          cd ui/shared && npm ci
+          cd ../components-lib && npm ci
+          cd ../dashboard && npm ci && npm run build
+      - name: Get dependencies
+        run: go mod download
       - name: Restore build output from cache
         id: cache-build
         uses: actions/cache@v4
