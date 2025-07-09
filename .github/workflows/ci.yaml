@@ -31,6 +31,9 @@ jobs:
         run: |
           cd ui/dashboard
           npm ci
+          cd ../shared && npm ci
+          cd ../components-lib && npm ci
+          cd ../dashboard
           npm run build:embed
       - name: Restore build output from cache
         id: cache-build
