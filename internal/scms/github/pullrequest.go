@@ -238,7 +238,7 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
 	if err != nil {
-		return "", fmt.Errorf("failed to convert PR number to int when generating pull reqest url: %w", err)
+		return "", fmt.Errorf("failed to convert PR number to int when generating pull request url: %w", err)
 	}
 
 	if pr.client.BaseURL.Host == "api.github.com" {
