@@ -4,7 +4,8 @@ WORKDIR /workspace
 COPY ui/ ./ui/
 WORKDIR /workspace/ui/dashboard
 RUN npm ci
-RUN npm run build:embed
+RUN npx vite build
+RUN mkdir -p ../../web/static && cp -r dist/* ../../web/static/
 
 # Build the gitops-promoter binary
 FROM golang:1.24 AS builder

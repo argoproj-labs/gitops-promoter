@@ -19,8 +19,19 @@ jobs:
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # pin@v5
         with:
           go-version: "1.24"
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: ui/dashboard/package-lock.json
       - name: Get dependencies
         run: go mod download
+      - name: Build Dashboard UI
+        run: |
+          cd ui/dashboard
+          npm ci
+          npm run build:embed
       - name: Restore build output from cache
         id: cache-build
         uses: actions/cache@v4
