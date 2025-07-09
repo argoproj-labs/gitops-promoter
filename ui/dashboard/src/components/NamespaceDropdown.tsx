@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import Select, { components } from 'react-select';
 import { FaFolder } from 'react-icons/fa';
-import { namespaceStore } from '@shared/stores/NamespaceStore';
+import { namespaceStore } from '../stores/NamespaceStore';
 import './NamespaceDropdown.scss';
 
 const NamespaceDropdown: React.FC = () => {

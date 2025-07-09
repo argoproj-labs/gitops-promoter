@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { namespaceStore } from '../stores/NamespaceStore';
 import { NamespaceDropdown } from '../components/NamespaceDropdown';
 import { PromotionStrategies } from '../features/promotion/PromotionStrategies';
-import { namespaceStore } from '@shared/stores/NamespaceStore';
 import './DashboardPage.scss';
 
 

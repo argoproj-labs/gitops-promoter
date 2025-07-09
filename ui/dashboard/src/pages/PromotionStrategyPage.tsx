@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { namespaceStore } from '@shared/stores/NamespaceStore'
-import { PromotionStrategyStore } from '@shared/stores/PromotionStrategyStore';
+import { namespaceStore } from '../stores/NamespaceStore'
+import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
 import BackButton from '../components/BackButton';
 import HeaderBar from '@lib/components/HeaderBar';
 import PromotionStrategyDetailsView from '@lib/components/PromotionStrategyDetailsView';

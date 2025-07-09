@@ -1,7 +1,7 @@
-import {useEffect} from 'react'
-import { namespaceStore } from '@shared/stores/NamespaceStore';
+import { namespaceStore } from '../../stores/NamespaceStore';
+import React, { useEffect, useState } from 'react';
+import { PromotionStrategyStore } from '../../stores/PromotionStrategyStore';
 import PromotionStrategiesTiles from '../../components/PromotionStrategySummary/PromotionStrategyTiles';
-import { PromotionStrategyStore } from '@shared/stores/PromotionStrategyStore';
 
 export function PromotionStrategies() {
     

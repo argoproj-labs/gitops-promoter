@@ -2,5 +2,5 @@ package web
 
 import "embed"
 
-//go:embed static/* static/assets/*
+//go:embed static
 var DashboardFS embed.FS

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { enrichPromotionStrategy } from '../utils/PSData';
+import { enrichPromotionStrategy } from '@shared/utils/PSData';
 
 export function createCRDStore<T>(kind: string, eventName: string) {
     let eventSource: EventSource | null = null;
