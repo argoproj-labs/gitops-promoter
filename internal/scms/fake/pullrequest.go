@@ -40,7 +40,7 @@ func NewFakePullRequestProvider(k8sClient client.Client) *PullRequest {
 	return &PullRequest{k8sClient: k8sClient}
 }
 
-func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (id string, err error) {
+func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (id string, err error) {
 	logger := log.FromContext(ctx)
 	mutexPR.Lock()
 	if pullRequests == nil {
@@ -53,7 +53,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	}
 
 	pullRequestCopy := pullRequest.DeepCopy()
-	if p, ok := pullRequests[pr.getMapKey(*pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]; ok {
+	if p, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]; ok {
 		logger.Info("Pull request already exists", "id", p.ID)
 	}
 	if pullRequestCopy == nil {
@@ -70,11 +70,11 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	return id, nil
 }
 
-func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest *v1alpha1.PullRequest) error {
+func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest v1alpha1.PullRequest) error {
 	return nil
 }
 
-func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequest) error {
+func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
 	mutexPR.Lock()
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
@@ -82,7 +82,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
 	}
@@ -94,7 +94,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest *v1alpha1.PullRequ
 	return nil
 }
 
-func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest *v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 	gitPath, err := os.MkdirTemp("", "*")
 	defer func() {
@@ -134,7 +134,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	}
 
 	mutexPR.Lock()
-	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
@@ -147,7 +147,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	return nil
 }
 
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
 	mutexPR.RLock()
 	found, id := pr.findOpen(ctx, pullRequest)
 	mutexPR.RUnlock()
@@ -161,7 +161,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 	return found, prState, nil
 }
 
-func (pr *PullRequest) findOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, string) {
+func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string) {
 	log.FromContext(ctx).Info("Finding open pull request", "pullRequest", pullRequest)
 	if pullRequests == nil {
 		return false, ""
@@ -173,7 +173,7 @@ func (pr *PullRequest) findOpen(ctx context.Context, pullRequest *v1alpha1.PullR
 		return false, ""
 	}
 
-	pullRequestState, ok := pullRequests[pr.getMapKey(*pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
+	pullRequestState, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
 	return ok && pullRequestState.State == v1alpha1.PullRequestOpen, pullRequestState.ID
 }
 
@@ -208,7 +208,7 @@ func (pr *PullRequest) runGitCmd(gitPath string, args ...string) error {
 	return nil
 }
 
-func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest *v1alpha1.PullRequest) (string, error) {
+func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
@@ -216,7 +216,7 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest *v1alpha1.PullReq
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	prKey := pr.getMapKey(*pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 	if prState, ok := pullRequests[prKey]; ok {
 		return fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, prState.ID), nil
 	}

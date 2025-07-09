@@ -95,7 +95,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	logger.Info("Checking for open PR on provider")
-	found, foundState, err := provider.FindOpen(ctx, &pr)
+	found, foundState, err := provider.FindOpen(ctx, pr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
 	}
@@ -225,7 +225,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 }
 
 func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	id, err := provider.Create(ctx, pr.Spec.Title, pr.Spec.SourceBranch, pr.Spec.TargetBranch, pr.Spec.Description, pr)
+	id, err := provider.Create(ctx, pr.Spec.Title, pr.Spec.SourceBranch, pr.Spec.TargetBranch, pr.Spec.Description, *pr)
 	if err != nil {
 		return fmt.Errorf("failed to create pull request: %w", err)
 	}
@@ -233,7 +233,7 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 	pr.Status.PRCreationTime = metav1.Now()
 	pr.Status.ID = id
 
-	url, err := provider.GetUrl(ctx, pr)
+	url, err := provider.GetUrl(ctx, *pr)
 	if err != nil {
 		return fmt.Errorf("failed to get pull request URL: %w", err)
 	}
@@ -243,7 +243,7 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 }
 
 func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	if err := provider.Update(ctx, pr.Spec.Title, pr.Spec.Description, &pr); err != nil {
+	if err := provider.Update(ctx, pr.Spec.Title, pr.Spec.Description, pr); err != nil {
 		return fmt.Errorf("failed to update pull request: %w", err)
 	}
 	r.Recorder.Event(&pr, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
@@ -251,7 +251,7 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	if err := provider.Merge(ctx, "", pr); err != nil {
+	if err := provider.Merge(ctx, "", *pr); err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestMerged
@@ -262,7 +262,7 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 	if pr.Status.State == promoterv1alpha1.PullRequestMerged {
 		return nil
 	}
-	if err := provider.Close(ctx, pr); err != nil {
+	if err := provider.Close(ctx, *pr); err != nil {
 		return fmt.Errorf("failed to close pull request: %w", err)
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestClosed

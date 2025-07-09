@@ -40,7 +40,7 @@ func NewForgejoPullRequestProvider(k8sClient k8sClient.Client, secret k8sV1.Secr
 	}, nil
 }
 
-func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, prObj *promoterv1alpha1.PullRequest) (string, error) {
+func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, prObj promoterv1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{
@@ -71,7 +71,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	return strconv.FormatInt(pullRequest.Index, 10), nil
 }
 
-func (pr *PullRequest) Update(ctx context.Context, title, description string, prObj *promoterv1alpha1.PullRequest) error {
+func (pr *PullRequest) Update(ctx context.Context, title, description string, prObj promoterv1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
 	prID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
@@ -105,7 +105,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	return nil
 }
 
-func (pr *PullRequest) Close(ctx context.Context, prObj *promoterv1alpha1.PullRequest) error {
+func (pr *PullRequest) Close(ctx context.Context, prObj promoterv1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
 	prID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
@@ -121,7 +121,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *promoterv1alpha1.PullRe
 		return fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
-	shouldReturn, err := checkOpenPR(ctx, pr, repo, prID)
+	shouldReturn, err := checkOpenPR(ctx, *pr, repo, prID)
 	if shouldReturn {
 		return err
 	}
@@ -144,7 +144,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *promoterv1alpha1.PullRe
 	return nil
 }
 
-func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *promoterv1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj promoterv1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
 	prID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
@@ -160,7 +160,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *p
 		return fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
-	shouldReturn, err := checkOpenPR(ctx, pr, repo, prID)
+	shouldReturn, err := checkOpenPR(ctx, *pr, repo, prID)
 	if shouldReturn {
 		return err
 	}
@@ -182,7 +182,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *p
 	return nil
 }
 
-func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.PullRequest) (bool, promoterv1alpha1.PullRequestCommonStatus, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, prObj promoterv1alpha1.PullRequest) (bool, promoterv1alpha1.PullRequestCommonStatus, error) {
 	logger := log.FromContext(ctx)
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{
@@ -235,7 +235,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *promoterv1alpha1.Pul
 	return false, promoterv1alpha1.PullRequestCommonStatus{}, nil
 }
 
-func checkOpenPR(ctx context.Context, pr *PullRequest, repo *promoterv1alpha1.GitRepository, prID int64) (bool, error) {
+func checkOpenPR(ctx context.Context, pr PullRequest, repo *promoterv1alpha1.GitRepository, prID int64) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	start := time.Now()
@@ -251,7 +251,7 @@ func checkOpenPR(ctx context.Context, pr *PullRequest, repo *promoterv1alpha1.Gi
 	return existingPr.State != forgejo.StateOpen, nil
 }
 
-func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest *promoterv1alpha1.PullRequest) (string, error) {
+func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest promoterv1alpha1.PullRequest) (string, error) {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)

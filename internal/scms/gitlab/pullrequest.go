@@ -38,7 +38,7 @@ func NewGitlabPullRequestProvider(k8sClient client.Client, secret v1.Secret, dom
 	}, nil
 }
 
-func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc string, prObj *v1alpha1.PullRequest) (string, error) {
+func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc string, prObj v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
@@ -79,7 +79,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 	return strconv.Itoa(mr.IID), nil
 }
 
-func (pr *PullRequest) Update(ctx context.Context, title, description string, prObj *v1alpha1.PullRequest) error {
+func (pr *PullRequest) Update(ctx context.Context, title, description string, prObj v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
 	mrIID, err := strconv.Atoi(prObj.Status.ID)
@@ -125,7 +125,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	return nil
 }
 
-func (pr *PullRequest) Close(ctx context.Context, prObj *v1alpha1.PullRequest) error {
+func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
 	mrIID, err := strconv.Atoi(prObj.Status.ID)
@@ -170,7 +170,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj *v1alpha1.PullRequest) e
 	return nil
 }
 
-func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
 	mrIID, err := strconv.Atoi(prObj.Status.ID)
@@ -221,7 +221,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj *v
 	return nil
 }
 
-func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, prObj v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
@@ -275,7 +275,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj *v1alpha1.PullRequest
 	return false, v1alpha1.PullRequestCommonStatus{}, nil
 }
 
-func (pr *PullRequest) GetUrl(ctx context.Context, prObj *v1alpha1.PullRequest) (string, error) {
+func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (string, error) {
 	// Get the URL for the pull request using string formatting
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
 		Namespace: prObj.Namespace,
