@@ -2,6 +2,10 @@
 FROM node:18-bullseye-slim AS dashboard-builder
 WORKDIR /workspace
 COPY ui/ ./ui/
+# Install components-lib dependencies first
+WORKDIR /workspace/ui/components-lib
+RUN npm ci
+# Install dashboard dependencies
 WORKDIR /workspace/ui/dashboard
 RUN npm ci
 RUN npx vite build

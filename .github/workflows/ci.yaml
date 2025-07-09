@@ -29,7 +29,9 @@ jobs:
         run: go mod download
       - name: Install UI dependencies and build
         run: |
-          cd ui/dashboard
+          cd ui/components-lib
+          npm ci
+          cd ../dashboard
           npm ci
           npm run build
       - name: Restore build output from cache
