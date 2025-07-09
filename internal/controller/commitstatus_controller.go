@@ -93,7 +93,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
-	if err != nil {
+	if err != nil || commitStatusProvider == nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)
 	}
 
