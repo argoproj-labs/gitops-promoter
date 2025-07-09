@@ -7,13 +7,13 @@ export default defineConfig({
   server: {
     proxy: {
       '/list': {
-        target: 'http://localhost:8088',
+        target: 'http://localhost:8080',
         changeOrigin: true,
         secure: false,
       },
 
       '/watch': {
-        target: 'http://localhost:8088',
+        target: 'http://localhost:8080',
         changeOrigin: true,
         secure: false,
         ws: false,

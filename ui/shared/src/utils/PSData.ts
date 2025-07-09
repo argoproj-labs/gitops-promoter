@@ -1,4 +1,4 @@
-import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, parseTrailers, getArgoCDAppLink, formatDate, extractEnvNameFromBranch } from './util';
+import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, parseTrailers, formatDate, extractEnvNameFromBranch } from './util';
 
 //TODO: HARDCODED: Get PR number FROM RESOURCE INSTEAD OF GITHUB API
 const owner = 'Shirly8';
@@ -197,12 +197,12 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
     const hydratedCommitAuthor = hydrated.author || '-';
     const hydratedCommitSubject = hydrated.subject || '-';
     const hydratedCommitBody = hydrated.body || '-';
-    const lastSync = formatDate(typeof hydrated.commitTime === 'string' ? hydrated.commitTime : '-');
+    const lastSync = hydrated.commitTime ? formatDate(hydrated.commitTime) : '-';
 
 
     // Hydrated commit
     const hydratedCommitUrl = getCommitUrl(dry.repoURL ?? '', hydrated.sha ?? '');
-    const hydratedCommitDate = formatDate(typeof hydrated.commitTime === 'string' ? hydrated.commitTime : '-');
+    const hydratedCommitDate = hydrated.commitTime ? formatDate(hydrated.commitTime) : '-';
 
 
     // Proposed
@@ -230,8 +230,8 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
 
     const proposedHydrated = proposed.hydrated || {};
     const prCreatedAt = proposedHydrated.commitTime || '-';
-    const mergeDate = formatDate(typeof hydrated.commitTime === 'string' ? hydrated.commitTime : '-');
-
+    const mergeDate = hydrated.commitTime ? formatDate(hydrated.commitTime) : '';
+    
     // Find the matching spec environment for autoMerge
     const specEnv = specEnvs.find(e => e.branch === environment.branch);
     const autoMerge = specEnv?.autoMerge ?? false;
@@ -245,7 +245,7 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
       dryCommitMessage,
       dryCommitSubject,
       dryCommitUrl,
-      dryCommitDate: formatDate(typeof proposed.dry?.commitTime === 'string' ? proposed.dry?.commitTime : '-'),
+      dryCommitDate: proposed.dry?.commitTime ? formatDate(proposed.dry.commitTime) : '-',
       dryCommitTrailers,
       dryCommitTrailerBody,
       proposedSha,
@@ -261,7 +261,7 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
       prUrl,
       prCreatedAt,
       mergeDate,
-      autoMerge, // <-- add this
+      autoMerge,
     };
 
 

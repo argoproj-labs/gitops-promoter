@@ -19,6 +19,7 @@ export const PromotionStrategiesTiles: React.FC<Props> = ({ promotionStrategies,
       const results = await Promise.all(
         promotionStrategies.map(ps => enrichPromotionStrategy(ps))
       );
+      
       setEnrichedList(results);
     }
     enrichAll();
@@ -27,6 +28,8 @@ export const PromotionStrategiesTiles: React.FC<Props> = ({ promotionStrategies,
   return (
     <div className="applications-tiles">
       {promotionStrategies.map((ps, idx) => {
+
+
         const enriched = enrichedList[idx]?.[0]; // Use the first env for summary tile
         const lastUpdated = enriched?.lastSync ? enriched.lastSync : '-';
         const phase = enriched?.promotionStatus || 'unknown';

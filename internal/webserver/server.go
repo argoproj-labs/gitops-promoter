@@ -6,27 +6,25 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"path"
 	"strings"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/util/workqueue"
-
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
 	ginlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
+	"github.com/argoproj-labs/gitops-promoter/web"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	controllerruntime "sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 var logger = ctrl.Log.WithName("webServer")
@@ -202,15 +200,25 @@ func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	return nil
 }
 
-func (ws *WebServer) Start(ctx context.Context, addr string) error {
+func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
+	// Embed dashboard UI from DashboardFS
+	distFS, err := fs.Sub(web.DashboardFS, "static")
+	if err != nil {
+		return fmt.Errorf("failed to create sub FS: %w", err)
+	}
+
+	assetsFS, err := fs.Sub(distFS, "assets")
+	if err != nil {
+		return fmt.Errorf("failed to create assets sub FS: %w", err)
+	}
+
 	router := gin.New()
 	router.Use(ginlogr.Ginlogr(logger, time.RFC3339, true))
 	router.Use(ginlogr.RecoveryWithLogr(logger, time.RFC3339, true, true))
-	router.Use(NoGzipForSSE())
-	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	router.GET("/watch", WatchHeadersMiddleware(), ws.Event.serveHTTP(), ws.httpWatch)
 
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.GET("/list", ws.httpList)
 
 	router.GET("/get", ws.httpGet)
@@ -218,8 +226,68 @@ func (ws *WebServer) Start(ctx context.Context, addr string) error {
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "ok")
 	})
-	// Parse Static files
-	router.StaticFile("/", "./public/index.html")
+
+	// Handle favicon
+	router.GET("/favicon.ico", func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	// Serve static files from embed
+	router.StaticFS("/assets", http.FS(assetsFS))
+	router.GET("/", func(c *gin.Context) {
+		f, err := distFS.Open("index.html")
+		if err != nil {
+			c.String(500, "Failed to open index.html: %v", err)
+			return
+		}
+		defer func() {
+			cerr := f.Close()
+			if cerr != nil {
+				logger.Error(cerr, "failed to close file")
+			}
+		}()
+		content, err := io.ReadAll(f)
+		if err != nil {
+			c.String(500, "Failed to read index.html: %v", err)
+			return
+		}
+		c.Data(200, "text/html; charset=utf-8", content)
+	})
+
+	// SPA route handler for nested routes
+	router.GET("/:section/*path", func(c *gin.Context) {
+		section := c.Param("section")
+
+		// Skip if it's an API or static asset
+		if section == "watch" || section == "list" || section == "get" || section == "healthz" ||
+			section == "assets" {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		// Serve index.html for SPA routes
+		f, err := distFS.Open("index.html")
+		if err != nil {
+			c.String(500, "Failed to open index.html: %v", err)
+			return
+		}
+		defer func() {
+			cerr := f.Close()
+			if cerr != nil {
+				logger.Error(cerr, "failed to close file")
+			}
+		}()
+		content, err := io.ReadAll(f)
+		if err != nil {
+			c.String(500, "Failed to read index.html: %v", err)
+			return
+		}
+		c.Data(200, "text/html; charset=utf-8", content)
+	})
+
+	// Serve index.html for all other routes from embed
+	router.NoRoute(func(c *gin.Context) {
+		c.FileFromFS("index.html", http.FS(distFS))
+	})
 
 	server := http.Server{
 		Addr:    addr,
@@ -405,6 +473,7 @@ func (ws *WebServer) httpWatch(c *gin.Context) {
 
 			if match {
 				c.SSEvent(msg.Kind, msg.Data)
+				c.Writer.Flush()
 			}
 
 			return true
@@ -469,15 +538,6 @@ func WatchHeadersMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("Cache-Control", "no-cache")
 		c.Writer.Header().Set("Connection", "keep-alive")
 		c.Writer.Header().Set("Transfer-Encoding", "chunked")
-		c.Next()
-	}
-}
-
-func NoGzipForSSE() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if strings.HasPrefix(c.Request.URL.Path, "/watch") {
-			c.Request.Header.Del("Accept-Encoding")
-		}
 		c.Next()
 	}
 }

@@ -14,14 +14,14 @@ const NamespaceDropdown: React.FC = () => {
   useEffect(() => {
     fetch('/list?kind=namespace')
       .then(res => res.json())
-      .then(data => setNamespaces(data))
+      .then(data => setNamespaces(Array.isArray(data) ? data : []))
       .catch(() => setNamespace('default'));
   }, [setNamespaces]);
 
-  const options = namespaces.map((ns: string) => ({
+  const options = Array.isArray(namespaces) ? namespaces.map((ns: string) => ({
     value: ns,
     label: ns
-  }));
+  })) : [];
 
   //Rendering
   const Option = (props: any) => (

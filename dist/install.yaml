@@ -2576,6 +2576,31 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: dashboard
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: dashboard
+    app.kubernetes.io/part-of: promoter
+  name: promoter-dashboard
+  namespace: promoter-system
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  - name: metrics
+    port: 9082
+    protocol: TCP
+    targetPort: 9082
+  selector:
+    app.kubernetes.io/name: dashboard
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: promoter-webhook-receiver
   namespace: promoter-system
 spec:
@@ -2669,6 +2694,73 @@ spec:
           httpGet:
             path: /readyz
             port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: promoter-controller-manager
+      terminationGracePeriodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: dashboard
+    app.kubernetes.io/created-by: promoter
+    app.kubernetes.io/instance: dashboard
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: dashboard
+    app.kubernetes.io/part-of: promoter
+  name: promoter-dashboard
+  namespace: promoter-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dashboard
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: dashboard
+      labels:
+        app.kubernetes.io/name: dashboard
+    spec:
+      containers:
+      - command:
+        - dashboard
+        image: quay.io/argoprojlabs/gitops-promoter:latest
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: dashboard
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 9082
+          name: metrics
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
         resources:

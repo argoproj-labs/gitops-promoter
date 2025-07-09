@@ -18,11 +18,16 @@ interface ModalProps {
   trailerBody?: string;
 }
 
-// Helper to remove Argocd-reference-commit-body from the main message
+// Isolates the trailer body in a seperate section
 function removeTrailerBody(message: string | undefined, trailers: { [key: string]: string } | undefined): string {
-  if (!message || !trailers) return message || '';
+  if (!message || !trailers) 
+    return message || '';
+
+
   const trailerBody = trailers['Argocd-reference-commit-body'];
-  if (!trailerBody) return message;
+  if (!trailerBody) 
+    return message;
+
   return message.replace(trailerBody, '').trim();
 }
 
@@ -42,6 +47,8 @@ const CommitMessageModal: React.FC<ModalProps> = ({
     return null;
   }
 
+
+  // Close popup on escape key
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -58,6 +65,7 @@ const CommitMessageModal: React.FC<ModalProps> = ({
 
   const mainMessage = removeTrailerBody(message, trailers);
 
+
   const modalContent = (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -69,6 +77,7 @@ const CommitMessageModal: React.FC<ModalProps> = ({
             <FaTimes />
           </button>
         </div>
+
         <div className="modal-body">
           {(author || subject || message) ? (
             <div style={{ maxWidth: 600 }}>
@@ -95,6 +104,7 @@ const CommitMessageModal: React.FC<ModalProps> = ({
                 <>
                   <div className="modal-trailer-label">Trailers</div>
                   <div className="modal-trailer-box">
+                    
                     {Object.entries(trailers).map(([key, value]) => (
                       key === 'Argocd-reference-commit-body' ? (
                         <div key={key}>

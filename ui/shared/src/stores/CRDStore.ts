@@ -1,12 +1,10 @@
 import { create } from 'zustand';
 import { enrichPromotionStrategy } from '../utils/PSData';
 
-
 export function createCRDStore<T>(kind: string, eventName: string) {
     let eventSource: EventSource | null = null;
 
-    return create<
-    {
+    return create<{
         items: T[];
         loading: boolean;
         error: string | null;
@@ -15,10 +13,7 @@ export function createCRDStore<T>(kind: string, eventName: string) {
         subscribe: (namespace: string) => void;
         unsubscribe: () => void;
         reset: () => void;
-        
     }>
-    
-    
     
     ((set) => ({
         items: [],
@@ -44,16 +39,14 @@ export function createCRDStore<T>(kind: string, eventName: string) {
             }
         },
 
-        //Subscribing to SSE
+        // Subscribing to SSE
         subscribe: (namespace: string) => {
             if (eventSource) eventSource.close();
 
-        
-            //Real-Time fetch via /watch endpoint
+            // Real-Time fetch via /watch endpoint
             eventSource = new EventSource(`/watch?kind=${kind}&namespace=${namespace}`);
 
-            // Handle PromotionStrategy SSE events (no space)
-            // eventSource.addEventListener('PromotionStrategy', async (evt: MessageEvent) => {
+            // Handle PromotionStrategy SSE events
             eventSource.addEventListener(eventName, async (evt: MessageEvent) => {
                 try {
                     const updated = JSON.parse(evt.data);
@@ -74,12 +67,9 @@ export function createCRDStore<T>(kind: string, eventName: string) {
                         return { items: newItems };
                     });
                 } catch (err) {
-                    set({ error: 'Failed to parse SSE data' });
-                    console.error('Failed to parse SSE data:', err, evt.data);
+                    set({ error: 'Failed to parse real-time update' });
                 }
             });
-
-
         },
 
         // Unsubscribe from SSE

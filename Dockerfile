@@ -1,3 +1,11 @@
+# Build the dashboard UI
+FROM node:18-bullseye-slim AS dashboard-builder
+WORKDIR /workspace
+COPY ui/ ./ui/
+WORKDIR /workspace/ui/dashboard
+RUN npm ci
+RUN npm run build:embed
+
 # Build the gitops-promoter binary
 FROM golang:1.24 AS builder
 ARG TARGETOS
@@ -16,6 +24,10 @@ COPY cmd/main.go cmd/main.go
 COPY api/ api/
 COPY internal/ internal/
 COPY hack/git/promoter_askpass.sh hack/git/promoter_askpass.sh
+COPY web/ web/
+
+# Copy the built static files from dashboard-builder for embedding
+COPY --from=dashboard-builder /workspace/web/static ./web/static
 
 # Build
 # the GOARCH has not a default value to allow the binary be built according to the host where the command
@@ -32,8 +44,9 @@ WORKDIR /
 RUN mkdir /git
 COPY --from=builder /workspace/gitops-promoter .
 COPY --from=builder /workspace/hack/git/promoter_askpass.sh /git/promoter_askpass.sh
+COPY --from=dashboard-builder /workspace/web/static ./web/static
 ENV PATH="${PATH}:/git"
 RUN echo "${PATH}" >> /etc/bash.bashrc
 USER 65532:65532
 
-ENTRYPOINT ["/gitops-promoter", "controller"]
+ENTRYPOINT ["/gitops-promoter"]
