@@ -113,6 +113,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
+
+	//nolint:nestif // There's not a great way to simplify this section.
 	if pr.Status.State != pr.Spec.State {
 		switch pr.Spec.State {
 		case promoterv1alpha1.PullRequestOpen:
@@ -197,29 +199,37 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 	finalizer := "pullrequest.promoter.argoporoj.io/finalizer"
 
 	if pr.DeletionTimestamp.IsZero() {
-		if !controllerutil.ContainsFinalizer(pr, finalizer) {
-			return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
-				if err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr); err != nil {
-					return err //nolint:wrapcheck
-				}
-				if controllerutil.AddFinalizer(pr, finalizer) {
-					return r.Update(ctx, pr)
-				}
-				return nil
-			})
+		if controllerutil.ContainsFinalizer(pr, finalizer) {
+			// Not being deleted and already has finalizer, nothing to do.
+			return false, nil
 		}
-	} else if controllerutil.ContainsFinalizer(pr, finalizer) {
-		if err := r.closePullRequest(ctx, pr, provider); err != nil {
-			return false, fmt.Errorf("failed to close pull request: %w", err)
-		}
-		controllerutil.RemoveFinalizer(pr, finalizer)
-		if err := r.Update(ctx, pr); err != nil {
-			return true, fmt.Errorf("failed to remove finalizer: %w", err)
-		}
-		return true, nil
+
+		// Finalizer is missing, add it.
+		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
+			if err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr); err != nil {
+				return err //nolint:wrapcheck
+			}
+			if controllerutil.AddFinalizer(pr, finalizer) {
+				return r.Update(ctx, pr)
+			}
+			return nil
+		})
 	}
 
-	return false, nil
+	// If we're here, the object is being deleted
+	if !controllerutil.ContainsFinalizer(pr, finalizer) {
+		// Finalizer already removed, nothing to do.
+		return false, nil
+	}
+
+	if err := r.closePullRequest(ctx, pr, provider); err != nil {
+		return false, fmt.Errorf("failed to close pull request: %w", err)
+	}
+	controllerutil.RemoveFinalizer(pr, finalizer)
+	if err := r.Update(ctx, pr); err != nil {
+		return true, fmt.Errorf("failed to remove finalizer: %w", err)
+	}
+	return true, nil
 }
 
 func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {

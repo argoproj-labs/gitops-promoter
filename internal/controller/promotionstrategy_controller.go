@@ -185,24 +185,25 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		// This could be a patch as well.
 		err := r.Get(ctx, client.ObjectKey{Name: pcName, Namespace: ps.Namespace}, &pc)
 		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				logger.Info("ChangeTransferPolicy not found, creating")
-				err = r.Create(ctx, &pcNew)
-				if err != nil {
-					return fmt.Errorf("failed to create ChangeTransferPolicy %q: %w", pc.Name, err)
-				}
-				pcNew.DeepCopyInto(&pc)
-			} else {
+			if !k8serrors.IsNotFound(err) {
 				return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", pc.Name, err)
 			}
-		} else {
-			pcNew.Spec.DeepCopyInto(&pc.Spec) // We keep the generation number and status so that update does not conflict
-			// TODO: don't update if the spec is the same, the hard comparison is the arrays of commit statuses, need
-			// to sort and compare them.
-			err = r.Update(ctx, &pc)
+
+			logger.Info("ChangeTransferPolicy not found, creating")
+			err = r.Create(ctx, &pcNew)
 			if err != nil {
-				return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)
+				return fmt.Errorf("failed to create ChangeTransferPolicy %q: %w", pc.Name, err)
 			}
+			pcNew.DeepCopyInto(&pc)
+			return nil
+		}
+
+		pcNew.Spec.DeepCopyInto(&pc.Spec) // We keep the generation number and status so that update does not conflict
+		// TODO: don't update if the spec is the same, the hard comparison is the arrays of commit statuses, need
+		// to sort and compare them.
+		err = r.Update(ctx, &pc)
+		if err != nil {
+			return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", pcNew.Name, err)
 		}
 		return nil
 	})
