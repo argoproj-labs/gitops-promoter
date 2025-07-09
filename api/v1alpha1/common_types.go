@@ -36,9 +36,18 @@ type ObjectReference struct {
 }
 
 type GitHubRepo struct {
+	// These validation rules are based on unoffocial documentation and may need to be relaxed in the future.
+	// https://github.com/dead-claudia/github-limits
+
+	// Owner is the owner of the repository, which can be a user or an organization.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=39
+	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9][a-zA-Z0-9\-]*$
 	Owner string `json:"owner"`
+	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9_\-\.]+$
 	Name string `json:"name"`
 }
 

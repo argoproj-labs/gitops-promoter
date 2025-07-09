@@ -1144,8 +1144,15 @@ spec:
               github:
                 properties:
                   name:
+                    description: Name is the name of the repository.
+                    maxLength: 100
+                    pattern: ^[a-zA-Z0-9_\-\.]+$
                     type: string
                   owner:
+                    description: Owner is the owner of the repository, which can be
+                      a user or an organization.
+                    maxLength: 39
+                    pattern: ^[a-zA-Z0-9][a-zA-Z0-9\-]*$
                     type: string
                 required:
                 - name
