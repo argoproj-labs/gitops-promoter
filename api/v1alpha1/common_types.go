@@ -36,7 +36,7 @@ type ObjectReference struct {
 }
 
 type GitHubRepo struct {
-	// These validation rules are based on unoffocial documentation and may need to be relaxed in the future.
+	// These validation rules are based on unofficial documentation and may need to be relaxed in the future.
 	// https://github.com/dead-claudia/github-limits
 
 	// Owner is the owner of the repository, which can be a user or an organization.
