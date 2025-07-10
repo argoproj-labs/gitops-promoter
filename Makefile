@@ -125,7 +125,8 @@ build: manifests generate fmt vet ## Build manager binary.
 
 .PHONY: build-dashboard
 build-dashboard: ## Build dashboard UI and embed it.
-	cd ui/dashboard && npm run build:embed
+	cd ui/components-lib && npm install
+	cd ui/dashboard && npm install && npm run build:embed
 
 .PHONY: build-all
 build-all: build-dashboard build ## Build dashboard UI and then the manager binary.
@@ -275,8 +276,6 @@ ginkgo:
 goreleaser: $(GORELEASER)
 $(GORELEASER): $(LOCALBIN)
 	$(call go-install-tool,$(GORELEASER),github.com/goreleaser/goreleaser/v2,$(GORELEASER_VERSION))
-
-##@ Documentation
 
 .PHONY: serve-docs
 serve-docs:
