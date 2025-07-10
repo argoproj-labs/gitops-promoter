@@ -21,19 +21,19 @@ import (
 
 var logger = ctrl.Log.WithName("webhookReceiver")
 
-type webhookReceiver struct {
+type WebhookReceiver struct {
 	mgr       controllerruntime.Manager
 	k8sClient client.Client
 }
 
-func NewWebhookReceiver(mgr controllerruntime.Manager) webhookReceiver {
-	return webhookReceiver{
+func NewWebhookReceiver(mgr controllerruntime.Manager) WebhookReceiver {
+	return WebhookReceiver{
 		mgr:       mgr,
 		k8sClient: mgr.GetClient(),
 	}
 }
 
-func (wr *webhookReceiver) Start(ctx context.Context, addr string) error {
+func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", wr.postRoot)
 
@@ -63,7 +63,7 @@ func (wr *webhookReceiver) Start(ctx context.Context, addr string) error {
 	return nil
 }
 
-func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
+func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	var responseCode int
 	var ctpFound bool
 	startTime := time.Now()
@@ -123,7 +123,7 @@ func (wr *webhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(responseCode)
 }
 
-func (wr *webhookReceiver) findChangeTransferPolicy(ctx context.Context, jsonBytes []byte) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, jsonBytes []byte) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	var beforeSha string
 	var ref string
 	ctpLists := promoterv1alpha1.ChangeTransferPolicyList{}

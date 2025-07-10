@@ -1559,7 +1559,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
 
 				for _, environment := range promotionStrategy.Status.Environments {
-
 					g.Expect(environment.Proposed.Dry.Author).To(Equal("testuser <testmail@test.com>"))
 					g.Expect(environment.Proposed.Dry.Subject).To(Equal("added fake manifests commit with timestamp"))
 					g.Expect(environment.Proposed.Dry.Body).To(Equal(""))
