@@ -2,12 +2,30 @@
 
 This directory contains the React-based dashboard for GitOps Promoter.
 
-## From Project Root (Recommended)
+### Build Everything
+```bash
+make build-all
+```
+
+### Run Dashboard Server
+```bash
+make run-dashboard
+```
+Open [http://localhost:8080](http://localhost:8080) in your browser.
+
+### Run Controller
+```bash
+make run
+```
+
+## Development
+
+### Build Dashboard Only
 ```bash
 make build-dashboard  # Installs dependencies and builds
 ```
 
-## Local Development (If you want to run dev server)
+### Local Development Server
 ```bash
 cd ui/components-lib && npm install
 cd ../dashboard && npm install
@@ -15,8 +33,14 @@ npm run dev
 ```
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-## Production Build & Embed
+## Production Build
+
+### Build Everything (Dashboard + Go Binary)
 ```bash
-npm run build:embed
+make build-all
 ```
-This will build the dashboard and copy static files to `../../web/static` for Go embedding.
+
+### Build Docker Image
+```bash
+make docker-build
+```
