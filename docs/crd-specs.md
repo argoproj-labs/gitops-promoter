@@ -19,6 +19,8 @@ first one, the PromotionStrategy controller will inject a `proposedCommitStatus`
 previous environment. This is how the PromotionStrategy ensures that the environment PRs are merged in order, respecting
 the previous environments' active commit statuses.
 
+The [Events](monitoring/events.md#changetransferpolicy) page documents the Kubernetes events produced by 
+ChangeTransferPolicies.
 
 ```yaml
 {!docs/example-resources/ChangeTransferPolicy.yaml!}
