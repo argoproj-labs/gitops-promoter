@@ -1,27 +1,5 @@
 import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, parseTrailers, formatDate, extractEnvNameFromBranch } from './util';
 
-//TODO: HARDCODED: Get PR number FROM RESOURCE INSTEAD OF GITHUB API
-const owner = 'Shirly8';
-const repo = 'argocon-gitops-promoter-hydrate-demo';
-async function getPRNumberFromCommit(owner: string, repo: string, sha: string): Promise<number | null> {
-  const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/commits/${sha}/pulls`,
-    {
-      headers: {
-        Accept: 'application/vnd.github.groot-preview+json'
-      }
-    }
-  );
-  if (!res.ok) return null;
-  const pulls = await res.json();
-  if (pulls.length > 0) {
-    return pulls[0].number;
-  }
-  return null;
-}
-
-
-
 interface CommitStatus {
   key: string;
   phase: string;
@@ -38,6 +16,12 @@ interface Commit {
   repoURL?: string;
 }
 
+interface PullRequest {
+  id: string;
+  prCreationTime: string;
+  state: string;
+}
+
 interface Environment {
   branch: string;
   active: {
@@ -50,6 +34,8 @@ interface Environment {
     hydrated?: Commit;
     commitStatuses?: CommitStatus[];
   };
+  
+  pullRequest?: PullRequest;
 }
 
 interface PromotionStrategy {
@@ -167,9 +153,8 @@ function getActiveChecks(commitStatuses: CommitStatus[]): Check[] {
   }));
 }
 
-function getEnvDetails(environment: Environment, specEnvs: { branch: string; autoMerge?: boolean }[]): Promise<EnrichedEnvDetails> {
-  return (async () => {
-    const { active = {}, proposed = {} } = environment;
+function getEnvDetails(environment: Environment, specEnvs: { branch: string; autoMerge?: boolean }[]): EnrichedEnvDetails {
+  const { active = {}, proposed = {}, pullRequest } = environment;
 
 
     //TODO: HOW DO WE EXTRACT JUST THE BRANCH NAME? 
@@ -220,16 +205,13 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
 
 
     // PR number and url
-    let prNumber: number | null = null;
-    if (hydrated.sha) {
-      prNumber = await getPRNumberFromCommit(owner, repo, hydrated.sha);
-    }
-    const prUrl = prNumber ? `https://github.com/${owner}/${repo}/pull/${prNumber}` : null;
+    const prNumber = pullRequest?.id ? parseInt(pullRequest.id, 10) : null;
+    const repoURL = proposed.dry?.repoURL || proposed.hydrated?.repoURL || '';
+    const prUrl = prNumber && repoURL ? `${repoURL}/pull/${prNumber}` : null;
 
 
 
-    const proposedHydrated = proposed.hydrated || {};
-    const prCreatedAt = proposedHydrated.commitTime || '-';
+    const prCreatedAt = pullRequest?.prCreationTime || '-';
     const mergeDate = hydrated.commitTime ? formatDate(hydrated.commitTime) : '';
     
     // Find the matching spec environment for autoMerge
@@ -281,18 +263,15 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
       promotionStatus,
       percent,
     };
-  })();
 }
 
-export async function enrichPromotionStrategy(ps: PromotionStrategy): Promise<EnrichedEnvDetails[]> {
+export function enrichPromotionStrategy(ps: PromotionStrategy): EnrichedEnvDetails[] {
   if (!ps?.status?.environments) {
     return [];
   }
   // Pass spec environments to getEnvDetails
-  return Promise.all(
-    ps.status.environments.map((environment: Environment) =>
-      getEnvDetails(environment, ps.spec?.environments || [])
-    )
+  return ps.status.environments.map((environment: Environment) =>
+    getEnvDetails(environment, ps.spec?.environments || [])
   );
 }
 

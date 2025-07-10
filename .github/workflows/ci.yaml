@@ -28,7 +28,7 @@ jobs:
       - name: Install UI dependencies and build
         run: |
           cd ui/components-lib && npm install
-          cd ../dashboard && npm ci && npm run build
+          cd ../dashboard && npm ci && npm run build:embed
       - name: Get dependencies
         run: go mod download
       - name: Restore build output from cache
@@ -37,6 +37,14 @@ jobs:
         with:
           path: bin/manager
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
+      - name: Verify web/static exists
+        run: |
+          if [ ! -d "web/static" ]; then
+            echo "Error: web/static directory does not exist!"
+            ls -la web/
+            exit 1
+          fi
+          echo "web/static directory exists ✓"
       - name: Lint
         uses: golangci/golangci-lint-action@v8
         with:
