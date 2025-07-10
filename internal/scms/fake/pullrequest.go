@@ -20,31 +20,38 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
-	pullRequests map[string]PullRequestProviderState
+	pullRequests map[string]pullRequestProviderState
 	mutexPR      sync.RWMutex
 )
 
-type PullRequestProviderState struct {
-	ID    string
-	State v1alpha1.PullRequestState
+type pullRequestProviderState struct {
+	id    string
+	state v1alpha1.PullRequestState
 }
+
+// PullRequest implements the scms.PullRequestProvider interface for testing purposes.
 type PullRequest struct {
 	k8sClient client.Client
 }
 
+var _ scms.PullRequestProvider = &PullRequest{}
+
+// NewFakePullRequestProvider creates a new instance of PullRequest for testing purposes.
 func NewFakePullRequestProvider(k8sClient client.Client) *PullRequest {
 	return &PullRequest{k8sClient: k8sClient}
 }
 
+// Create creates a new pull request with the specified title, head, base, and description.
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (id string, err error) {
 	logger := log.FromContext(ctx)
 	mutexPR.Lock()
 	if pullRequests == nil {
-		pullRequests = make(map[string]PullRequestProviderState)
+		pullRequests = make(map[string]pullRequestProviderState)
 	}
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
@@ -54,26 +61,28 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	pullRequestCopy := pullRequest.DeepCopy()
 	if p, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]; ok {
-		logger.Info("Pull request already exists", "id", p.ID)
+		logger.Info("Pull request already exists", "id", p.id)
 	}
 	if pullRequestCopy == nil {
 		return "", errors.New("pull request is nil")
 	}
 
 	id = strconv.Itoa(len(pullRequests) + 1)
-	pullRequests[pr.getMapKey(*pullRequestCopy, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)] = PullRequestProviderState{
-		ID:    id,
-		State: v1alpha1.PullRequestOpen,
+	pullRequests[pr.getMapKey(*pullRequestCopy, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)] = pullRequestProviderState{
+		id:    id,
+		state: v1alpha1.PullRequestOpen,
 	}
 
 	mutexPR.Unlock()
 	return id, nil
 }
 
+// Update updates an existing pull request with the specified title and description.
 func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest v1alpha1.PullRequest) error {
 	return nil
 }
 
+// Close closes an existing pull request.
 func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
 	mutexPR.Lock()
 
@@ -86,14 +95,15 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
 	}
-	pullRequests[prKey] = PullRequestProviderState{
-		ID:    pullRequests[prKey].ID,
-		State: v1alpha1.PullRequestClosed,
+	pullRequests[prKey] = pullRequestProviderState{
+		id:    pullRequests[prKey].id,
+		state: v1alpha1.PullRequestClosed,
 	}
 	mutexPR.Unlock()
 	return nil
 }
 
+// Merge merges an existing pull request with the specified commit message.
 func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 	gitPath, err := os.MkdirTemp("", "*")
@@ -139,14 +149,15 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
 	}
-	pullRequests[prKey] = PullRequestProviderState{
-		ID:    pullRequests[prKey].ID,
-		State: v1alpha1.PullRequestMerged,
+	pullRequests[prKey] = pullRequestProviderState{
+		id:    pullRequests[prKey].id,
+		state: v1alpha1.PullRequestMerged,
 	}
 	mutexPR.Unlock()
 	return nil
 }
 
+// FindOpen checks if a pull request is open and returns its status.
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
 	mutexPR.RLock()
 	found, id := pr.findOpen(ctx, pullRequest)
@@ -174,7 +185,7 @@ func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	}
 
 	pullRequestState, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]
-	return ok && pullRequestState.State == v1alpha1.PullRequestOpen, pullRequestState.ID
+	return ok && pullRequestState.state == v1alpha1.PullRequestOpen, pullRequestState.id
 }
 
 func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name string) string {
@@ -208,6 +219,7 @@ func (pr *PullRequest) runGitCmd(gitPath string, args ...string) error {
 	return nil
 }
 
+// GetUrl retrieves the URL of the pull request.
 func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -218,7 +230,7 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 	if prState, ok := pullRequests[prKey]; ok {
-		return fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, prState.ID), nil
+		return fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, prState.id), nil
 	}
 
 	logger.Info("Pull request not found", "pullRequest", pullRequest)

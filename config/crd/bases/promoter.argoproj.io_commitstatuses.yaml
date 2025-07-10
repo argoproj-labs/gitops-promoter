@@ -49,8 +49,11 @@ spec:
               description:
                 type: string
               gitRepositoryRef:
+                description: ObjectReference is a reference to an object by name.
+                  It is used to refer to objects in the same namespace.
                 properties:
                   name:
+                    description: Name is the name of the object to refer to.
                     type: string
                 required:
                 - name
@@ -59,6 +62,7 @@ spec:
                 type: string
               phase:
                 default: pending
+                description: CommitStatusPhase represents the phase of a commit status.
                 enum:
                 - pending
                 - success
@@ -148,6 +152,7 @@ spec:
                 type: string
               phase:
                 default: pending
+                description: CommitStatusPhase represents the phase of a commit status.
                 enum:
                 - pending
                 - success

@@ -21,11 +21,13 @@ import (
 
 var logger = ctrl.Log.WithName("webhookReceiver")
 
+// WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
 	mgr       controllerruntime.Manager
 	k8sClient client.Client
 }
 
+// NewWebhookReceiver creates a new instance of WebhookReceiver.
 func NewWebhookReceiver(mgr controllerruntime.Manager) WebhookReceiver {
 	return WebhookReceiver{
 		mgr:       mgr,
@@ -33,6 +35,7 @@ func NewWebhookReceiver(mgr controllerruntime.Manager) WebhookReceiver {
 	}
 }
 
+// Start starts the webhook receiver server on the given address.
 func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", wr.postRoot)

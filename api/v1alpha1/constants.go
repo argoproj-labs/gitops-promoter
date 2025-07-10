@@ -13,6 +13,7 @@ const PromotionStrategyLabel = "promoter.argoproj.io/promotion-strategy"
 // EnvironmentLabel the environment branch for the proposed commit
 const EnvironmentLabel = "promoter.argoproj.io/environment"
 
+// ChangeTransferPolicyLabel the change transfer policy which the proposed commit is associated with.
 const ChangeTransferPolicyLabel = "promoter.argoproj.io/change-transfer-policy"
 
 // PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health

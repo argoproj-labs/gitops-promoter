@@ -17,6 +17,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
+// CommitStatus implements the scms.CommitStatusProvider interface for Forgejo.
 type CommitStatus struct {
 	foregejoClient *forgejo.Client
 	k8sClient      k8sClient.Client
@@ -24,6 +25,7 @@ type CommitStatus struct {
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
+// NewForgejoCommitStatusProvider creates a new instance of CommitStatus for Forgejo.
 func NewForgejoCommitStatusProvider(k8sClient k8sClient.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret k8sV1.Secret) (*CommitStatus, error) {
 	client, err := GetClient(scmProvider.GetSpec().Forgejo.Domain, secret)
 	if err != nil {
@@ -36,6 +38,7 @@ func NewForgejoCommitStatusProvider(k8sClient k8sClient.Client, scmProvider prom
 	}, nil
 }
 
+// Set sets the commit status for a given commit SHA in the specified repository.
 func (cs CommitStatus) Set(ctx context.Context, csObj *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Setting Commit Phase")

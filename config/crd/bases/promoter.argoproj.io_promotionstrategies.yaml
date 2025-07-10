@@ -54,6 +54,8 @@ spec:
                   The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
                   specify commit statuses for individual environments in the `environments` field.
                 items:
+                  description: CommitStatusSelector is used to select commit statuses
+                    by their key.
                   properties:
                     key:
                       pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -69,6 +71,8 @@ spec:
                 description: Environments is the sequence of environments that a dry
                   commit will be promoted through.
                 items:
+                  description: Environment defines a single environment in the promotion
+                    sequence.
                   properties:
                     activeCommitStatuses:
                       description: |-
@@ -78,6 +82,8 @@ spec:
                         The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
                         for all environments in the `spec.activeCommitStatuses` field.
                       items:
+                        description: CommitStatusSelector is used to select commit
+                          statuses by their key.
                         properties:
                           key:
                             pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -96,6 +102,8 @@ spec:
                         If false, the dry commit will be proposed but not merged.
                       type: boolean
                     branch:
+                      description: Branch is the name of the active branch for the
+                        environment.
                       type: string
                     proposedCommitStatuses:
                       description: |-
@@ -106,6 +114,8 @@ spec:
                         The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
                         for all environments in the `spec.proposedCommitStatuses` field.
                       items:
+                        description: CommitStatusSelector is used to select commit
+                          statuses by their key.
                         properties:
                           key:
                             pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -126,8 +136,11 @@ spec:
                 - branch
                 x-kubernetes-list-type: map
               gitRepositoryRef:
+                description: RepositoryReference indicates what repository to promote
+                  commits in.
                 properties:
                   name:
+                    description: Name is the name of the object to refer to.
                     type: string
                 required:
                 - name
@@ -141,6 +154,8 @@ spec:
                   The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
                   specify commit statuses for individual environments in the `environments` field.
                 items:
+                  description: CommitStatusSelector is used to select commit statuses
+                    by their key.
                   properties:
                     key:
                       pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -221,12 +236,22 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               environments:
+                description: Environments holds the status of each environment in
+                  the promotion sequence.
                 items:
+                  description: EnvironmentStatus defines the observed state of an
+                    environment in a PromotionStrategy.
                   properties:
                     active:
+                      description: Active is the state of the active branch for the
+                        environment.
                       properties:
                         commitStatuses:
+                          description: CommitStatuses is a list of commit statuses
+                            that are being monitored for this branch.
                           items:
+                            description: ChangeRequestPolicyCommitStatusPhase defines
+                              the phase of a commit status in a ChangeTransferPolicy.
                             properties:
                               key:
                                 description: Key staging hydrated branch
@@ -250,6 +275,8 @@ spec:
                           - key
                           x-kubernetes-list-type: map
                         dry:
+                          description: Dry is the dry state of the branch, which is
+                            the commit that is being proposed.
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -315,6 +342,8 @@ spec:
                               type: string
                           type: object
                         hydrated:
+                          description: Hydrated is the hydrated state of the branch,
+                            which is the commit that is currently being worked on.
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -381,15 +410,23 @@ spec:
                           type: object
                       type: object
                     branch:
+                      description: Branch is the name of the active branch for the
+                        environment.
                       type: string
                     lastHealthyDryShas:
+                      description: LastHealthyDryShas is a list of dry commits that
+                        were observed to be healthy in the environment.
                       items:
+                        description: HealthyDryShas is a list of dry commits that
+                          were observed to be healthy in the environment.
                         properties:
                           sha:
+                            description: Sha is the commit SHA of the dry commit that
+                              was observed to be healthy.
                             type: string
                           time:
-                            description: 'FIXME: docs, is this commit time, first-became-healthy
-                              time, most-recently-observed-healthy time, etc?'
+                            description: Time is the time when the proposed commit
+                              for the given dry SHA was merged into the active branch.
                             format: date-time
                             type: string
                         required:
@@ -398,9 +435,15 @@ spec:
                         type: object
                       type: array
                     proposed:
+                      description: Proposed is the state of the proposed branch for
+                        the environment.
                       properties:
                         commitStatuses:
+                          description: CommitStatuses is a list of commit statuses
+                            that are being monitored for this branch.
                           items:
+                            description: ChangeRequestPolicyCommitStatusPhase defines
+                              the phase of a commit status in a ChangeTransferPolicy.
                             properties:
                               key:
                                 description: Key staging hydrated branch
@@ -424,6 +467,8 @@ spec:
                           - key
                           x-kubernetes-list-type: map
                         dry:
+                          description: Dry is the dry state of the branch, which is
+                            the commit that is being proposed.
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -489,6 +534,8 @@ spec:
                               type: string
                           type: object
                         hydrated:
+                          description: Hydrated is the hydrated state of the branch,
+                            which is the commit that is currently being worked on.
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -559,11 +606,16 @@ spec:
                         was created for this environment.
                       properties:
                         id:
+                          description: ID is the unique identifier of the pull request,
+                            set by the SCM.
                           type: string
                         prCreationTime:
+                          description: PRCreationTime is the time when the pull request
+                            was created.
                           format: date-time
                           type: string
                         state:
+                          description: State is the state of the pull request.
                           enum:
                           - closed
                           - merged

@@ -10,18 +10,23 @@ import (
 )
 
 const (
+	// ControllerConfigurationName is the name of the global controller configuration resource.
 	ControllerConfigurationName = "promoter-controller-configuration"
 )
 
+// ManagerConfig holds the configuration for the settings Manager.
 type ManagerConfig struct {
+	// ControllerNamespace is the namespace where the promoter controller is running.
 	ControllerNamespace string
 }
 
+// Manager is responsible for managing the global controller configuration for the promoter controller.
 type Manager struct {
 	client client.Client
 	config ManagerConfig
 }
 
+// GetControllerConfiguration retrieves the global controller configuration for the promoter controller.
 func (m *Manager) GetControllerConfiguration(ctx context.Context) (*promoterv1alpha1.ControllerConfiguration, error) {
 	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{}
 	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.ControllerNamespace}, controllerConfiguration); err != nil {
@@ -31,6 +36,7 @@ func (m *Manager) GetControllerConfiguration(ctx context.Context) (*promoterv1al
 	return controllerConfiguration, nil
 }
 
+// GetPromotionStrategyRequeueDuration returns the duration after which PromotionStrategies should be requeued.
 func (m *Manager) GetPromotionStrategyRequeueDuration(ctx context.Context) (time.Duration, error) {
 	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
 	if err != nil {
@@ -40,6 +46,7 @@ func (m *Manager) GetPromotionStrategyRequeueDuration(ctx context.Context) (time
 	return controllerConfiguration.Spec.PromotionStrategyRequeueDuration.Duration, nil
 }
 
+// GetChangeTransferPolicyRequeueDuration returns the duration after which ChangeTransferPolicies should be requeued.
 func (m *Manager) GetChangeTransferPolicyRequeueDuration(ctx context.Context) (time.Duration, error) {
 	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
 	if err != nil {
@@ -49,6 +56,7 @@ func (m *Manager) GetChangeTransferPolicyRequeueDuration(ctx context.Context) (t
 	return controllerConfiguration.Spec.ChangeTransferPolicyRequeueDuration.Duration, nil
 }
 
+// GetArgoCDCommitStatusRequeueDuration returns the duration after which ArgoCDCommitStatuses should be requeued.
 func (m *Manager) GetArgoCDCommitStatusRequeueDuration(ctx context.Context) (time.Duration, error) {
 	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
 	if err != nil {
@@ -58,6 +66,7 @@ func (m *Manager) GetArgoCDCommitStatusRequeueDuration(ctx context.Context) (tim
 	return controllerConfiguration.Spec.ArgoCDCommitStatusRequeueDuration.Duration, nil
 }
 
+// GetPullRequestRequeueDuration returns the duration after which pull requests should be requeued.
 func (m *Manager) GetPullRequestRequeueDuration(ctx context.Context) (time.Duration, error) {
 	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
 	if err != nil {
@@ -67,10 +76,12 @@ func (m *Manager) GetPullRequestRequeueDuration(ctx context.Context) (time.Durat
 	return controllerConfiguration.Spec.PullRequestRequeueDuration.Duration, nil
 }
 
+// GetControllerNamespace returns the namespace where the controller is running.
 func (m *Manager) GetControllerNamespace() string {
 	return m.config.ControllerNamespace
 }
 
+// NewManager creates a new settings Manager instance with the provided client and configuration.
 func NewManager(client client.Client, config ManagerConfig) *Manager {
 	return &Manager{
 		client: client,

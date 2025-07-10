@@ -16,6 +16,7 @@ func init() {
 	delete(sanitizedSprigFuncMap, "getHostByName")
 }
 
+// RenderStringTemplate renders a string template with the provided data.
 func RenderStringTemplate(templateStr string, data any) (string, error) {
 	tmpl, err := template.New("").Funcs(sanitizedSprigFuncMap).Parse(templateStr)
 	if err != nil {

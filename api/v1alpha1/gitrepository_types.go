@@ -33,12 +33,14 @@ type GitRepositorySpec struct {
 	ScmProviderRef ScmProviderObjectReference `json:"scmProviderRef"`
 }
 
+// ScmProviderObjectReference is a reference to a SCM provider object.
 type ScmProviderObjectReference struct {
 	// Kind is the type of resource being referenced
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=ScmProvider
 	// +kubebuilder:validation:Enum:=ScmProvider;ClusterScmProvider
 	Kind string `json:"kind"`
+	// Name is the name of the resource being referenced
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 }
