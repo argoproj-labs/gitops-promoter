@@ -27,8 +27,7 @@ jobs:
           cache-dependency-path: ui/dashboard/package-lock.json
       - name: Install UI dependencies and build
         run: |
-          cd ui/shared && npm ci
-          cd ../components-lib && npm ci
+          cd ui/components-lib && npm install
           cd ../dashboard && npm ci && npm run build
       - name: Get dependencies
         run: go mod download
