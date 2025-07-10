@@ -141,6 +141,8 @@ var (
 		},
 		[]string{"ctp_found", "response_code"},
 	)
+
+	// If you add metrics here, document them in docs/monitoring/metrics.md.
 )
 
 func init() {

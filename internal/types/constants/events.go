@@ -1,5 +1,7 @@
 package constants
 
+// If you add new things here, document them in docs/monitoring/events.md.
+
 const (
 	ResolvedConflictReason  = "ResolvedConflict"
 	ResolvedConflictMessage = "Merged %s into %s with 'ours' strategy to resolve conflicts"
