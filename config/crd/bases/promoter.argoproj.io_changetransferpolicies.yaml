@@ -54,6 +54,8 @@ spec:
                 description: ActiveCommitStatuses lists the statuses to be monitored
                   on the active branch
                 items:
+                  description: CommitStatusSelector is used to select commit statuses
+                    by their key.
                   properties:
                     key:
                       pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -72,6 +74,7 @@ spec:
                 description: RepositoryReference what repository to open the PR on.
                 properties:
                   name:
+                    description: Name is the name of the object to refer to.
                     type: string
                 required:
                 - name
@@ -83,6 +86,8 @@ spec:
                 description: ProposedCommitStatuses lists the statuses to be monitored
                   on the proposed branch
                 items:
+                  description: CommitStatusSelector is used to select commit statuses
+                    by their key.
                   properties:
                     key:
                       pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -104,9 +109,14 @@ spec:
               ChangeTransferPolicy
             properties:
               active:
+                description: Active is the state of the active branch.
                 properties:
                   commitStatuses:
+                    description: CommitStatuses is a list of commit statuses that
+                      are being monitored for this branch.
                     items:
+                      description: ChangeRequestPolicyCommitStatusPhase defines the
+                        phase of a commit status in a ChangeTransferPolicy.
                       properties:
                         key:
                           description: Key staging hydrated branch
@@ -130,6 +140,8 @@ spec:
                     - key
                     x-kubernetes-list-type: map
                   dry:
+                    description: Dry is the dry state of the branch, which is the
+                      commit that is being proposed.
                     properties:
                       author:
                         description: Author is the author of the commit
@@ -192,6 +204,8 @@ spec:
                         type: string
                     type: object
                   hydrated:
+                    description: Hydrated is the hydrated state of the branch, which
+                      is the commit that is currently being worked on.
                     properties:
                       author:
                         description: Author is the author of the commit
@@ -316,12 +330,14 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               proposed:
-                description: |-
-                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
+                description: Proposed is the state of the proposed branch.
                 properties:
                   commitStatuses:
+                    description: CommitStatuses is a list of commit statuses that
+                      are being monitored for this branch.
                     items:
+                      description: ChangeRequestPolicyCommitStatusPhase defines the
+                        phase of a commit status in a ChangeTransferPolicy.
                       properties:
                         key:
                           description: Key staging hydrated branch
@@ -345,6 +361,8 @@ spec:
                     - key
                     x-kubernetes-list-type: map
                   dry:
+                    description: Dry is the dry state of the branch, which is the
+                      commit that is being proposed.
                     properties:
                       author:
                         description: Author is the author of the commit
@@ -407,6 +425,8 @@ spec:
                         type: string
                     type: object
                   hydrated:
+                    description: Hydrated is the hydrated state of the branch, which
+                      is the commit that is currently being worked on.
                     properties:
                       author:
                         description: Author is the author of the commit
@@ -474,11 +494,16 @@ spec:
                   created for this ChangeTransferPolicy.
                 properties:
                   id:
+                    description: ID is the unique identifier of the pull request,
+                      set by the SCM.
                     type: string
                   prCreationTime:
+                    description: PRCreationTime is the time when the pull request
+                      was created.
                     format: date-time
                     type: string
                   state:
+                    description: State is the state of the pull request.
                     enum:
                     - closed
                     - merged

@@ -70,6 +70,9 @@ linters:
         - name: struct-tag
           arguments:
             - "json,inline" # Used by kubebuilder.
+        - name: exported
+          exclude:
+            - "**/argocd_types.go" # The types here are only used internally.
 
         # Good checks we should definitely enable later.
         - name: add-constant
@@ -84,8 +87,6 @@ linters:
         - name: confusing-naming
           disabled: true
         - name: confusing-results
-          disabled: true
-        - name: exported
           disabled: true
         - name: import-shadowing
           disabled: true

@@ -17,6 +17,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
+// CommitStatus implements the scms.CommitStatusProvider interface for GitHub.
 type CommitStatus struct {
 	client    *github.Client
 	k8sClient client.Client
@@ -24,6 +25,7 @@ type CommitStatus struct {
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
+// NewGithubCommitStatusProvider creates a new instance of CommitStatus for GitHub.
 func NewGithubCommitStatusProvider(k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret) (*CommitStatus, error) {
 	client, err := GetClient(scmProvider, secret)
 	if err != nil {
@@ -36,6 +38,7 @@ func NewGithubCommitStatusProvider(k8sClient client.Client, scmProvider promoter
 	}, nil
 }
 
+// Set sets the commit status for a given commit SHA in the specified repository.
 func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Setting Commit Phase")

@@ -57,17 +57,20 @@ spec:
                   Format is go's time.Duration, e.g. "5m" for 5 minutes.
                 type: string
               pullRequest:
+                description: PullRequestConfiguration defines the configuration for
+                  pull requests.
                 properties:
                   template:
+                    description: Template is the template used to generate pull requests.
                     properties:
                       description:
                         description: |-
-                          Template used to generate the description of the pull request.
+                          Description used to generate the description of the pull request.
                           Uses Go template syntax and Sprig functions are available.
                         type: string
                       title:
                         description: |-
-                          Template used to generate the title of the pull request.
+                          Title used to generate the title of the pull request.
                           Uses Go template syntax and Sprig functions are available.
                         type: string
                     required:

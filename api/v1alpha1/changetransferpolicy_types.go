@@ -57,6 +57,7 @@ type ChangeTransferPolicySpec struct {
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 }
 
+// ChangeRequestPolicyCommitStatusPhase defines the phase of a commit status in a ChangeTransferPolicy.
 type ChangeRequestPolicyCommitStatusPhase struct {
 	// Key staging hydrated branch
 	// +kubebuilder:validation:Required
@@ -71,15 +72,20 @@ type ChangeRequestPolicyCommitStatusPhase struct {
 	Url string `json:"url,omitempty"`
 }
 
+// CommitBranchState defines the state of a branch in a ChangeTransferPolicy.
 type CommitBranchState struct {
-	Dry      CommitShaState `json:"dry,omitempty"`
+	// Dry is the dry state of the branch, which is the commit that is being proposed.
+	Dry CommitShaState `json:"dry,omitempty"`
+	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
+	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
 	// +kubebuilder:validation:Optional
 	// +listType:=map
 	// +listMapKey=key
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 
+// CommitShaState defines the state of a commit in a branch.
 type CommitShaState struct {
 	// Sha is the SHA of the commit in the branch
 	Sha string `json:"sha,omitempty"`
@@ -97,6 +103,7 @@ type CommitShaState struct {
 	References []RevisionReference `json:"references,omitempty"`
 }
 
+// DryShaShort returns the first 7 characters of the dry SHA, or the full SHA if it is shorter than 7 characters.
 func (b *CommitBranchState) DryShaShort() string {
 	if b == nil {
 		return ""
@@ -111,10 +118,10 @@ func (b *CommitBranchState) DryShaShort() string {
 
 // ChangeTransferPolicyStatus defines the observed state of ChangeTransferPolicy
 type ChangeTransferPolicyStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Proposed is the state of the proposed branch.
 	Proposed CommitBranchState `json:"proposed,omitempty"`
-	Active   CommitBranchState `json:"active,omitempty"`
+	// Active is the state of the active branch.
+	Active CommitBranchState `json:"active,omitempty"`
 
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
@@ -127,15 +134,20 @@ type ChangeTransferPolicyStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+// PullRequestCommonStatus defines the common status fields for a pull request.
 type PullRequestCommonStatus struct {
+	// ID is the unique identifier of the pull request, set by the SCM.
 	ID string `json:"id,omitempty"`
+	// State is the state of the pull request.
 	// +kubebuilder:validation:Enum=closed;merged;open
-	State          PullRequestState `json:"state,omitempty"`
-	PRCreationTime metav1.Time      `json:"prCreationTime,omitempty"`
+	State PullRequestState `json:"state,omitempty"`
+	// PRCreationTime is the time when the pull request was created.
+	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
 	// Url is the URL of the pull request.
 	Url string `json:"url,omitempty"`
 }
 
+// GetConditions returns the conditions of the ChangeTransferPolicy
 func (ps *ChangeTransferPolicy) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
 }
@@ -143,9 +155,9 @@ func (ps *ChangeTransferPolicy) GetConditions() *[]metav1.Condition {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
+// ChangeTransferPolicy is the Schema for the changetransferpolicies API
 // +kubebuilder:printcolumn:name="Active Dry Sha",type=string,JSONPath=`.status.active.dry.sha`
 // +kubebuilder:printcolumn:name="Proposed Dry Sha",type=string,JSONPath=`.status.proposed.dry.sha`
-// ChangeTransferPolicy is the Schema for the changetransferpolicies API
 type ChangeTransferPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

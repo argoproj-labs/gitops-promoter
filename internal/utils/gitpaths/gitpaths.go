@@ -6,25 +6,28 @@ import (
 
 var storage sync.Map
 
+// Get retrieves the path associated with the given key from the storage.
 func Get(key string) string {
-	v, ok := storage.Load(key)
+	path, ok := storage.Load(key)
 	if !ok {
 		return ""
 	}
 	//nolint:forcetypeassert
-	return v.(string)
+	return path.(string)
 }
 
+// GetValues returns all paths stored in the storage.
 func GetValues() []string {
 	var values []string
-	storage.Range(func(key, value any) bool {
+	storage.Range(func(key, path any) bool {
 		//nolint:forcetypeassert
-		values = append(values, value.(string))
+		values = append(values, path.(string))
 		return true
 	})
 	return values
 }
 
-func Set(key string, value string) {
-	storage.Store(key, value)
+// Set stores a path for the given key.
+func Set(key string, path string) {
+	storage.Store(key, path)
 }

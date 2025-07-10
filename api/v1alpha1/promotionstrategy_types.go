@@ -28,6 +28,7 @@ type PromotionStrategySpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	// RepositoryReference indicates what repository to promote commits in.
 	// +kubebuilder:validation:Required
 	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
@@ -59,7 +60,9 @@ type PromotionStrategySpec struct {
 	Environments []Environment `json:"environments"`
 }
 
+// Environment defines a single environment in the promotion sequence.
 type Environment struct {
+	// Branch is the name of the active branch for the environment.
 	// +kubebuilder:validation:Required
 	Branch string `json:"branch"`
 	// AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence.
@@ -96,6 +99,7 @@ func (e *Environment) GetAutoMerge() bool {
 	return *e.AutoMerge
 }
 
+// CommitStatusSelector is used to select commit statuses by their key.
 type CommitStatusSelector struct {
 	// +required
 	// +kubebuilder:validation:Pattern:=(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -104,6 +108,7 @@ type CommitStatusSelector struct {
 
 // PromotionStrategyStatus defines the observed state of PromotionStrategy
 type PromotionStrategyStatus struct {
+	// Environments holds the status of each environment in the promotion sequence.
 	// +listType:=map
 	// +listMapKey=branch
 	Environments []EnvironmentStatus `json:"environments"`
@@ -116,40 +121,42 @@ type PromotionStrategyStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+// GetConditions returns the conditions of the PromotionStrategy.
 func (ps *PromotionStrategy) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
 }
 
+// EnvironmentStatus defines the observed state of an environment in a PromotionStrategy.
 type EnvironmentStatus struct {
-	Branch   string            `json:"branch"`
+	// Branch is the name of the active branch for the environment.
+	Branch string `json:"branch"`
+	// Proposed is the state of the proposed branch for the environment.
 	Proposed CommitBranchState `json:"proposed"`
-	Active   CommitBranchState `json:"active"`
+	// Active is the state of the active branch for the environment.
+	Active CommitBranchState `json:"active"`
 
 	// PullRequest is the state of the pull request that was created for this environment.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
 
+	// LastHealthyDryShas is a list of dry commits that were observed to be healthy in the environment.
 	// +kubebuilder:validation:Optional
 	LastHealthyDryShas []HealthyDryShas `json:"lastHealthyDryShas"`
 }
 
+// HealthyDryShas is a list of dry commits that were observed to be healthy in the environment.
 type HealthyDryShas struct {
+	// Sha is the commit SHA of the dry commit that was observed to be healthy.
 	Sha string `json:"sha"`
-	// FIXME: docs, is this commit time, first-became-healthy time, most-recently-observed-healthy time, etc?
+	// Time is the time when the proposed commit for the given dry SHA was merged into the active branch.
 	Time metav1.Time `json:"time"`
-}
-
-type PromotionStrategyCommitStatus struct {
-	Sha string `json:"sha"`
-	// +kubebuilder:validation:Enum:=pending;success;failure
-	Phase string `json:"phase"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
+// PromotionStrategy is the Schema for the promotionstrategies API
 // +kubebuilder:printcolumn:name="Active Dry Sha",type=string,JSONPath=`.status.active.dry.sha`
 // +kubebuilder:printcolumn:name="Proposed Dry Sha",type=string,JSONPath=`.status.proposed.dry.sha`
-// PromotionStrategy is the Schema for the promotionstrategies API
 type PromotionStrategy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

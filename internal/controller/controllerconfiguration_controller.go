@@ -31,6 +31,7 @@ import (
 )
 
 // ControllerConfigurationReconciler reconciles a ControllerConfiguration object
+// revive:disable:exported // The name starting with "Controller" is fine. That's the kind name.
 type ControllerConfigurationReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme

@@ -19,6 +19,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
+// PullRequest implements the scms.PullRequestProvider interface for GitHub.
 type PullRequest struct {
 	client    *github.Client
 	k8sClient client.Client
@@ -26,6 +27,7 @@ type PullRequest struct {
 
 var _ scms.PullRequestProvider = &PullRequest{}
 
+// NewGithubPullRequestProvider creates a new instance of PullRequest for GitHub.
 func NewGithubPullRequestProvider(k8sClient client.Client, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret) (*PullRequest, error) {
 	client, err := GetClient(scmProvider, secret)
 	if err != nil {
@@ -38,6 +40,7 @@ func NewGithubPullRequestProvider(k8sClient client.Client, scmProvider v1alpha1.
 	}, nil
 }
 
+// Create creates a new pull request with the specified title, head, base, and description.
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -71,6 +74,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	return strconv.Itoa(*githubPullRequest.Number), nil
 }
 
+// Update updates an existing pull request with the specified title and description.
 func (pr *PullRequest) Update(ctx context.Context, title, description string, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
@@ -108,6 +112,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 	return nil
 }
 
+// Close closes an existing pull request.
 func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
@@ -144,6 +149,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	return nil
 }
 
+// Merge merges an existing pull request with the specified commit message.
 func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
@@ -184,6 +190,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 	return nil
 }
 
+// FindOpen checks if a pull request is open and returns its status.
 func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
@@ -229,7 +236,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	return false, v1alpha1.PullRequestCommonStatus{}, nil
 }
 
-// GetUrl returns a hard coded URL for the pull request.
+// GetUrl returns the URL of the pull request.
 func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error) {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil || gitRepo == nil {

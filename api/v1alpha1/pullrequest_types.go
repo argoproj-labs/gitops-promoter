@@ -28,21 +28,21 @@ type PullRequestSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// RepositoryReference what repository to open the PR on.
+	// RepositoryReference indicates what repository to open the PR on.
 	// +kubebuilder:validation:Required
 	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 	// Title is the title of the pull request.
 	// +kubebuilder:validation:Required
 	Title string `json:"title"`
-	// Head the git reference we are merging from Head ---> Base
+	// TargetBranch is the head the git reference we are merging from Head ---> Base
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	// +kubebuilder:validation:Required
 	TargetBranch string `json:"targetBranch"`
-	// Base the git reference that we are merging into Head ---> Base
+	// SourceBranch is the base the git reference that we are merging into Head ---> Base
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	// +kubebuilder:validation:Required
 	SourceBranch string `json:"sourceBranch"`
-	// Body the description body of the pull/merge request
+	// Description is the description body of the pull/merge request
 	Description string `json:"description,omitempty"`
 	// State of the merge request closed/merged/open
 	// +kubebuilder:default:=open
@@ -74,6 +74,7 @@ type PullRequestStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+// GetConditions returns the conditions of the PullRequest.
 func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
 }
@@ -105,10 +106,14 @@ func init() {
 	SchemeBuilder.Register(&PullRequest{}, &PullRequestList{})
 }
 
+// PullRequestState represents the state of a pull request.
 type PullRequestState string
 
 const (
+	// PullRequestClosed indicates that the pull request is closed.
 	PullRequestClosed PullRequestState = "closed"
-	PullRequestOpen   PullRequestState = "open"
+	// PullRequestOpen indicates that the pull request is open.
+	PullRequestOpen PullRequestState = "open"
+	// PullRequestMerged indicates that the pull request has been merged.
 	PullRequestMerged PullRequestState = "merged"
 )

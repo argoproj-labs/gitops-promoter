@@ -19,6 +19,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
+// PullRequest implements the scms.PullRequestProvider interface for Forgejo.
 type PullRequest struct {
 	foregejoClient *forgejo.Client
 	k8sClient      k8sClient.Client
@@ -27,6 +28,7 @@ type PullRequest struct {
 
 var _ scms.PullRequestProvider = &PullRequest{}
 
+// NewForgejoPullRequestProvider creates a new instance of PullRequest for Forgejo.
 func NewForgejoPullRequestProvider(k8sClient k8sClient.Client, secret k8sV1.Secret, domain string) (*PullRequest, error) {
 	client, err := GetClient(domain, secret)
 	if err != nil {
@@ -40,6 +42,7 @@ func NewForgejoPullRequestProvider(k8sClient k8sClient.Client, secret k8sV1.Secr
 	}, nil
 }
 
+// Create creates a new pull request with the specified title, head branch, base branch, and description.
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, prObj promoterv1alpha1.PullRequest) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -71,6 +74,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	return strconv.FormatInt(pullRequest.Index, 10), nil
 }
 
+// Update updates the title and description of an existing pull request.
 func (pr *PullRequest) Update(ctx context.Context, title, description string, prObj promoterv1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
@@ -105,6 +109,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	return nil
 }
 
+// Close closes a pull request by changing its state to closed.
 func (pr *PullRequest) Close(ctx context.Context, prObj promoterv1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
@@ -144,6 +149,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj promoterv1alpha1.PullReq
 	return nil
 }
 
+// Merge merges a pull request with the specified commit message.
 func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj promoterv1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
@@ -182,6 +188,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj pr
 	return nil
 }
 
+// FindOpen checks if a pull request with the specified source and target branches exists and is open.
 func (pr *PullRequest) FindOpen(ctx context.Context, prObj promoterv1alpha1.PullRequest) (bool, promoterv1alpha1.PullRequestCommonStatus, error) {
 	logger := log.FromContext(ctx)
 
@@ -251,6 +258,7 @@ func checkOpenPR(ctx context.Context, pr PullRequest, repo *promoterv1alpha1.Git
 	return existingPr.State != forgejo.StateOpen, nil
 }
 
+// GetUrl constructs the URL for a pull request based on the provided PullRequest object.
 func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest promoterv1alpha1.PullRequest) (string, error) {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {

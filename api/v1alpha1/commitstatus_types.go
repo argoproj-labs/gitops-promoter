@@ -71,6 +71,7 @@ type CommitStatusStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+// GetConditions returns the conditions of the CommitStatus
 func (cs *CommitStatus) GetConditions() *[]metav1.Condition {
 	return &cs.Status.Conditions
 }
@@ -78,9 +79,9 @@ func (cs *CommitStatus) GetConditions() *[]metav1.Condition {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
+// CommitStatus is the Schema for the commitstatuses API
 // +kubebuilder:printcolumn:name="Sha",type=string,JSONPath=`.status.sha`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
-// CommitStatus is the Schema for the commitstatuses API
 type CommitStatus struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -102,10 +103,14 @@ func init() {
 	SchemeBuilder.Register(&CommitStatus{}, &CommitStatusList{})
 }
 
+// CommitStatusPhase represents the phase of a commit status.
 type CommitStatusPhase string
 
 const (
+	// CommitPhaseFailure indicates that the commit status has failed.
 	CommitPhaseFailure CommitStatusPhase = "failure"
+	// CommitPhaseSuccess indicates that the commit status has been successfully completed.
 	CommitPhaseSuccess CommitStatusPhase = "success"
+	// CommitPhasePending indicates that the commit status is still being processed or has not yet been set.
 	CommitPhasePending CommitStatusPhase = "pending"
 )

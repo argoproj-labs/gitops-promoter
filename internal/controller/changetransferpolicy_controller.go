@@ -51,10 +51,6 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-type ChangeTransferPolicyReconcilerConfig struct {
-	RequeueDuration time.Duration
-}
-
 // ChangeTransferPolicyReconciler reconciles a ChangeTransferPolicy object
 type ChangeTransferPolicyReconciler struct {
 	client.Client
@@ -273,8 +269,10 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	return nil
 }
 
+// TooManyMatchingShaError is an error type that indicates that there are too many matching SHAs for a commit status.
 type TooManyMatchingShaError struct{}
 
+// Error implements the error interface for TooManyMatchingShaError.
 func (e *TooManyMatchingShaError) Error() string {
 	return "there are to many matching SHAs for the commit status"
 }
@@ -643,6 +641,7 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 	return nil
 }
 
+// TemplatePullRequest renders the title and description of a pull request using the provided data map.
 func TemplatePullRequest(prc *promoterv1alpha1.PullRequestConfiguration, data map[string]any) (string, string, error) {
 	title, err := utils.RenderStringTemplate(prc.Template.Title, data)
 	if err != nil {
