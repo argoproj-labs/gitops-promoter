@@ -123,9 +123,21 @@ nilaway-no-test: nilaway ## Run nilaway to remove nil checks from the code
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
+.PHONY: build-dashboard
+build-dashboard: ## Build dashboard UI and embed it.
+	cd ui/components-lib && npm install
+	cd ui/dashboard && npm install && npm run build:embed
+
+.PHONY: build-all
+build-all: build-dashboard build ## Build dashboard UI and then the manager binary.
+
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go controller
+
+.PHONY: run-dashboard
+run-dashboard: build-dashboard ## Run dashboard from your host.
+	go run ./cmd/main.go dashboard
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
@@ -223,6 +235,7 @@ MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
 GORELEASER_VERSION ?= v2.6.1
+
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)

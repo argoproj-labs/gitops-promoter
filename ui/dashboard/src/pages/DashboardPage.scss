@@ -1,0 +1,18 @@
+@use '@lib/styles/colors' as *;
+
+.dashboard-main {
+  flex: 1;
+  padding: 2rem 2.5rem;
+  min-width: 0;
+}
+
+.dashboard-namespace-dropdown-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.dashboard-content-card {
+  width: 100%;
+} 

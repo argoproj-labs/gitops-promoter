@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "composite": true,
+    "lib": ["DOM", "ES2020"],
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["src/*"]
+    }
+  },
+  "include": ["**/*"]
+} 
