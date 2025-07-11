@@ -27,6 +27,7 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+// ScmProviderKind is the kind of the ScmProvider resource.
 var ScmProviderKind = reflect.TypeOf(ScmProvider{}).Name()
 
 // ScmProviderSpec defines the desired state of ScmProvider
@@ -98,6 +99,7 @@ type GenericScmProvider interface {
 // +kubebuilder:object:generate:false
 var _ GenericScmProvider = &ScmProvider{}
 
+// GetSpec returns the ScmProviderSpec for the ScmProvider.
 func (s *ScmProvider) GetSpec() *ScmProviderSpec {
 	return &s.Spec
 }

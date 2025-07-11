@@ -188,7 +188,6 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			if !k8serrors.IsNotFound(err) {
 				return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", pc.Name, err)
 			}
-
 			logger.Info("ChangeTransferPolicy not found, creating")
 			err = r.Create(ctx, &pcNew)
 			if err != nil {
@@ -197,7 +196,6 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			pcNew.DeepCopyInto(&pc)
 			return nil
 		}
-
 		pcNew.Spec.DeepCopyInto(&pc.Spec) // We keep the generation number and status so that update does not conflict
 		// TODO: don't update if the spec is the same, the hard comparison is the arrays of commit statuses, need
 		// to sort and compare them.
@@ -302,13 +300,13 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	}
 
 	updatedYamlStatusMap := make(map[string]string)
-	if _, ok := updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]; ok {
-		err = yaml.Unmarshal([]byte(updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]), &updatedYamlStatusMap)
-		if err != nil {
-			return fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
-		}
-	} else {
+	previousEnvAnnotations, ok := updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]
+	if !ok {
 		return errors.New("previous environments CommitStatus does not have a previous environment commit statuses annotation")
+	}
+	err = yaml.Unmarshal([]byte(previousEnvAnnotations), &updatedYamlStatusMap)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
 	}
 
 	if updatedCS.Spec.Phase != phase || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha || !reflect.DeepEqual(statusMap, updatedYamlStatusMap) {

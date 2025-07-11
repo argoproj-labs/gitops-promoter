@@ -10,23 +10,33 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+// GitOperation represents the type of git operation being performed.
 type GitOperation string
 
 const (
-	GitOperationClone    GitOperation = "clone"
-	GitOperationFetch    GitOperation = "fetch"
-	GitOperationPull     GitOperation = "pull"
-	GitOperationPush     GitOperation = "push"
+	// GitOperationClone is used when cloning a git repository.
+	GitOperationClone GitOperation = "clone"
+	// GitOperationFetch is used when fetching updates from a git repository.
+	GitOperationFetch GitOperation = "fetch"
+	// GitOperationPull is used when pulling changes from a git repository.
+	GitOperationPull GitOperation = "pull"
+	// GitOperationPush is used when pushing changes to a git repository.
+	GitOperationPush GitOperation = "push"
+	// GitOperationLsRemote is used when listing remote references in a git repository.
 	GitOperationLsRemote GitOperation = "ls-remote"
 )
 
+// GitOperationResult represents the result of a git operation, indicating whether it was successful or failed.
 type GitOperationResult string
 
 const (
+	// GitOperationResultSuccess indicates that the git operation was successful.
 	GitOperationResultSuccess GitOperationResult = "success"
+	// GitOperationResultFailure indicates that the git operation failed.
 	GitOperationResultFailure GitOperationResult = "failure"
 )
 
+// GitOperationResultFromError converts an error to a GitOperationResult based on whether the error is nil or not.
 func GitOperationResultFromError(err error) GitOperationResult {
 	if err == nil {
 		return GitOperationResultSuccess
@@ -34,26 +44,39 @@ func GitOperationResultFromError(err error) GitOperationResult {
 	return GitOperationResultFailure
 }
 
+// SCMAPI represents the type of API being used in the SCM operations.
 type SCMAPI string
 
 const (
+	// SCMAPICommitStatus is used for operations related to commit statuses.
 	SCMAPICommitStatus SCMAPI = "CommitStatus"
-	SCMAPIPullRequest  SCMAPI = "PullRequest"
+	// SCMAPIPullRequest is used for operations related to pull requests.
+	SCMAPIPullRequest SCMAPI = "PullRequest"
 )
 
+// SCMOperation represents the type of operation being performed on the SCM API.
 type SCMOperation string
 
 const (
+	// SCMOperationCreate is used when creating resources such as pull requests or commit statuses.
 	SCMOperationCreate SCMOperation = "create"
+	// SCMOperationUpdate is used when updating resources such as pull requests.
 	SCMOperationUpdate SCMOperation = "update"
-	SCMOperationMerge  SCMOperation = "merge"
-	SCMOperationClose  SCMOperation = "close"
-	SCMOperationList   SCMOperation = "list"
+	// SCMOperationMerge is used when merging pull requests.
+	SCMOperationMerge SCMOperation = "merge"
+	// SCMOperationClose is used when closing pull requests.
+	SCMOperationClose SCMOperation = "close"
+	// SCMOperationList is used when listing resources, such as pull requests.
+	SCMOperationList SCMOperation = "list"
 )
 
+// RateLimit represents the rate limit information for SCM API calls.
 type RateLimit struct {
-	Limit          int
-	Remaining      int
+	// Limit is the maximum number of requests allowed in the current rate limit window.
+	Limit int
+	// Remaining is the number of requests remaining in the current rate limit window.
+	Remaining int
+	// ResetRemaining is the duration until the rate limit resets.
 	ResetRemaining time.Duration
 }
 
@@ -141,6 +164,8 @@ var (
 		},
 		[]string{"ctp_found", "response_code"},
 	)
+
+	// If you add metrics here, document them in docs/monitoring/metrics.md.
 )
 
 func init() {

@@ -25,17 +25,18 @@ import (
 
 // ArgoCDCommitStatusSpec defines the desired state of ArgoCDCommitStatus.
 type ArgoCDCommitStatusSpec struct {
+	// PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
 	// +kubebuilder:validation:Required
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef,omitempty"`
 
+	// ApplicationSelector is a label selector that selects the Argo CD applications to which this commit status applies.
 	// +kubebuilder:validation:Required
 	ApplicationSelector *metav1.LabelSelector `json:"applicationSelector,omitempty"`
 }
 
 // ArgoCDCommitStatusStatus defines the observed state of ArgoCDCommitStatus.
 type ArgoCDCommitStatusStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// ApplicationsSelected represents the Argo CD applications that are selected by the commit status.
 	ApplicationsSelected []ApplicationsSelected `json:"applicationsSelected,omitempty"`
 
 	// Conditions Represents the observations of the current state.
@@ -46,15 +47,22 @@ type ArgoCDCommitStatusStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+// GetConditions returns the conditions of the ArgoCDCommitStatus.
 func (cs *ArgoCDCommitStatus) GetConditions() *[]metav1.Condition {
 	return &cs.Status.Conditions
 }
 
+// ApplicationsSelected represents the Argo CD applications that are selected by the commit status.
 type ApplicationsSelected struct {
-	Namespace string            `json:"namespace"`
-	Name      string            `json:"name"`
-	Phase     CommitStatusPhase `json:"phase"`
-	Sha       string            `json:"sha"`
+	// Namespace is the namespace of the Argo CD application.
+	Namespace string `json:"namespace"`
+	// Name is the name of the Argo CD application.
+	Name string `json:"name"`
+	// Phase is the current phase of the commit status.
+	Phase CommitStatusPhase `json:"phase"`
+	// Sha is the commit SHA that this status is associated with.
+	Sha string `json:"sha"`
+	// LastTransitionTime is the last time the phase transitioned.
 	// +kubebuilder:validation:Optional
 	LastTransitionTime *metav1.Time `json:"lastTransitionTime"`
 }

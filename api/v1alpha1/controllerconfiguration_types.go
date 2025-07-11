@@ -51,17 +51,20 @@ type ControllerConfigurationSpec struct {
 	PullRequestRequeueDuration metav1.Duration `json:"pullRequestRequeueDuration,omitempty"`
 }
 
+// PullRequestConfiguration defines the configuration for pull requests.
 type PullRequestConfiguration struct {
+	// Template is the template used to generate pull requests.
 	// +required
 	Template PullRequestTemplate `json:"template,omitempty"`
 }
 
+// PullRequestTemplate defines the template for pull requests.
 type PullRequestTemplate struct {
-	// Template used to generate the title of the pull request.
+	// Title used to generate the title of the pull request.
 	// Uses Go template syntax and Sprig functions are available.
 	// +required
 	Title string `json:"title,omitempty"`
-	// Template used to generate the description of the pull request.
+	// Description used to generate the description of the pull request.
 	// Uses Go template syntax and Sprig functions are available.
 	// +required
 	Description string `json:"description,omitempty"`

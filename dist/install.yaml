@@ -53,10 +53,8 @@ spec:
             description: ArgoCDCommitStatusSpec defines the desired state of ArgoCDCommitStatus.
             properties:
               applicationSelector:
-                description: |-
-                  A label selector is a label query over a set of resources. The result of matchLabels and
-                  matchExpressions are ANDed. An empty label selector matches all objects. A null
-                  label selector matches no objects.
+                description: ApplicationSelector is a label selector that selects
+                  the Argo CD applications to which this commit status applies.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.
@@ -102,8 +100,11 @@ spec:
                 type: object
                 x-kubernetes-map-type: atomic
               promotionStrategyRef:
+                description: PromotionStrategyRef is a reference to the promotion
+                  strategy that this commit status applies to.
                 properties:
                   name:
+                    description: Name is the name of the object to refer to.
                     type: string
                 required:
                 - name
@@ -116,21 +117,28 @@ spec:
             description: ArgoCDCommitStatusStatus defines the observed state of ArgoCDCommitStatus.
             properties:
               applicationsSelected:
-                description: |-
-                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
+                description: ApplicationsSelected represents the Argo CD applications
+                  that are selected by the commit status.
                 items:
+                  description: ApplicationsSelected represents the Argo CD applications
+                    that are selected by the commit status.
                   properties:
                     lastTransitionTime:
+                      description: LastTransitionTime is the last time the phase transitioned.
                       format: date-time
                       type: string
                     name:
+                      description: Name is the name of the Argo CD application.
                       type: string
                     namespace:
+                      description: Namespace is the namespace of the Argo CD application.
                       type: string
                     phase:
+                      description: Phase is the current phase of the commit status.
                       type: string
                     sha:
+                      description: Sha is the commit SHA that this status is associated
+                        with.
                       type: string
                   required:
                   - name
@@ -262,6 +270,8 @@ spec:
                 description: ActiveCommitStatuses lists the statuses to be monitored
                   on the active branch
                 items:
+                  description: CommitStatusSelector is used to select commit statuses
+                    by their key.
                   properties:
                     key:
                       pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -280,6 +290,7 @@ spec:
                 description: RepositoryReference what repository to open the PR on.
                 properties:
                   name:
+                    description: Name is the name of the object to refer to.
                     type: string
                 required:
                 - name
@@ -291,6 +302,8 @@ spec:
                 description: ProposedCommitStatuses lists the statuses to be monitored
                   on the proposed branch
                 items:
+                  description: CommitStatusSelector is used to select commit statuses
+                    by their key.
                   properties:
                     key:
                       pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -312,9 +325,14 @@ spec:
               ChangeTransferPolicy
             properties:
               active:
+                description: Active is the state of the active branch.
                 properties:
                   commitStatuses:
+                    description: CommitStatuses is a list of commit statuses that
+                      are being monitored for this branch.
                     items:
+                      description: ChangeRequestPolicyCommitStatusPhase defines the
+                        phase of a commit status in a ChangeTransferPolicy.
                       properties:
                         key:
                           description: Key staging hydrated branch
@@ -338,6 +356,8 @@ spec:
                     - key
                     x-kubernetes-list-type: map
                   dry:
+                    description: Dry is the dry state of the branch, which is the
+                      commit that is being proposed.
                     properties:
                       author:
                         description: Author is the author of the commit
@@ -400,6 +420,8 @@ spec:
                         type: string
                     type: object
                   hydrated:
+                    description: Hydrated is the hydrated state of the branch, which
+                      is the commit that is currently being worked on.
                     properties:
                       author:
                         description: Author is the author of the commit
@@ -524,12 +546,14 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               proposed:
-                description: |-
-                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
+                description: Proposed is the state of the proposed branch.
                 properties:
                   commitStatuses:
+                    description: CommitStatuses is a list of commit statuses that
+                      are being monitored for this branch.
                     items:
+                      description: ChangeRequestPolicyCommitStatusPhase defines the
+                        phase of a commit status in a ChangeTransferPolicy.
                       properties:
                         key:
                           description: Key staging hydrated branch
@@ -553,6 +577,8 @@ spec:
                     - key
                     x-kubernetes-list-type: map
                   dry:
+                    description: Dry is the dry state of the branch, which is the
+                      commit that is being proposed.
                     properties:
                       author:
                         description: Author is the author of the commit
@@ -615,6 +641,8 @@ spec:
                         type: string
                     type: object
                   hydrated:
+                    description: Hydrated is the hydrated state of the branch, which
+                      is the commit that is currently being worked on.
                     properties:
                       author:
                         description: Author is the author of the commit
@@ -682,15 +710,23 @@ spec:
                   created for this ChangeTransferPolicy.
                 properties:
                   id:
+                    description: ID is the unique identifier of the pull request,
+                      set by the SCM.
                     type: string
                   prCreationTime:
+                    description: PRCreationTime is the time when the pull request
+                      was created.
                     format: date-time
                     type: string
                   state:
+                    description: State is the state of the pull request.
                     enum:
                     - closed
                     - merged
                     - open
+                    type: string
+                  url:
+                    description: Url is the URL of the pull request.
                     type: string
                 type: object
             type: object
@@ -745,6 +781,8 @@ spec:
                 description: Fake required configuration for Fake as the SCM provider
                 properties:
                   domain:
+                    description: Domain is the domain of the fake SCM provider. This
+                      is used for testing purposes.
                     type: string
                 type: object
               forgejo:
@@ -787,6 +825,9 @@ spec:
                 description: GitLab required configuration for GitLab as the SCM provider
                 properties:
                   domain:
+                    description: |-
+                      Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
+                      empty.
                     type: string
                 type: object
               secretRef:
@@ -864,8 +905,11 @@ spec:
               description:
                 type: string
               gitRepositoryRef:
+                description: ObjectReference is a reference to an object by name.
+                  It is used to refer to objects in the same namespace.
                 properties:
                   name:
+                    description: Name is the name of the object to refer to.
                     type: string
                 required:
                 - name
@@ -874,6 +918,7 @@ spec:
                 type: string
               phase:
                 default: pending
+                description: CommitStatusPhase represents the phase of a commit status.
                 enum:
                 - pending
                 - success
@@ -963,6 +1008,7 @@ spec:
                 type: string
               phase:
                 default: pending
+                description: CommitStatusPhase represents the phase of a commit status.
                 enum:
                 - pending
                 - success
@@ -1039,17 +1085,20 @@ spec:
                   Format is go's time.Duration, e.g. "5m" for 5 minutes.
                 type: string
               pullRequest:
+                description: PullRequestConfiguration defines the configuration for
+                  pull requests.
                 properties:
                   template:
+                    description: Template is the template used to generate pull requests.
                     properties:
                       description:
                         description: |-
-                          Template used to generate the description of the pull request.
+                          Description used to generate the description of the pull request.
                           Uses Go template syntax and Sprig functions are available.
                         type: string
                       title:
                         description: |-
-                          Template used to generate the title of the pull request.
+                          Title used to generate the title of the pull request.
                           Uses Go template syntax and Sprig functions are available.
                         type: string
                     required:
@@ -1122,46 +1171,62 @@ spec:
             description: GitRepositorySpec defines the desired state of GitRepository
             properties:
               fake:
+                description: FakeRepo is a placeholder for a repository in the fake
+                  SCM provider, used for testing purposes.
                 properties:
                   name:
+                    description: Name is the name of the repository.
                     type: string
                   owner:
+                    description: Owner is the owner of the repository.
                     type: string
                 required:
                 - name
                 - owner
                 type: object
               forgejo:
+                description: ForgejoRepo is a repository in Forgejo, identified by
+                  its owner and name.
                 properties:
                   name:
+                    description: Name is the name of the repository.
                     type: string
                   owner:
+                    description: Owner is the owner of the repository.
                     type: string
                 required:
                 - name
                 - owner
                 type: object
               github:
+                description: GitHubRepo is a repository in GitHub, identified by its
+                  owner and name.
                 properties:
                   name:
+                    description: Name is the name of the repository.
                     type: string
                   owner:
+                    description: Owner is the owner of the repository.
                     type: string
                 required:
                 - name
                 - owner
                 type: object
               gitlab:
+                description: GitLabRepo is a repository in GitLab, identified by its
+                  namespace, name, and project ID.
                 properties:
                   name:
-                    description: Project slug of the repository.
+                    description: Name is the project slug of the repository.
                     pattern: ^[a-zA-Z0-9_\-\/.]+$
                     type: string
                   namespace:
-                    description: User, group or group with subgroup (e.g. group/subgroup).
+                    description: Namespace is the user, group or group with subgroup
+                      (e.g. group/subgroup).
                     pattern: ^[a-zA-Z0-9_\-\/.]+$
                     type: string
                   projectId:
+                    description: ProjectID is the ID of the project in GitLab.
                     type: integer
                 required:
                 - name
@@ -1169,6 +1234,8 @@ spec:
                 - projectId
                 type: object
               scmProviderRef:
+                description: ScmProviderObjectReference is a reference to a SCM provider
+                  object.
                 properties:
                   kind:
                     default: ScmProvider
@@ -1178,6 +1245,7 @@ spec:
                     - ClusterScmProvider
                     type: string
                   name:
+                    description: Name is the name of the resource being referenced
                     type: string
                 required:
                 - kind
@@ -1250,6 +1318,8 @@ spec:
                   The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
                   specify commit statuses for individual environments in the `environments` field.
                 items:
+                  description: CommitStatusSelector is used to select commit statuses
+                    by their key.
                   properties:
                     key:
                       pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -1265,6 +1335,8 @@ spec:
                 description: Environments is the sequence of environments that a dry
                   commit will be promoted through.
                 items:
+                  description: Environment defines a single environment in the promotion
+                    sequence.
                   properties:
                     activeCommitStatuses:
                       description: |-
@@ -1274,6 +1346,8 @@ spec:
                         The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
                         for all environments in the `spec.activeCommitStatuses` field.
                       items:
+                        description: CommitStatusSelector is used to select commit
+                          statuses by their key.
                         properties:
                           key:
                             pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -1292,6 +1366,8 @@ spec:
                         If false, the dry commit will be proposed but not merged.
                       type: boolean
                     branch:
+                      description: Branch is the name of the active branch for the
+                        environment.
                       type: string
                     proposedCommitStatuses:
                       description: |-
@@ -1302,6 +1378,8 @@ spec:
                         The commit statuses specified in this field apply to this environment only. You can also specify commit statuses
                         for all environments in the `spec.proposedCommitStatuses` field.
                       items:
+                        description: CommitStatusSelector is used to select commit
+                          statuses by their key.
                         properties:
                           key:
                             pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -1322,8 +1400,11 @@ spec:
                 - branch
                 x-kubernetes-list-type: map
               gitRepositoryRef:
+                description: RepositoryReference indicates what repository to promote
+                  commits in.
                 properties:
                   name:
+                    description: Name is the name of the object to refer to.
                     type: string
                 required:
                 - name
@@ -1337,6 +1418,8 @@ spec:
                   The commit statuses specified in this field apply to all environments in the promotion sequence. You can also
                   specify commit statuses for individual environments in the `environments` field.
                 items:
+                  description: CommitStatusSelector is used to select commit statuses
+                    by their key.
                   properties:
                     key:
                       pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
@@ -1417,12 +1500,22 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               environments:
+                description: Environments holds the status of each environment in
+                  the promotion sequence.
                 items:
+                  description: EnvironmentStatus defines the observed state of an
+                    environment in a PromotionStrategy.
                   properties:
                     active:
+                      description: Active is the state of the active branch for the
+                        environment.
                       properties:
                         commitStatuses:
+                          description: CommitStatuses is a list of commit statuses
+                            that are being monitored for this branch.
                           items:
+                            description: ChangeRequestPolicyCommitStatusPhase defines
+                              the phase of a commit status in a ChangeTransferPolicy.
                             properties:
                               key:
                                 description: Key staging hydrated branch
@@ -1446,6 +1539,8 @@ spec:
                           - key
                           x-kubernetes-list-type: map
                         dry:
+                          description: Dry is the dry state of the branch, which is
+                            the commit that is being proposed.
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -1511,6 +1606,8 @@ spec:
                               type: string
                           type: object
                         hydrated:
+                          description: Hydrated is the hydrated state of the branch,
+                            which is the commit that is currently being worked on.
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -1577,15 +1674,23 @@ spec:
                           type: object
                       type: object
                     branch:
+                      description: Branch is the name of the active branch for the
+                        environment.
                       type: string
                     lastHealthyDryShas:
+                      description: LastHealthyDryShas is a list of dry commits that
+                        were observed to be healthy in the environment.
                       items:
+                        description: HealthyDryShas is a list of dry commits that
+                          were observed to be healthy in the environment.
                         properties:
                           sha:
+                            description: Sha is the commit SHA of the dry commit that
+                              was observed to be healthy.
                             type: string
                           time:
-                            description: 'FIXME: docs, is this commit time, first-became-healthy
-                              time, most-recently-observed-healthy time, etc?'
+                            description: Time is the time when the proposed commit
+                              for the given dry SHA was merged into the active branch.
                             format: date-time
                             type: string
                         required:
@@ -1594,9 +1699,15 @@ spec:
                         type: object
                       type: array
                     proposed:
+                      description: Proposed is the state of the proposed branch for
+                        the environment.
                       properties:
                         commitStatuses:
+                          description: CommitStatuses is a list of commit statuses
+                            that are being monitored for this branch.
                           items:
+                            description: ChangeRequestPolicyCommitStatusPhase defines
+                              the phase of a commit status in a ChangeTransferPolicy.
                             properties:
                               key:
                                 description: Key staging hydrated branch
@@ -1620,6 +1731,8 @@ spec:
                           - key
                           x-kubernetes-list-type: map
                         dry:
+                          description: Dry is the dry state of the branch, which is
+                            the commit that is being proposed.
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -1685,6 +1798,8 @@ spec:
                               type: string
                           type: object
                         hydrated:
+                          description: Hydrated is the hydrated state of the branch,
+                            which is the commit that is currently being worked on.
                           properties:
                             author:
                               description: Author is the author of the commit
@@ -1755,15 +1870,23 @@ spec:
                         was created for this environment.
                       properties:
                         id:
+                          description: ID is the unique identifier of the pull request,
+                            set by the SCM.
                           type: string
                         prCreationTime:
+                          description: PRCreationTime is the time when the pull request
+                            was created.
                           format: date-time
                           type: string
                         state:
+                          description: State is the state of the pull request.
                           enum:
                           - closed
                           - merged
                           - open
+                          type: string
+                        url:
+                          description: Url is the URL of the pull request.
                           type: string
                       type: object
                   required:
@@ -1832,19 +1955,22 @@ spec:
             description: PullRequestSpec defines the desired state of PullRequest
             properties:
               description:
-                description: Body the description body of the pull/merge request
+                description: Description is the description body of the pull/merge
+                  request
                 type: string
               gitRepositoryRef:
-                description: RepositoryReference what repository to open the PR on.
+                description: RepositoryReference indicates what repository to open
+                  the PR on.
                 properties:
                   name:
+                    description: Name is the name of the object to refer to.
                     type: string
                 required:
                 - name
                 type: object
               sourceBranch:
-                description: Base the git reference that we are merging into Head
-                  ---> Base
+                description: SourceBranch is the base the git reference that we are
+                  merging into Head ---> Base
                 type: string
                 x-kubernetes-validations:
                 - message: Value is immutable
@@ -1858,8 +1984,8 @@ spec:
                 - open
                 type: string
               targetBranch:
-                description: Head the git reference we are merging from Head --->
-                  Base
+                description: TargetBranch is the head the git reference we are merging
+                  from Head ---> Base
                 type: string
                 x-kubernetes-validations:
                 - message: Value is immutable
@@ -1952,6 +2078,9 @@ spec:
                 - closed
                 - merged
                 - open
+                type: string
+              url:
+                description: Url is the URL of the pull request.
                 type: string
             type: object
         type: object
@@ -2058,6 +2187,8 @@ spec:
                 description: Fake required configuration for Fake as the SCM provider
                 properties:
                   domain:
+                    description: Domain is the domain of the fake SCM provider. This
+                      is used for testing purposes.
                     type: string
                 type: object
               forgejo:
@@ -2100,6 +2231,9 @@ spec:
                 description: GitLab required configuration for GitLab as the SCM provider
                 properties:
                   domain:
+                    description: |-
+                      Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
+                      empty.
                     type: string
                 type: object
               secretRef:

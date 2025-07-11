@@ -6,10 +6,18 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+// PullRequestProvider defines the interface for managing pull requests in a source control management system.
 type PullRequestProvider interface {
-	Create(ctx context.Context, title, head, base, description string, pullRequest *v1alpha1.PullRequest) (string, error)
-	Close(ctx context.Context, pullRequest *v1alpha1.PullRequest) error
-	Update(ctx context.Context, title, description string, pullRequest *v1alpha1.PullRequest) error
-	Merge(ctx context.Context, commitMessage string, pullRequest *v1alpha1.PullRequest) error
-	FindOpen(ctx context.Context, pullRequest *v1alpha1.PullRequest) (bool, string, error)
+	// Create creates a new pull request with the specified title, head, base, and description.
+	Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (string, error)
+	// Close closes an existing pull request.
+	Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error
+	// Update updates an existing pull request with the specified title, description, and pull request details.
+	Update(ctx context.Context, title, description string, pullRequest v1alpha1.PullRequest) error
+	// Merge merges an existing pull request with the specified commit message.
+	Merge(ctx context.Context, commitMessage string, pullRequest v1alpha1.PullRequest) error
+	// FindOpen checks if a pull request is open and returns its status.
+	FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error)
+	// GetUrl retrieves the URL of the pull request.
+	GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error)
 }
