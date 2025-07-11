@@ -254,10 +254,22 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCo
 			Phase:              phase,
 			Sha:                application.Status.Sync.Revision,
 			LastTransitionTime: application.Status.Health.LastTransitionTime,
+			Environment:        application.Spec.SourceHydrator.SyncSource.TargetBranch,
 		})
 
 		aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], aggregateItem)
 	}
+
+	// Sort the applications by environment, then namespace, then name.
+	slices.SortFunc(argoCDCommitStatus.Status.ApplicationsSelected, func(a promoterv1alpha1.ApplicationsSelected, b promoterv1alpha1.ApplicationsSelected) int {
+		if a.Environment != b.Environment {
+			return strings.Compare(a.Environment, b.Environment)
+		}
+		if a.Namespace != b.Namespace {
+			return strings.Compare(a.Namespace, b.Namespace)
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
 
 	return aggregates, nil
 }
