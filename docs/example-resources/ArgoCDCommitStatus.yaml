@@ -22,3 +22,10 @@ status:
       # observedGeneration is the generation of the resource that was last reconciled. This is used to track if the
       # resource has changed since the last reconciliation.
       observedGeneration: 123
+  # applicationsSelected is a list of applications that match the applicationSelector.
+  applicationsSelected:
+    - environment: environments/dev
+      name: example-app-name
+      namespace: example-app-namespace
+      phase: success # pending, success, or failure
+      sha: abcdef1234567890abcdef1234567890abcdef12
