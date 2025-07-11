@@ -165,14 +165,14 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
     const phase = commitStatuses[0]?.phase || 'unknown';
 
 
-    // Dry commit
+    // Dry commit (ACTIVE - for top card)
     const dry = active.dry || {};
     const drySha = dry.sha ? dry.sha.slice(0, 7) : '-';
-    const dryCommitAuthor = extractNameOnly(proposed.dry?.author || '-');
-    const dryCommitSubject = proposed.dry?.subject || '-';
-    const dryCommitMessage = extractBodyPreTrailer(proposed.dry?.body || '-');
+    const dryCommitAuthor = extractNameOnly(dry.author || '-');
+    const dryCommitSubject = dry.subject || '-';
+    const dryCommitMessage = extractBodyPreTrailer(dry.body || '-');
     const dryCommitUrl = getCommitUrl(dry.repoURL ?? '', dry.sha ?? '');
-    const { trailers: dryCommitTrailers, trailerBody: dryCommitTrailerBody } = parseTrailers(proposed.dry?.body || '');
+    const { trailers: dryCommitTrailers, trailerBody: dryCommitTrailerBody } = parseTrailers(dry.body || '');
 
 
 
@@ -190,7 +190,7 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
     const hydratedCommitDate = hydrated.commitTime ? formatDate(hydrated.commitTime) : '-';
 
 
-    // Proposed
+    // Proposed (for bottom card)
     const proposedDry = proposed.dry || {};
     const proposedSha = proposedDry.sha ? proposedDry.sha.slice(0, 7) : '-';
     const proposedCommitStatuses = proposed.commitStatuses || [];
@@ -227,7 +227,7 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
       dryCommitMessage,
       dryCommitSubject,
       dryCommitUrl,
-      dryCommitDate: proposed.dry?.commitTime ? formatDate(proposed.dry.commitTime) : '-',
+      dryCommitDate: dry.commitTime ? formatDate(dry.commitTime) : '-',
       dryCommitTrailers,
       dryCommitTrailerBody,
       proposedSha,

@@ -4,7 +4,8 @@
   "private": true,
   "main": "dist/extension-prcard.js",
   "scripts": {
-    "build": "webpack --config webpack.config.mjs"
+    "build": "webpack --config webpack.config.mjs",
+    "dev": "webpack --config webpack.config.mjs --watch"
   },
   "devDependencies": {
     "@types/react": "^19.1.6",

@@ -23,8 +23,7 @@ export const timeAgo = (dateString: string): string => {
   
 //Extract environment name -> remove leading prefixes ending with / or -
 export function extractEnvNameFromBranch(branch: string): string {
-  const env = branch.replace(/^([a-zA-Z0-9_-]+[\/-])+/, '').trim().toLowerCase();
-  return env || branch;
+  return branch;
 }
 
 // Get the commit url from the repo url and sha

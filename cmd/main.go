@@ -325,7 +325,9 @@ func runController(
 }
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
-	return &cobra.Command{
+	var port int
+
+	cmd := &cobra.Command{
 		Use:   "dashboard",
 		Short: "GitOps Promoter dashboard",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -361,9 +363,16 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 				}
 			}()
 
-			return ws.StartDashboard(ctx, ":8080")
+			// Make port configurable
+			setupLog.Info("Dashboard starting at", "port", fmt.Sprintf(" http://localhost:%d", port))
+
+			return ws.StartDashboard(ctx, fmt.Sprintf(":%d", port))
 		},
 	}
+
+	// Add default port flag
+	cmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to run the dashboard on")
+	return cmd
 }
 
 func newCommand() *cobra.Command {
