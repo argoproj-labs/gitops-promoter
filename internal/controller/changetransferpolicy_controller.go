@@ -557,54 +557,61 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		}
 	}
 
-	if *ctp.Spec.AutoMerge {
-		prl := promoterv1alpha1.PullRequestList{}
-		// Find the PRs that match the proposed commit and the environment. There should only be one.
-		err := r.List(ctx, &prl, &client.ListOptions{
-			LabelSelector: labels.SelectorFromSet(map[string]string{
-				promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-				promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-				promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-			}),
+	if !*ctp.Spec.AutoMerge {
+		return nil
+	}
+
+	prl := promoterv1alpha1.PullRequestList{}
+	// Find the PRs that match the proposed commit and the environment. There should only be one.
+	err := r.List(ctx, &prl, &client.ListOptions{
+		LabelSelector: labels.SelectorFromSet(map[string]string{
+			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+		}),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %s and Environment %s: %w", ctp.Name, ctp.Spec.ActiveBranch, err)
+	}
+
+	if len(prl.Items) > 1 {
+		return fmt.Errorf("more than one PullRequest found for ChangeTransferPolicy %s and Environment %s", ctp.Name, ctp.Spec.ActiveBranch)
+	}
+
+	if len(prl.Items) != 1 {
+		return nil
+	}
+
+	// We found 1 pull request process it.
+	pullRequest := prl.Items[0]
+	if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+		logger.Info("Commit status checks passed", "branch", ctp.Spec.ActiveBranch,
+			"activeCommitStatuses", ctp.Status.Active.CommitStatuses,
+			"proposedCommitStatuses", ctp.Status.Proposed.CommitStatuses,
+			"activeDryCommitTime", ctp.Status.Active.Dry.CommitTime)
+	}
+
+	if pullRequest.Spec.State == promoterv1alpha1.PullRequestOpen && pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var pr promoterv1alpha1.PullRequest
+			err = r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
+			if err != nil {
+				return fmt.Errorf("failed to get PR %q: %w", pullRequest.Name, err)
+			}
+			pr.Spec.State = promoterv1alpha1.PullRequestMerged
+			return r.Update(ctx, &pr)
 		})
 		if err != nil {
-			return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %s and Environment %s: %w", ctp.Name, ctp.Spec.ActiveBranch, err)
+			return fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
 		}
+		r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
+		logger.Info("Merged pull request")
+		return nil
+	}
 
-		if len(prl.Items) > 1 {
-			return fmt.Errorf("more than one PullRequest found for ChangeTransferPolicy %s and Environment %s", ctp.Name, ctp.Spec.ActiveBranch)
-		}
-
-		if len(prl.Items) == 1 {
-			// We found 1 pull request process it.
-			pullRequest := prl.Items[0]
-			if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-				logger.Info("Commit status checks passed", "branch", ctp.Spec.ActiveBranch,
-					"activeCommitStatuses", ctp.Status.Active.CommitStatuses,
-					"proposedCommitStatuses", ctp.Status.Proposed.CommitStatuses,
-					"activeDryCommitTime", ctp.Status.Active.Dry.CommitTime)
-			}
-
-			if pullRequest.Spec.State == promoterv1alpha1.PullRequestOpen && pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-				err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-					var pr promoterv1alpha1.PullRequest
-					err = r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
-					if err != nil {
-						return fmt.Errorf("failed to get PR %q: %w", pullRequest.Name, err)
-					}
-					pr.Spec.State = promoterv1alpha1.PullRequestMerged
-					return r.Update(ctx, &pr)
-				})
-				if err != nil {
-					return fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
-				}
-				r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
-				logger.Info("Merged pull request")
-			} else if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-				// This is for the case where the PR is set to merge in k8s but something else is blocking it, like an external commit status check.
-				logger.Info("Pull request can not be merged, probably due to SCM", "pr", pullRequest.Name)
-			}
-		}
+	if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+		// This is for the case where the PR is set to merge in k8s but something else is blocking it, like an external commit status check.
+		logger.Info("Pull request can not be merged, probably due to SCM", "pr", pullRequest.Name)
 	}
 
 	return nil
