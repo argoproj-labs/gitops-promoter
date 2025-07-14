@@ -59,7 +59,7 @@ func Ginlogr(logger logr.Logger, timeFormat string, utc bool) gin.HandlerFunc {
 	}
 }
 
-// RecoveryWithlogr returns a gin.HandlerFunc (middleware)
+// RecoveryWithLogr returns a gin.HandlerFunc (middleware)
 // that recovers from any panics and logs requests using uber-go/logr.
 // All errors are logged using logr.Error().
 // stack means whether output the stack info.

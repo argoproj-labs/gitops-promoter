@@ -29,14 +29,15 @@ import (
 
 var logger = ctrl.Log.WithName("webServer")
 
+// WebServer handles the web server functionality for the dashboard and API endpoints.
 type WebServer struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Event  *Event
 }
 
+// Event represents a server-sent event that can be broadcast to clients.
 // It keeps a list of clients those are currently attached
-// and broadcasting events to those clients.
 type Event struct {
 	// Events are pushed to this channel by the main events-gathering routine
 	Message chan Message
@@ -51,6 +52,7 @@ type Event struct {
 	totalClients map[chan Message]bool
 }
 
+// Message represents a message that can be sent to clients.
 type Message struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
@@ -58,9 +60,11 @@ type Message struct {
 	Data      string `json:"data"`
 }
 
+// ClientChan represents a channel for sending messages to clients.
 // New event messages are broadcast to all registered client connection channels
 type ClientChan chan Message
 
+// NewWebServer creates a new WebServer instance with the given manager.
 func NewWebServer(mgr controllerruntime.Manager) WebServer {
 	event := &Event{
 		Message:       make(chan Message, 100),
@@ -77,6 +81,7 @@ func NewWebServer(mgr controllerruntime.Manager) WebServer {
 	}
 }
 
+// Reconcile handles the reconciliation logic for the WebServer controller.
 func (ws *WebServer) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	return ctrl.Result{}, nil
 }
@@ -110,6 +115,7 @@ func (ws *WebServer) sendDeleteEvent(e client.Object) {
 	}
 }
 
+// SetupWithManager sets up the WebServer controller with the given manager.
 func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		Named("webServer").
@@ -200,6 +206,7 @@ func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	return nil
 }
 
+// StartDashboard starts the dashboard web server on the specified address.
 func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	// Embed dashboard UI from DashboardFS
 	distFS, err := fs.Sub(web.DashboardFS, "static")
@@ -532,6 +539,7 @@ func (stream *Event) serveHTTP() gin.HandlerFunc {
 	}
 }
 
+// WatchHeadersMiddleware returns a gin middleware that sets headers for watch requests.
 func WatchHeadersMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Content-Type", "text/event-stream")
