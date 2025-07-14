@@ -1801,6 +1801,20 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, &argoCDAppStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
 
+			By("Checking that the ArgoCDCommitStatus applicationsSelected field is correct")
+
+			Eventually(func() {
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: argocdCommitStatus.Namespace,
+					Name:      argocdCommitStatus.Name,
+				}, &argocdCommitStatus)).To(Succeed())
+				Expect(argocdCommitStatus.Status.ApplicationsSelected).To(HaveLen(3))
+				// Check that it's sorted by dev, stage, prod.
+				Expect(argocdCommitStatus.Status.ApplicationsSelected[0].Name).To(Equal(argoCDAppDev.Name))
+				Expect(argocdCommitStatus.Status.ApplicationsSelected[1].Name).To(Equal(argoCDAppStaging.Name))
+				Expect(argocdCommitStatus.Status.ApplicationsSelected[2].Name).To(Equal(argoCDAppProduction.Name))
+			})
+
 			By("Checking that the CommitStatus for each environment is created from ArgoCDCommitStatus")
 
 			// Expect(err).To(Succeed())

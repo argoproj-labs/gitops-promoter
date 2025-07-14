@@ -151,7 +151,13 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 	logger.V(4).Info("Found Applications", "appCount", len(apps.Items))
 
-	groupedArgoCDApps, err := r.groupArgoCDApplicationsWithPhase(&argoCDCommitStatus, apps)
+	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
+	err = r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy object: %w", err)
+	}
+
+	groupedArgoCDApps, err := r.groupArgoCDApplicationsWithPhase(&promotionStrategy, &argoCDCommitStatus, apps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get Application: %w", err)
 	}
@@ -170,7 +176,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		}
 		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha, mostRecentLastTransitionTime)
 
-		err = r.updateAggregatedCommitStatus(ctx, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
+		err = r.updateAggregatedCommitStatus(ctx, &promotionStrategy, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -212,7 +218,7 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShasForBranches(ctx context.Contex
 // groupArgoCDApplicationsWithPhase returns a map. The key is a branch name. The value is a list of apps configured for that target branch, along with the commit status for that one app.
 // As a side-effect, this function updates argoCDCommitStatus to represent the aggregate status
 // of all matching apps.
-func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps argocd.ApplicationList) (map[string][]*aggregate, error) {
+func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps argocd.ApplicationList) (map[string][]*aggregate, error) {
 	aggregates := map[string][]*aggregate{}
 	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
 	repo := ""
@@ -260,18 +266,32 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(argoCDCo
 		aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], aggregateItem)
 	}
 
-	// Sort the applications by environment, then namespace, then name.
+	sortApplicationsSelected(promotionStrategy, argoCDCommitStatus)
+
+	return aggregates, nil
+}
+
+// sortApplicationsSelected sorts the applications by environment (matching PromotionStrategy order), then namespace,
+// then name.
+func sortApplicationsSelected(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus) {
 	slices.SortFunc(argoCDCommitStatus.Status.ApplicationsSelected, func(a promoterv1alpha1.ApplicationsSelected, b promoterv1alpha1.ApplicationsSelected) int {
 		if a.Environment != b.Environment {
-			return strings.Compare(a.Environment, b.Environment)
+			aIdx, _ := utils.GetEnvironmentByBranch(*promotionStrategy, a.Environment)
+			bIdx, _ := utils.GetEnvironmentByBranch(*promotionStrategy, b.Environment)
+
+			// These shouldn't be equal, but it's technically possible, for example if the environment isn't found in
+			// the promotion strategy.
+			if aIdx != bIdx {
+				// If a comes before b, then b will be greater than a. aIdx - bIdx will be negative. So this matches the
+				// SortFunc requirement that we return a negative number if a < b.
+				return aIdx - bIdx
+			}
 		}
 		if a.Namespace != b.Namespace {
 			return strings.Compare(a.Namespace, b.Namespace)
 		}
 		return strings.Compare(a.Name, b.Name)
 	})
-
-	return aggregates, nil
 }
 
 func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(appsInEnvironment []*aggregate, resolvedSha string, mostRecentLastTransitionTime *metav1.Time) (promoterv1alpha1.CommitStatusPhase, string) {
@@ -415,17 +435,11 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager)
 	return nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) error {
+func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) error {
 	logger := log.FromContext(ctx)
 
 	commitStatusName := targetBranch + "/health"
 	resourceName := strings.ReplaceAll(commitStatusName, "/", "-") + "-" + hash([]byte(argoCDCommitStatus.Name))
-
-	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
-	err := r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy)
-	if err != nil {
-		return fmt.Errorf("failed to get PromotionStrategy object: %w", err)
-	}
 
 	kind := reflect.TypeOf(promoterv1alpha1.ArgoCDCommitStatus{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
@@ -451,7 +465,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	currentCommitStatus := promoterv1alpha1.CommitStatus{}
-	err = r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
+	err := r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
 			return fmt.Errorf("failed to get CommitStatus object: %w", err)
