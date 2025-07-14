@@ -89,19 +89,11 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// empty phase should be impossible due to schema validation
 	if cs.Spec.Sha == "" || cs.Spec.Phase == "" {
 		logger.Info("Skip setting commit status, missing sha or phase", "sha", cs.Spec.Sha, "phase", cs.Spec.Phase)
-		// Ensure status phase is set to default value
-		if cs.Status.Phase == "" {
-			cs.Status.Phase = promoterv1alpha1.CommitPhasePending
-			if updateErr := r.Status().Update(ctx, &cs); updateErr != nil {
-				logger.Error(updateErr, "failed to update status with default phase")
-				return ctrl.Result{}, fmt.Errorf("failed to update status with default phase: %w", updateErr)
-			}
-		}
 		return ctrl.Result{}, nil
 	}
 
 	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
-	if err != nil {
+	if err != nil || commitStatusProvider == nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)
 	}
 

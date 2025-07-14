@@ -56,7 +56,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+# keep lock files for applications
+ui/components-lib/package-lock.json
 yarn.lock
 
 # Environment files
