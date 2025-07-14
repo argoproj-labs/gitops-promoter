@@ -65,11 +65,12 @@ interface EnrichedEnvDetails {
   dryCommitTrailerBody: string | undefined;
   proposedSha: string;
   hydratedSha: string;
-  hydratedCommitAuthor: string;
-  hydratedCommitSubject: string;
-  hydratedCommitBody: string;
   hydratedCommitUrl: string;
-  hydratedCommitDate: string;
+  proposedDryCommitAuthor: string;
+  proposedDryCommitSubject: string;
+  proposedDryCommitBody: string;
+  proposedDryCommitUrl: string;
+  proposedDryCommitDate: string;
   proposedChecks: Check[];
   activeChecks: Check[];
   prNumber: number | null;
@@ -175,20 +176,10 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
     const { trailers: dryCommitTrailers, trailerBody: dryCommitTrailerBody } = parseTrailers(dry.body || '');
 
 
-
-    // Hydrated Sha
+    //Hydrated
     const hydrated = active.hydrated || {};
     const hydratedSha = hydrated.sha ? hydrated.sha.slice(0, 7) : '-';
-    const hydratedCommitAuthor = hydrated.author || '-';
-    const hydratedCommitSubject = hydrated.subject || '-';
-    const hydratedCommitBody = hydrated.body || '-';
-    const lastSync = hydrated.commitTime ? formatDate(hydrated.commitTime) : '-';
-
-
-    // Hydrated commit
     const hydratedCommitUrl = getCommitUrl(dry.repoURL ?? '', hydrated.sha ?? '');
-    const hydratedCommitDate = hydrated.commitTime ? formatDate(hydrated.commitTime) : '-';
-
 
     // Proposed (for bottom card)
     const proposedDry = proposed.dry || {};
@@ -198,6 +189,12 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
     const totalProposedChecks = proposedChecks.length;
     const passed = proposedChecks.filter((check: Check) => check.status === 'success').length;
 
+    const proposedDryCommitAuthor = extractNameOnly(proposedDry.author || '-');
+    const proposedDryCommitSubject = proposedDry.subject || '-';
+    const proposedDryCommitBody = extractBodyPreTrailer(proposedDry.body || '-');
+    const proposedDryCommitUrl = getCommitUrl(proposedDry.repoURL ?? '', proposedDry.sha ?? '');
+    const proposedDryCommitDate = proposedDry.commitTime ? formatDate(proposedDry.commitTime) : '-';
+    const lastSync = hydrated.commitTime ? formatDate(hydrated.commitTime) : '-';
 
     // Active checks
     const activeChecks = getActiveChecks(commitStatuses);
@@ -232,11 +229,12 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
       dryCommitTrailerBody,
       proposedSha,
       hydratedSha,
-      hydratedCommitAuthor,
-      hydratedCommitSubject,
-      hydratedCommitBody,
       hydratedCommitUrl,
-      hydratedCommitDate,
+      proposedDryCommitAuthor,
+      proposedDryCommitSubject,
+      proposedDryCommitBody,
+      proposedDryCommitUrl,
+      proposedDryCommitDate,
       proposedChecks,
       activeChecks,
       prNumber,

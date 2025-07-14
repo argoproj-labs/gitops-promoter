@@ -18,13 +18,12 @@ interface ProposedCheck {
 
 interface PRDetails {
   hydratedSha: string;
-  hydratedCommitAuthor: string;
-  hydratedCommitSubject: string;
-  hydratedCommitBody?: string;
   hydratedCommitUrl?: string;
-  hydratedCommitDate?: string;
-
-  // Other PR info
+  proposedDryCommitAuthor: string;
+  proposedDryCommitSubject: string;
+  proposedDryCommitBody?: string;
+  proposedDryCommitUrl?: string;
+  proposedDryCommitDate?: string;
   branch: string;
   link: string;
   author: string;
@@ -92,11 +91,11 @@ const PrCard = ({ autoExpand, commit }: PRProps) => {
 
   const openMessageModal = () => {
     setModalInfo({
-      proposedSha: commit.hydratedSha,
-      author: commit.hydratedCommitAuthor,
-      commitTime: commit.hydratedCommitDate,
-      subject: commit.hydratedCommitSubject,
-      message: commit.hydratedCommitBody,
+      proposedSha: commit.proposedSha,
+      author: commit.proposedDryCommitAuthor,
+      commitTime: commit.proposedDryCommitDate,
+      subject: commit.proposedDryCommitSubject,
+      message: commit.proposedDryCommitBody,
     });
     setMessageModalOpen(true);
   };
@@ -189,14 +188,14 @@ const PrCard = ({ autoExpand, commit }: PRProps) => {
           <div className="card-row">
             <div className="card-label">Author:</div>
             <div className="card-value">
-              {commit.author}
+              {commit.proposedDryCommitAuthor}
             </div>
           </div>
           <div className="card-row">
             <div className="card-label">Message:</div>
             <div className="card-value card-value--with-expand">
-              <span className="card-value-field card-value-field--truncate">{commit.message}</span>
-              {commit.body && commit.body !== commit.message && (
+              <span className="card-value-field card-value-field--truncate">{commit.proposedDryCommitSubject}</span>
+              {commit.proposedDryCommitBody && commit.proposedDryCommitBody !== commit.proposedDryCommitSubject && (
                 <span className="card-expand-icon-wrapper">
                   <FaExpandAlt
                     className="card-expand-icon"
