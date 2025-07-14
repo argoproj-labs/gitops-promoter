@@ -37,7 +37,7 @@ type ArgoCDCommitStatusSpec struct {
 // ArgoCDCommitStatusStatus defines the observed state of ArgoCDCommitStatus.
 type ArgoCDCommitStatusStatus struct {
 	// ApplicationsSelected represents the Argo CD applications that are selected by the commit status.
-	// This field is sorted by environment, then namespace, then name.
+	// This field is sorted by environment (same order as the referenced PromotionStrategy), then namespace, then name.
 	ApplicationsSelected []ApplicationsSelected `json:"applicationsSelected,omitempty"`
 
 	// Conditions Represents the observations of the current state.
