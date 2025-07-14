@@ -1,13 +1,28 @@
 # Build the dashboard UI
 FROM node:18-bullseye-slim AS dashboard-builder
 WORKDIR /workspace
-COPY ui/ ./ui/
+COPY ui/components-lib/package*.json ./ui/components-lib/
+COPY ui/dashboard/package*.json ./ui/dashboard/
+
 # Install components-lib dependencies first
 WORKDIR /workspace/ui/components-lib
 RUN npm ci
 # Install dashboard dependencies
 WORKDIR /workspace/ui/dashboard
 RUN npm ci
+
+# Copy source code after installing dependencies
+WORKDIR /workspace
+COPY ui/components-lib/src ./ui/components-lib/src
+COPY ui/components-lib/tsconfig*.json ./ui/components-lib/
+COPY ui/dashboard/src ./ui/dashboard/src
+COPY ui/dashboard/public ./ui/dashboard/public
+COPY ui/dashboard/tsconfig*.json ./ui/dashboard/
+COPY ui/dashboard/vite.config.ts ./ui/dashboard/
+COPY ui/dashboard/index.html ./ui/dashboard/
+
+# Build the dashboard
+WORKDIR /workspace/ui/dashboard
 RUN npx vite build
 RUN mkdir -p ../../web/static && cp -r dist/* ../../web/static/
 
