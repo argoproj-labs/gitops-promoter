@@ -2,6 +2,8 @@
 
 This directory contains the React-based dashboard for GitOps Promoter.
 
+The built static files are embedded into the Go binary via the `ui/web/` directory.
+
 ### Build Everything
 ```bash
 make build-all

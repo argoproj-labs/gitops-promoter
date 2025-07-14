@@ -15,7 +15,7 @@ WORKDIR /
 COPY gitops-promoter .
 RUN mkdir /git
 COPY hack/git/promoter_askpass.sh /git/promoter_askpass.sh
-COPY --from=dashboard-builder /workspace/web/static ./web/static
+COPY --from=dashboard-builder /workspace/ui/web/static ./ui/web/static
 ENV PATH="${PATH}:/git"
 RUN echo "${PATH}" >> /etc/bash.bashrc
 USER 65532:65532

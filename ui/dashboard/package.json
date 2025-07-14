@@ -8,7 +8,7 @@
     "build": "npx vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "build:embed": "npm run build && mkdir -p ../../web/static && cp -r dist/* ../../web/static/"
+    "build:embed": "npm run build && mkdir -p ../web/static && cp -r dist/* ../web/static/"
   },
   "dependencies": {
     "react": "18.3.1",

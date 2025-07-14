@@ -82,4 +82,4 @@ yarn-error.log*
 .vite/
 
 # Built UI static files
-web/static/
+ui/web/static/

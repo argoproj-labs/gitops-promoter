@@ -20,7 +20,7 @@ RUN npm ci
 # Build the dashboard
 WORKDIR /workspace/ui/dashboard
 RUN npx vite build
-RUN mkdir -p ../../web/static && cp -r dist/* ../../web/static/
+RUN mkdir -p ../web/static && cp -r dist/* ../web/static/
 
 # Build the gitops-promoter binary
 FROM golang:1.24 AS builder
@@ -40,10 +40,10 @@ COPY cmd/main.go cmd/main.go
 COPY api/ api/
 COPY internal/ internal/
 COPY hack/git/promoter_askpass.sh hack/git/promoter_askpass.sh
-COPY web/ web/
+COPY ui/web/ ./ui/web/
 
 # Copy the built static files from dashboard-builder for embedding
-COPY --from=dashboard-builder /workspace/web/static ./web/static
+COPY --from=dashboard-builder /workspace/ui/web/static ./ui/web/static
 
 # Build
 # the GOARCH has not a default value to allow the binary be built according to the host where the command
@@ -60,7 +60,7 @@ WORKDIR /
 RUN mkdir /git
 COPY --from=builder /workspace/gitops-promoter .
 COPY --from=builder /workspace/hack/git/promoter_askpass.sh /git/promoter_askpass.sh
-COPY --from=dashboard-builder /workspace/web/static ./web/static
+COPY --from=dashboard-builder /workspace/ui/web/static ./ui/web/static
 ENV PATH="${PATH}:/git"
 RUN echo "${PATH}" >> /etc/bash.bashrc
 USER 65532:65532

@@ -39,12 +39,12 @@ jobs:
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
       - name: Verify web/static exists
         run: |
-          if [ ! -d "web/static" ]; then
-            echo "Error: web/static directory does not exist!"
-            ls -la web/
+          if [ ! -d "ui/web/static" ]; then
+            echo "Error: ui/web/static directory does not exist!"
+            ls -la ui/web/
             exit 1
           fi
-          echo "web/static directory exists ✓"
+          echo "ui/web/static directory exists ✓"
       - name: Lint
         uses: golangci/golangci-lint-action@v8
         with:

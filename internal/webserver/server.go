@@ -14,7 +14,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	ginlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
-	"github.com/argoproj-labs/gitops-promoter/web"
+	"github.com/argoproj-labs/gitops-promoter/ui/web"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"k8s.io/apimachinery/pkg/runtime"
