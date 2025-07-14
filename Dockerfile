@@ -1,13 +1,16 @@
 # Build the dashboard UI
 FROM node:18-bullseye-slim AS dashboard-builder
 WORKDIR /workspace
+
+# Copy package files first for better layer caching
 COPY ui/components-lib/package*.json ./ui/components-lib/
 COPY ui/dashboard/package*.json ./ui/dashboard/
 
-# Install components-lib dependencies first
+# Install components-lib dependencies first (library - no lock file)
 WORKDIR /workspace/ui/components-lib
-RUN npm ci
-# Install dashboard dependencies
+RUN npm install
+
+# Install dashboard dependencies (application - has lock file)
 WORKDIR /workspace/ui/dashboard
 RUN npm ci
 
@@ -20,6 +23,7 @@ COPY ui/dashboard/public ./ui/dashboard/public
 COPY ui/dashboard/tsconfig*.json ./ui/dashboard/
 COPY ui/dashboard/vite.config.ts ./ui/dashboard/
 COPY ui/dashboard/index.html ./ui/dashboard/
+COPY ui/dashboard/main.scss ./ui/dashboard/
 
 # Build the dashboard
 WORKDIR /workspace/ui/dashboard
