@@ -38,7 +38,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -47,8 +46,8 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
-	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -86,7 +85,7 @@ var (
 	cancel           context.CancelFunc
 	ctx              context.Context
 	gitServerPort    string
-	scheme           = &runtime.Scheme{}
+	scheme           = utils.GetScheme()
 )
 
 func TestControllers(t *testing.T) {
@@ -108,13 +107,6 @@ func TestControllers(t *testing.T) {
 var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true), zap.Level(zapcore.Level(-4))))
 	var err error
-
-	//+kubebuilder:scaffold:scheme
-	err = promoterv1alpha1.AddToScheme(scheme)
-	Expect(err).NotTo(HaveOccurred())
-
-	err = argocd.AddToScheme(scheme)
-	Expect(err).NotTo(HaveOccurred())
 
 	By("setting up git server")
 	var errMkDir error
@@ -138,6 +130,7 @@ var _ = BeforeSuite(func() {
 		Namespace:             constants.KubeconfigSecretNamespace,
 		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
 		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
+		Scheme:                scheme,
 	})
 
 	//nolint:fatcontext

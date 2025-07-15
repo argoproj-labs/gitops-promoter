@@ -26,52 +26,41 @@ import (
 	"runtime/debug"
 	"syscall"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/controller"
-	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"go.uber.org/zap/zapcore"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
-	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
-	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
-	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
+	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
-
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
 var (
-	scheme   = runtime.NewScheme()
+	scheme   = utils.GetScheme()
 	setupLog = ctrl.Log.WithName("setup")
 )
-
-func init() {
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
-	utilruntime.Must(promoterv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(argocd.AddToScheme(scheme))
-	//+kubebuilder:scaffold:scheme
-}
 
 func newControllerCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var metricsAddr string
@@ -290,7 +279,9 @@ func runController(
 	g, ctx := errgroup.WithContext(processSignals)
 
 	// Initialize the provider controller with the manager
-	provider.SetupWithManager(ctx, mcMgr)
+	if err := provider.SetupWithManager(ctx, mcMgr); err != nil {
+		panic("unable to setup provider with manager")
+	}
 
 	g.Go(func() error {
 		setupLog.Info("starting manager")
