@@ -31,8 +31,16 @@ nav:
   - CommitStatus Controllers:
       - Argo CD: commit-status-controllers/argocd.md
   - Multi-Tenancy: multi-tenancy.md
-  - Metrics: metrics.md
+  - Monitoring:
+      - Overview: monitoring/index.md
+      - Events: monitoring/events.md
+      - Logs: monitoring/logs.md
+      - Metrics: monitoring/metrics.md
   - Tool Comparison: tool-comparison.md
   - FAQs: faqs.md
   - Tutorials:
       - Argo CD Apps: tutorial-argocd-apps.md
+plugins:
+  - redirects:
+      redirect_maps:
+        'metrics.md': 'monitoring/metrics.md' # Page was moved to a subdirectory.

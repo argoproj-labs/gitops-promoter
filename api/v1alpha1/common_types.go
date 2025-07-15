@@ -2,6 +2,7 @@ package v1alpha1
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+// GitHub is a GitHub SCM provider configuration. It is used to configure the GitHub settings.
 type GitHub struct {
 	// Domain is the GitHub domain, such as "github.mycompany.com". If using the default GitHub domain, leave this field
 	// empty.
@@ -15,10 +16,14 @@ type GitHub struct {
 	InstallationID int64 `json:"installationID"`
 }
 
+// GitLab is a GitLab SCM provider configuration. It is used to configure the GitLab settings.
 type GitLab struct {
+	// Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
+	// empty.
 	Domain string `json:"domain,omitempty"`
 }
 
+// Forgejo is a Forgejo SCM provider configuration. It is used to configure the Forgejo settings.
 type Forgejo struct {
 	// Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
 	// There is no default domain since Forgejo is not a service like Gitlab or Github.
@@ -26,15 +31,20 @@ type Forgejo struct {
 	Domain string `json:"domain"`
 }
 
+// Fake is a placeholder for a fake SCM provider, used for testing purposes.
 type Fake struct {
+	// Domain is the domain of the fake SCM provider. This is used for testing purposes.
 	Domain string `json:"domain,omitempty"`
 }
 
+// ObjectReference is a reference to an object by name. It is used to refer to objects in the same namespace.
 type ObjectReference struct {
+	// Name is the name of the object to refer to.
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 }
 
+// GitHubRepo is a repository in GitHub, identified by its owner and name.
 type GitHubRepo struct {
 	// These validation rules are based on unofficial documentation and may need to be relaxed in the future.
 	// https://github.com/dead-claudia/github-limits
@@ -51,29 +61,37 @@ type GitHubRepo struct {
 	Name string `json:"name"`
 }
 
+// GitLabRepo is a repository in GitLab, identified by its namespace, name, and project ID.
 type GitLabRepo struct {
-	// User, group or group with subgroup (e.g. group/subgroup).
+	// Namespace is the user, group or group with subgroup (e.g. group/subgroup).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9_\-\/.]+$
 	Namespace string `json:"namespace"`
-	// Project slug of the repository.
+	// Name is the project slug of the repository.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9_\-\/.]+$
 	Name string `json:"name"`
+	// ProjectID is the ID of the project in GitLab.
 	// +kubebuilder:validation:Required
 	ProjectID int `json:"projectId"`
 }
 
+// ForgejoRepo is a repository in Forgejo, identified by its owner and name.
 type ForgejoRepo struct {
+	// Owner is the owner of the repository.
 	// +kubebuilder:validation:Required
 	Owner string `json:"owner"`
+	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 }
 
+// FakeRepo is a placeholder for a repository in the fake SCM provider, used for testing purposes.
 type FakeRepo struct {
+	// Owner is the owner of the repository.
 	// +kubebuilder:validation:Required
 	Owner string `json:"owner"`
+	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 }

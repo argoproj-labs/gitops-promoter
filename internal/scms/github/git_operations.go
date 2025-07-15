@@ -17,12 +17,14 @@ const (
 	githubAppPrivateKeySecretKey = "githubAppPrivateKey"
 )
 
+// GitAuthenticationProvider provides methods to authenticate with GitHub using a GitHub App.
 type GitAuthenticationProvider struct {
 	scmProvider v1alpha1.GenericScmProvider
 	secret      *v1.Secret
 	transport   *ghinstallation.Transport
 }
 
+// NewGithubGitAuthenticationProvider creates a new instance of GitAuthenticationProvider for GitHub using the provided SCM provider and secret.
 func NewGithubGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider, secret *v1.Secret) GitAuthenticationProvider {
 	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.GetSpec().GitHub.AppID, scmProvider.GetSpec().GitHub.InstallationID, secret.Data[githubAppPrivateKeySecretKey])
 	if err != nil {
@@ -40,6 +42,7 @@ func NewGithubGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider,
 	}
 }
 
+// GetGitHttpsRepoUrl constructs the HTTPS URL for a GitHub repository based on the provided GitRepository object.
 func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepository v1alpha1.GitRepository) string {
 	if gh.scmProvider.GetSpec().GitHub != nil && gh.scmProvider.GetSpec().GitHub.Domain != "" {
 		return fmt.Sprintf("https://git@%s/%s/%s.git", gh.scmProvider.GetSpec().GitHub.Domain, gitRepository.Spec.GitHub.Owner, gitRepository.Spec.GitHub.Name)
@@ -47,6 +50,7 @@ func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepository v1alpha1.Gi
 	return fmt.Sprintf("https://git@github.com/%s/%s.git", gitRepository.Spec.GitHub.Owner, gitRepository.Spec.GitHub.Name)
 }
 
+// GetToken retrieves the authentication token for GitHub.
 func (gh GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
 	token, err := gh.transport.Token(ctx)
 	if err != nil {
@@ -55,10 +59,12 @@ func (gh GitAuthenticationProvider) GetToken(ctx context.Context) (string, error
 	return token, nil
 }
 
+// GetUser returns a static user identifier for GitHub authentication.
 func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error) {
 	return "git", nil
 }
 
+// GetClient creates a new GitHub client using the provided SCM provider and secret.
 func GetClient(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret) (*github.Client, error) {
 	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.GetSpec().GitHub.AppID, scmProvider.GetSpec().GitHub.InstallationID, secret.Data[githubAppPrivateKeySecretKey])
 	if err != nil {

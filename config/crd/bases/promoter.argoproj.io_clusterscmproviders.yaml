@@ -44,6 +44,8 @@ spec:
                 description: Fake required configuration for Fake as the SCM provider
                 properties:
                   domain:
+                    description: Domain is the domain of the fake SCM provider. This
+                      is used for testing purposes.
                     type: string
                 type: object
               forgejo:
@@ -86,6 +88,9 @@ spec:
                 description: GitLab required configuration for GitLab as the SCM provider
                 properties:
                   domain:
+                    description: |-
+                      Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
+                      empty.
                     type: string
                 type: object
               secretRef:

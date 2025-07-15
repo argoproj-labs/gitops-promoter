@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// GetScmProviderFromGitRepository retrieves the ScmProvider from the GitRepository reference.
 func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Client, repositoryRef *promoterv1alpha1.GitRepository, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, error) {
 	logger := log.FromContext(ctx)
 
@@ -79,6 +80,7 @@ func GetGitRepositoryFromObjectKey(ctx context.Context, k8sClient client.Client,
 	return &gitRepo, nil
 }
 
+// GetScmProviderAndSecretFromRepositoryReference retrieves the ScmProvider and its associated Secret from a GitRepository reference.
 func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
 	logger := log.FromContext(ctx)
 	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
@@ -118,6 +120,8 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 	return scmProvider, &secret, nil
 }
 
+// TruncateString truncates a string to a specified length. If the length is less than or equal to 0, it returns an
+// empty string.
 func TruncateString(str string, length int) string {
 	if length <= 0 {
 		return ""
@@ -134,7 +138,8 @@ func TruncateString(str string, length int) string {
 	return truncated
 }
 
-// Truncate from front of string
+// TruncateStringFromBeginning truncates from front of string. For example, if the string is "abcdefg" and length is 3,
+// it will return "efg".
 func TruncateStringFromBeginning(str string, length int) string {
 	if length <= 0 {
 		return ""
@@ -147,10 +152,13 @@ func TruncateStringFromBeginning(str string, length int) string {
 
 var m1 = regexp.MustCompile("[^a-zA-Z0-9]+")
 
+// GetPullRequestName returns a name for the pull request based on the repository owner, repository name, proposed branch, and active branch.
+// This combination should make the PR name unique.
 func GetPullRequestName(repoOwner, repoName, pcProposedBranch, pcActiveBranch string) string {
 	return fmt.Sprintf("%s-%s-%s-%s", repoOwner, repoName, pcProposedBranch, pcActiveBranch)
 }
 
+// GetChangeTransferPolicyName returns a name for the ChangeTransferPolicy based on the promotion strategy name and environment branch.
 func GetChangeTransferPolicyName(promotionStrategyName, environmentBranch string) string {
 	return fmt.Sprintf("%s-%s", promotionStrategyName, environmentBranch)
 }
@@ -188,6 +196,7 @@ func KubeSafeLabel(name string) string {
 	return name
 }
 
+// GetEnvironmentByBranch returns the index and the Environment object for a given branch in the PromotionStrategy.
 func GetEnvironmentByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy, branch string) (int, *promoterv1alpha1.Environment) {
 	for i, environment := range promotionStrategy.Spec.Environments {
 		if environment.Branch == branch {
@@ -197,6 +206,7 @@ func GetEnvironmentByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy
 	return -1, nil
 }
 
+// UpsertChangeTransferPolicyList adds or updates a list of ChangeTransferPolicies in the slice.
 func UpsertChangeTransferPolicyList(slice []promoterv1alpha1.ChangeTransferPolicy, insertList ...[]promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.ChangeTransferPolicy {
 	for _, policies := range insertList {
 		for _, p := range policies {
@@ -206,6 +216,7 @@ func UpsertChangeTransferPolicyList(slice []promoterv1alpha1.ChangeTransferPolic
 	return slice
 }
 
+// UpsertChangeTransferPolicy adds or updates a ChangeTransferPolicy in the slice.
 func UpsertChangeTransferPolicy(policies []promoterv1alpha1.ChangeTransferPolicy, policy promoterv1alpha1.ChangeTransferPolicy) []promoterv1alpha1.ChangeTransferPolicy {
 	if len(policies) == 0 {
 		policies = append(policies, policy)
@@ -219,6 +230,7 @@ func UpsertChangeTransferPolicy(policies []promoterv1alpha1.ChangeTransferPolicy
 	return append(policies, policy)
 }
 
+// AreCommitStatusesPassing checks if all commit statuses in the provided slice are in the success phase.
 func AreCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) bool {
 	for _, status := range commitStatuses {
 		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {

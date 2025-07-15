@@ -1418,6 +1418,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Status.PullRequest).To(Not(BeNil()))
 				g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(ctpDev.Status.PullRequest.ID).To(Not(BeZero()))
+				g.Expect(ctpDev.Status.PullRequest.Url).To(ContainSubstring("localhost"))
 
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
@@ -1427,6 +1428,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpStaging.Status.PullRequest).To(Not(BeNil()))
 				g.Expect(ctpStaging.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(ctpStaging.Status.PullRequest.ID).To(Not(BeZero()))
+				g.Expect(ctpStaging.Status.PullRequest.Url).To(ContainSubstring("localhost"))
 
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
@@ -1436,6 +1438,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpProd.Status.PullRequest).To(Not(BeNil()))
 				g.Expect(ctpProd.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(ctpProd.Status.PullRequest.ID).To(Not(BeZero()))
+				g.Expect(ctpProd.Status.PullRequest.Url).To(ContainSubstring("localhost"))
 
 				// Dev PR should stay open because it has a proposed commit
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
@@ -1550,16 +1553,17 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(Not(BeNil()))
 				g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(promotionStrategy.Status.Environments[1].PullRequest.ID).To(Not(BeZero()))
+				g.Expect(promotionStrategy.Status.Environments[1].PullRequest.Url).To(ContainSubstring("localhost"))
 				g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
 				g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(promotionStrategy.Status.Environments[2].PullRequest.ID).To(Not(BeZero()))
+				g.Expect(promotionStrategy.Status.Environments[2].PullRequest.Url).To(ContainSubstring("localhost"))
 
 				g.Expect(len(promotionStrategy.Status.Environments) > 0).To(BeTrue())
 				g.Expect(len(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses) > 0).To(BeTrue())
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
 
 				for _, environment := range promotionStrategy.Status.Environments {
-
 					g.Expect(environment.Proposed.Dry.Author).To(Equal("testuser <testmail@test.com>"))
 					g.Expect(environment.Proposed.Dry.Subject).To(Equal("added fake manifests commit with timestamp"))
 					g.Expect(environment.Proposed.Dry.Body).To(Equal(""))
@@ -1796,6 +1800,20 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, &argoCDAppDev)).To(Succeed())
 			Expect(k8sClient.Create(ctx, &argoCDAppStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
+
+			By("Checking that the ArgoCDCommitStatus applicationsSelected field is correct")
+
+			Eventually(func() {
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Namespace: argocdCommitStatus.Namespace,
+					Name:      argocdCommitStatus.Name,
+				}, &argocdCommitStatus)).To(Succeed())
+				Expect(argocdCommitStatus.Status.ApplicationsSelected).To(HaveLen(3))
+				// Check that it's sorted by dev, stage, prod.
+				Expect(argocdCommitStatus.Status.ApplicationsSelected[0].Name).To(Equal(argoCDAppDev.Name))
+				Expect(argocdCommitStatus.Status.ApplicationsSelected[1].Name).To(Equal(argoCDAppStaging.Name))
+				Expect(argocdCommitStatus.Status.ApplicationsSelected[2].Name).To(Equal(argoCDAppProduction.Name))
+			})
 
 			By("Checking that the CommitStatus for each environment is created from ArgoCDCommitStatus")
 

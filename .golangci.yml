@@ -26,6 +26,7 @@ linters:
     - misspell
     - musttag
     - nakedret
+    - nestif
     - noctx
     - nolintlint
     - nosprintfhostport
@@ -33,6 +34,7 @@ linters:
     - perfsprint
     - prealloc
     - promlinter
+    - revive
     - testifylint
     - thelper
     - tparallel
@@ -52,6 +54,75 @@ linters:
     govet:
       enable:
         - fieldalignment
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: dot-imports
+          arguments:
+            - allowed-packages: [ "github.com/onsi/ginkgo/v2", "github.com/onsi/gomega" ]
+        - name: function-result-limit
+          exclude:
+            - "**/*_test.go" # Tests often have utility functions with a lot of return values.
+        - name: max-public-structs
+          exclude:
+            - "**/*_types.go" # For CRD types.
+        - name: redundant-import-alias
+          disabled: true
+        - name: struct-tag
+          arguments:
+            - "json,inline" # Used by kubebuilder.
+        - name: exported
+          exclude:
+            - "**/argocd_types.go" # The types here are only used internally.
+
+        # Good checks we should definitely enable later.
+        - name: add-constant
+          disabled: true # TODO: Got started with some exceptions, but there's a lot to do. Leaving it for later.
+          arguments:
+            - allow-ints: "0,1,8,10,16,64" # 0 and 1 are common length checks. 8, 10, 16, and 64 are common bases for number formatting.
+              # There are a lot of strings used in exec commands. They're easier to read inlined than as constants.
+              # If a command has a long flag available, switch to that before adding it here.
+              allow-strs: '"","kubectl","-f","git","add","checkout","clone","commit","config","fetch","origin","push","rev-parse","show","user.name","user.email","--abbrev-ref","--allow-empty","-B","--message","--no-patch","--progress","--set-upstream",".","..","-"'
+        - name: cognitive-complexity
+          disabled: true
+        - name: confusing-naming
+          disabled: true
+        - name: confusing-results
+          disabled: true
+        - name: import-shadowing
+          disabled: true
+
+        # Good checks we should probably enable later.
+        - name: blank-imports
+          disabled: true
+        - name: cyclomatic
+          disabled: true
+        - name: deep-exit
+          disabled: true
+        - name: flag-parameter
+          disabled: true
+        - name: function-length
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: unused-parameter
+          disabled: true
+        - name: unchecked-type-assertion
+          disabled: true
+
+        # Probably not worth bothering with.
+        - name: import-alias-naming
+          disabled: true # Might be nice to standardize later, but not a priority now.
+        - name: comment-spacings
+          disabled: true
+        - name: line-length-limit
+          disabled: true # Monitors are wide.
+        - name: unhandled-error
+          disabled: true # This is handled by errcheck.
+        - name: unused-receiver
+          disabled: true
+        - name: var-naming
+          disabled: true
   exclusions:
     rules:
       - linters:

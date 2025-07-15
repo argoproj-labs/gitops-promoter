@@ -47,19 +47,22 @@ spec:
             description: PullRequestSpec defines the desired state of PullRequest
             properties:
               description:
-                description: Body the description body of the pull/merge request
+                description: Description is the description body of the pull/merge
+                  request
                 type: string
               gitRepositoryRef:
-                description: RepositoryReference what repository to open the PR on.
+                description: RepositoryReference indicates what repository to open
+                  the PR on.
                 properties:
                   name:
+                    description: Name is the name of the object to refer to.
                     type: string
                 required:
                 - name
                 type: object
               sourceBranch:
-                description: Base the git reference that we are merging into Head
-                  ---> Base
+                description: SourceBranch is the base the git reference that we are
+                  merging into Head ---> Base
                 type: string
                 x-kubernetes-validations:
                 - message: Value is immutable
@@ -73,8 +76,8 @@ spec:
                 - open
                 type: string
               targetBranch:
-                description: Head the git reference we are merging from Head --->
-                  Base
+                description: TargetBranch is the head the git reference we are merging
+                  from Head ---> Base
                 type: string
                 x-kubernetes-validations:
                 - message: Value is immutable
@@ -167,6 +170,9 @@ spec:
                 - closed
                 - merged
                 - open
+                type: string
+              url:
+                description: Url is the URL of the pull request.
                 type: string
             type: object
         type: object

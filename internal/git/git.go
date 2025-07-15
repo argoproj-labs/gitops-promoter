@@ -32,6 +32,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 )
 
+// EnvironmentOperations provides methods for interacting with a specific clone of a Git repository for an environment.
 type EnvironmentOperations struct {
 	gap     scms.GitOperationsProvider
 	gitRepo *v1alpha1.GitRepository
@@ -40,7 +41,7 @@ type EnvironmentOperations struct {
 	activeBranch string
 }
 
-// HydratorMetadata contains metadata about the commit that is used to hydrate a branch. It is used to store
+// HydratorMetadata contains metadata about the commit that is used to hydrate a branch.
 type HydratorMetadata struct {
 	// RepoURL is the URL of the repository where the commit is located.
 	RepoURL string `json:"repoURL,omitempty"`
@@ -76,7 +77,7 @@ func NewEnvironmentOperations(ctx context.Context, k8sClient client.Client, gap 
 	return &gitOperations, nil
 }
 
-// CloneRepo clones the gitRepo to a temporary directory if needed does nothing if the repo is already cloned.
+// CloneRepo clones the gitRepo to a temporary directory if needed. Does nothing if the repo is already cloned.
 func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.activeBranch) != "" {
 		// Already cloned
@@ -123,11 +124,15 @@ func (g *EnvironmentOperations) CloneRepo(ctx context.Context) error {
 	return nil
 }
 
+// BranchShas holds the hydrated and dry commit SHAs for a branch.
 type BranchShas struct {
-	Dry      string
+	// Dry is the SHA of the commit that was used as the dry source for hydration.
+	Dry string
+	// Hydrated is the SHA of the commit on the hydrated branch.
 	Hydrated string
 }
 
+// GetBranchShas checks out the given branch, pulls the latest changes, and returns the hydrated and dry SHAs.
 func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string) (BranchShas, error) {
 	logger := log.FromContext(ctx)
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -185,6 +190,7 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string
 	return shas, nil
 }
 
+// GetShaMetadataFromFile retrieves commit metadata from the hydrator.metadata file for a given SHA.
 func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
 	logger := log.FromContext(ctx)
 
@@ -219,6 +225,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 	return commitState, nil
 }
 
+// GetShaMetadataFromGit retrieves commit metadata by running git commands for a given SHA.
 func (g *EnvironmentOperations) GetShaMetadataFromGit(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
 	// logger := log.FromContext(ctx)
 
@@ -277,6 +284,7 @@ func (g *EnvironmentOperations) GetShaBody(ctx context.Context, sha string) (str
 	return strings.TrimSpace(stdout), nil
 }
 
+// GetShaAuthor retrieves the author of a commit given its SHA.
 func (g *EnvironmentOperations) GetShaAuthor(ctx context.Context, sha string) (string, error) {
 	logger := log.FromContext(ctx)
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -294,6 +302,7 @@ func (g *EnvironmentOperations) GetShaAuthor(ctx context.Context, sha string) (s
 	return strings.TrimSpace(stdout), nil
 }
 
+// GetShaSubject retrieves the subject of a commit given its SHA.
 func (g *EnvironmentOperations) GetShaSubject(ctx context.Context, sha string) (string, error) {
 	logger := log.FromContext(ctx)
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -311,6 +320,7 @@ func (g *EnvironmentOperations) GetShaSubject(ctx context.Context, sha string) (
 	return strings.TrimSpace(stdout), nil
 }
 
+// GetShaTime retrieves the commit time of a commit given its SHA.
 func (g *EnvironmentOperations) GetShaTime(ctx context.Context, sha string) (v1.Time, error) {
 	logger := log.FromContext(ctx)
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -334,6 +344,7 @@ func (g *EnvironmentOperations) GetShaTime(ctx context.Context, sha string) (v1.
 	return v1.Time{Time: cTime}, nil
 }
 
+// PromoteEnvironmentWithMerge merges the next environment branch into the current environment branch and pushes the result.
 func (g *EnvironmentOperations) PromoteEnvironmentWithMerge(ctx context.Context, environmentBranch, environmentNextBranch string) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Promoting environment with merge", "environmentBranch", environmentBranch, "environmentNextBranch", environmentNextBranch)
@@ -435,6 +446,7 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	return false, nil
 }
 
+// LsRemote returns a map of branch names to SHAs for the given branches using git ls-remote.
 func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1alpha1.GitRepository, branches ...string) (map[string]string, error) {
 	logger := log.FromContext(ctx)
 
@@ -467,10 +479,12 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 	return shas, nil
 }
 
+// runCmd runs a git command in the given directory with the provided arguments and returns stdout, stderr, and error.
 func (g *EnvironmentOperations) runCmd(ctx context.Context, directory string, args ...string) (string, string, error) {
 	return runCmd(ctx, g.gap, directory, args...)
 }
 
+// runCmd runs a git command with the provided arguments and returns stdout, stderr, and error.
 func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory string, args ...string) (string, string, error) {
 	user, err := gap.GetUser(ctx)
 	if err != nil {
@@ -544,6 +558,7 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	return false, nil
 }
 
+// MergeWithOursStrategy merges the proposed branch into the active branch using the "ours" strategy.
 func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
 	logger := log.FromContext(ctx)
 
