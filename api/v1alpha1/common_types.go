@@ -46,11 +46,18 @@ type ObjectReference struct {
 
 // GitHubRepo is a repository in GitHub, identified by its owner and name.
 type GitHubRepo struct {
-	// Owner is the owner of the repository.
+	// These validation rules are based on unofficial documentation and may need to be relaxed in the future.
+	// https://github.com/dead-claudia/github-limits
+
+	// Owner is the owner of the repository, which can be a user or an organization.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=39
+	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9][a-zA-Z0-9\-]*$
 	Owner string `json:"owner"`
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=100
+	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9_\-\.]+$
 	Name string `json:"name"`
 }
 
