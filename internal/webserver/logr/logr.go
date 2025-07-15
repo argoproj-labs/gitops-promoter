@@ -67,57 +67,59 @@ func Ginlogr(logger logr.Logger, timeFormat string, utc bool) gin.HandlerFunc {
 func RecoveryWithLogr(logger logr.Logger, timeFormat string, utc, stack bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
-			if err := recover(); err != nil {
-				time := time.Now()
-				if utc {
-					time = time.UTC()
-				}
+			err := recover()
+			if err == nil {
+				return
+			}
+			time := time.Now()
+			if utc {
+				time = time.UTC()
+			}
 
-				// Check for a broken connection, as it is not really a
-				// condition that warrants a panic stack trace.
-				var brokenPipe bool
-				if ne, ok := err.(*net.OpError); ok {
-					var se *os.SyscallError
-					if errors.As(ne.Err, &se) {
-						if strings.Contains(strings.ToLower(se.Error()), "broken pipe") ||
-							strings.Contains(strings.ToLower(se.Error()), "connection reset by peer") {
-							brokenPipe = true
-						}
+			// Check for a broken connection, as it is not really a
+			// condition that warrants a panic stack trace.
+			var brokenPipe bool
+			if ne, ok := err.(*net.OpError); ok {
+				var se *os.SyscallError
+				if errors.As(ne.Err, &se) {
+					if strings.Contains(strings.ToLower(se.Error()), "broken pipe") ||
+						strings.Contains(strings.ToLower(se.Error()), "connection reset by peer") {
+						brokenPipe = true
 					}
 				}
-
-				httpRequest, _ := httputil.DumpRequest(c.Request, false)
-
-				e, ok := err.(error)
-				if !ok {
-					e = fmt.Errorf("%v", err)
-				}
-
-				switch {
-				case brokenPipe:
-					logger.Error(err.(*os.SyscallError), c.Request.URL.Path, //nolint: forcetypeassert
-						"time", time.Format(timeFormat),
-						"request", string(httpRequest),
-					)
-					// If the connection is dead, we can't write a status to it.
-					c.Error(e) //nolint: errcheck
-					c.Abort()
-					return
-				case stack:
-					logger.Error(e, "[Recovery from panic]",
-						"time", time.Format(timeFormat),
-						"request", string(httpRequest),
-						"stack", string(debug.Stack()),
-					)
-				default:
-					logger.Error(e, "[Recovery from panic]",
-						"time", time.Format(timeFormat),
-						"request", string(httpRequest),
-					)
-				}
-
-				c.AbortWithStatus(http.StatusInternalServerError)
 			}
+
+			httpRequest, _ := httputil.DumpRequest(c.Request, false)
+
+			e, ok := err.(error)
+			if !ok {
+				e = fmt.Errorf("%v", err)
+			}
+
+			switch {
+			case brokenPipe:
+				logger.Error(err.(*os.SyscallError), c.Request.URL.Path, //nolint: forcetypeassert
+					"time", time.Format(timeFormat),
+					"request", string(httpRequest),
+				)
+				// If the connection is dead, we can't write a status to it.
+				c.Error(e) //nolint: errcheck
+				c.Abort()
+				return
+			case stack:
+				logger.Error(e, "[Recovery from panic]",
+					"time", time.Format(timeFormat),
+					"request", string(httpRequest),
+					"stack", string(debug.Stack()),
+				)
+			default:
+				logger.Error(e, "[Recovery from panic]",
+					"time", time.Format(timeFormat),
+					"request", string(httpRequest),
+				)
+			}
+
+			c.AbortWithStatus(http.StatusInternalServerError)
 		}()
 		c.Next()
 	}
