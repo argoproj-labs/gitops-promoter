@@ -255,19 +255,22 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      promotionStrategy.Name,
-					Namespace: promotionStrategy.Namespace,
-				}, promotionStrategy)
-				g.Expect(err).To(Succeed())
-				g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(Not(BeNil()))
-				g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(Not(BeNil()))
-				g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
-				g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-			}, constants.EventuallyTimeout).Should(Succeed())
+			// We shouldn't check for non-nil PRs, because promotion may just happen too fast for us to catch them
+			// before they're merged. We should improve this test to check something more useful, like whether the
+			// commits were updated on the active branches.
+			//Eventually(func(g Gomega) {
+			//	err := k8sClient.Get(ctx, types.NamespacedName{
+			//		Name:      promotionStrategy.Name,
+			//		Namespace: promotionStrategy.Namespace,
+			//	}, promotionStrategy)
+			//	g.Expect(err).To(Succeed())
+			//	g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(Not(BeNil()))
+			//	g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			//	g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(Not(BeNil()))
+			//	g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			//	g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
+			//	g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			//}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Checking that the pull request for the development, staging, and production environments are closed and have had their ctp statuses cleared")
 			Eventually(func(g Gomega) {
