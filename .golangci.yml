@@ -26,6 +26,7 @@ linters:
     - misspell
     - musttag
     - nakedret
+    - nestif
     - noctx
     - nolintlint
     - nosprintfhostport
