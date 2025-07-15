@@ -160,6 +160,7 @@ func runController(
 		Namespace:             controllerNamespace,
 		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
 		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
+		Scheme:                scheme,
 	}
 
 	// Create the provider first, then the manager with the provider
@@ -287,6 +288,9 @@ func runController(
 	whr := webhookreceiver.NewWebhookReceiver(localManager)
 
 	g, ctx := errgroup.WithContext(processSignals)
+
+	// Initialize the provider controller with the manager
+	provider.SetupWithManager(ctx, mcMgr)
 
 	g.Go(func() error {
 		setupLog.Info("starting manager")

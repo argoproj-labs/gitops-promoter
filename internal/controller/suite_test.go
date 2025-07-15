@@ -28,7 +28,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"runtime"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -38,8 +38,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
@@ -86,6 +86,7 @@ var (
 	cancel           context.CancelFunc
 	ctx              context.Context
 	gitServerPort    string
+	scheme           = &runtime.Scheme{}
 )
 
 func TestControllers(t *testing.T) {
@@ -109,10 +110,10 @@ var _ = BeforeSuite(func() {
 	var err error
 
 	//+kubebuilder:scaffold:scheme
-	err = promoterv1alpha1.AddToScheme(scheme.Scheme)
+	err = promoterv1alpha1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = argocd.AddToScheme(scheme.Scheme)
+	err = argocd.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	By("setting up git server")
@@ -151,7 +152,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
-		Scheme: scheme.Scheme,
+		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
@@ -719,14 +720,14 @@ func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client)
 		// Note that you must have the required binaries setup under the bin directory to perform
 		// the tests directly. When we run make test it will be setup and used automatically.
 		BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
-			fmt.Sprintf("1.31.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
+			fmt.Sprintf("1.31.0-%s-%s", goruntime.GOOS, goruntime.GOARCH)),
 	}
 
 	cfg, err := env.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	cl, err := client.New(cfg, client.Options{Scheme: scheme.Scheme})
+	cl, err := client.New(cfg, client.Options{Scheme: scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cl).NotTo(BeNil())
 
