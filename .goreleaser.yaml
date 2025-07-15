@@ -14,6 +14,7 @@ before:
     - go mod tidy
     - go mod download
     - make manifests-release IMAGE_TAG={{ .Tag }}
+    - make build-dashboard # Populate the 'static' directory with the dashboard files.
 
 builds:
   - id: gitops-promoter
