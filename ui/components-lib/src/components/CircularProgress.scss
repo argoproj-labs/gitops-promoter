@@ -1,0 +1,8 @@
+.circular-progress {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.circular-progress__fg {
+  transition: stroke-dashoffset 0.5s;
+} 

@@ -1,0 +1,125 @@
+@use '../styles/colors' as *;
+
+.card-checks-list {
+  margin-top: 10px;
+}
+
+.card-check-item {
+  display: flex;
+  align-items: center;
+  color: #495763;
+  font-weight: 400;
+  padding: 5px 0;
+  gap: 8px;
+  padding-right: 16px;
+}
+
+.card-check-icon {
+  display: flex;
+  align-items: center;
+}
+
+.card-check-name {
+  font-size: 13px;
+  font-weight: 400;
+  margin-right: 5px;
+  margin-left: -5px;
+}
+
+.card-label {
+  color: $argo-color-gray-6;
+  font-weight: 400;
+  font-size: 13px;
+  margin-right: 8px;
+  min-width: 120px;
+  flex-shrink: 0;
+  font-family: 'Heebo', sans-serif;
+}
+
+.card-value {
+  color: $argo-color-gray-7;
+  font-size: 13px;
+  font-family: 'Heebo', sans-serif;
+  font-weight: 400;
+  margin-left: 8px;
+  vertical-align: middle;
+
+}
+
+.card-row {
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: flex-start;
+
+}
+
+.card-value-field {
+  color: $argo-color-gray-7;
+  font-size: 13px;
+  font-family: 'Heebo', sans-serif;
+}
+
+a.card-value-field,
+a.card-value-field:link,
+a.card-value-field:visited,
+a.card-value-field:active,
+a.card-value-field:focus,
+a.card-value-field:hover {
+  color: $argo-color-gray-7 !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px !important;
+  font-size: 13px;
+  font-family: 'Heebo', sans-serif;
+}
+
+.card-value-field--truncate {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  flex: 1 1 auto;
+  margin-right: 15px;
+  padding-right: 28px;
+  width: 170px;
+
+}
+
+.card-expand-icon-wrapper {
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.card-expand-icon {
+  font-size: 16px;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.card-value--with-expand {
+  position: relative;
+  
+}
+
+.card-check-link, .card-check-link:link, .card-check-link:visited, .card-check-link:active, .card-check-link:focus, .card-check-link:hover {
+  color: $argo-color-gray-6;
+  font-size: 13px;
+  margin-left: 8px;
+  text-decoration: underline !important;
+  text-underline-offset: 2px !important;
+  font-family: 'Heebo', sans-serif;
+  margin-left: auto;
+} 
+
+.card__progress-label {
+  margin-left: 52px;
+  font-size: 13px;
+  color: $argo-color-gray-5;
+  font-weight: 400;
+  white-space: nowrap;
+
+}

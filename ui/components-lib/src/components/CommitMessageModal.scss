@@ -1,0 +1,122 @@
+@use '../styles/colors' as *;
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: white;
+  padding: 24px;
+  border-radius: 8px;
+  max-width: 80vw;
+  max-height: 80vh;
+  width: 700px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0;
+
+  &:hover {
+    color: #111827;
+  }
+}
+
+.modal-body {
+  overflow-y: auto;
+
+  pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    background-color: #f9fafb;
+    padding: 16px;
+    border-radius: 6px;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    font-size: 12px;
+    color: #1f2937;
+    
+    margin: 0;
+  }
+}
+
+.modal-title--black {
+  color: $argo-color-gray-7;
+}
+
+.modal-commit-subject {
+  font-weight: 600;
+  font-size: 18px;
+  margin-bottom: 6px;
+  color: $argo-color-gray-7;
+}
+
+.modal-commit-author {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  color: $argo-color-gray-7;
+  font-size: 14px;
+}
+
+.modal-commit-message {
+  border: 1px solid #e5e7eb;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: $argo-color-gray-7;
+  margin: 0;
+}
+
+.modal-trailer-box {
+  margin-top: 16px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  font-size: 12px;
+  color: #6b7280;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.modal-trailer-label {
+  margin-top: 18px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}

@@ -27,6 +27,7 @@ import (
 	"syscall"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
+	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
 	"go.uber.org/zap/zapcore"
 
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -323,14 +324,55 @@ func runController(
 	return nil
 }
 
-func newDashboardCommand() *cobra.Command {
-	return &cobra.Command{
+func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
+	var port int
+
+	cmd := &cobra.Command{
 		Use:   "dashboard",
 		Short: "GitOps Promoter dashboard",
-		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Println("Dashboard is not implemented yet.")
+		RunE: func(cmd *cobra.Command, args []string) error {
+			restConfig, err := clientConfig.ClientConfig()
+			if err != nil {
+				return fmt.Errorf("failed to get client config: %w", err)
+			}
+
+			// Add manager for the dashboard
+			mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
+				Scheme: scheme,
+				Metrics: metricsserver.Options{
+					BindAddress: ":9082",
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to create manager: %w", err)
+			}
+
+			// Create single signal handler
+			ctx := ctrl.SetupSignalHandler()
+
+			ws := webserver.NewWebServer(mgr)
+
+			if err = ws.SetupWithManager(mgr); err != nil {
+				panic("unable to create WebServer controller")
+			}
+
+			// Start manager in background
+			go func() {
+				if err := mgr.Start(ctx); err != nil {
+					panic(err)
+				}
+			}()
+
+			// Make port configurable
+			setupLog.Info("Dashboard starting at", "port", fmt.Sprintf(" http://localhost:%d", port))
+
+			return ws.StartDashboard(ctx, fmt.Sprintf(":%d", port))
 		},
 	}
+
+	// Add default port flag
+	cmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to run the dashboard on")
+	return cmd
 }
 
 func newCommand() *cobra.Command {
@@ -360,7 +402,7 @@ func newCommand() *cobra.Command {
 
 	clientConfig = addKubectlFlags(cmd.PersistentFlags())
 	cmd.AddCommand(newControllerCommand(clientConfig))
-	cmd.AddCommand(newDashboardCommand())
+	cmd.AddCommand(newDashboardCommand(clientConfig))
 	return cmd
 }
 

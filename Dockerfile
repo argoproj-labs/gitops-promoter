@@ -1,3 +1,27 @@
+# Build the dashboard UI
+FROM node:18-bullseye-slim AS dashboard-builder
+WORKDIR /workspace
+
+# Copy package files first for better layer caching
+COPY ui/components-lib/package*.json ./ui/components-lib/
+COPY ui/dashboard/package*.json ./ui/dashboard/
+
+# Copy all UI source files
+COPY ui/ ./ui/
+
+# Install components-lib dependencies first (library - no lock file)
+WORKDIR /workspace/ui/components-lib
+RUN npm install
+
+# Install dashboard dependencies (application - has lock file)
+WORKDIR /workspace/ui/dashboard
+RUN npm ci
+
+# Build the dashboard
+WORKDIR /workspace/ui/dashboard
+RUN npx vite build
+RUN mkdir -p ../web/static && cp -r dist/* ../web/static/
+
 # Build the gitops-promoter binary
 FROM golang:1.24 AS builder
 ARG TARGETOS
@@ -16,6 +40,10 @@ COPY cmd/main.go cmd/main.go
 COPY api/ api/
 COPY internal/ internal/
 COPY hack/git/promoter_askpass.sh hack/git/promoter_askpass.sh
+COPY ui/web/ ./ui/web/
+
+# Copy the built static files from dashboard-builder for embedding
+COPY --from=dashboard-builder /workspace/ui/web/static ./ui/web/static
 
 # Build
 # the GOARCH has not a default value to allow the binary be built according to the host where the command
@@ -32,8 +60,9 @@ WORKDIR /
 RUN mkdir /git
 COPY --from=builder /workspace/gitops-promoter .
 COPY --from=builder /workspace/hack/git/promoter_askpass.sh /git/promoter_askpass.sh
+COPY --from=dashboard-builder /workspace/ui/web/static ./ui/web/static
 ENV PATH="${PATH}:/git"
 RUN echo "${PATH}" >> /etc/bash.bashrc
 USER 65532:65532
 
-ENTRYPOINT ["/gitops-promoter", "controller"]
+ENTRYPOINT ["/gitops-promoter"]

@@ -35,7 +35,51 @@ install.yaml
 
 junit.xml
 
-./install.yaml
 release_dist
 
 venv
+
+node_modules/
+
+# TypeScript
+dist/
+build/
+out/
+*.tsbuildinfo
+*.js
+*.d.ts
+*.d.ts.map
+*.js.map
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+# keep lock files for applications
+ui/components-lib/package-lock.json
+yarn.lock
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Mac/OSX
+.DS_Store
+
+# Coverage
+coverage/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+.env
+.vite/
+
+# Built UI static files
+ui/web/static/

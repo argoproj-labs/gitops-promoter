@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "jsx": "react",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": false,
+    "baseUrl": ".",
+    "paths": {
+      "@components-lib/*": ["../components-lib/src/*"],
+      "@shared/*": ["../shared/src/*"]
+    }
+  },
+  "references": [
+    { "path": "../components-lib" },
+    { "path": "../shared" }
+  ],
+  "include": ["./index.tsx"]
+} 

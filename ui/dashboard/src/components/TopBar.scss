@@ -1,0 +1,47 @@
+@use '../../../components-lib/src/styles/colors' as *;
+
+.topbar {
+    display: flex;
+    align-items: center;
+    background: #0f2733;
+    color: white;
+    padding: 10px 0;
+    position: relative;
+
+    &__brand {
+        display: flex;
+        align-items: center;
+        text-decoration: none;
+        margin-left: 10px;
+    }
+
+    &__logo {
+        width: 32px;
+        height: 32px;
+        margin-right: 1rem;
+    }
+
+    &__title {
+        display: flex;
+        align-items: center;
+        font-weight: 600;
+        font-size: 22px;
+        width: 200px;
+    }
+
+    &__label {
+        color: #b0bac5;
+        font-size: 10px;
+        font-weight: 600;
+        margin-top: 2px;
+    }
+
+    &__center {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #b0bac5;
+        font-size: 20px;
+        font-weight: 600;
+    }
+} 
