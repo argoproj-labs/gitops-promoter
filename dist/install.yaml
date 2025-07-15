@@ -942,7 +942,6 @@ spec:
             - name
             - phase
             - sha
-            - url
             type: object
           status:
             description: CommitStatusStatus defines the observed state of CommitStatus
