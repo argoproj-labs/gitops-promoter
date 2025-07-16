@@ -934,6 +934,7 @@ spec:
               url:
                 description: Url is a URL that the user can follow to see more details
                   about the status
+                pattern: ^https?://.*$
                 type: string
             required:
             - description
@@ -941,7 +942,6 @@ spec:
             - name
             - phase
             - sha
-            - url
             type: object
           status:
             description: CommitStatusStatus defines the observed state of CommitStatus

@@ -48,7 +48,9 @@ type CommitStatusSpec struct {
 	// (Bitbucket: INPROGRESS, STOPPED, SUCCESSFUL, FAILED)
 
 	// Url is a URL that the user can follow to see more details about the status
-	Url string `json:"url"`
+	// +kubebuilder:validation:Pattern="^https?://.*$"
+	// +kubebuilder:validation:Optional
+	Url string `json:"url,omitempty"`
 }
 
 // CommitStatusStatus defines the observed state of CommitStatus
