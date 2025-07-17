@@ -1902,6 +1902,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the development Argo CD application to synced and health we should close staging PR")
+			lastTransitionTime := metav1.NewTime(time.Now())
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
@@ -1912,7 +1913,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				argoCDAppDev.Status.Sync.Status = argocd.SyncStatusCodeSynced
 				argoCDAppDev.Status.Health.Status = argocd.HealthStatusHealthy
 				argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
-				argoCDAppDev.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
+				argoCDAppDev.Status.Health.LastTransitionTime = &lastTransitionTime
 				err = k8sClient.Update(ctx, &argoCDAppDev)
 				Expect(err).To(Succeed())
 
@@ -1934,8 +1935,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the staging Argo CD application to synced and health we should close production PR")
 
-			timeDelay := time.Now().Add(10 * time.Second)
-			waitedForDelay := false
+			lastTransitionTime = metav1.NewTime(time.Now())
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
@@ -1946,12 +1946,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				argoCDAppStaging.Status.Sync.Status = argocd.SyncStatusCodeSynced
 				argoCDAppStaging.Status.Health.Status = argocd.HealthStatusHealthy
 				argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
-				if time.Now().After(timeDelay) {
-					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
-					waitedForDelay = true
-				} else {
-					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now()}
-				}
+				argoCDAppStaging.Status.Health.LastTransitionTime = &lastTransitionTime
 				err = k8sClient.Update(ctx, &argoCDAppStaging)
 				Expect(err).To(Succeed())
 
@@ -1963,7 +1958,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
-			Expect(waitedForDelay).To(BeTrue())
+			Expect(time.Since(lastTransitionTime.Time) >= 5*time.Second).To(BeTrue(), "We should have waited for the delay to ensure the application health wasn't flapping.")
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
