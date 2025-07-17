@@ -62,6 +62,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// lastTransitionTimeThreshold is the threshold for the last transition time to consider an application healthy.
+// This helps avoid premature acceptance of a transitive healthy state.
+const lastTransitionTimeThreshold = 5 * time.Second
+
 // var syncMap sync.Map
 var (
 	rwMutex sync.RWMutex
@@ -187,6 +191,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to get head shas for target branches: %w", err)
 	}
 
+	var requeueForLastTransition = time.Duration(0)
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
 		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
 
@@ -194,7 +199,10 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		if !ok {
 			return ctrl.Result{}, fmt.Errorf("failed to resolve target branch %q: %w", targetBranch, err)
 		}
-		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha, mostRecentLastTransitionTime)
+		resolvedPhase, desc, requeueIn := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha, mostRecentLastTransitionTime)
+		if requeueIn > 0 && (requeueForLastTransition == 0 || requeueIn < requeueForLastTransition) {
+			requeueForLastTransition = requeueIn
+		}
 
 		err = r.updateAggregatedCommitStatus(ctx, &promotionStrategy, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
 		if err != nil {
@@ -210,6 +218,11 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	requeueDuration, err := r.SettingsMgr.GetArgoCDCommitStatusRequeueDuration(ctx)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDCommitStatus requeue duration: %w", err)
+	}
+
+	if requeueForLastTransition > 0 && requeueForLastTransition < requeueDuration {
+		logger.V(4).Info("Requeueing for last transition time", "requeueIn", requeueForLastTransition)
+		requeueDuration = requeueForLastTransition
 	}
 
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil // Timer for now :(
@@ -317,7 +330,7 @@ func sortApplicationsSelected(promotionStrategy *promoterv1alpha1.PromotionStrat
 	})
 }
 
-func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(appsInEnvironment []*aggregate, resolvedSha string, mostRecentLastTransitionTime *metav1.Time) (promoterv1alpha1.CommitStatusPhase, string) {
+func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(appsInEnvironment []*aggregate, resolvedSha string, mostRecentLastTransitionTime *metav1.Time) (promoterv1alpha1.CommitStatusPhase, string, time.Duration) {
 	var desc string
 	resolvedPhase := promoterv1alpha1.CommitPhasePending
 	pending := 0
@@ -348,11 +361,13 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(ap
 
 	// Don't consider the aggregate status healthy until 5s after the most recent transition.
 	// This helps avoid prematurely accepting a transitive healthy state.
-	if mostRecentLastTransitionTime != nil && time.Since(mostRecentLastTransitionTime.Time) < 5*time.Second {
-		return promoterv1alpha1.CommitPhasePending, desc
+	if mostRecentLastTransitionTime != nil && time.Since(mostRecentLastTransitionTime.Time) < lastTransitionTimeThreshold {
+		// Request a requeue after the threshold has passed.
+		requeueIn := lastTransitionTimeThreshold - time.Since(mostRecentLastTransitionTime.Time)
+		return promoterv1alpha1.CommitPhasePending, desc, requeueIn
 	}
 
-	return resolvedPhase, desc
+	return resolvedPhase, desc, time.Duration(0)
 }
 
 func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregateItem []*aggregate) *metav1.Time {
