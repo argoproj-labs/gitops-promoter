@@ -87,6 +87,7 @@ type ArgoCDCommitStatusReconciler struct {
 	localClient        client.Client
 }
 
+// URLTemplateData is the data passed to the URLTemplate in the ArgoCDCommitStatus.
 type URLTemplateData struct {
 	Environment        string
 	ArgoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
