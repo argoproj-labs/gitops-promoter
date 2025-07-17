@@ -210,7 +210,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 				timeUntilThreshold := lastTransitionTimeThreshold - timeSinceLastTransition
 				if timeUntilThreshold > requeueForLastTransition {
-					// We take the higher of the requeue times so we the next reconcile is after all transition times
+					// We take the higher of the requeue times so that the next reconcile is after all transition times
 					// meet the threshold.
 					requeueForLastTransition = timeUntilThreshold
 				}
