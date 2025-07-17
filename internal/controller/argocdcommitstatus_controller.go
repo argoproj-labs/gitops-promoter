@@ -87,6 +87,11 @@ type ArgoCDCommitStatusReconciler struct {
 	localClient        client.Client
 }
 
+type URLTemplateData struct {
+	Environment        string
+	ArgoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
+}
+
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses/finalizers,verbs=update
@@ -125,7 +130,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to parse label selector: %w", err)
 	}
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
-	var apps argocd.ApplicationList
+	apps := make(map[string]argocd.ApplicationList)
 
 	// list clusters so we can query argocd applications from all clusters
 	clusters := r.KubeConfigProvider.ListClusters()
@@ -146,10 +151,14 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 			return ctrl.Result{}, fmt.Errorf("failed to list ArgoCDApplications: %w", err)
 		}
 
-		apps.Items = append(apps.Items, clusterArgoCDApps.Items...)
+		apps[clusterName] = clusterArgoCDApps
 	}
 
-	logger.V(4).Info("Found Applications", "appCount", len(apps.Items))
+	appCount := 0
+	for _, clusterApps := range apps {
+		appCount += len(clusterApps.Items)
+	}
+	logger.V(4).Info("Found Applications", "appCount", appCount)
 
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
 	err = r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy)
@@ -218,52 +227,55 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShasForBranches(ctx context.Contex
 // groupArgoCDApplicationsWithPhase returns a map. The key is a branch name. The value is a list of apps configured for that target branch, along with the commit status for that one app.
 // As a side-effect, this function updates argoCDCommitStatus to represent the aggregate status
 // of all matching apps.
-func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps argocd.ApplicationList) (map[string][]*aggregate, error) {
+func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps map[string]argocd.ApplicationList) (map[string][]*aggregate, error) {
 	aggregates := map[string][]*aggregate{}
 	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
 	repo := ""
 
-	for _, application := range apps.Items {
-		if application.Spec.SourceHydrator == nil {
-			return map[string][]*aggregate{}, fmt.Errorf("application %s/%s does not have a SourceHydrator configured", application.GetNamespace(), application.GetName())
-		}
+	for clusterName, clusterApps := range apps {
+		for _, application := range clusterApps.Items {
+			if application.Spec.SourceHydrator == nil {
+				return map[string][]*aggregate{}, fmt.Errorf("application %s/%s does not have a SourceHydrator configured", application.GetNamespace(), application.GetName())
+			}
 
-		// Check that all the applications are configured with the same repo
-		if repo == "" {
-			repo = application.Spec.SourceHydrator.DrySource.RepoURL
-		} else if repo != application.Spec.SourceHydrator.DrySource.RepoURL {
-			return map[string][]*aggregate{}, errors.New("all applications must have the same repo configured")
-		}
+			// Check that all the applications are configured with the same repo
+			if repo == "" {
+				repo = application.Spec.SourceHydrator.DrySource.RepoURL
+			} else if repo != application.Spec.SourceHydrator.DrySource.RepoURL {
+				return map[string][]*aggregate{}, errors.New("all applications must have the same repo configured")
+			}
 
-		aggregateItem := &aggregate{
-			application: &application,
-		}
+			aggregateItem := &aggregate{
+				application: &application,
+			}
 
-		phase := promoterv1alpha1.CommitPhasePending
-		if application.Status.Health.Status == argocd.HealthStatusHealthy && application.Status.Sync.Status == argocd.SyncStatusCodeSynced {
-			phase = promoterv1alpha1.CommitPhaseSuccess
-		} else if application.Status.Health.Status == argocd.HealthStatusDegraded {
-			phase = promoterv1alpha1.CommitPhaseFailure
-		}
+			phase := promoterv1alpha1.CommitPhasePending
+			if application.Status.Health.Status == argocd.HealthStatusHealthy && application.Status.Sync.Status == argocd.SyncStatusCodeSynced {
+				phase = promoterv1alpha1.CommitPhaseSuccess
+			} else if application.Status.Health.Status == argocd.HealthStatusDegraded {
+				phase = promoterv1alpha1.CommitPhaseFailure
+			}
 
-		// This is an in memory version of the desired CommitStatus for a single application, this will be used to figure out
-		// the aggregated phase of all applications for a particular environment
-		aggregateItem.commitStatus = &promoterv1alpha1.CommitStatus{
-			Spec: promoterv1alpha1.CommitStatusSpec{
-				Sha:   application.Status.Sync.Revision,
-				Phase: phase,
-			},
-		}
-		argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.ApplicationsSelected{
-			Namespace:          application.GetNamespace(),
-			Name:               application.GetName(),
-			Phase:              phase,
-			Sha:                application.Status.Sync.Revision,
-			LastTransitionTime: application.Status.Health.LastTransitionTime,
-			Environment:        application.Spec.SourceHydrator.SyncSource.TargetBranch,
-		})
+			// This is an in memory version of the desired CommitStatus for a single application, this will be used to figure out
+			// the aggregated phase of all applications for a particular environment
+			aggregateItem.commitStatus = &promoterv1alpha1.CommitStatus{
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Sha:   application.Status.Sync.Revision,
+					Phase: phase,
+				},
+			}
+			argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.ApplicationsSelected{
+				Namespace:          application.GetNamespace(),
+				Name:               application.GetName(),
+				Phase:              phase,
+				Sha:                application.Status.Sync.Revision,
+				LastTransitionTime: application.Status.Health.LastTransitionTime,
+				Environment:        application.Spec.SourceHydrator.SyncSource.TargetBranch,
+				ClusterName:        clusterName,
+			})
 
-		aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], aggregateItem)
+			aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], aggregateItem)
+		}
 	}
 
 	sortApplicationsSelected(promotionStrategy, argoCDCommitStatus)
@@ -460,8 +472,22 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			Name:                commitStatusName,
 			Description:         desc,
 			Phase:               phase,
-			// Url:                 "https://example.com",
 		},
+	}
+
+	// Render URL from template if it exists, but don't block commit status update if it fails
+	if argoCDCommitStatus.Spec.URLTemplate != "" {
+		data := URLTemplateData{
+			Environment:        targetBranch,
+			ArgoCDCommitStatus: argoCDCommitStatus,
+		}
+		url, err := utils.RenderStringTemplate(argoCDCommitStatus.Spec.URLTemplate, data)
+		if err == nil {
+			logger.Info("Rendered URL template", "url", url, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
+			desiredCommitStatus.Spec.Url = url
+		} else {
+			logger.Error(err, "failed to render URL template", "argoCDCommitStatus", argoCDCommitStatus.Name, "namespace", argoCDCommitStatus.Namespace)
+		}
 	}
 
 	currentCommitStatus := promoterv1alpha1.CommitStatus{}

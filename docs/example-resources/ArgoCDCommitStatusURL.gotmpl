@@ -1,0 +1,13 @@
+    {{- $baseURL := "https://dev.argocd.local" -}}
+    {{- if eq .Environment "environment/development" -}}
+    {{- $baseURL = "https://dev.argocd.local" -}}
+    {{- else if eq .Environment "environment/staging" -}}
+    {{- $baseURL = "https://staging.argocd.local" -}}
+    {{- else if eq .Environment "environment/production" -}}
+    {{- $baseURL = "https://prod.argocd.local" -}}
+    {{- end -}}
+    {{- $labels := "" -}}
+    {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
+    {{- $labels = printf "%s%s=%s," $labels $key $value -}}
+    {{- end -}}
+    {{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}

@@ -97,6 +97,28 @@ spec:
                 required:
                 - name
                 type: object
+              urlTemplate:
+                description: |-
+                  URLTemplate generates the URL to use in the CommitStatus, for example a link to the Argo CD UI. The template
+                  is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape
+                  is available to escape url query parameters.
+
+                  Example:
+
+                  {{- $baseURL := "https://dev.argocd.local" -}}
+                  {{- if eq .Environment "environment/development" -}}
+                  {{- $baseURL = "https://dev.argocd.local" -}}
+                  {{- else if eq .Environment "environment/staging" -}}
+                  {{- $baseURL = "https://staging.argocd.local" -}}
+                  {{- else if eq .Environment "environment/production" -}}
+                  {{- $baseURL = "https://prod.argocd.local" -}}
+                  {{- end -}}
+                  {{- $labels := "" -}}
+                  {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
+                  {{- $labels = printf "%s%s=%s," $labels $key $value -}}
+                  {{- end -}}
+                  {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+                type: string
             required:
             - applicationSelector
             - promotionStrategyRef
@@ -112,6 +134,10 @@ spec:
                   description: ApplicationsSelected represents the Argo CD applications
                     that are selected by the commit status.
                   properties:
+                    clusterName:
+                      description: ClusterName is the name of the cluster that the
+                        application manifest is deployed to.
+                      type: string
                     environment:
                       description: Environment is the syncSource.targetBranch of the
                         Argo CD application (in effect, its environment).
@@ -134,6 +160,7 @@ spec:
                         with.
                       type: string
                   required:
+                  - clusterName
                   - name
                   - namespace
                   - phase

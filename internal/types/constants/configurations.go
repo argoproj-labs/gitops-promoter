@@ -10,7 +10,9 @@ const (
 	// KubeconfigSecretNamespace is the namespace where the kubeconfig secret is stored.
 	KubeconfigSecretNamespace = "default"
 	// KubeconfigSecretLabel is the label used to identify the kubeconfig secret.
-	KubeconfigSecretLabel = "kubeconfig"
+	KubeconfigSecretLabel = "sigs.k8s.io/multicluster-runtime-kubeconfig"
 	// KubeconfigSecretKey is the key in the kubeconfig secret that contains the kubeconfig data.
 	KubeconfigSecretKey = "kubeconfig"
+	// ArgoCDURLSecretKey is the key in the KubeConfig secret that contains the base URL.
+	ArgoCDURLSecretKey = "argocdUrl"
 )

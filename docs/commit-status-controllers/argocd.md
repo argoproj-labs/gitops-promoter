@@ -53,6 +53,21 @@ spec:
     name: webservice-tier-1
 ```
 
+### Commit Status URL Template
+To configure setting the url of a commit status, for example, a link to ArgoCD instance, set the 'urlTemplate' field. The template uses [Go templates](https://pkg.go.dev/text/template) syntax and most [sprig](https://masterminds.github.io/sprig/) functions are supported as well as an additional 'urlQueryEscape' function for escaping url query parameters. The template receives `.Environment` and `.ArgoCDCommitStatus` variables. 
+
+This example template generates an ArgoCD link in a multi-cluster setup that filters applications by label selector and environment. 
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ArgoCDCommitStatus
+metadata:
+  name: webservice-tier-1
+spec:
+  urlTemplate: |
+    {!docs/example-resources/ArgoCDCommitStatusURL.gotmpl!}
+```
+
 ## Multi-Cluster Support
 
 GitOps promoter can monitor Argo CD Applications across multiple Kubernetes clusters. This is particularly useful when managing promotions across environments that use different Argo CD instances.
@@ -62,9 +77,9 @@ GitOps promoter can monitor Argo CD Applications across multiple Kubernetes clus
 To enable multi-cluster support, you need to configure two components:
 
 #### Kubeconfig Secret
-   - Create a secret with key `kubeconfig` containing a standard `~/.kube/config` file
+   - Create a secret with key `kubeconfig` containing a standard `~/.kube/config` file as its value and label `sigs.k8s.io/multicluster-runtime-kubeconfig: "true"`
    - The secret must be created in the same namespace where gitops-promoter runs
-   - The controller uses the `current context` from the kubeconfig to determine which cluster to uses
+   - The controller uses the `current context` from the kubeconfig to determine which cluster to use
      
     !!! note
         Remove any additional clusters from the `kubeconfig` as they will be ignored
