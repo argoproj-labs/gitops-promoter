@@ -191,7 +191,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to get head shas for target branches: %w", err)
 	}
 
-	var requeueForLastTransition = time.Duration(0)
+	requeueForLastTransition := time.Duration(0)
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
 		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
 
