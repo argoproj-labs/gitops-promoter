@@ -191,16 +191,15 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to get head shas for target branches: %w", err)
 	}
 
-	requeueForLastTransition := time.Duration(0)
+	maxTimeUntilThreshold := time.Duration(0)
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
-		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
-
 		resolvedSha, ok := resolvedShas[targetBranch]
 		if !ok {
 			return ctrl.Result{}, fmt.Errorf("failed to resolve target branch %q: %w", targetBranch, err)
 		}
 		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha)
 
+		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
 		if mostRecentLastTransitionTime != nil {
 			timeSinceLastTransition := time.Since(mostRecentLastTransitionTime.Time)
 			if timeSinceLastTransition < lastTransitionTimeThreshold {
@@ -209,10 +208,10 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 				resolvedPhase = promoterv1alpha1.CommitPhasePending
 
 				timeUntilThreshold := lastTransitionTimeThreshold - timeSinceLastTransition
-				if timeUntilThreshold > requeueForLastTransition {
+				if timeUntilThreshold > maxTimeUntilThreshold {
 					// We take the higher of the requeue times so that the next reconcile is after all transition times
 					// meet the threshold.
-					requeueForLastTransition = timeUntilThreshold
+					maxTimeUntilThreshold = timeUntilThreshold
 				}
 			}
 		}
@@ -233,9 +232,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDCommitStatus requeue duration: %w", err)
 	}
 
-	if requeueForLastTransition > 0 && requeueForLastTransition < requeueDuration {
-		logger.V(4).Info("Requeueing for last transition time", "requeueIn", requeueForLastTransition)
-		requeueDuration = requeueForLastTransition
+	if maxTimeUntilThreshold > 0 && maxTimeUntilThreshold < requeueDuration {
+		logger.V(4).Info("Requeueing for last transition time", "requeueIn", maxTimeUntilThreshold)
+		requeueDuration = maxTimeUntilThreshold
 	}
 
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil // Timer for now :(
