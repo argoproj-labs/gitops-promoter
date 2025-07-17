@@ -200,7 +200,8 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 			return ctrl.Result{}, fmt.Errorf("failed to resolve target branch %q: %w", targetBranch, err)
 		}
 		resolvedPhase, desc, requeueIn := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha, mostRecentLastTransitionTime)
-		if requeueIn > 0 && (requeueForLastTransition == 0 || requeueIn < requeueForLastTransition) {
+		if requeueIn > requeueForLastTransition {
+			// Take the greatest requeue time encountered so that all the apps' healthy statuses pass the threshold.
 			requeueForLastTransition = requeueIn
 		}
 
