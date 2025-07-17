@@ -13,6 +13,4 @@ const (
 	KubeconfigSecretLabel = "sigs.k8s.io/multicluster-runtime-kubeconfig"
 	// KubeconfigSecretKey is the key in the kubeconfig secret that contains the kubeconfig data.
 	KubeconfigSecretKey = "kubeconfig"
-	// ArgoCDURLSecretKey is the key in the KubeConfig secret that contains the base URL.
-	ArgoCDURLSecretKey = "argocdUrl"
 )
