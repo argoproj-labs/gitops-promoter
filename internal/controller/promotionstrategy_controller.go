@@ -257,6 +257,12 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 	controllerRef := metav1.NewControllerRef(ctp, gvk)
 
+	// If there is only one commit status, use the URL from that commit status.
+	var url string
+	if len(previousCRPCSPhases) == 1 {
+		url = previousCRPCSPhases[0].Url
+	}
+
 	statusMap := make(map[string]string)
 	for _, status := range previousCRPCSPhases {
 		statusMap[status.Key] = status.Phase
@@ -284,7 +290,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 			Name:                previousEnvironmentBranch + " - synced and healthy",
 			Description:         previousEnvironmentBranch + " - synced and healthy",
 			Phase:               phase,
-			// Url:                 "https://github.com/" + gitRepo.Spec.Owner + "/" + gitRepo.Spec.Name + "/commit/" + copyFromActiveHydratedSha,
+			Url:                 url,
 		},
 	}
 	updatedCS := &promoterv1alpha1.CommitStatus{}
@@ -316,6 +322,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		updatedCS.Spec.Description = commitStatus.Spec.Description
 		updatedCS.Spec.Name = commitStatus.Spec.Name
 		updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation] = commitStatus.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]
+		updatedCS.Spec.Url = commitStatus.Spec.Url
 
 		err = r.Update(ctx, updatedCS)
 		if err != nil {

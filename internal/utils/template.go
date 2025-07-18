@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"text/template"
 
 	sprig "github.com/go-task/slim-sprig/v3"
@@ -14,6 +15,7 @@ func init() {
 	delete(sanitizedSprigFuncMap, "env")
 	delete(sanitizedSprigFuncMap, "expandenv")
 	delete(sanitizedSprigFuncMap, "getHostByName")
+	sanitizedSprigFuncMap["urlQueryEscape"] = url.QueryEscape
 }
 
 // RenderStringTemplate renders a string template with the provided data.

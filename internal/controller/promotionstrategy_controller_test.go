@@ -1756,7 +1756,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 	})
 
-	Context("When reconciling a resource with active commit status using ArgoCDCommitStatus", func() {
+	Context("When reconciling a resource with active commit status using ArgoCDCommitStatus", Label("argocdcommitstatus"), func() {
 		const argocdCSLabel = "argocd-health"
 		const namespace = "default"
 
@@ -1972,8 +1972,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Delete(ctx, &argoCDAppProduction)).To(Succeed())
 		})
 
-		It("should successfully reconcile the resource across clusters", func() {
-			// Skip("Skipping test because of flakiness")
+		It("should successfully reconcile the resource across clusters", Label("multicluster"), func() {
 			By("Creating the resource")
 			plainName := "mc-promo-strategy-with-active-commit-status-argocdcommitstatus"
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, plainName, "default")
@@ -1990,6 +1989,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				},
 			}
 
+			// Read URL template from example-resources
+			template, err := os.ReadFile("../../docs/example-resources/ArgoCDCommitStatusURL.gotmpl")
+			Expect(err).NotTo(HaveOccurred())
+
 			argocdCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -2002,6 +2005,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					ApplicationSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": plainName},
 					},
+					URLTemplate: string(template),
 				},
 			}
 
@@ -2029,6 +2033,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: argoCDAppDev.GetNamespace(),
 					}, &commitStatus)
 					g.Expect(err).To(Succeed())
+					switch environment.Branch {
+					case "environment/development":
+						g.Expect(commitStatus.Spec.Url).To(Equal("https://dev.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
+					case "environment/staging":
+						g.Expect(commitStatus.Spec.Url).To(Equal("https://staging.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
+					case "environment/production":
+						g.Expect(commitStatus.Spec.Url).To(Equal("https://prod.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
+					}
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}
 
