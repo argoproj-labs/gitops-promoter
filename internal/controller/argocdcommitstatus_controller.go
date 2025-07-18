@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"reflect"
 	"slices"
 	"strconv"
@@ -482,13 +483,30 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			Environment:        targetBranch,
 			ArgoCDCommitStatus: argoCDCommitStatus,
 		}
-		url, err := utils.RenderStringTemplate(argoCDCommitStatus.Spec.URLTemplate, data)
-		if err == nil {
-			logger.Info("Rendered URL template", "url", url, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
-			desiredCommitStatus.Spec.Url = url
-		} else {
+
+		renderedURL, err := utils.RenderStringTemplate(argoCDCommitStatus.Spec.URLTemplate, data)
+		if err != nil {
 			logger.Error(err, "failed to render URL template", "argoCDCommitStatus", argoCDCommitStatus.Name, "namespace", argoCDCommitStatus.Namespace)
+			return fmt.Errorf("failed to render URL template: %w", err)
 		}
+
+		// Parse the URL to check that it's valid
+		parsedURL, err := url.Parse(renderedURL)
+		if err != nil {
+			logger.Error(err, "failed to parse URL", "url", renderedURL, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
+			return fmt.Errorf("failed to parse URL: %w", err)
+		}
+
+		// Check that the URL scheme is http or https
+		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+			err = fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
+			logger.Error(err, "URL scheme is not http or https", "url", parsedURL, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
+			return err
+		}
+
+		// Set the URL in the CommitStatus
+		logger.Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
+		desiredCommitStatus.Spec.Url = renderedURL
 	}
 
 	currentCommitStatus := promoterv1alpha1.CommitStatus{}

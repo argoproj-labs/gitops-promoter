@@ -56,6 +56,9 @@ spec:
 ### Commit Status URL Template
 To configure setting the url of a commit status, for example, a link to ArgoCD instance, set the 'urlTemplate' field. The template uses [Go templates](https://pkg.go.dev/text/template) syntax and most [sprig](https://masterminds.github.io/sprig/) functions are supported as well as an additional 'urlQueryEscape' function for escaping url query parameters. The template receives `.Environment` and `.ArgoCDCommitStatus` variables. 
 
+!!! note 
+    The rendered URL must use a scheme of either 'http' or 'https'
+
 This example template generates an ArgoCD link in a multi-cluster setup that filters applications by label selector and environment. 
 
 ```yaml
