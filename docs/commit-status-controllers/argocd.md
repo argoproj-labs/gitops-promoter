@@ -67,8 +67,28 @@ kind: ArgoCDCommitStatus
 metadata:
   name: webservice-tier-1
 spec:
-  urlTemplate: |
-    {!docs/example-resources/ArgoCDCommitStatusURL.gotmpl!}
+  urlTemplate: 
+    template: |
+      {!docs/example-resources/ArgoCDCommitStatusURL.gotmpl!}
+```
+
+Template options can be configured for how missing variables are handled. 
+Can be one of:
+
+- `missingkey=default` or `missingkey=invalid` - The default behavior: Do nothing and continue execution. If printed, the result of the index operation is the string "<no value>".
+- `missingkey=zero` - The operation returns the zero value for the map type's element.
+- `missingkey=error` - Execution stops immediately with an error.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ArgoCDCommitStatus
+metadata:
+  name: webservice-tier-1
+spec:
+  urlTemplate: 
+    template: ...
+    options:
+      - missingkey=zero
 ```
 
 ## Multi-Cluster Support

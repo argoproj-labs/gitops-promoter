@@ -2002,7 +2002,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					ApplicationSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": plainName},
 					},
-					URLTemplate: string(template),
+					URLTemplate: promoterv1alpha1.GoTemplate{
+						Template: string(template),
+					},
 				},
 			}
 

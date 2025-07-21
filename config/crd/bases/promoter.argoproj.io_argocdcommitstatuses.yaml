@@ -101,7 +101,8 @@ spec:
                 description: |-
                   URLTemplate generates the URL to use in the CommitStatus, for example a link to the Argo CD UI. The template
                   is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape
-                  is available to escape url query parameters.
+                  is available to escape url query parameters. The template can be configured with options to control the behavior
+                  during execution if a variable is not present.
 
                   Example:
 
@@ -118,7 +119,29 @@ spec:
                   {{- $labels = printf "%s%s=%s," $labels $key $value -}}
                   {{- end -}}
                   {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
-                type: string
+                properties:
+                  options:
+                    description: "Option sets options for the template. Options are
+                      described by\nstrings, either a simple string or \"key=value\".
+                      There can be at\nmost one equals sign in an option string. If
+                      the option string\nis unrecognized or otherwise invalid, Option
+                      panics.\n\nKnown options:\n\nmissingkey: Control the behavior
+                      during execution if a map is\nindexed with a key that is not
+                      present in the map.\n\n\t\"missingkey=default\" or \"missingkey=invalid\"\n\t\tThe
+                      default behavior: Do nothing and continue execution.\n\t\tIf
+                      printed, the result of the index operation is the string\n\t\t\"<no
+                      value>\".\n\t\"missingkey=zero\"\n\t\tThe operation returns
+                      the zero value for the map type's element.\n\t\"missingkey=error\"\n\t\tExecution
+                      stops immediately with an error."
+                    items:
+                      type: string
+                    type: array
+                  template:
+                    description: Template is the template to use.
+                    type: string
+                required:
+                - template
+                type: object
             required:
             - applicationSelector
             - promotionStrategyRef
