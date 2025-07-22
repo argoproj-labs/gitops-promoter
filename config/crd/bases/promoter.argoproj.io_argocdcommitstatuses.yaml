@@ -139,8 +139,6 @@ spec:
                   template:
                     description: Template is the template to use.
                     type: string
-                required:
-                - template
                 type: object
             required:
             - applicationSelector

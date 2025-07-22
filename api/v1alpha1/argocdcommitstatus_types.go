@@ -61,7 +61,7 @@ type ArgoCDCommitStatusSpec struct {
 // URLConfig is a template that can be rendered using the Go template engine.
 type URLConfig struct {
 	// Template is the template to use.
-	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Optional
 	Template string `json:"template,omitempty"`
 
 	// Option sets options for the template. Options are described by
