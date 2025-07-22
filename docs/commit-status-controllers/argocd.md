@@ -54,16 +54,16 @@ spec:
 ```
 
 ### Commit Status URL Template
-To configure setting the url of a commit status, for example, a link to an Argo CD instance, set the 'urlTemplate' field. The template uses [Go templates](https://pkg.go.dev/text/template) syntax and most [Sprig](https://masterminds.github.io/sprig/) functions (excluding `env`, `expandenv` and `getHostByName`) are supported as well as an additional ['urlQueryEscape'](https://pkg.go.dev/net/url#QueryEscape) function for escaping url query parameters. The template receives `.Environment` and `.ArgoCDCommitStatus` variables. 
+To configure setting the url of a commit status, for example, a link to an Argo CD instance, set the 'urlTemplate' field. The template uses [Go templates](https://pkg.go.dev/text/template) syntax and most [Sprig](https://masterminds.github.io/sprig/) functions (excluding `env`, `expandenv` and `getHostByName`) are supported as well as an additional [`urlQueryEscape`](https://pkg.go.dev/net/url#QueryEscape) function for escaping url query parameters. The template receives `.Environment` and `.ArgoCDCommitStatus` variables. 
+
+!!! note 
+    The rendered URL must use a scheme of either 'http' or 'https'
 
 #### Template Variables
 The following variables are available in the template:
 
 - `.Environment` - string holding the environment name (i.e. environment branch name) for the group of Applications the URL is being generated for.
 - `.ArgoCDCommitStatus` - holds the whole [CR](../../crd-specs#argocdcommitstatus) in its current state
-
-!!! note 
-    The rendered URL must use a scheme of either 'http' or 'https'
 
 #### Template Options 
 Template options can be configured for how missing variables are handled. 
