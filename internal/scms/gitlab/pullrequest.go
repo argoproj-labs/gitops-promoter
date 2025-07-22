@@ -193,9 +193,9 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj v1
 	}
 
 	options := &gitlab.AcceptMergeRequestOptions{
-		MergeWhenPipelineSucceeds: gitlab.Ptr(false),
-		ShouldRemoveSourceBranch:  gitlab.Ptr(false),
-		Squash:                    gitlab.Ptr(false),
+		AutoMerge:                gitlab.Ptr(false),
+		ShouldRemoveSourceBranch: gitlab.Ptr(false),
+		Squash:                   gitlab.Ptr(false),
 	}
 	// Gitlab throws a 422 if you send it an empty commit message. So leave it as nil unless we have a message.
 	if commitMessage != "" {
