@@ -94,6 +94,12 @@ type URLTemplateData struct {
 	ArgoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 }
 
+// ApplicationsInEnvironment is a list of applications in an environment.
+type ApplicationsInEnvironment struct {
+	ClusterName string
+	argocd.ApplicationList
+}
+
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=argocdcommitstatuses/finalizers,verbs=update
@@ -132,7 +138,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to parse label selector: %w", err)
 	}
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
-	apps := make(map[string]argocd.ApplicationList)
+	apps := []ApplicationsInEnvironment{}
 
 	// list clusters so we can query argocd applications from all clusters
 	clusters := r.KubeConfigProvider.ListClusters()
@@ -153,7 +159,10 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 			return ctrl.Result{}, fmt.Errorf("failed to list ArgoCDApplications: %w", err)
 		}
 
-		apps[clusterName] = clusterArgoCDApps
+		apps = append(apps, ApplicationsInEnvironment{
+			ApplicationList: clusterArgoCDApps,
+			ClusterName:     clusterName,
+		})
 	}
 
 	appCount := 0
@@ -229,12 +238,12 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShasForBranches(ctx context.Contex
 // groupArgoCDApplicationsWithPhase returns a map. The key is a branch name. The value is a list of apps configured for that target branch, along with the commit status for that one app.
 // As a side-effect, this function updates argoCDCommitStatus to represent the aggregate status
 // of all matching apps.
-func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps map[string]argocd.ApplicationList) (map[string][]*aggregate, error) {
+func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps []ApplicationsInEnvironment) (map[string][]*aggregate, error) {
 	aggregates := map[string][]*aggregate{}
 	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
 	repo := ""
 
-	for clusterName, clusterApps := range apps {
+	for _, clusterApps := range apps {
 		for _, application := range clusterApps.Items {
 			if application.Spec.SourceHydrator == nil {
 				return map[string][]*aggregate{}, fmt.Errorf("application %s/%s does not have a SourceHydrator configured", application.GetNamespace(), application.GetName())
@@ -273,7 +282,7 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotio
 				Sha:                application.Status.Sync.Revision,
 				LastTransitionTime: application.Status.Health.LastTransitionTime,
 				Environment:        application.Spec.SourceHydrator.SyncSource.TargetBranch,
-				ClusterName:        clusterName,
+				ClusterName:        clusterApps.ClusterName,
 			})
 
 			aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], aggregateItem)
@@ -499,9 +508,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 
 		// Check that the URL scheme is http or https
 		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			err = fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
-			logger.Error(err, "URL scheme is not http or https", "url", parsedURL, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
-			return err
+			return fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
 		}
 
 		// Set the URL in the CommitStatus
