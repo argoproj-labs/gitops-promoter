@@ -54,24 +54,18 @@ spec:
 ```
 
 ### Commit Status URL Template
-To configure setting the url of a commit status, for example, a link to ArgoCD instance, set the 'urlTemplate' field. The template uses [Go templates](https://pkg.go.dev/text/template) syntax and most [sprig](https://masterminds.github.io/sprig/) functions are supported as well as an additional 'urlQueryEscape' function for escaping url query parameters. The template receives `.Environment` and `.ArgoCDCommitStatus` variables. 
+To configure setting the url of a commit status, for example, a link to an Argo CD instance, set the 'urlTemplate' field. The template uses [Go templates](https://pkg.go.dev/text/template) syntax and most [Sprig](https://masterminds.github.io/sprig/) functions (excluding `env`, `expandenv` and `getHostByName`) are supported as well as an additional ['urlQueryEscape'](https://pkg.go.dev/net/url#QueryEscape) function for escaping url query parameters. The template receives `.Environment` and `.ArgoCDCommitStatus` variables. 
+
+#### Template Variables
+The following variables are available in the template:
+
+- `.Environment` - string holding the environment name (i.e. environment branch name) for the group of Applications the URL is being generated for.
+- `.ArgoCDCommitStatus` - holds the whole [CR](../../crd-specs#argocdcommitstatus) in its current state
 
 !!! note 
     The rendered URL must use a scheme of either 'http' or 'https'
 
-This example template generates an ArgoCD link in a multi-cluster setup that filters applications by label selector and environment. 
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: ArgoCDCommitStatus
-metadata:
-  name: webservice-tier-1
-spec:
-  urlTemplate: 
-    template: |
-      {!docs/example-resources/ArgoCDCommitStatusURL.gotmpl!}
-```
-
+#### Template Options 
 Template options can be configured for how missing variables are handled. 
 Can be one of:
 
@@ -89,6 +83,30 @@ spec:
     template: ...
     options:
       - missingkey=zero
+```
+
+#### Examples
+
+Simple url 
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ArgoCDCommitStatus
+metadata:
+  name: argocdcommitstatus-sample
+spec:
+  ...
+  url:
+    template: https://argocd.local
+```
+
+Single environment that filters applications by label selector. 
+```yaml
+{!docs/example-resources/ArgoCDCommitStatus-URL.yaml!}
+```
+
+Multi-cluster environment that filters applications by label selector and environment. 
+```yaml
+{!docs/example-resources/ArgoCDCommitStatus-URL-env.yaml!}
 ```
 
 ## Multi-Cluster Support

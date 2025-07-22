@@ -1986,9 +1986,20 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				},
 			}
 
-			// Read URL template from example-resources
-			template, err := os.ReadFile("../../docs/example-resources/ArgoCDCommitStatusURL.gotmpl")
-			Expect(err).NotTo(HaveOccurred())
+			urlTemplate := `
+{{- $baseURL := "https://dev.argocd.local" -}}
+{{- if eq .Environment "environment/development" -}}
+{{- $baseURL = "https://dev.argocd.local" -}}
+{{- else if eq .Environment "environment/staging" -}}
+{{- $baseURL = "https://staging.argocd.local" -}}
+{{- else if eq .Environment "environment/production" -}}
+{{- $baseURL = "https://prod.argocd.local" -}}
+{{- end -}}
+{{- $labels := "" -}}
+{{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
+{{- $labels = printf "%s%s=%s," $labels $key $value -}}
+{{- end -}}
+{{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}`
 
 			argocdCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
@@ -2002,8 +2013,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					ApplicationSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": plainName},
 					},
-					URLTemplate: promoterv1alpha1.GoTemplate{
-						Template: string(template),
+					URL: promoterv1alpha1.URLConfig{
+						Template: urlTemplate,
 					},
 				},
 			}

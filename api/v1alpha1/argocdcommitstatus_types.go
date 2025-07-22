@@ -33,33 +33,33 @@ type ArgoCDCommitStatusSpec struct {
 	// +kubebuilder:validation:Required
 	ApplicationSelector *metav1.LabelSelector `json:"applicationSelector,omitempty"`
 
-	// URLTemplate generates the URL to use in the CommitStatus, for example a link to the Argo CD UI. The template
+	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI. The template
 	// is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape
 	// is available to escape url query parameters. The template can be configured with options to control the behavior
 	// during execution if a variable is not present.
 	//
 	// Example:
 	//
-	// {{- $baseURL := "https://dev.argocd.local" -}}
-	// {{- if eq .Environment "environment/development" -}}
-	// {{- $baseURL = "https://dev.argocd.local" -}}
-	// {{- else if eq .Environment "environment/staging" -}}
-	// {{- $baseURL = "https://staging.argocd.local" -}}
-	// {{- else if eq .Environment "environment/production" -}}
-	// {{- $baseURL = "https://prod.argocd.local" -}}
-	// {{- end -}}
-	// {{- $labels := "" -}}
-	// {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
-	// {{- $labels = printf "%s%s=%s," $labels $key $value -}}
-	// {{- end -}}
-	// {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+	//   {{- $baseURL := "https://dev.argocd.local" -}}
+	//   {{- if eq .Environment "environment/development" -}}
+	//   {{- $baseURL = "https://dev.argocd.local" -}}
+	//   {{- else if eq .Environment "environment/staging" -}}
+	//   {{- $baseURL = "https://staging.argocd.local" -}}
+	//   {{- else if eq .Environment "environment/production" -}}
+	//   {{- $baseURL = "https://prod.argocd.local" -}}
+	//   {{- end -}}
+	//   {{- $labels := "" -}}
+	//   {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
+	//   {{- $labels = printf "%s%s=%s," $labels $key $value -}}
+	//   {{- end -}}
+	//   {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
 	//
 	// +kubebuilder:validation:Optional
-	URLTemplate GoTemplate `json:"urlTemplate,omitempty"`
+	URL URLConfig `json:"url,omitempty"`
 }
 
-// GoTemplate is a template that can be rendered using the Go template engine.
-type GoTemplate struct {
+// URLConfig is a template that can be rendered using the Go template engine.
+type URLConfig struct {
 	// Template is the template to use.
 	// +kubebuilder:validation:Required
 	Template string `json:"template,omitempty"`

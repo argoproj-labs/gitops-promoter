@@ -478,13 +478,13 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	}
 
 	// Render URL from template if it exists, but don't block commit status update if it fails
-	if argoCDCommitStatus.Spec.URLTemplate.Template != "" {
+	if argoCDCommitStatus.Spec.URL.Template != "" {
 		data := URLTemplateData{
 			Environment:        targetBranch,
 			ArgoCDCommitStatus: argoCDCommitStatus,
 		}
 
-		renderedURL, err := utils.RenderStringTemplate(argoCDCommitStatus.Spec.URLTemplate.Template, data, argoCDCommitStatus.Spec.URLTemplate.Options...)
+		renderedURL, err := utils.RenderStringTemplate(argoCDCommitStatus.Spec.URL.Template, data, argoCDCommitStatus.Spec.URL.Options...)
 		if err != nil {
 			logger.Error(err, "failed to render URL template", "argoCDCommitStatus", argoCDCommitStatus.Name, "namespace", argoCDCommitStatus.Namespace)
 			return fmt.Errorf("failed to render URL template: %w", err)

@@ -1,0 +1,19 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ArgoCDCommitStatus
+metadata:
+  name: argocdcommitstatus-sample
+spec:
+  applicationSelector:
+    matchLabels:
+      app: demo
+  promotionStrategyRef:
+    name: argocon-demo
+  url:
+    template: |
+      {{- $baseURL := "https://argocd.local" -}}
+      {{- $labels := "" -}}
+      {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
+      {{- $labels = printf "%s%s=%s," $labels $key $value -}}
+      {{- end -}}
+      {{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+    options: ""
