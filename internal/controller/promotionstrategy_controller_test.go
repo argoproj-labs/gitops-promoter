@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"path"
@@ -31,6 +32,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"gopkg.in/yaml.v3"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,6 +40,9 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
+
+//go:embed testdata/ArgoCDCommitStatus-URL-env.yaml
+var testArgoCDCommitStatusYAML string
 
 var _ = Describe("PromotionStrategy Controller", func() {
 	Context("When reconciling a resource with no commit statuses", func() {
@@ -1986,20 +1991,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				},
 			}
 
-			urlTemplate := `
-{{- $baseURL := "https://dev.argocd.local" -}}
-{{- if eq .Environment "environment/development" -}}
-{{- $baseURL = "https://dev.argocd.local" -}}
-{{- else if eq .Environment "environment/staging" -}}
-{{- $baseURL = "https://staging.argocd.local" -}}
-{{- else if eq .Environment "environment/production" -}}
-{{- $baseURL = "https://prod.argocd.local" -}}
-{{- end -}}
-{{- $labels := "" -}}
-{{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
-{{- $labels = printf "%s%s=%s," $labels $key $value -}}
-{{- end -}}
-{{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}`
+			testArgoCDCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{}
+			//nolint:musttag // Not bothering adding yaml tags since it's just for a test.
+			err := yaml.Unmarshal([]byte(testArgoCDCommitStatusYAML), &testArgoCDCommitStatus)
+			Expect(err).To(Succeed())
 
 			argocdCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
@@ -2014,7 +2009,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						MatchLabels: map[string]string{"app": plainName},
 					},
 					URL: promoterv1alpha1.URLConfig{
-						Template: urlTemplate,
+						Template: testArgoCDCommitStatus.Spec.URL.Template,
 					},
 				},
 			}
