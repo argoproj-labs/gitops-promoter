@@ -110,30 +110,11 @@ spec:
                 - name
                 type: object
               url:
-                description: |-
-                  URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI. The template
-                  is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape
-                  is available to escape url query parameters. The template can be configured with options to control the behavior
-                  during execution if a variable is not present.
-
-                  Example:
-
-                    {{- $baseURL := "https://dev.argocd.local" -}}
-                    {{- if eq .Environment "environment/development" -}}
-                    {{- $baseURL = "https://dev.argocd.local" -}}
-                    {{- else if eq .Environment "environment/staging" -}}
-                    {{- $baseURL = "https://staging.argocd.local" -}}
-                    {{- else if eq .Environment "environment/production" -}}
-                    {{- $baseURL = "https://prod.argocd.local" -}}
-                    {{- end -}}
-                    {{- $labels := "" -}}
-                    {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
-                    {{- $labels = printf "%s%s=%s," $labels $key $value -}}
-                    {{- end -}}
-                    {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+                description: URL generates the URL to use in the CommitStatus, for
+                  example a link to the Argo CD UI.
                 properties:
                   options:
-                    description: "Option sets options for the template. Options are
+                    description: "Options sets options for the template. Options are
                       described by\nstrings, either a simple string or \"key=value\".
                       There can be at\nmost one equals sign in an option string. If
                       the option string\nis unrecognized or otherwise invalid, Option
@@ -149,7 +130,26 @@ spec:
                       type: string
                     type: array
                   template:
-                    description: Template is the template to use.
+                    description: |-
+                      Template is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape
+                      is available to escape url query parameters. The template can be configured with options to control the behavior
+                      during execution if a variable is not present.
+
+                      Example:
+
+                        {{- $baseURL := "https://dev.argocd.local" -}}
+                        {{- if eq .Environment "environment/development" -}}
+                        {{- $baseURL = "https://dev.argocd.local" -}}
+                        {{- else if eq .Environment "environment/staging" -}}
+                        {{- $baseURL = "https://staging.argocd.local" -}}
+                        {{- else if eq .Environment "environment/production" -}}
+                        {{- $baseURL = "https://prod.argocd.local" -}}
+                        {{- end -}}
+                        {{- $labels := "" -}}
+                        {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
+                        {{- $labels = printf "%s%s=%s," $labels $key $value -}}
+                        {{- end -}}
+                        {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
                     type: string
                 type: object
             required:
