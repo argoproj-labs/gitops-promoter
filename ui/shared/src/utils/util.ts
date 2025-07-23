@@ -46,27 +46,6 @@ export function extractBodyPreTrailer(body: string): string {
   return lines.slice(0, trailerStart).join('\n').trim();
 }
   
-// Parse trailers and trailer body from a commit message
-export function parseTrailers(body: string): { trailers: { [key: string]: string }, trailerBody?: string } {
-  if (!body) return { trailers: {} };
-  const lines = body.split(/\r?\n/);
-  const trailers: { [key: string]: string } = {};
-  let inTrailers = false;
-  for (const line of lines) {
-    if (/^([A-Za-z0-9-]+:|Signed-off-by:)/.test(line.trim())) {
-      inTrailers = true;
-    }
-    if (inTrailers) {
-      const match = line.match(/^([A-Za-z0-9-]+):\s*(.*)$/);
-      if (match) {
-        trailers[match[1]] = match[2];
-      }
-    }
-  }
-  const trailerBody = trailers['Argocd-reference-commit-body'];
-  return { trailers, trailerBody };
-}
-  
 // date formatting (e.g: Jul 5 2025, 12:15pm EDT)
 export function formatDate(date?: string): string {
   if (!date) return '-';
@@ -80,26 +59,5 @@ export function formatDate(date?: string): string {
     hour12: true,
     timeZoneName: 'short'
   }).replace(',', '').replace(/:00 /, ' '); // Remove seconds if present
-}
-  
-
-// Decode HTML entities and Unicode escape sequences in commit messages
-export function decodeCommitMessage(message: string): string {
-  if (!message) return '';
-  
-  return message
-    // Decode Unicode escape sequences
-    .replace(/\\u003C/g, '<')
-    .replace(/\\u003E/g, '>')
-    .replace(/\\u0026/g, '&')
-    .replace(/\\u0022/g, '"')
-    .replace(/\\u0027/g, "'")
-    // Decode common HTML entities
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'");
 }
   

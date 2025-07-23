@@ -1,4 +1,4 @@
-import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, parseTrailers, formatDate, decodeCommitMessage } from './util';
+import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, formatDate } from './util';
 
 interface CommitStatus {
   key: string;
@@ -186,12 +186,8 @@ function extractReferenceCommitData(dryCommit: any): {
   
   const sha = referenceCommit.sha ? referenceCommit.sha.slice(0, 7) : '-';
   const author = referenceCommit.author ? extractNameOnly(referenceCommit.author) : '-';
-  const subject = referenceCommit.subject || '-';
-  
-  let body = '-';
-  if (referenceCommit.body) {
-    body = decodeCommitMessage(referenceCommit.body);
-  }
+  const subject = referenceCommit.subject || referenceCommit.message || '-';
+    const body = referenceCommit.body || '-';
   
   const date = referenceCommit.date ? formatDate(referenceCommit.date) : '-';
   const url = referenceCommit.sha && referenceCommit.repoURL ? 
