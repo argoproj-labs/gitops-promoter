@@ -33,8 +33,14 @@ type ArgoCDCommitStatusSpec struct {
 	// +kubebuilder:validation:Required
 	ApplicationSelector *metav1.LabelSelector `json:"applicationSelector,omitempty"`
 
-	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI. The template
-	// is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape
+	// URL generates the URL to use in the CommitStatus, for example a link to the Argo CD UI.
+	// +kubebuilder:validation:Optional
+	URL URLConfig `json:"url,omitempty"`
+}
+
+// URLConfig is a template that can be rendered using the Go template engine.
+type URLConfig struct {
+	// Template is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape
 	// is available to escape url query parameters. The template can be configured with options to control the behavior
 	// during execution if a variable is not present.
 	//
@@ -55,16 +61,9 @@ type ArgoCDCommitStatusSpec struct {
 	//   {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
 	//
 	// +kubebuilder:validation:Optional
-	URL URLConfig `json:"url,omitempty"`
-}
-
-// URLConfig is a template that can be rendered using the Go template engine.
-type URLConfig struct {
-	// Template is the template to use.
-	// +kubebuilder:validation:Optional
 	Template string `json:"template,omitempty"`
 
-	// Option sets options for the template. Options are described by
+	// Options sets options for the template. Options are described by
 	// strings, either a simple string or "key=value". There can be at
 	// most one equals sign in an option string. If the option string
 	// is unrecognized or otherwise invalid, Option panics.
