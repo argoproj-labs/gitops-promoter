@@ -18,6 +18,9 @@ package controller
 
 import (
 	"context"
+	_ "embed"
+
+	"gopkg.in/yaml.v3"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,7 +33,19 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+//go:embed testdata/ClusterScmProvider.yaml
+var testClusterScmProviderYAML string
+
 var _ = Describe("ClusterScmProvider Controller", func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the ClusterScmProvider resource", func() {
+			var testClusterScmProvider promoterv1alpha1.ClusterScmProvider
+			//nolint:musttag // Not bothering with yaml tags for test data.
+			err := yaml.Unmarshal([]byte(testClusterScmProviderYAML), &testClusterScmProvider)
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 

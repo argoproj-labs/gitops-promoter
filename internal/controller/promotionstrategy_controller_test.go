@@ -41,9 +41,6 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-//go:embed testdata/ArgoCDCommitStatus-URL-env.yaml
-var testArgoCDCommitStatusYAML string
-
 var _ = Describe("PromotionStrategy Controller", func() {
 	Context("When reconciling a resource with no commit statuses", func() {
 		ctx := context.Background()
@@ -2042,7 +2039,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, &commitStatus)
 					g.Expect(err).To(Succeed())
 					switch environment.Branch {
-					case "environment/development":
+					case "environment/development": //nolint:goconst
 						g.Expect(commitStatus.Spec.Url).To(Equal("https://dev.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
 					case "environment/staging":
 						g.Expect(commitStatus.Spec.Url).To(Equal("https://staging.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))

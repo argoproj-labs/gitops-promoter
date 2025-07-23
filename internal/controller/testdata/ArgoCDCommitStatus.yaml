@@ -22,7 +22,7 @@ spec:
       {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
       {{- $labels = printf "%s%s=%s," $labels $key $value -}}
       {{- end -}}
-      {{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+      {{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) -}}
     options:
       - missingkey=zero
 status:
@@ -46,7 +46,7 @@ status:
       namespace: example-app-namespace
       phase: success # pending, success, or failure
       sha: abcdef1234567890abcdef1234567890abcdef12
-      clusterName: ""
+      clusterName: "" # an empty cluster name means "local cluster"
     - environment: environments/prod
       name: example-app-name
       namespace: example-app-namespace

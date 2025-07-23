@@ -18,18 +18,32 @@ package controller
 
 import (
 	"context"
+	_ "embed"
 
 	v1 "k8s.io/api/core/v1"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+//go:embed testdata/CommitStatus.yaml
+var testCommitStatusYAML string
+
 var _ = Describe("CommitStatus Controller", func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the CommitStatus resource", func() {
+			var testCommitStatus promoterv1alpha1.CommitStatus
+			//nolint:musttag // Not bothering with yaml tags for test data.
+			err := yaml.Unmarshal([]byte(testCommitStatusYAML), &testCommitStatus)
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	var gitRepo *promoterv1alpha1.GitRepository
 	var scmProvider *promoterv1alpha1.ScmProvider
 	var scmSecret *v1.Secret
