@@ -23,7 +23,8 @@ spec:
       {{- $labels = printf "%s%s=%s," $labels $key $value -}}
       {{- end -}}
       {{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
-    options: missingkey=zero
+    options:
+      - missingkey=zero
 status:
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during

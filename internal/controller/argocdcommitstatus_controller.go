@@ -495,14 +495,12 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 
 		renderedURL, err := utils.RenderStringTemplate(argoCDCommitStatus.Spec.URL.Template, data, argoCDCommitStatus.Spec.URL.Options...)
 		if err != nil {
-			logger.Error(err, "failed to render URL template", "argoCDCommitStatus", argoCDCommitStatus.Name, "namespace", argoCDCommitStatus.Namespace)
 			return fmt.Errorf("failed to render URL template: %w", err)
 		}
 
 		// Parse the URL to check that it's valid
 		parsedURL, err := url.Parse(renderedURL)
 		if err != nil {
-			logger.Error(err, "failed to parse URL", "url", renderedURL, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
 			return fmt.Errorf("failed to parse URL: %w", err)
 		}
 

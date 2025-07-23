@@ -16,4 +16,3 @@ spec:
       {{- $labels = printf "%s%s=%s," $labels $key $value -}}
       {{- end -}}
       {{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
-    options: ""
