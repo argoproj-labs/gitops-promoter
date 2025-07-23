@@ -1,4 +1,4 @@
-import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, parseTrailers, formatDate, extractEnvNameFromBranch } from './util';
+import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, parseTrailers, formatDate, decodeCommitMessage } from './util';
 
 interface CommitStatus {
   key: string;
@@ -12,29 +12,36 @@ interface Commit {
   author?: string;
   subject?: string;
   body?: string;
-  commitTime?: string;
+  commitTime?: string | null;
   repoURL?: string;
+  references?: Array<{
+    commit: {
+      //TODO: Add subject here?
+      author?: string;
+      sha?: string;
+      date?: string;
+      body?: string;
+      repoURL?: string;
+
+    };
+  }>;
 }
 
 interface PullRequest {
   id: string;
-  prCreationTime: string;
-  state: string;
+  url?: string;
 }
 
 interface Environment {
   branch: string;
   active: {
     dry?: Commit;
-    hydrated?: Commit;
     commitStatuses?: CommitStatus[];
   };
   proposed: {
     dry?: Commit;
-    hydrated?: Commit;
     commitStatuses?: CommitStatus[];
   };
-  
   pullRequest?: PullRequest;
 }
 
@@ -48,41 +55,55 @@ interface Check {
   name: string;
   status: string;
   details?: string;
-  detailLinks?: string;
 }
 
 interface EnrichedEnvDetails {
+  // Environment info
   branch: string;
   phase: string;
-  lastSync: string;
+  promotionStatus: string;
+  
+  // Active commits
   drySha: string;
   dryCommitAuthor: string;
-  dryCommitMessage: string;
   dryCommitSubject: string;
-  dryCommitUrl: string;
+  dryCommitMessage: string;
   dryCommitDate: string;
-  dryCommitTrailers: any;
-  dryCommitTrailerBody: string | undefined;
+  dryCommitUrl: string;
+  activeChecks: Check[];
+  activeChecksSummary: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  
+  referenceSha: string;
+  referenceCommitAuthor: string;
+  referenceCommitSubject: string;
+  referenceCommitDate: string;
+  referenceCommitUrl: string;
+  referenceCommitBody: string;
+  
+  // Proposed commits
   proposedSha: string;
-  hydratedSha: string;
-  hydratedCommitUrl: string;
+  prNumber: number | null;
+  prUrl: string | null;
   proposedDryCommitAuthor: string;
   proposedDryCommitSubject: string;
   proposedDryCommitBody: string;
-  proposedDryCommitUrl: string;
   proposedDryCommitDate: string;
+  proposedDryCommitUrl: string;
   proposedChecks: Check[];
-  activeChecks: Check[];
-  prNumber: number | null;
-  prUrl: string | null;
-  prCreatedAt: string | null;
-  mergeDate: string;
-  promotionStatus: string;
-  percent: number;
-  autoMerge: boolean;
+  proposedChecksSummary: { successCount: number; totalCount: number; shouldDisplay: boolean };
+
+  
+  proposedReferenceSha: string;
+  proposedReferenceCommitAuthor: string;
+  proposedReferenceCommitSubject: string;
+  proposedReferenceCommitDate: string;
+  proposedReferenceCommitUrl: string;
+  proposedReferenceCommitBody: string;
+  
 }
 
 
+//TODO: HOW SHOULD WE HANDLE PROPOSED CARDS DISAPPEARING?
 function getPromotionStatus(env: {
   proposedSha: string;
   drySha: string;
@@ -90,52 +111,31 @@ function getPromotionStatus(env: {
   totalProposedChecks: number;
   activeChecks: Check[];
 }): 'pending' | 'promoted' | 'success' | 'failure' | 'unknown' {
-  const { proposedSha, drySha: sha, checks = [], totalProposedChecks = 0, activeChecks = [] } = env;
+  const { proposedSha, drySha: sha, checks = [], activeChecks = [] } = env;
   let promotionStatus: 'pending' | 'promoted' | 'success' | 'failure' | 'unknown' = 'unknown';
 
-
-  //STATE 1: Pending (PR OPEN)
-  if (proposedSha !== sha) {
+  // Check for failures in proposed checks first
+  if (checks.some((c: Check) => c.status === 'failure')) {
+    promotionStatus = 'failure';
+  }
+  // Pending (PR OPEN)
+  else if (proposedSha !== sha) {
     promotionStatus = 'pending';
+  }
 
-
-  //STATE 1B: Pending (PR OPEN && PROPOSED CHECKS IN PROGRESS  - applies to second environment)
-  } else if (proposedSha !== sha && totalProposedChecks > 0) {
-    promotionStatus = 'pending';
-
-
-  //STATE 2: Promoted (PR MERGED && ACTIVE CHECKS IN PROGRESS)
-  } else if (proposedSha === sha) {
+  // Promoted (PR MERGED && ACTIVE CHECKS IN PROGRESS)
+  else if (proposedSha === sha) {
     if (activeChecks && activeChecks.length > 0 && !activeChecks.every((c: Check) => c.status === 'success')) {
       promotionStatus = 'promoted';
-
-
-      //STATE 3: Success (PR MERGED && ACTIVE CHECKS PASSED)
-    } else if (activeChecks && activeChecks.length > 0 && activeChecks.every((c: Check) => c.status === 'success')) {
+    }
+    // Success (PR MERGED && ACTIVE CHECKS PASSED)
+    else if (activeChecks && activeChecks.length > 0 && activeChecks.every((c: Check) => c.status === 'success')) {
       promotionStatus = 'success';
     }
-
-    
-    //STATUS 5: Failure (Failure in Proposed Checks)
-  } else if (checks.some((c: Check) => c.status === 'failure')) {
-    promotionStatus = 'failure';
-  } else {
-    promotionStatus = 'unknown';
   }
 
   return promotionStatus;
 }
-
-function calculatePercent(passed: number, total: number, promotionStatus: string): number {
-  if (total > 0) {
-    return (passed / total) * 100;
-  } else if (promotionStatus === 'promoted') {
-    return 100;
-  }
-  return 0;
-}
-
-
 
 function getProposedChecks(commitStatuses: CommitStatus[]): Check[] {
   return commitStatuses.map((cs: CommitStatus) => ({
@@ -154,96 +154,151 @@ function getActiveChecks(commitStatuses: CommitStatus[]): Check[] {
   }));
 }
 
+// Health check summary calculation functions
+function calculateHealthSummary(checks: Check[]): { successCount: number; totalCount: number; shouldDisplay: boolean } {
+  const totalCount = checks.length;
+  const successCount = checks.filter(check => check.status === 'success').length;
+  const shouldDisplay = totalCount > 0;
+  return { successCount, totalCount, shouldDisplay };
+}
+
+// Helper function to extract reference commit data consistently
+function extractReferenceCommitData(dryCommit: any): {
+  sha: string;
+  author: string;
+  subject: string;
+  body: string;
+  date: string;
+  url: string;
+} {
+  const referenceCommit = dryCommit.references && dryCommit.references[0]?.commit;
+  
+  if (!referenceCommit) {
+    return {
+      sha: '-',
+      author: '-',
+      subject: '-',
+      body: '-',
+      date: '-',
+      url: ''
+    };
+  }
+  
+  const sha = referenceCommit.sha ? referenceCommit.sha.slice(0, 7) : '-';
+  const author = referenceCommit.author ? extractNameOnly(referenceCommit.author) : '-';
+  const subject = referenceCommit.subject || '-';
+  
+  let body = '-';
+  if (referenceCommit.body) {
+    body = decodeCommitMessage(referenceCommit.body);
+  }
+  
+  const date = referenceCommit.date ? formatDate(referenceCommit.date) : '-';
+  const url = referenceCommit.sha && referenceCommit.repoURL ? 
+    getCommitUrl(referenceCommit.repoURL, referenceCommit.sha) : '';
+  
+  return { sha, author, subject, body, date, url };
+}
+
 function getEnvDetails(environment: Environment, specEnvs: { branch: string; autoMerge?: boolean }[]): EnrichedEnvDetails {
   const { active = {}, proposed = {}, pullRequest } = environment;
 
+  const branch = environment.branch || '';
 
-    //TODO: HOW DO WE EXTRACT JUST THE BRANCH NAME? 
-    const branch = extractEnvNameFromBranch(environment.branch || '');
+  // Phase
+  const commitStatuses = active.commitStatuses || [];
+  const phase = commitStatuses[0]?.phase || 'unknown';
 
-    // Phase
-    const commitStatuses = active.commitStatuses || [];
-    const phase = commitStatuses[0]?.phase || 'unknown';
-
-
-    // Dry commit (ACTIVE - for top card)
+    //Dry Commit (Active)
     const dry = active.dry || {};
     const drySha = dry.sha ? dry.sha.slice(0, 7) : '-';
     const dryCommitAuthor = extractNameOnly(dry.author || '-');
     const dryCommitSubject = dry.subject || '-';
     const dryCommitMessage = extractBodyPreTrailer(dry.body || '-');
     const dryCommitUrl = getCommitUrl(dry.repoURL ?? '', dry.sha ?? '');
-    const { trailers: dryCommitTrailers, trailerBody: dryCommitTrailerBody } = parseTrailers(dry.body || '');
+
+    //Active Checks
+    const activeChecks = getActiveChecks(commitStatuses);
+    const activeChecksSummary = calculateHealthSummary(activeChecks);
+
+    // Code Commits from references[0].commit (ACTIVE)
+    const activeReferenceData = extractReferenceCommitData(dry);
+    const referenceSha = activeReferenceData.sha;
+    const referenceCommitAuthor = activeReferenceData.author;
+    const referenceCommitSubject = activeReferenceData.subject;
+    const referenceCommitBody = activeReferenceData.body;
+    const referenceCommitDate = activeReferenceData.date;
+    const referenceCommitUrl = activeReferenceData.url;
 
 
-    //Hydrated
-    const hydrated = active.hydrated || {};
-    const hydratedSha = hydrated.sha ? hydrated.sha.slice(0, 7) : '-';
-    const hydratedCommitUrl = getCommitUrl(dry.repoURL ?? '', hydrated.sha ?? '');
-
-    // Proposed (for bottom card)
+    // Proposed Dry
     const proposedDry = proposed.dry || {};
     const proposedSha = proposedDry.sha ? proposedDry.sha.slice(0, 7) : '-';
     const proposedCommitStatuses = proposed.commitStatuses || [];
-    const proposedChecks = getProposedChecks(proposedCommitStatuses);
-    const totalProposedChecks = proposedChecks.length;
-    const passed = proposedChecks.filter((check: Check) => check.status === 'success').length;
-
     const proposedDryCommitAuthor = extractNameOnly(proposedDry.author || '-');
     const proposedDryCommitSubject = proposedDry.subject || '-';
     const proposedDryCommitBody = extractBodyPreTrailer(proposedDry.body || '-');
     const proposedDryCommitUrl = getCommitUrl(proposedDry.repoURL ?? '', proposedDry.sha ?? '');
     const proposedDryCommitDate = proposedDry.commitTime ? formatDate(proposedDry.commitTime) : '-';
-    const lastSync = hydrated.commitTime ? formatDate(hydrated.commitTime) : '-';
 
-    // Active checks
-    const activeChecks = getActiveChecks(commitStatuses);
+    //Proposed Checks
+    const proposedChecks = getProposedChecks(proposedCommitStatuses);
+    const proposedChecksSummary = calculateHealthSummary(proposedChecks);
 
+    // Code Commits from references[0].commit (PROPOSED)
+    const proposedReferenceData = extractReferenceCommitData(proposedDry);
+    const proposedReferenceSha = proposedReferenceData.sha;
+    const proposedReferenceCommitAuthor = proposedReferenceData.author;
+    const proposedReferenceCommitSubject = proposedReferenceData.subject;
+    const proposedReferenceCommitBody = proposedReferenceData.body;
+    const proposedReferenceCommitDate = proposedReferenceData.date;
+    const proposedReferenceCommitUrl = proposedReferenceData.url;
 
 
     // PR number and url
     const prNumber = pullRequest?.id ? parseInt(pullRequest.id, 10) : null;
-    const repoURL = proposed.dry?.repoURL || proposed.hydrated?.repoURL || '';
-    const prUrl = prNumber && repoURL ? `${repoURL}/pull/${prNumber}` : null;
-
-
-
-    const prCreatedAt = pullRequest?.prCreationTime || '-';
-    const mergeDate = hydrated.commitTime ? formatDate(hydrated.commitTime) : '';
-    
-    // Find the matching spec environment for autoMerge
-    const specEnv = specEnvs.find(e => e.branch === environment.branch);
-    const autoMerge = specEnv?.autoMerge ?? false;
+    const prUrl = pullRequest?.url || null;
 
     const envDetails = {
+      // Environment info
       branch,
       phase,
-      lastSync,
+      promotionStatus: 'unknown',
+      
+
       drySha,
       dryCommitAuthor,
-      dryCommitMessage,
       dryCommitSubject,
-      dryCommitUrl,
+      dryCommitMessage,
       dryCommitDate: dry.commitTime ? formatDate(dry.commitTime) : '-',
-      dryCommitTrailers,
-      dryCommitTrailerBody,
+      dryCommitUrl,
+      referenceSha,
+      referenceCommitAuthor,
+      referenceCommitSubject,
+      referenceCommitDate,
+      referenceCommitUrl,
+      referenceCommitBody,
+      
       proposedSha,
-      hydratedSha,
-      hydratedCommitUrl,
       proposedDryCommitAuthor,
       proposedDryCommitSubject,
       proposedDryCommitBody,
-      proposedDryCommitUrl,
       proposedDryCommitDate,
+      proposedDryCommitUrl,
+      proposedReferenceSha,
+      proposedReferenceCommitAuthor,
+      proposedReferenceCommitSubject,
+      proposedReferenceCommitDate,
+      proposedReferenceCommitUrl,
+      proposedReferenceCommitBody,
+      
       proposedChecks,
       activeChecks,
+      activeChecksSummary,
+      proposedChecksSummary,
       prNumber,
       prUrl,
-      prCreatedAt,
-      mergeDate,
-      autoMerge,
     };
-
 
     const promotionStatus = getPromotionStatus({
       ...envDetails,
@@ -254,19 +309,17 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
       drySha: envDetails.drySha,
     });
 
-    
-    const percent = calculatePercent(passed, totalProposedChecks, promotionStatus);
     return {
       ...envDetails,
       promotionStatus,
-      percent,
     };
 }
 
 export function enrichPromotionStrategy(ps: PromotionStrategy): EnrichedEnvDetails[] {
   if (!ps?.status?.environments) {
     return [];
-  }
+  } 
+
   // Pass spec environments to getEnvDetails
   return ps.status.environments.map((environment: Environment) =>
     getEnvDetails(environment, ps.spec?.environments || [])

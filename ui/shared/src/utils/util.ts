@@ -20,11 +20,6 @@ export const timeAgo = (dateString: string): string => {
       return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
     }
   }
-  
-//Extract environment name -> remove leading prefixes ending with / or -
-export function extractEnvNameFromBranch(branch: string): string {
-  return branch;
-}
 
 // Get the commit url from the repo url and sha
 export function getCommitUrl(repoUrl: string, sha: string): string {
@@ -72,23 +67,6 @@ export function parseTrailers(body: string): { trailers: { [key: string]: string
   return { trailers, trailerBody };
 }
   
-  
-//Get ArgoCD application link
-export function getArgoCDAppLink(appName: string, namespace: string = 'argocd', baseUrl: string = 'https://localhost:8080') {
-  return `${baseUrl}/applications/${namespace}/${appName}?view=tree&resource=`;
-}
-
-
-export function getAppsForEnvironment(apps: any[], env: string): any[] {
-  if (!env) return [];
-  return apps.filter(app =>
-    app.name === env ||
-    app.name.endsWith(`-${env}`) ||
-    app.name.startsWith(`${env}-`) ||
-    app.name.includes(env)
-  );
-}
-
 // date formatting (e.g: Jul 5 2025, 12:15pm EDT)
 export function formatDate(date?: string): string {
   if (!date) return '-';
@@ -102,5 +80,26 @@ export function formatDate(date?: string): string {
     hour12: true,
     timeZoneName: 'short'
   }).replace(',', '').replace(/:00 /, ' '); // Remove seconds if present
+}
+  
+
+// Decode HTML entities and Unicode escape sequences in commit messages
+export function decodeCommitMessage(message: string): string {
+  if (!message) return '';
+  
+  return message
+    // Decode Unicode escape sequences
+    .replace(/\\u003C/g, '<')
+    .replace(/\\u003E/g, '>')
+    .replace(/\\u0026/g, '&')
+    .replace(/\\u0022/g, '"')
+    .replace(/\\u0027/g, "'")
+    // Decode common HTML entities
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
 }
   
