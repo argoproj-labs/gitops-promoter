@@ -15,4 +15,4 @@ spec:
       {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
       {{- $labels = printf "%s%s=%s," $labels $key $value -}}
       {{- end -}}
-      {{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+      {{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) -}}
