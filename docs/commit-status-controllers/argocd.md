@@ -63,7 +63,7 @@ To configure setting the url of a commit status, for example, a link to an Argo 
 The following variables are available in the template:
 
 - `.Environment` - string holding the environment name (i.e. environment branch name) for the group of Applications the URL is being generated for.
-- `.ArgoCDCommitStatus` - holds the whole [CR](../crd-specs#argocdcommitstatus) in its current state
+- `.ArgoCDCommitStatus` - holds the whole [CR](../../crd-specs#argocdcommitstatus) in its current state
 
 #### Template Options 
 Template options can be configured for how missing variables are handled. 
