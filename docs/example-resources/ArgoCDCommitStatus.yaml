@@ -8,6 +8,23 @@ spec:
       app: demo
   promotionStrategyRef:
     name: argocon-demo
+  url:
+    template: |
+      {{- $baseURL := "https://dev.argocd.local" -}}
+      {{- if eq .Environment "environment/development" -}}
+      {{- $baseURL = "https://dev.argocd.local" -}}
+      {{- else if eq .Environment "environment/staging" -}}
+      {{- $baseURL = "https://staging.argocd.local" -}}
+      {{- else if eq .Environment "environment/production" -}}
+      {{- $baseURL = "https://prod.argocd.local" -}}
+      {{- end -}}
+      {{- $labels := "" -}}
+      {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
+      {{- $labels = printf "%s%s=%s," $labels $key $value -}}
+      {{- end -}}
+      {{- printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+    options:
+      - missingkey=zero
 status:
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
@@ -29,3 +46,10 @@ status:
       namespace: example-app-namespace
       phase: success # pending, success, or failure
       sha: abcdef1234567890abcdef1234567890abcdef12
+      clusterName: ""
+    - environment: environments/prod
+      name: example-app-name
+      namespace: example-app-namespace
+      phase: success # pending, success, or failure
+      sha: abcdef1234567890abcdef1234567890abcdef12
+      clusterName: "prod"

@@ -8,9 +8,10 @@ import (
 
 var _ = Describe("test rendering a template", func() {
 	tests := map[string]struct {
-		template string
 		data     any
+		template string
 		expected string
+		options  []string
 		wantErr  bool
 	}{
 		"can render template successfully": {
@@ -31,11 +32,20 @@ var _ = Describe("test rendering a template", func() {
 			template: "{{ env HOME }}",
 			wantErr:  true,
 		},
+		"can render template with options": {
+			template: "{{ .Foo }}",
+			data: map[string]string{
+				"Bar": "John",
+			},
+			options:  []string{"missingkey=zero"},
+			expected: "",
+			wantErr:  false,
+		},
 	}
 
 	for name, test := range tests {
 		It(name, func() {
-			result, err := utils.RenderStringTemplate(test.template, test.data)
+			result, err := utils.RenderStringTemplate(test.template, test.data, test.options...)
 			if test.wantErr {
 				Expect(err).To(HaveOccurred())
 			} else {

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"path"
@@ -31,6 +32,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"gopkg.in/yaml.v3"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,6 +40,9 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
+
+//go:embed testdata/ArgoCDCommitStatus-URL-env.yaml
+var testArgoCDCommitStatusYAML string
 
 var _ = Describe("PromotionStrategy Controller", func() {
 	Context("When reconciling a resource with no commit statuses", func() {
@@ -1756,7 +1761,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 	})
 
-	Context("When reconciling a resource with active commit status using ArgoCDCommitStatus", func() {
+	Context("When reconciling a resource with active commit status using ArgoCDCommitStatus", Label("argocdcommitstatus"), func() {
 		const argocdCSLabel = "argocd-health"
 		const namespace = "default"
 
@@ -1972,8 +1977,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Delete(ctx, &argoCDAppProduction)).To(Succeed())
 		})
 
-		It("should successfully reconcile the resource across clusters", func() {
-			// Skip("Skipping test because of flakiness")
+		It("should successfully reconcile the resource across clusters", Label("multicluster"), func() {
 			By("Creating the resource")
 			plainName := "mc-promo-strategy-with-active-commit-status-argocdcommitstatus"
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, plainName, "default")
@@ -1990,6 +1994,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				},
 			}
 
+			testArgoCDCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{}
+			//nolint:musttag // Not bothering adding yaml tags since it's just for a test.
+			err := yaml.Unmarshal([]byte(testArgoCDCommitStatusYAML), &testArgoCDCommitStatus)
+			Expect(err).To(Succeed())
+
 			argocdCommitStatus := promoterv1alpha1.ArgoCDCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -2001,6 +2010,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					},
 					ApplicationSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{"app": plainName},
+					},
+					URL: promoterv1alpha1.URLConfig{
+						Template: testArgoCDCommitStatus.Spec.URL.Template,
 					},
 				},
 			}
@@ -2029,6 +2041,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: argoCDAppDev.GetNamespace(),
 					}, &commitStatus)
 					g.Expect(err).To(Succeed())
+					switch environment.Branch {
+					case "environment/development":
+						g.Expect(commitStatus.Spec.Url).To(Equal("https://dev.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
+					case "environment/staging":
+						g.Expect(commitStatus.Spec.Url).To(Equal("https://staging.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
+					case "environment/production":
+						g.Expect(commitStatus.Spec.Url).To(Equal("https://prod.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
+					}
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}
 
