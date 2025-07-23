@@ -133,3 +133,12 @@ spec:
 Even though the CommitStatus is "about" the `environment/dev` branch, the SHA is the SHA of the `environment/test-next` branch. This is
 how the PromotionStrategy controller expresses its opinion of the proposed commit on the stg environment, i.e. that it
 is acceptable because the previous environment is healthy.
+
+#### Previous Environment CommitStatus URL
+
+Since the previous environment CommitStatus aggregates the active commit status checks of the previous environment, it
+is nontrivial to determine what URL to use for the aggreate CommitStatus.
+
+For now, the previous environment CommitStatus will only be set if there is only one active commit status. Its URL will
+be set to the URL of the previous environment's active commit status. If there are multiple active commit statuses, no
+URL will be set. This behavior may change in the future.
