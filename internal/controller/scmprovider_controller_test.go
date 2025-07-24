@@ -36,7 +36,7 @@ var testScmProviderYAML string
 
 var _ = Describe("ScmProvider Controller", func() {
 	Context("When unmarshalling the test data", func() {
-		FIt("should unmarshal the ScmProvider resource", func() {
+		It("should unmarshal the ScmProvider resource", func() {
 			err := unmarshalYamlStrict(testScmProviderYAML, &promoterv1alpha1.ScmProvider{})
 			Expect(err).ToNot(HaveOccurred())
 		})
