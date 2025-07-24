@@ -110,7 +110,7 @@ Single environment that filters applications by label selector.
 
 Multi-cluster environment that filters applications by label selector and environment. 
 ```yaml
-{!internal/controller/testdata/ArgoCDCommitStatus-URL-env.yaml!}
+{!internal/controller/testdata/ArgoCDCommitStatus.yaml!}
 ```
 
 ## Multi-Cluster Support
