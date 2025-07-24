@@ -11,8 +11,8 @@ spec:
 
   github:
     domain: github.example.com # Optional, leave empty for default github.com
-    appID: <your-app-id>
-    installationID: <your-installation-id>
+    appID: 1234
+    installationID: 1234
 
   gitlab:
     domain: gitlab.com # Optional

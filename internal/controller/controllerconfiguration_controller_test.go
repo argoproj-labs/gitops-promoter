@@ -23,7 +23,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -39,9 +38,7 @@ var testControllerConfigurationYAML string
 var _ = Describe("ControllerConfiguration Controller", func() {
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the ControllerConfiguration resource", func() {
-			var testControllerConfiguration promoterv1alpha1.ControllerConfiguration
-			//nolint:musttag // Not bothering with yaml tags for test data.
-			err := yaml.Unmarshal([]byte(testControllerConfigurationYAML), &testControllerConfiguration)
+			err := unmarshalYamlStrict(testControllerConfigurationYAML, &promoterv1alpha1.ControllerConfiguration{})
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})

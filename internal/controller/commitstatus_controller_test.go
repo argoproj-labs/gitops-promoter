@@ -24,7 +24,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -37,9 +36,7 @@ var testCommitStatusYAML string
 var _ = Describe("CommitStatus Controller", func() {
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the CommitStatus resource", func() {
-			var testCommitStatus promoterv1alpha1.CommitStatus
-			//nolint:musttag // Not bothering with yaml tags for test data.
-			err := yaml.Unmarshal([]byte(testCommitStatusYAML), &testCommitStatus)
+			err := unmarshalYamlStrict(testCommitStatusYAML, &promoterv1alpha1.CommitStatus{})
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})

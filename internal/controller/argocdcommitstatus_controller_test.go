@@ -22,8 +22,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"gopkg.in/yaml.v3"
-
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
@@ -36,9 +34,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the ArgoCDCommitStatus resource", func() {
-			var testArgoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
-			//nolint:musttag // Not bothering with yaml tags for test data.
-			err := yaml.Unmarshal([]byte(testArgoCDCommitStatusYAML), &testArgoCDCommitStatus)
+			err := unmarshalYamlStrict(testArgoCDCommitStatusYAML, &promoterv1alpha1.ArgoCDCommitStatus{})
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})

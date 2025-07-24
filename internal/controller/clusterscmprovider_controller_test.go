@@ -20,8 +20,6 @@ import (
 	"context"
 	_ "embed"
 
-	"gopkg.in/yaml.v3"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -39,9 +37,7 @@ var testClusterScmProviderYAML string
 var _ = Describe("ClusterScmProvider Controller", func() {
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the ClusterScmProvider resource", func() {
-			var testClusterScmProvider promoterv1alpha1.ClusterScmProvider
-			//nolint:musttag // Not bothering with yaml tags for test data.
-			err := yaml.Unmarshal([]byte(testClusterScmProviderYAML), &testClusterScmProvider)
+			err := unmarshalYamlStrict(testClusterScmProviderYAML, &promoterv1alpha1.ClusterScmProvider{})
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})

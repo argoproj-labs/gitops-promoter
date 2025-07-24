@@ -31,7 +31,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"gopkg.in/yaml.v3"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,9 +46,7 @@ const healthCheckCSKey = "health-check"
 var _ = Describe("ChangeTransferPolicy Controller", func() {
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the ChangeTransferPolicy resource", func() {
-			var testChangeTransferPolicy promoterv1alpha1.ChangeTransferPolicy
-			//nolint:musttag // Not bothering with yaml tags for test data.
-			err := yaml.Unmarshal([]byte(testChangeTransferPolicyYAML), &testChangeTransferPolicy)
+			err := unmarshalYamlStrict(testChangeTransferPolicyYAML, &promoterv1alpha1.ChangeTransferPolicy{})
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
@@ -66,7 +63,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next" //nolint:goconst
-			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			changeTransferPolicy.Spec.ActiveBranch = "environment/development"        //nolint:goconst
 			// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 

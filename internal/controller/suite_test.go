@@ -62,6 +62,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/sosedoff/gitkit"
+	"gopkg.in/yaml.v3"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
@@ -725,4 +726,26 @@ func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client)
 	Expect(cl).NotTo(BeNil())
 
 	return env, cfg, cl
+}
+
+// unmarshalYaml unmarshals a YAML string into the target struct using JSON decoding. It disallows unknown fields. Using
+// JSON decoding allows us to leverage the JSON decoder's DisallowUnknownFields feature. The YAML unmarshaller would
+// require yaml tags on all structs, and we'd like to avoid adding those.
+func unmarshalYamlStrict(yamlData string, target any) error {
+	d := map[string]any{}
+	err := yaml.Unmarshal([]byte(yamlData), &d)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal YAML: %w", err)
+	}
+	jsonData, err := json.Marshal(d)
+	if err != nil {
+		return fmt.Errorf("failed to marshal YAML to JSON: %w", err)
+	}
+	u := json.NewDecoder(bytes.NewBuffer(jsonData))
+	u.DisallowUnknownFields()
+	err = u.Decode(target)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal JSON to target: %w", err)
+	}
+	return nil
 }

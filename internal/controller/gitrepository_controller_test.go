@@ -22,7 +22,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -38,9 +37,7 @@ var testGitRepositoryYAML string
 var _ = Describe("GitRepository Controller", func() {
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the GitRepository resource", func() {
-			var testGitRepository promoterv1alpha1.GitRepository
-			//nolint:musttag // Not bothering with yaml tags for test data.
-			err := yaml.Unmarshal([]byte(testGitRepositoryYAML), &testGitRepository)
+			err := unmarshalYamlStrict(testGitRepositoryYAML, &promoterv1alpha1.GitRepository{})
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})

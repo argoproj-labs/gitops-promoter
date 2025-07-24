@@ -28,7 +28,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"gopkg.in/yaml.v3"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -40,9 +39,7 @@ var testPullRequestYAML string
 var _ = Describe("PullRequest Controller", func() {
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the PullRequest resource", func() {
-			var testPullRequest promoterv1alpha1.PullRequest
-			//nolint:musttag // Not bothering with yaml tags for test data.
-			err := yaml.Unmarshal([]byte(testPullRequestYAML), &testPullRequest)
+			err := unmarshalYamlStrict(testPullRequestYAML, &promoterv1alpha1.PullRequest{})
 			Expect(err).ToNot(HaveOccurred())
 		})
 	})
