@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import type { PromotionStrategyType } from '@shared/models/PromotionStrategyType';
 import { PromotionStrategyTile } from '../PromotionStrategySummary/PromotionStrategyTile';
 import { enrichPromotionStrategy } from '@shared/utils/PSData';
+import { getLastCommitTime } from './promotionStrategyUtils';
+import { formatDate } from '@shared/utils/util';
 import './PromotionStrategyTiles.scss';
 
 interface Props {
@@ -31,7 +33,8 @@ export const PromotionStrategiesTiles: React.FC<Props> = ({ promotionStrategies,
 
 
         const enriched = enrichedList[idx]?.[0]; // Use the first env for summary tile
-        const lastUpdated = enriched?.lastSync ? enriched.lastSync : '-';
+        const lastCommitTime = getLastCommitTime(ps);
+        const lastUpdated = lastCommitTime ? formatDate(lastCommitTime.toISOString()) : '-';
         const phase = enriched?.promotionStatus || 'unknown';
         return (
           <PromotionStrategyTile

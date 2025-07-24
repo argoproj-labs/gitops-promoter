@@ -16,13 +16,12 @@ interface Commit {
   repoURL?: string;
   references?: Array<{
     commit: {
-      //TODO: Add subject here?
       author?: string;
       sha?: string;
+      subject?: string;
       date?: string;
       body?: string;
       repoURL?: string;
-
     };
   }>;
 }
@@ -190,8 +189,7 @@ function extractReferenceCommitData(dryCommit: any): {
     const body = referenceCommit.body || '-';
   
   const date = referenceCommit.date ? formatDate(referenceCommit.date) : '-';
-  const url = referenceCommit.sha && referenceCommit.repoURL ? 
-    getCommitUrl(referenceCommit.repoURL, referenceCommit.sha) : '';
+  const url = referenceCommit.repoURL || '';
   
   return { sha, author, subject, body, date, url };
 }
