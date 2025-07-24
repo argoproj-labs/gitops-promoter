@@ -1,22 +1,21 @@
 apiVersion: promoter.argoproj.io/v1alpha1
-kind: ClusterScmProvider
+kind: ScmProvider
 metadata:
-  name: example-cluster-scm-provider
+  name: example-scm-provider
 spec:
   secretRef:
-    # Secret must be in the same namespace where the promoter is running
-    name: example-cluster-scm-provider-secret 
+    name: example-scm-provider-secret
 
   # You must specify either github, gitlab, or forgejo. Both are provided here as examples.
   # If you do not need to specify any sub-fields, just set the field to {}.
 
   github:
     domain: github.example.com # Optional, leave empty for default github.com
-    appID: <your-app-id>
-    installationID: <your-installation-id>
+    appID: 1234
+    installationID: 1234
 
   gitlab:
     domain: gitlab.com # Optional
 
   forgejo:
-    domain: forgejo.example.com
+    domain:

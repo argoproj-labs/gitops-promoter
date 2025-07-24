@@ -19,6 +19,7 @@ package controller
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"net/http"
 	"os"
@@ -37,9 +38,19 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+//go:embed testdata/ChangeTransferPolicy.yaml
+var testChangeTransferPolicyYAML string
+
 const healthCheckCSKey = "health-check"
 
 var _ = Describe("ChangeTransferPolicy Controller", func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the ChangeTransferPolicy resource", func() {
+			err := unmarshalYamlStrict(testChangeTransferPolicyYAML, &promoterv1alpha1.ChangeTransferPolicy{})
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	Context("When reconciling a resource", func() {
 		ctx := context.Background()
 

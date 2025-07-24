@@ -17,10 +17,25 @@ limitations under the License.
 package controller
 
 import (
+	_ "embed"
+
 	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
+
+//go:embed testdata/ArgoCDCommitStatus.yaml
+var testArgoCDCommitStatusYAML string
 
 var _ = Describe("ArgoCDCommitStatus Controller", func() {
 	Context("When reconciling a resource", func() {
+	})
+
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the ArgoCDCommitStatus resource", func() {
+			err := unmarshalYamlStrict(testArgoCDCommitStatusYAML, &promoterv1alpha1.ArgoCDCommitStatus{})
+			Expect(err).ToNot(HaveOccurred())
+		})
 	})
 })
