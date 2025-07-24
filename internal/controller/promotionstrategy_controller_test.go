@@ -41,10 +41,16 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-//go:embed testdata/ArgoCDCommitStatus-URL-env.yaml
-var testArgoCDCommitStatusYAML string
-
+//go:embed testdata/PromotionStrategy.yaml
+var testPromotionStrategyYAML string
 var _ = Describe("PromotionStrategy Controller", func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the PromotionStrategy resource", func() {
+			err := unmarshalYamlStrict(testPromotionStrategyYAML, &promoterv1alpha1.PromotionStrategy{})
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	Context("When reconciling a resource with no commit statuses", func() {
 		ctx := context.Background()
 

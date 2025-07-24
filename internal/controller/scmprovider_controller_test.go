@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	_ "embed"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -30,7 +31,17 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+//go:embed testdata/ScmProvider.yaml
+var testScmProviderYAML string
+
 var _ = Describe("ScmProvider Controller", func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the ScmProvider resource", func() {
+			err := unmarshalYamlStrict(testScmProviderYAML, &promoterv1alpha1.ScmProvider{})
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 

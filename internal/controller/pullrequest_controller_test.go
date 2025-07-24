@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	_ "embed"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -32,7 +33,17 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+//go:embed testdata/PullRequest.yaml
+var testPullRequestYAML string
+
 var _ = Describe("PullRequest Controller", func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the PullRequest resource", func() {
+			err := unmarshalYamlStrict(testPullRequestYAML, &promoterv1alpha1.PullRequest{})
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	Context("When reconciling a resource", func() {
 		ctx := context.Background()
 

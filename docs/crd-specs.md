@@ -5,7 +5,7 @@ this CR, the user configures the list of live hydrated environment branches in t
 configure the checks which must pass between promotion steps.
 
 ```yaml
-{!docs/example-resources/PromotionStrategy.yaml!}
+{!internal/controller/testdata/PromotionStrategy.yaml!}
 ```
 
 ## ChangeTransferPolicy
@@ -23,7 +23,7 @@ The [Events](monitoring/events.md#changetransferpolicy) page documents the Kuber
 ChangeTransferPolicies.
 
 ```yaml
-{!docs/example-resources/ChangeTransferPolicy.yaml!}
+{!internal/controller/testdata/ChangeTransferPolicy.yaml!}
 ```
 
 ## PullRequest
@@ -32,7 +32,7 @@ A PullRequest is a thin wrapper around the SCM's pull request API. ChangeTransfe
 promotions.
 
 ```yaml
-{!docs/example-resources/PullRequest.yaml!}
+{!internal/controller/testdata/PullRequest.yaml!}
 ```
 
 ## CommitStatus
@@ -43,7 +43,7 @@ checkmarks/failures appear in the SCM's UI. But even if the SCM API calls fail, 
 use the contents of the CommitStatuses `spec` fields.
 
 ```yaml
-{!docs/example-resources/CommitStatus.yaml!}
+{!internal/controller/testdata/CommitStatus.yaml!}
 ```
 
 ## GitRepository
@@ -52,7 +52,7 @@ A GitRepository represents a single git repository. It references an ScmProvider
 auth mechanism.
 
 ```yaml
-{!docs/example-resources/GitRepository.yaml!}
+{!internal/controller/testdata/GitRepository.yaml!}
 ```
 
 ## ScmProvider
@@ -61,7 +61,7 @@ An ScmProvider represents a scm instance (such as github). It references a Secre
 auth mechanism.
 
 ```yaml
-{!docs/example-resources/ScmProvider.yaml!}
+{!internal/controller/testdata/ScmProvider.yaml!}
 ```
 
 ## ClusterScmProvider
@@ -70,7 +70,7 @@ A ClusterScmProvider represents a SCM instance (such as GitHub). ClusterScmProvi
 auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in the cluster, regardless of namespace.
 
 ```yaml
-{!docs/example-resources/ClusterScmProvider.yaml!}
+{!internal/controller/testdata/ClusterScmProvider.yaml!}
 ```
 
 ## ArgoCDCommitStatus
@@ -79,7 +79,7 @@ An ArgoCDCommitStatus is used as a way to aggregate all the Argo CD Applications
 to check the status of the Argo CD Applications that are being used in the promotion strategy.
 
 ```yaml
-{!docs/example-resources/ArgoCDCommitStatus.yaml!}
+{!internal/controller/testdata/ArgoCDCommitStatus.yaml!}
 ```
 ## ControllerConfiguration
 
@@ -90,5 +90,5 @@ A global ControllerConfiguration is deployed alongside the controller and applie
 All fields are required, but defaults are provided in the installation manifests.
 
 ```yaml
-{!docs/example-resources/ControllerConfiguration.yaml!}
+{!internal/controller/testdata/ControllerConfiguration.yaml!}
 ```

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	_ "embed"
 
 	v1 "k8s.io/api/core/v1"
 
@@ -29,7 +30,17 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+//go:embed testdata/CommitStatus.yaml
+var testCommitStatusYAML string
+
 var _ = Describe("CommitStatus Controller", func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the CommitStatus resource", func() {
+			err := unmarshalYamlStrict(testCommitStatusYAML, &promoterv1alpha1.CommitStatus{})
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	var gitRepo *promoterv1alpha1.GitRepository
 	var scmProvider *promoterv1alpha1.ScmProvider
 	var scmSecret *v1.Secret
