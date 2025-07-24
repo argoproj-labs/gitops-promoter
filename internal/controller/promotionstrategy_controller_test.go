@@ -43,6 +43,7 @@ import (
 
 //go:embed testdata/PromotionStrategy.yaml
 var testPromotionStrategyYAML string
+
 var _ = Describe("PromotionStrategy Controller", func() {
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the PromotionStrategy resource", func() {

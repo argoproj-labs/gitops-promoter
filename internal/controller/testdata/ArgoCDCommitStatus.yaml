@@ -47,12 +47,7 @@ status:
       namespace: example-app-namespace
       phase: success # pending, success, or failure
       sha: abcdef1234567890abcdef1234567890abcdef12
-<<<<<<< HEAD:docs/example-resources/ArgoCDCommitStatus.yaml
-      clusterName: ""
-=======
       clusterName: "" # an empty cluster name means "local cluster"
->>>>>>> 5aa4b5ac4ed5da0b9f38e0541704e6a94c38ae1c:internal/controller/testdata/ArgoCDCommitStatus.yaml
-    - environment: environments/prod
       name: example-app-name
       namespace: example-app-namespace
       phase: success # pending, success, or failure
