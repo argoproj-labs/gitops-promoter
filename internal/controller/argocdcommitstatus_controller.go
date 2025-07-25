@@ -148,7 +148,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	clusters := r.KubeConfigProvider.ListClusters()
 	clusters = append(clusters, "") // add the local cluster
 	for _, clusterName := range clusters {
-		logger.Info("feching argocd applications from cluster", "cluster", clusterName)
+		logger.Info("Fetching Argo CD applications from cluster", "cluster", clusterName)
 		cluster, err := r.Manager.GetCluster(ctx, clusterName)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to get cluster: %w", err)
@@ -541,20 +541,20 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		}
 		// Create
 		err = r.localClient.Create(ctx, &desiredCommitStatus)
-		logger.Info("Created ArgoCDCommitStatus", "name", desiredCommitStatus.Name)
+		logger.Info("Created ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
 		if err != nil {
 			return fmt.Errorf("failed to create CommitStatus object: %w", err)
 		}
 	}
 
 	if currentCommitStatus.Spec == desiredCommitStatus.Spec {
-		logger.V(4).Info("ArgoCDCommitStatus is already in sync")
+		logger.V(4).Info("ArgoCDCommitStatus is already in sync", "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
 		return nil
 	}
 
 	currentCommitStatus.Spec = desiredCommitStatus.Spec
 	err = r.localClient.Update(ctx, &currentCommitStatus)
-	logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "sha", sha, "phase", phase, "desc", desc)
+	logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
 	if err != nil {
 		return fmt.Errorf("failed to update CommitStatus object: %w", err)
 	}
