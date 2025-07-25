@@ -234,8 +234,8 @@ func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Conte
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	// List all commits on the branch (newest first)
-	out, stderr, err := g.runCmd(ctx, gitPath, "rev-list", "--max-count=25", "origin/"+branch)
+	// List all commits on the branch (newest first) we can limit with "--max-count=25"
+	out, stderr, err := g.runCmd(ctx, gitPath, "rev-list", "origin/"+branch)
 	if err != nil {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("could not list commits: %w\n%s", err, stderr)
 	}
@@ -257,6 +257,10 @@ func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Conte
 		if foundSha != "" {
 			break
 		}
+	}
+
+	if foundSha == "" {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("no commit with yaml file changes found on branch %q", branch)
 	}
 
 	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", foundSha+":hydrator.metadata")
