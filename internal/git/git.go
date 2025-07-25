@@ -235,7 +235,6 @@ func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Conte
 	}
 
 	// List all commits on the branch (newest first)
-	//git --no-pager log --pretty=format:"%H" --max-count 100
 	out, stderr, err := g.runCmd(ctx, gitPath, "rev-list", "--max-count=25", "origin/"+branch)
 	if err != nil {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("could not list commits: %w\n%s", err, stderr)
@@ -249,16 +248,11 @@ func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Conte
 			logger.Error(err, "could not get diff", "gitError", stderr)
 			return v1alpha1.CommitShaState{}, err
 		}
-		logger.V(4).Info("Got diff", "diff", stdout)
+		logger.V(4).Info("Diff walking commits", "diff", stdout)
 
-		// Check if the diff contains any YAML files if so we expect a manifest to have changed
-		// TODO: This is temporary check we should add some path globbing support to the specs
-		for _, file := range strings.Split(stdout, "\n") {
-			if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
-				logger.V(4).Info("YAML file changed", "file", file)
-				foundSha = sha
-				break
-			}
+		if ContainsYamlFileSuffix(ctx, strings.Split(stdout, "\n")) {
+			logger.V(4).Info("Found commit with yaml file changes", "sha", sha)
+			foundSha = sha
 		}
 		if foundSha != "" {
 			break
@@ -500,16 +494,7 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	}
 	logger.V(4).Info("Got diff", "diff", stdout)
 
-	// Check if the diff contains any YAML files if so we expect a manifest to have changed
-	// TODO: This is temporary check we should add some path globbing support to the specs
-	for _, file := range strings.Split(stdout, "\n") {
-		if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
-			logger.V(4).Info("YAML file changed", "file", file)
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return ContainsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
 }
 
 // LsRemote returns a map of branch names to SHAs for the given branches using git ls-remote.
