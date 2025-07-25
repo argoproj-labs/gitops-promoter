@@ -250,7 +250,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Conte
 		}
 		logger.V(4).Info("Diff walking commits", "diff", stdout)
 
-		if ContainsYamlFileSuffix(ctx, strings.Split(stdout, "\n")) {
+		if containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")) {
 			logger.V(4).Info("Found commit with yaml file changes", "sha", sha)
 			foundSha = sha
 		}
@@ -498,7 +498,7 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	}
 	logger.V(4).Info("Got diff", "diff", stdout)
 
-	return ContainsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
+	return containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
 }
 
 // LsRemote returns a map of branch names to SHAs for the given branches using git ls-remote.
