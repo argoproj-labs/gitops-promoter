@@ -23,7 +23,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({ namespace
 
   // Find the selected strategy
   const selectedStrategy = items.find(
-    (ps: any) => ps.metadata.name === strategyName
+    (ps: any) => ps.metadata?.name === strategyName
   );
 
   useEffect(() => {

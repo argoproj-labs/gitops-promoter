@@ -1,8 +1,7 @@
-import type { PromotionStrategyType } from '@shared/models/PromotionStrategyType';
+import type { PromotionStrategy } from '@shared/utils/PSData';
 
 
-
-export function getLastCommitTime(ps: PromotionStrategyType): Date | null {
+export function getLastCommitTime(ps: PromotionStrategy): Date | null {
 
     //Determine the last commit time between both active/proposed hydrated commit
   const commitTimes = [
@@ -25,7 +24,7 @@ export function getLastCommitTime(ps: PromotionStrategyType): Date | null {
 
 
 // Get the status for all environments and return an overall phase
-export function getPromotionPhase(ps: PromotionStrategyType): 'success' | 'failure' | 'pending' | 'default' {
+export function getPromotionPhase(ps: PromotionStrategy): 'success' | 'failure' | 'pending' | 'default' {
 
   const envPhases = ps.status?.environments?.map(env => env.active?.commitStatuses?.[0]?.phase) || [];
   if (envPhases.length > 0) {

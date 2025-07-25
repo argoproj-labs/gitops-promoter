@@ -24,7 +24,7 @@ export const PromotionStrategyTile = ({ps, borderStatus, promotedPhase, lastUpda
     >
       <div className="ps-tile__header">
         <FaGitAlt className="ps-tile__icon" />
-        <span className="ps-tile__name">{ps.metadata.name}</span>
+        <span className="ps-tile__name">{ps.metadata?.name || 'Unknown'}</span>
       </div>
 
       
