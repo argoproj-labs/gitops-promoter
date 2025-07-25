@@ -278,13 +278,13 @@ func (e *TooManyMatchingShaError) Error() string {
 }
 
 func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, activeHydratedSha, proposedHydratedSha string) error {
-	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeHydratedSha)
+	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFileFiltered(ctx, ctp.Spec.ActiveBranch)
 	if err != nil {
 		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Active.Dry = activeCommitMetadata
 
-	proposedCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedHydratedSha)
+	proposedCommitMetadata, err := gitOperations.GetShaMetadataFromFileFiltered(ctx, ctp.Spec.ProposedBranch)
 	if err != nil {
 		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
