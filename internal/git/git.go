@@ -226,7 +226,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 }
 
 // GetShaMetadataFromFileFiltered retrieves commit metadata from the hydrator.metadata file for a given SHA.
-func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Context, branch string) (v1alpha1.CommitShaState, error) {
+func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Context, branch string, topDrySha string) (v1alpha1.CommitShaState, error) {
 	logger := log.FromContext(ctx)
 
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -277,7 +277,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Conte
 	}
 
 	commitState := v1alpha1.CommitShaState{
-		Sha:        hydratorFile.DrySha,
+		Sha:        topDrySha,
 		CommitTime: hydratorFile.Date,
 		RepoURL:    hydratorFile.RepoURL,
 		Author:     hydratorFile.Author,

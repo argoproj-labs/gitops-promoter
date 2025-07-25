@@ -278,13 +278,21 @@ func (e *TooManyMatchingShaError) Error() string {
 }
 
 func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, activeHydratedSha, proposedHydratedSha string) error {
-	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFileFiltered(ctx, ctp.Spec.ActiveBranch)
+	latestActiveCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeHydratedSha)
+	if err != nil {
+		return fmt.Errorf("failed to get commit metadata for active SHA %q: %w", activeHydratedSha, err)
+	}
+	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFileFiltered(ctx, ctp.Spec.ActiveBranch, latestActiveCommitMetadata.Sha)
 	if err != nil {
 		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Active.Dry = activeCommitMetadata
 
-	proposedCommitMetadata, err := gitOperations.GetShaMetadataFromFileFiltered(ctx, ctp.Spec.ProposedBranch)
+	latestProposedCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeHydratedSha)
+	if err != nil {
+		return fmt.Errorf("failed to get commit metadata for active SHA %q: %w", activeHydratedSha, err)
+	}
+	proposedCommitMetadata, err := gitOperations.GetShaMetadataFromFileFiltered(ctx, ctp.Spec.ProposedBranch, latestProposedCommitMetadata.Sha)
 	if err != nil {
 		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
