@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import EnvironmentCard from './EnvironmentCard';
+import Card from './Card';
 import { enrichPromotionStrategy } from '../../../shared/src/utils/PSData';
 import type { PromotionStrategyType } from '../../../shared/src/models/PromotionStrategyType';
 
@@ -7,7 +7,6 @@ interface PromotionStrategyDetailsViewProps {
   strategy: PromotionStrategyType;
 }
 
-// This component receives a PromotionStrategy
 export const PromotionStrategyDetailsView: React.FC<PromotionStrategyDetailsViewProps> = ({
   strategy,
 }) => {
@@ -30,7 +29,7 @@ export const PromotionStrategyDetailsView: React.FC<PromotionStrategyDetailsView
 
   if (loading) return <div>Loading environment details...</div>;
 
-  return <EnvironmentCard environments={enrichedEnvs} />;
+  return <Card environments={enrichedEnvs} />;
 };
 
 export default PromotionStrategyDetailsView;

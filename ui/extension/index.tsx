@@ -1,6 +1,6 @@
 import React from 'react';
 import { enrichPromotionStrategy } from '@shared/utils/PSData';
-import EnvironmentCard from '@components-lib/components/EnvironmentCard';
+import Card from '@components-lib/components/Card';
 import './index.scss';
 
 // CRD Objects
@@ -78,7 +78,7 @@ const Extension: React.FC<ExtensionProps> = ({ resource }) => {
       {isLoading ? (
         <div className="loading-indicator">Loading environment details...</div>
       ) : (
-        <EnvironmentCard environments={enrichedEnvs} />
+        <Card environments={enrichedEnvs} />
       )}
     </div>
   );

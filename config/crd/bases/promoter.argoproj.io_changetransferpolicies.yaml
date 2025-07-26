@@ -178,16 +178,16 @@ spec:
                                     as by `git show -s --format=%aI`.
                                   format: date-time
                                   type: string
-                                message:
-                                  description: Subject is the subject line of the
-                                    commit message, i.e. `git show --format=%s`.
-                                  type: string
                                 repoURL:
                                   description: RepoURL is the URL of the repository
                                     where the commit is located.
                                   type: string
                                 sha:
                                   description: Sha is the commit hash.
+                                  type: string
+                                subject:
+                                  description: Subject is the subject line of the
+                                    commit message, i.e. `git show --format=%s`.
                                   type: string
                               type: object
                           type: object
@@ -242,16 +242,16 @@ spec:
                                     as by `git show -s --format=%aI`.
                                   format: date-time
                                   type: string
-                                message:
-                                  description: Subject is the subject line of the
-                                    commit message, i.e. `git show --format=%s`.
-                                  type: string
                                 repoURL:
                                   description: RepoURL is the URL of the repository
                                     where the commit is located.
                                   type: string
                                 sha:
                                   description: Sha is the commit hash.
+                                  type: string
+                                subject:
+                                  description: Subject is the subject line of the
+                                    commit message, i.e. `git show --format=%s`.
                                   type: string
                               type: object
                           type: object
@@ -399,16 +399,16 @@ spec:
                                     as by `git show -s --format=%aI`.
                                   format: date-time
                                   type: string
-                                message:
-                                  description: Subject is the subject line of the
-                                    commit message, i.e. `git show --format=%s`.
-                                  type: string
                                 repoURL:
                                   description: RepoURL is the URL of the repository
                                     where the commit is located.
                                   type: string
                                 sha:
                                   description: Sha is the commit hash.
+                                  type: string
+                                subject:
+                                  description: Subject is the subject line of the
+                                    commit message, i.e. `git show --format=%s`.
                                   type: string
                               type: object
                           type: object
@@ -463,16 +463,16 @@ spec:
                                     as by `git show -s --format=%aI`.
                                   format: date-time
                                   type: string
-                                message:
-                                  description: Subject is the subject line of the
-                                    commit message, i.e. `git show --format=%s`.
-                                  type: string
                                 repoURL:
                                   description: RepoURL is the URL of the repository
                                     where the commit is located.
                                   type: string
                                 sha:
                                   description: Sha is the commit hash.
+                                  type: string
+                                subject:
+                                  description: Subject is the subject line of the
+                                    commit message, i.e. `git show --format=%s`.
                                   type: string
                               type: object
                           type: object

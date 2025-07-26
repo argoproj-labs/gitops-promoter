@@ -35,8 +35,6 @@ npm run build
 kubectl -n argocd exec -it argocd-server-xxx -- mkdir -p /tmp/extensions/gitops-promoter
 kubectl cp dist/extension.js argocd-server-xxx:/tmp/extensions/gitops-promoter/extension-gitops-promoter.js -n argocd
 
-# Restart ArgoCD server
-kubectl rollout restart deployment/argocd-server -n argocd
 ```
 
 ## Development
