@@ -225,6 +225,70 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 	return commitState, nil
 }
 
+// GetShaMetadataFromFileFiltered retrieves commit metadata from the hydrator.metadata file for a given SHA.
+func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Context, branch string, topDrySha string) (v1alpha1.CommitShaState, error) {
+	logger := log.FromContext(ctx)
+
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	// List all commits on the branch (newest first) we can limit with "--max-count=25"
+	out, stderr, err := g.runCmd(ctx, gitPath, "rev-list", "origin/"+branch)
+	if err != nil {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("could not list commits: %w\n%s", err, stderr)
+	}
+	shas := strings.Fields(out)
+
+	foundSha := ""
+	for _, sha := range shas {
+		stdout, stderr, err := g.runCmd(ctx, gitPath, "diff", sha+"^!", "--name-only", "--diff-filter=ACMRT")
+		if err != nil {
+			logger.Error(err, "could not get diff", "gitError", stderr)
+			return v1alpha1.CommitShaState{}, err
+		}
+		logger.V(4).Info("Diff walking commits", "diff", stdout)
+
+		if containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")) {
+			logger.V(4).Info("Found commit with yaml file changes", "sha", sha)
+			foundSha = sha
+		}
+		if foundSha != "" {
+			break
+		}
+	}
+
+	if foundSha == "" {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("no commit with yaml file changes found on branch %q", branch)
+	}
+
+	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", foundSha+":hydrator.metadata")
+	if err != nil {
+		logger.Error(err, "could not git show file", "gitError", stderr)
+		return v1alpha1.CommitShaState{}, nil
+	}
+	logger.V(4).Info("Got metadata file", "sha", foundSha, "file", metadataFileStdout)
+
+	var hydratorFile HydratorMetadata
+	err = json.Unmarshal([]byte(metadataFileStdout), &hydratorFile)
+	if err != nil {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
+	}
+
+	commitState := v1alpha1.CommitShaState{
+		Sha:        topDrySha,
+		CommitTime: hydratorFile.Date,
+		RepoURL:    hydratorFile.RepoURL,
+		Author:     hydratorFile.Author,
+		Subject:    hydratorFile.Subject,
+		Body:       hydratorFile.Body,
+		References: hydratorFile.References,
+	}
+
+	return commitState, nil
+}
+
 // GetShaMetadataFromGit retrieves commit metadata by running git commands for a given SHA.
 func (g *EnvironmentOperations) GetShaMetadataFromGit(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
 	// logger := log.FromContext(ctx)
@@ -434,16 +498,7 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	}
 	logger.V(4).Info("Got diff", "diff", stdout)
 
-	// Check if the diff contains any YAML files if so we expect a manifest to have changed
-	// TODO: This is temporary check we should add some path globbing support to the specs
-	for _, file := range strings.Split(stdout, "\n") {
-		if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
-			logger.V(4).Info("YAML file changed", "file", file)
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
 }
 
 // LsRemote returns a map of branch names to SHAs for the given branches using git ls-remote.
