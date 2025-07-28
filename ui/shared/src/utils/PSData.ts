@@ -186,10 +186,10 @@ function extractReferenceCommitData(dryCommit: any): {
   const sha = referenceCommit.sha ? referenceCommit.sha.slice(0, 7) : '-';
   const author = referenceCommit.author ? extractNameOnly(referenceCommit.author) : '-';
   const subject = referenceCommit.subject || referenceCommit.message || '-';
-    const body = referenceCommit.body || '-';
+  const body = referenceCommit.body || '-';
   
   const date = referenceCommit.date ? formatDate(referenceCommit.date) : '-';
-  const url = referenceCommit.repoURL || '';
+  const url = getCommitUrl(referenceCommit.repoURL || '', referenceCommit.sha || '');
   
   return { sha, author, subject, body, date, url };
 }
