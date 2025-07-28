@@ -6,3 +6,58 @@
   height: 100px;
   color: #6b7280;
 } 
+
+.env-cards-wrapper {
+  padding: 0 20px !important;
+  gap: 20px !important;
+}
+
+.env-card-column {
+  width: 300px !important;
+}
+
+.commit-info {
+  padding: 40px 0px 40px 0% !important;
+}
+
+.extension-container {
+  .env-cards-container {
+    gap: 30px !important;
+  }
+  
+  .env-cards-wrapper {
+    gap: 20px !important;
+  }
+  
+  .env-card-column {
+    max-width: 400px !important;
+    width: 400px !important;
+  }
+  
+  .env-card {
+    width: 400px !important;
+  }
+  
+  .commit-group-header {
+    margin-top: 15px !important;
+  }
+  
+  .env-cards-wrapper.horizontal-layout {
+    gap: 8px !important;
+    justify-content: flex-start !important;
+    align-items: flex-start !important;
+    margin: 0 !important;
+    padding-left: 0 !important;
+  }
+  
+  .env-cards-container {
+    &:has(.horizontal-layout) {
+      justify-content: flex-start !important;
+      align-items: flex-start !important;
+      margin: 0 !important;
+      padding-left: 0 !important;
+    }
+  }
+}
+
+

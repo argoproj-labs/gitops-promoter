@@ -20,11 +20,6 @@ export const timeAgo = (dateString: string): string => {
       return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
     }
   }
-  
-//Extract environment name -> remove leading prefixes ending with / or -
-export function extractEnvNameFromBranch(branch: string): string {
-  return branch;
-}
 
 // Get the commit url from the repo url and sha
 export function getCommitUrl(repoUrl: string, sha: string): string {
@@ -51,44 +46,6 @@ export function extractBodyPreTrailer(body: string): string {
   return lines.slice(0, trailerStart).join('\n').trim();
 }
   
-// Parse trailers and trailer body from a commit message
-export function parseTrailers(body: string): { trailers: { [key: string]: string }, trailerBody?: string } {
-  if (!body) return { trailers: {} };
-  const lines = body.split(/\r?\n/);
-  const trailers: { [key: string]: string } = {};
-  let inTrailers = false;
-  for (const line of lines) {
-    if (/^([A-Za-z0-9-]+:|Signed-off-by:)/.test(line.trim())) {
-      inTrailers = true;
-    }
-    if (inTrailers) {
-      const match = line.match(/^([A-Za-z0-9-]+):\s*(.*)$/);
-      if (match) {
-        trailers[match[1]] = match[2];
-      }
-    }
-  }
-  const trailerBody = trailers['Argocd-reference-commit-body'];
-  return { trailers, trailerBody };
-}
-  
-  
-//Get ArgoCD application link
-export function getArgoCDAppLink(appName: string, namespace: string = 'argocd', baseUrl: string = 'https://localhost:8080') {
-  return `${baseUrl}/applications/${namespace}/${appName}?view=tree&resource=`;
-}
-
-
-export function getAppsForEnvironment(apps: any[], env: string): any[] {
-  if (!env) return [];
-  return apps.filter(app =>
-    app.name === env ||
-    app.name.endsWith(`-${env}`) ||
-    app.name.startsWith(`${env}-`) ||
-    app.name.includes(env)
-  );
-}
-
 // date formatting (e.g: Jul 5 2025, 12:15pm EDT)
 export function formatDate(date?: string): string {
   if (!date) return '-';

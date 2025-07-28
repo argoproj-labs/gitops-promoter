@@ -1,4 +1,4 @@
+import type { PromotionStrategy } from '@shared/utils/PSData';
 import { createCRDStore } from './CRDStore';
-import type { PromotionStrategyType } from '@shared/models/PromotionStrategyType';
 
-export const PromotionStrategyStore = createCRDStore<PromotionStrategyType>('PromotionStrategy', 'PromotionStrategy') 
+export const PromotionStrategyStore = createCRDStore<PromotionStrategy>('PromotionStrategy', 'PromotionStrategy') 
