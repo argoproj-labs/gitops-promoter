@@ -45,4 +45,4 @@ spec:
 ## Getting Started
 
 The project is currently experimental, please use with caution. See the 
-[docs site](https://argo-gitops-promoter.readthedocs.io/en/latest/getting-started/) for setup instructions.
+[docs site](https://gitops-promoter.readthedocs.io/en/latest/getting-started/) for setup instructions.
