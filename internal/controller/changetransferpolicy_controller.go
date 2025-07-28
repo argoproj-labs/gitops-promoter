@@ -287,6 +287,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Active.Dry = activeCommitMetadata
+	ctp.Status.Active.Dry = latestActiveCommitMetadata // Remove to test new feature
 
 	latestProposedCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedHydratedSha)
 	if err != nil {
@@ -297,6 +298,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Proposed.Dry = proposedCommitMetadata
+	ctp.Status.Proposed.Dry = latestProposedCommitMetadata // Remove to test new feature
 
 	activeCommitMetadata, err = gitOperations.GetShaMetadataFromGit(ctx, activeHydratedSha)
 	if err != nil {
