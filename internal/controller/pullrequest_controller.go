@@ -262,7 +262,16 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	if err := provider.Merge(ctx, "", *pr); err != nil {
+	commitTrailers := `PullRequest-ID: %s
+PullRequest-SourceBranch: %s
+PullRequest-TargetBranch: %s
+PullRequest-CreationTime: %s
+PullRequest-Url: %s`
+	commitTrailers = fmt.Sprintf(commitTrailers, pr.Status.ID, pr.Spec.SourceBranch, pr.Spec.TargetBranch, pr.Status.PRCreationTime.String(), pr.Status.Url)
+
+	commitMessage := fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
+
+	if err := provider.Merge(ctx, commitMessage, *pr); err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestMerged
