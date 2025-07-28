@@ -10,16 +10,16 @@ export interface HealthSummaryProps {
 }
 
 const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, healthSummary }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  
   const { successCount, totalCount, shouldDisplay } = healthSummary || {
     successCount: checks.filter(check => check.status === 'success').length,
     totalCount: checks.length,
     shouldDisplay: checks && checks.length > 0
   };
 
+  // Auto-expand if less than 3 checks
+  const shouldAutoExpand = totalCount < 3;
+  const [isExpanded, setIsExpanded] = useState(shouldAutoExpand);
   
-  // Don't render if no checks to display
   if (!shouldDisplay) {
     return null;
   }

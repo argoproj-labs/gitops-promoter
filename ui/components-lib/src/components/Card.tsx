@@ -9,9 +9,12 @@ export interface CardProps {
 }
 
 const Card: React.FC<CardProps> = ({ environments }) => {
+  // Add CSS class for horizontal layout when 4+ environments
+  const isHorizontalLayout = environments.length >= 4;
+  
   return (
     <div className="env-cards-container">
-      <div className="env-cards-wrapper">
+      <div className={`env-cards-wrapper ${isHorizontalLayout ? 'horizontal-layout' : ''}`}>
         {environments.map((env: any, envIdx: number) => {
           const branch = env.branch;
           const phase = env.phase;
@@ -53,7 +56,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
           return (
             <div key={env.branch} className="env-card-column">
               <div className={`env-card ${(proposedStatus === 'promoted' || proposedStatus === 'success') ? 'single-commit-group' : ''}`}>
-                <div className="env-card__header" style={{ display: 'flex', alignItems: 'center' }}>
+                <div className="env-card__title" style={{ display: 'flex', alignItems: 'center' }}>
                   <FaServer className="env-card__icon" />
                   <span className="env-card__env-name">{branch}</span>
                 </div>
