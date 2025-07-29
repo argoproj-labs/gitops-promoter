@@ -5,13 +5,20 @@
 - npm
 
 ## Build the Extension
+
+### Option 1: Build as part of the main project (Recommended)
 ```bash
-cd ui/extension
-npm install
-npm run build
+# From the project root
+make build-extension
 ```
 
-The built extension file will be generated as `dist/extension.js`.
+### Option 2: Build standalone
+```bash
+cd ui/extension
+npm install && npm run build
+```
+
+The built extension file will be generated as `dist/extension-promoter.js`.
 
 ## Using the Extension in ArgoCD
 
@@ -27,18 +34,23 @@ For detailed deployment instructions, see the [ArgoCD Extension Documentation](h
 ### Quick Deploy Example:
 
 ```bash
-# Build the extension
-cd ui/extension
-npm run build
+# Build the extension (from project root)
+make build-extension
 
 # Copy to ArgoCD server pod
 kubectl -n argocd exec -it argocd-server-xxx -- mkdir -p /tmp/extensions/gitops-promoter
-kubectl cp dist/extension.js argocd-server-xxx:/tmp/extensions/gitops-promoter/extension-gitops-promoter.js -n argocd
-
+kubectl cp ui/extension/dist/extension-promoter.js argocd-server-xxx:/tmp/extensions/gitops-promoter/extension-gitops-promoter.js -n argocd
 ```
 
 ## Development
 For local development, you can run:
 ```bash
+cd ui/extension
 npm run dev
 ```
+
+## CI/CD Integration
+The extension is now integrated into the main CI/CD pipeline:
+- **CI Pipeline**: Builds and checks the extension
+- **Goreleaser**: Builds the extension during releases
+- **Docker**: Includes the extension in the container image
