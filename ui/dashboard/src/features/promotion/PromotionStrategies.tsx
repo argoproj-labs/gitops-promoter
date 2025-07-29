@@ -1,11 +1,18 @@
 import { namespaceStore } from '../../stores/NamespaceStore';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { PromotionStrategyStore } from '../../stores/PromotionStrategyStore';
 import PromotionStrategiesTiles from '../../components/PromotionStrategySummary/PromotionStrategyTiles';
 
+interface NamespaceStore {
+  namespace: string;
+  namespaces: string[];
+  setNamespace: (namespace: string) => void;
+  setNamespaces: (namespaces: string[]) => void;
+}
+
 export function PromotionStrategies() {
     
-    const namespace = namespaceStore((s: any) => s.namespace);
+    const namespace = namespaceStore((s: NamespaceStore) => s.namespace);
     
     const { items, loading, error, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 

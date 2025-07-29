@@ -28,6 +28,11 @@ jobs:
       - name: Install UI dependencies and build
         run: |
           make build-dashboard
+          make build-extension
+      - name: UI Checks
+        run: |
+          cd ui/dashboard && npm run type-check && npm run lint && npm audit
+          cd ui/extension && npm run type-check && npm run lint && npm audit
       - name: Get dependencies
         run: go mod download
       - name: Restore build output from cache
