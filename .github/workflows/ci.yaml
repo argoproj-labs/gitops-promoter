@@ -29,10 +29,14 @@ jobs:
         run: |
           make build-dashboard
           make build-extension
-      - name: UI Checks
+      - name: UI Checks - Dashboard
         run: |
-          cd ui/dashboard && npm run type-check && npm run lint && npm audit
-          cd ui/extension && npm run type-check && npm run lint && npm audit
+          cd ui/dashboard
+          npm run type-check && npm run lint && npm audit
+      - name: UI Checks - Extension
+        run: |
+          cd ui/extension
+          npm run type-check && npm run lint && npm audit
       - name: Get dependencies
         run: go mod download
       - name: Restore build output from cache
