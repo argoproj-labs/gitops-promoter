@@ -47,7 +47,6 @@ build/
 out/
 *.tsbuildinfo
 *.js
-!.eslintrc.js
 *.d.ts
 *.d.ts.map
 *.js.map
