@@ -1,13 +1,18 @@
-import React, { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React from 'react';
 import { namespaceStore } from '../stores/NamespaceStore';
 import { NamespaceDropdown } from '../components/NamespaceDropdown';
 import { PromotionStrategies } from '../features/promotion/PromotionStrategies';
 import './DashboardPage.scss';
 
+interface NamespaceStore {
+  namespace: string;
+  namespaces: string[];
+  setNamespace: (namespace: string) => void;
+  setNamespaces: (namespaces: string[]) => void;
+}
 
 const DashboardPage: React.FC = () => {
-  const namespace = namespaceStore((s: any) => s.namespace);
+  const namespace = namespaceStore((s: NamespaceStore) => s.namespace);
   
   
   

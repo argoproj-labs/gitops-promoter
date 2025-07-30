@@ -128,8 +128,13 @@ build-dashboard: ## Build dashboard UI and embed it.
 	cd ui/components-lib && npm install
 	cd ui/dashboard && npm install && npm run build:embed
 
+.PHONY: build-extension
+build-extension: ## Build ArgoCD extension.
+	cd ui/components-lib && npm install
+	cd ui/extension && npm install && npm run build
+
 .PHONY: build-all
-build-all: build-dashboard build ## Build dashboard UI and then the manager binary.
+build-all: build-dashboard build-extension build ## Build dashboard UI, extension, and then the manager binary.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
@@ -138,6 +143,18 @@ run: manifests generate fmt vet ## Run a controller from your host.
 .PHONY: run-dashboard
 run-dashboard: build-dashboard ## Run dashboard from your host.
 	go run ./cmd/main.go dashboard
+
+.PHONY: lint-dashboard
+lint-dashboard: ## Run dashboard type-check, lint and audit checks
+	cd ui/dashboard && npm run type-check && npm run lint && npm audit
+
+.PHONY: lint-extension
+lint-extension: ## Run extension type-check, lint and audit checks
+	cd ui/extension && npm run type-check && npm run lint && npm audit
+
+.PHONY: lint-ui
+lint-ui: lint-dashboard lint-extension ## Run all UI checks
+
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.

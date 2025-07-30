@@ -1,23 +1,40 @@
 import React from 'react';
-import { enrichPromotionStrategy } from '@shared/utils/PSData';
-import Card from '@components-lib/components/Card';
+import { enrichPromotionStrategy } from '../shared/src/utils/PSData';
+import Card from '../components-lib/src/components/Card';
 import './index.scss';
 
 // CRD Objects
 interface ResourceMetadata {
   name: string;
   namespace: string;
+  uid: string;
+  resourceVersion: string;
+  generation: number;
+  creationTimestamp: string;
   annotations?: Record<string, string>;
   labels?: Record<string, string>;
-  ownerReferences?: any[];
+  ownerReferences?: Array<Record<string, unknown>>;
 }
 
 interface CustomResource {
   apiVersion: string;
   kind: string;
   metadata: ResourceMetadata;
-  spec: any;
-  status: any;
+  spec: {
+    gitRepositoryRef: {
+      name: string;
+      namespace?: string;
+    };
+    activeCommitStatuses?: { key: string }[] | null;
+    proposedCommitStatuses?: { key: string }[] | null;
+    environments: {
+      branch: string;
+      autoMerge?: boolean;
+      activeCommitStatuses?: { key: string }[] | null;
+      proposedCommitStatuses?: { key: string }[] | null;
+    }[];
+  };
+  status: Record<string, unknown>;
 }
 
 // Argo CD extension component
@@ -31,11 +48,9 @@ interface ExtensionProps {
   resource: CustomResource;
 }
 
-// ArgoCD Type definition
+// ArgoCD  definition
 declare global {
   interface Window {
-
-
     extensionsAPI?: {
       registerResourceExtension: (
         component: React.FC<ExtensionProps>,
@@ -44,17 +59,15 @@ declare global {
         title: string,
         options?: { icon: string }
       ) => void;
-
     };
   }
 }
 
 const Extension: React.FC<ExtensionProps> = ({ resource }) => {
-  const [enrichedEnvs, setEnrichedEnvs] = React.useState<any[]>([]);
+  const [enrichedEnvs, setEnrichedEnvs] = React.useState<ReturnType<typeof enrichPromotionStrategy>>([]);
   const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
-
     //Checks if data is loaded and sets the state for the component
     let isMounted = true;
     async function enrich() {

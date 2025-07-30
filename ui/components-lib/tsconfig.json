@@ -12,18 +12,16 @@
     "declaration": true,
     "declarationMap": true,
     "emitDeclarationOnly": false,
+    "noEmit": false,
     "outDir": "dist",
     "composite": true,
     "lib": ["DOM", "ES2020", "ESNext.AsyncIterable"],
     "baseUrl": ".",
     "rootDir": ".",
     "paths": {
-      "@shared/*": ["../../shared/src/*"]
+      "@shared/*": ["../shared/src/*"]
     }
   },
-  "references": [
-    { "path": "../shared" }
-  ],
-  "include": ["src", "../../shared/src"],
+  "include": ["src", "../shared/src"],
   "exclude": ["node_modules", "dist"]
 } 

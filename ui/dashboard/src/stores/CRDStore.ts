@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import { enrichPromotionStrategy } from '@shared/utils/PSData';
+import type { PromotionStrategy } from '@shared/utils/PSData';
 
-export function createCRDStore<T>(kind: string, eventName: string) {
+interface CRDItem extends PromotionStrategy {
+  enriched?: unknown;
+}
+
+export function createCRDStore<T extends CRDItem>(kind: string, eventName: string) {
     let eventSource: EventSource | null = null;
 
     return create<{
@@ -34,8 +39,9 @@ export function createCRDStore<T>(kind: string, eventName: string) {
                     loading: false });
 
                     
-            } catch (err: any) {
-                set({ error: err.message, loading: false });
+            } catch (err: unknown) {
+                const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+                set({ error: errorMessage, loading: false });
             }
         },
 
@@ -53,11 +59,11 @@ export function createCRDStore<T>(kind: string, eventName: string) {
                     const enriched = await enrichPromotionStrategy(updated);
                     set((state) => {
                         const idx = state.items.findIndex(
-                            (item: any) =>
+                            (item: T) =>
                                 item.metadata?.name === updated.metadata?.name &&
                                 item.metadata?.namespace === updated.metadata?.namespace
                         );
-                        let newItems: any;
+                        let newItems: T[];
                         if (idx >= 0) {
                             newItems = [...state.items];
                             newItems[idx] = { ...updated, enriched };
