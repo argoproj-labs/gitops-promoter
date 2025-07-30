@@ -330,8 +330,8 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               history:
-                description: History is the history of the commits that have been
-                  made to the branches.
+                description: History defines the history of promoted changes done
+                  by the ChangeTransferPolicy.
                 items:
                   properties:
                     active:

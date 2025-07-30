@@ -611,3 +611,37 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	return lines, nil
 }
+
+func (g *EnvironmentOperations) GetTrailers(sha string) (map[string]string, error) {
+	logger := log.FromContext(context.TODO())
+	// run git interpret-trailers to get the trailers from the last commit
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+	//git log -1 --format=%B 7912b27cd144b24f21ca05bfa5fe57572e97a3b3 | git interpret-trailers --only-trailers
+	stdout, stderr, err := g.runCmd(context.TODO(), gitPath, "log", "-1", "--format=%B", sha, "|", "git", "interpret-trailers", "--only-trailers")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get trailers for sha %q: %w", sha, err)
+	}
+	if stderr != "" {
+		return nil, fmt.Errorf("git interpret-trailers returned an error: %s", stderr)
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	trailers := make(map[string]string, len(lines))
+	for _, line := range lines {
+		if strings.Contains(line, ":") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				value := strings.TrimSpace(parts[1])
+				trailers[key] = value
+			} else {
+				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
+			}
+		}
+	}
+	logger.V(4).Info("Got trailers", "sha", sha, "trailers", trailers)
+	return trailers, nil
+}

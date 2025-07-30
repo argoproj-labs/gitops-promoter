@@ -194,8 +194,8 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 			return fmt.Errorf("failed to get hydrated commit metadata for SHA %q: %w", sha, err)
 		}
 		v.Active.Hydrated = hydratedActiveMetadata
-		// TODO: can we / should we use git to do this?
-		// v.Active.Hydrated.Body = removeLinesContainingAny(v.Active.Hydrated.Body, []string{"PullRequest-ID:", "PullRequest-SourceBranch:", "PullRequest-TargetBranch:", "PullRequest-CreationTime:", "PullRequest-Url:", "CommitStatus-Active-", "CommitStatus-Proposed-"})
+		// TODO: can we / should we use git cli to do this?
+		v.Active.Hydrated.Body = removeKnownTrailers(v.Active.Hydrated.Body)
 
 		dryActiveMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, sha)
 		if err != nil {
@@ -211,7 +211,22 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 	return nil
 }
 
-func removeLinesContainingAny(input string, toRemove []string) string {
+var knownTrailerPrefixes = []string{
+	"PullRequest-ID:",
+	"PullRequest-SourceBranch:",
+	"PullRequest-TargetBranch:",
+	"PullRequest-CreationTime:",
+	"PullRequest-Url:",
+	"CommitStatus-Active-",
+	"CommitStatus-Proposed-",
+	"Sha-Hydrated-Active:",
+	"Sha-Hydrated-Proposed:",
+	"Sha-Dry-Active:",
+	"Sha-Dry-Proposed:"}
+
+func removeKnownTrailers(input string) string {
+	toRemove := knownTrailerPrefixes
+
 	if !strings.HasSuffix(input, "\n") {
 		input += "\n"
 	}
@@ -379,8 +394,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 		return fmt.Errorf("failed to get commit active metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Active.Hydrated = activeCommitMetadata
-	ctp.Status.Active.Hydrated.Body = removeLinesContainingAny(ctp.Status.Active.Hydrated.Body, []string{"PullRequest-ID:", "PullRequest-SourceBranch:", "PullRequest-TargetBranch:", "PullRequest-CreationTime:", "PullRequest-Url:", "CommitStatus-Active-", "CommitStatus-Proposed-"})
-
+	ctp.Status.Active.Hydrated.Body = removeKnownTrailers(ctp.Status.Active.Hydrated.Body)
 	proposedCommitMetadata, err = gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha)
 	if err != nil {
 		return fmt.Errorf("failed to get commit proposed metadata for hydrated SHA %q: %w", proposedHydratedSha, err)
@@ -620,12 +634,17 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	for _, status := range ctp.Status.Active.CommitStatuses {
 		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Phase", status.Key)] = status.Phase
 		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Url", status.Key)] = status.Url
-		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Sha", status.Key)] = ctp.Status.Active.Hydrated.Sha
+		//commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Sha", status.Key)] = ctp.Status.Active.Hydrated.Sha
 	}
 	for _, status := range ctp.Status.Proposed.CommitStatuses {
 		commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Phase", status.Key)] = status.Phase
 		commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Url", status.Key)] = status.Url
+		//commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Sha", status.Key)] = ctp.Status.Proposed.Hydrated.Sha
 	}
+	commitTrailers["Sha-Hydrated-Active"] = ctp.Status.Active.Hydrated.Sha
+	commitTrailers["Sha-Hydrated-Proposed"] = ctp.Status.Proposed.Hydrated.Sha
+	commitTrailers["Sha-Dry-Active"] = ctp.Status.Active.Dry.Sha
+	commitTrailers["Sha-Dry-Proposed"] = ctp.Status.Proposed.Dry.Sha
 	commitMessage := fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 	// Pull Request already exists, update it.

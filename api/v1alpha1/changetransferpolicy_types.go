@@ -125,7 +125,7 @@ type ChangeTransferPolicyStatus struct {
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
 
-	// History is the history of the commits that have been made to the branches.
+	// History defines the history of promoted changes done by the ChangeTransferPolicy.
 	History []History `json:"history,omitempty"`
 
 	// Conditions Represents the observations of the current state.
@@ -136,6 +136,7 @@ type ChangeTransferPolicyStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+// History defines the history of promoted changes done by the ChangeTransferPolicy.
 type History struct {
 	// Proposed is the state of the proposed branch.
 	Proposed CommitBranchState `json:"proposed,omitempty"`
@@ -143,6 +144,14 @@ type History struct {
 	Active CommitBranchState `json:"active,omitempty"`
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
+}
+
+type CommitBranchStateProposedHistory struct {
+	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
+	// +kubebuilder:validation:Optional
+	// +listType:=map
+	// +listMapKey=key
+	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 
 // PullRequestCommonStatus defines the common status fields for a pull request.
