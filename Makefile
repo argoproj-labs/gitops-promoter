@@ -144,16 +144,16 @@ run: manifests generate fmt vet ## Run a controller from your host.
 run-dashboard: build-dashboard ## Run dashboard from your host.
 	go run ./cmd/main.go dashboard
 
-.PHONY: dashboard-check
-dashboard-check: ## Run dashboard type-check, lint and audit checks
+.PHONY: lint-dashboard
+lint-dashboard: ## Run dashboard type-check, lint and audit checks
 	cd ui/dashboard && npm run type-check && npm run lint && npm audit
 
-.PHONY: extension-check
-extension-check: ## Run extension type-check, lint and audit checks
+.PHONY: lint-extension
+lint-extension: ## Run extension type-check, lint and audit checks
 	cd ui/extension && npm run type-check && npm run lint && npm audit
 
-.PHONY: ui-check
-ui-check: dashboard-check extension-check ## Run all UI checks
+.PHONY: lint-ui
+lint-ui: lint-dashboard lint-extension ## Run all UI checks
 
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
