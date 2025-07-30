@@ -122,9 +122,11 @@ type ChangeTransferPolicyStatus struct {
 	Proposed CommitBranchState `json:"proposed,omitempty"`
 	// Active is the state of the active branch.
 	Active CommitBranchState `json:"active,omitempty"`
-
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
+
+	// History is the history of the commits that have been made to the branches.
+	History []History `json:"history,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
@@ -132,6 +134,15 @@ type ChangeTransferPolicyStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+type History struct {
+	// Proposed is the state of the proposed branch.
+	Proposed CommitBranchState `json:"proposed,omitempty"`
+	// Active is the state of the active branch.
+	Active CommitBranchState `json:"active,omitempty"`
+	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
+	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
 }
 
 // PullRequestCommonStatus defines the common status fields for a pull request.

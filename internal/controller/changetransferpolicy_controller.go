@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -133,6 +134,11 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to merge pull requests: %w", err)
 	}
 
+	err = r.calculateHistory(ctx, &ctp, gitOperations)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to calculate history: %w", err)
+	}
+
 	err = r.Status().Update(ctx, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
@@ -153,6 +159,84 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	return ctrl.Result{
 		RequeueAfter: requeueDuration,
 	}, nil
+}
+
+func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
+	logger := log.FromContext(ctx)
+
+	historyMap := map[string]promoterv1alpha1.History{}
+	history := []promoterv1alpha1.History{}
+
+	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ActiveBranch, "5")
+	if err != nil {
+		return fmt.Errorf("failed to get rev-list commit history for branch %q: %w", ctp.Spec.ActiveBranch, err)
+	}
+	logger.V(4).Info("Rev-list history for active branch", "shaList", shaListActive)
+
+	shaListProposed, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ProposedBranch, "5")
+	if err != nil {
+		return fmt.Errorf("failed to get rev-list commit history for branch %q: %w", ctp.Spec.ProposedBranch, err)
+	}
+	logger.V(4).Info("Rev-list history for proposed branch", "shaList", shaListProposed)
+
+	for _, sha := range shaListActive {
+		if _, ok := historyMap[sha]; !ok {
+			historyMap[sha] = promoterv1alpha1.History{
+				Active:      promoterv1alpha1.CommitBranchState{},
+				Proposed:    promoterv1alpha1.CommitBranchState{},
+				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{},
+			}
+		}
+		v := historyMap[sha]
+		v.Active.Hydrated.Sha = sha
+		hydratedActiveMetadata, err := gitOperations.GetShaMetadataFromGit(ctx, sha)
+		if err != nil {
+			return fmt.Errorf("failed to get hydrated commit metadata for SHA %q: %w", sha, err)
+		}
+		v.Active.Hydrated = hydratedActiveMetadata
+		// TODO: can we / should we use git to do this?
+		// v.Active.Hydrated.Body = removeLinesContainingAny(v.Active.Hydrated.Body, []string{"PullRequest-ID:", "PullRequest-SourceBranch:", "PullRequest-TargetBranch:", "PullRequest-CreationTime:", "PullRequest-Url:", "CommitStatus-Active-", "CommitStatus-Proposed-"})
+
+		dryActiveMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, sha)
+		if err != nil {
+			return fmt.Errorf("failed to get proposed commit metadata for SHA %q: %w", sha, err)
+		}
+		v.Active.Dry = dryActiveMetadata
+
+		historyMap[sha] = v
+		history = append(history, v)
+	}
+
+	ctp.Status.History = history
+	return nil
+}
+
+func removeLinesContainingAny(input string, toRemove []string) string {
+	if !strings.HasSuffix(input, "\n") {
+		input += "\n"
+	}
+
+	lines := strings.Split(input, "\n")
+	filtered := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		shouldKeep := true
+		for _, rm := range toRemove {
+			if strings.Contains(line, rm) {
+				shouldKeep = false
+				break
+			}
+		}
+		if shouldKeep {
+			filtered = append(filtered, line)
+		}
+	}
+
+	input = strings.Join(filtered, "\n")
+	input = strings.TrimSpace(input)
+	input += "\n"
+
+	return input
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -295,6 +379,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 		return fmt.Errorf("failed to get commit active metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Active.Hydrated = activeCommitMetadata
+	ctp.Status.Active.Hydrated.Body = removeLinesContainingAny(ctp.Status.Active.Hydrated.Body, []string{"PullRequest-ID:", "PullRequest-SourceBranch:", "PullRequest-TargetBranch:", "PullRequest-CreationTime:", "PullRequest-Url:", "CommitStatus-Active-", "CommitStatus-Proposed-"})
 
 	proposedCommitMetadata, err = gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha)
 	if err != nil {
@@ -511,6 +596,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 				TargetBranch:        ctp.Spec.ActiveBranch,
 				SourceBranch:        ctp.Spec.ProposedBranch,
 				Description:         description,
+				MergeCommitMessage:  "",
 				State:               "open",
 			},
 		}
@@ -522,6 +608,25 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		logger.V(4).Info("Created pull request")
 		return nil
 	}
+
+	commitTrailers := trailers{}
+	commitTrailers["PullRequest-ID"] = pr.Status.ID
+	commitTrailers["PullRequest-SourceBranch"] = pr.Spec.SourceBranch
+	commitTrailers["PullRequest-TargetBranch"] = pr.Spec.TargetBranch
+	commitTrailers["PullRequest-CreationTime"] = pr.Status.PRCreationTime.String()
+	commitTrailers["PullRequest-Url"] = pr.Status.Url
+	pr.Spec.MergeCommitMessage = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
+
+	for _, status := range ctp.Status.Active.CommitStatuses {
+		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Phase", status.Key)] = status.Phase
+		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Url", status.Key)] = status.Url
+		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Sha", status.Key)] = ctp.Status.Active.Hydrated.Sha
+	}
+	for _, status := range ctp.Status.Proposed.CommitStatuses {
+		commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Phase", status.Key)] = status.Phase
+		commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Url", status.Key)] = status.Url
+	}
+	commitMessage := fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 	// Pull Request already exists, update it.
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -536,6 +641,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prUpdated.Spec.TargetBranch = ctp.Spec.ActiveBranch
 		prUpdated.Spec.SourceBranch = ctp.Spec.ProposedBranch
 		prUpdated.Spec.Description = description
+		prUpdated.Spec.MergeCommitMessage = commitMessage
 		return r.Update(ctx, &prUpdated)
 	})
 	if err != nil {

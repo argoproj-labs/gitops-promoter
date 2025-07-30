@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -262,20 +263,37 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	commitTrailers := `PullRequest-ID: %s
-PullRequest-SourceBranch: %s
-PullRequest-TargetBranch: %s
-PullRequest-CreationTime: %s
-PullRequest-Url: %s`
-	commitTrailers = fmt.Sprintf(commitTrailers, pr.Status.ID, pr.Spec.SourceBranch, pr.Spec.TargetBranch, pr.Status.PRCreationTime.String(), pr.Status.Url)
+	ctp := promoterv1alpha1.ChangeTransferPolicy{}
+	if len(pr.OwnerReferences) != 1 {
+		return fmt.Errorf("pull request %s has no owner reference or multiple owner references", pr.Name)
+	}
+	err := r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.OwnerReferences[0].Name}, &ctp)
+	if err != nil {
+		return fmt.Errorf("failed to get ChangeTransferPolicy during pullrequest lookup: %w", err)
+	}
 
-	commitMessage := fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
-
-	if err := provider.Merge(ctx, commitMessage, *pr); err != nil {
+	if err := provider.Merge(ctx, pr.Spec.MergeCommitMessage, *pr); err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestMerged
 	return nil
+}
+
+type trailers map[string]string
+
+func (t trailers) String() string {
+	keys := make([]string, 0, len(t))
+
+	for k := range t {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var result string
+	for _, k := range keys {
+		result += fmt.Sprintf("%s: %s\n", k, t[k])
+	}
+	return result
 }
 
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
