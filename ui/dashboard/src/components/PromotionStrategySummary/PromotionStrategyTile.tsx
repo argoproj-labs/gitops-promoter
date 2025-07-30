@@ -3,14 +3,21 @@ import { StatusIcon } from '@lib/components/StatusIcon';
 import type { StatusType } from '@lib/components/StatusIcon';
 import { getLastCommitTime } from './promotionStrategyUtils';
 import { formatDate } from '@shared/utils/util';
+import type { PromotionStrategy } from '@shared/utils/PSData';
 import './PromotionStrategyTiles.scss';
 
+interface EnrichedEnvironment {
+  branch: string;
+  autoMerge?: boolean;
+  promotionStatus?: string;
+}
+
 export const PromotionStrategyTile = ({ps, borderStatus, promotedPhase, lastUpdated, enrichedEnvList, onClick}:{
-  ps: any, namespace: string,
+  ps: PromotionStrategy, namespace: string,
   borderStatus: 'success' | 'failure' | 'pending' | 'default',
   promotedPhase: 'success' | 'failure' | 'pending' | 'default',
   lastUpdated: string,
-  enrichedEnvList?: any[],
+  enrichedEnvList?: EnrichedEnvironment[],
   onClick: () => void
 }) => {
   const lastCommitTime = getLastCommitTime(ps);
@@ -29,7 +36,7 @@ export const PromotionStrategyTile = ({ps, borderStatus, promotedPhase, lastUpda
 
       
       <div className="ps-tile__row"><span className="ps-tile__label">Repository:</span> <span className="ps-tile__info">{ps.spec.gitRepositoryRef.name}</span></div>
-      <div className="ps-tile__row"><span className="ps-tile__label">Promoted:</span> <span className="ps-tile__info"><StatusIcon phase={enrichedEnvList?.[0]?.promotionStatus || (promotedPhase === 'default' ? 'unknown' : promotedPhase)} type="status" /></span></div>
+      <div className="ps-tile__row"><span className="ps-tile__label">Promoted:</span> <span className="ps-tile__info"><StatusIcon phase={enrichedEnvList?.[0]?.promotionStatus as StatusType || (promotedPhase === 'default' ? 'unknown' : promotedPhase)} type="status" /></span></div>
       <div className="ps-tile__row"><span className="ps-tile__label">Last Updated:</span> <span className="ps-tile__info">{actualLastUpdated}</span></div>
       <div className="ps-tile__row"><span className="ps-tile__label">Environments:</span></div>
       <div className="ps-tile__envs">

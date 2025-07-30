@@ -16,9 +16,5 @@
       "@shared/*": ["../shared/src/*"]
     }
   },
-  "references": [
-    { "path": "../components-lib" },
-    { "path": "../shared" }
-  ],
   "include": ["./index.tsx"]
 } 

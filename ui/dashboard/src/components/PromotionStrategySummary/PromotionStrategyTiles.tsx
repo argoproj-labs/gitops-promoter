@@ -7,13 +7,19 @@ import { getLastCommitTime } from './promotionStrategyUtils';
 import { formatDate } from '@shared/utils/util';
 import './PromotionStrategyTiles.scss';
 
+interface EnrichedEnvironment {
+  branch: string;
+  autoMerge?: boolean;
+  promotionStatus?: string;
+}
+
 export interface PromotionStrategyTilesProps {
   promotionStrategies: PromotionStrategy[];
   namespace: string;
 }
 
 export const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = ({ promotionStrategies, namespace }) => {
-  const [enrichedList, setEnrichedList] = useState<any[][]>([]);
+  const [enrichedList, setEnrichedList] = useState<EnrichedEnvironment[][]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -35,7 +41,7 @@ export const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = (
         const enriched = enrichedList[idx]?.[0]; // Use the first env for summary tile
         const lastCommitTime = getLastCommitTime(ps);
         const lastUpdated = lastCommitTime ? formatDate(lastCommitTime.toISOString()) : '-';
-        const phase = enriched?.promotionStatus || 'unknown';
+        const phase = (enriched?.promotionStatus || 'unknown') as 'success' | 'failure' | 'pending' | 'default';
         return (
           <PromotionStrategyTile
             key={ps.metadata?.name || `ps-${idx}`}

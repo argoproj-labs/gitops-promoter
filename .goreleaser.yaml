@@ -14,7 +14,8 @@ before:
     - go mod tidy
     - go mod download
     - make manifests-release IMAGE_TAG={{ .Tag }}
-    - make build-dashboard # Populate the 'static' directory with the dashboard files.
+    - make build-dashboard # Builds the dashboards UI and embeds it
+    - make build-extension # Build the ArgoCD extension
 
 builds:
   - id: gitops-promoter
@@ -85,6 +86,11 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+  - id: extension
+    name_template: "{{ .ProjectName }}-argocd-extension"
+    format: tar.gz
+    files:
+      - ui/extension/dist/extension-promoter.js
 
 release:
   prerelease: auto

@@ -5,6 +5,14 @@ import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
 import BackButton from '../components/BackButton';
 import HeaderBar from '@lib/components/HeaderBar';
 import PromotionStrategyDetailsView from '@lib/components/PromotionStrategyDetailsView';
+import type { PromotionStrategy } from '@shared/utils/PSData';
+
+interface NamespaceStore {
+  namespace: string;
+  namespaces: string[];
+  setNamespace: (namespace: string) => void;
+  setNamespaces: (namespaces: string[]) => void;
+}
 
 interface PromotionStrategyPageProps {
   namespace?: string;
@@ -16,14 +24,14 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({ namespace
   const namespace = propsNamespace || urlNamespace;
   const strategyName = propsStrategyName || urlStrategyName;
 
-  const currentNamespace = namespaceStore((s: any) => s.namespace);
-  const setNamespace = namespaceStore((s: any) => s.setNamespace);
+  const currentNamespace = namespaceStore((s: NamespaceStore) => s.namespace);
+  const setNamespace = namespaceStore((s: NamespaceStore) => s.setNamespace);
 
   const { items, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 
   // Find the selected strategy
   const selectedStrategy = items.find(
-    (ps: any) => ps.metadata?.name === strategyName
+    (ps: PromotionStrategy) => ps.metadata?.name === strategyName
   );
 
   useEffect(() => {

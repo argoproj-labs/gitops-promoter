@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import Card from './Card';
-import { enrichPromotionStrategy } from '../../../shared/src/utils/PSData';
-import type { PromotionStrategyType } from '../../../shared/src/models/PromotionStrategyType';
+import { enrichPromotionStrategy, type PromotionStrategy } from '../../../shared/src/utils/PSData';
 
 interface PromotionStrategyDetailsViewProps {
-  strategy: PromotionStrategyType;
+  strategy: PromotionStrategy;
 }
 
 export const PromotionStrategyDetailsView: React.FC<PromotionStrategyDetailsViewProps> = ({

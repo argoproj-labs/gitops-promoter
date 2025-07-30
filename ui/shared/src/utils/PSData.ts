@@ -35,18 +35,44 @@ interface Environment {
   branch: string;
   active: {
     dry?: Commit;
+    hydrated?: Commit;
     commitStatuses?: CommitStatus[];
   };
   proposed: {
     dry?: Commit;
+    hydrated?: Commit;
     commitStatuses?: CommitStatus[];
   };
   pullRequest?: PullRequest;
 }
 
-interface PromotionStrategy {
-  metadata?: { namespace?: string };
-  spec?: { environments?: { branch: string; autoMerge?: boolean }[] };
+export interface PromotionStrategy {
+  kind: string;
+  apiVersion: string;
+  metadata: {
+    name: string;
+    namespace: string;
+    uid: string;
+    resourceVersion: string;
+    generation: number;
+    creationTimestamp: string;
+    labels?: Record<string, string>;
+    annotations?: Record<string, string>;
+  };
+  spec: {
+    gitRepositoryRef: {
+      name: string;
+      namespace?: string;
+    };
+    activeCommitStatuses?: { key: string }[] | null;
+    proposedCommitStatuses?: { key: string }[] | null;
+    environments: {
+      branch: string;
+      autoMerge?: boolean;
+      activeCommitStatuses?: { key: string }[] | null;
+      proposedCommitStatuses?: { key: string }[] | null;
+    }[];
+  };
   status?: { environments?: Environment[] };
 }
 
@@ -54,6 +80,7 @@ interface Check {
   name: string;
   status: string;
   details?: string;
+  url?: string;
 }
 
 interface EnrichedEnvDetails {
@@ -141,6 +168,7 @@ function getProposedChecks(commitStatuses: CommitStatus[]): Check[] {
     name: cs.key,
     status: cs.phase || 'unknown',
     details: cs.details,
+    url: cs.url
   }));
 }
 
