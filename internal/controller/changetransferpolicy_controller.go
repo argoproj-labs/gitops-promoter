@@ -200,6 +200,7 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 				return fmt.Errorf("failed to get dry commit metadata for active SHA %q: %w", lastRelevantDrySha, err)
 			}
 			h.Active.Dry = dryActiveMetadata
+			h.Active.Dry.Body = removeKnownTrailers(h.Active.Dry.Body)
 		} else {
 			logger.V(4).Info("No Sha-Dry-Active trailer found for active SHA", "sha", sha)
 		}
@@ -266,6 +267,7 @@ var knownTrailerPrefixes = []string{
 	"Sha-Dry-Active:",
 	"Sha-Dry-Proposed:",
 	"Sha-LastRelevantDry:",
+	"Argocd-reference-", // Used by ArgoCD hydrator, we probably don't want to hard code this, but for now it is fine.
 }
 
 func removeKnownTrailers(input string) string {
