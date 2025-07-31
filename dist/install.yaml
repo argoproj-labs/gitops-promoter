@@ -967,10 +967,6 @@ spec:
                 description: LastRelevantActiveDrySha is the last dry SHA that had
                   a change, excluding no-ops.
                 type: string
-              lastRelevantActiveHydratedSha:
-                description: LastRelevantActiveHydratedSha is the last hydrated active
-                  SHA that had a change, excluding no-ops.
-                type: string
               proposed:
                 description: Proposed is the state of the proposed branch.
                 properties:

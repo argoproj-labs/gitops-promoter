@@ -137,8 +137,6 @@ type ChangeTransferPolicyStatus struct {
 
 	// LastRelevantActiveDrySha is the last dry SHA that had a change, excluding no-ops.
 	LastRelevantActiveDrySha string `json:"lastRelevantActiveDrySha,omitempty"`
-	// LastRelevantActiveHydratedSha is the last hydrated active SHA that had a change, excluding no-ops.
-	LastRelevantActiveHydratedSha string `json:"lastRelevantActiveHydratedSha,omitempty"`
 }
 
 // History defines the history of promoted changes done by the ChangeTransferPolicy.

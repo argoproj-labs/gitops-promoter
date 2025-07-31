@@ -193,40 +193,69 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 			continue
 		}
 
-		dryActiveMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, ctp.Status.LastRelevantActiveHydratedSha)
-		if err != nil {
-			return fmt.Errorf("failed to get dry commit metadata for active SHA %q: %w", ctp.Status.LastRelevantActiveHydratedSha, err)
-		}
-		h.Active.Dry = dryActiveMetadata
-		h.Active.Dry.Body = removeKnownTrailers(h.Active.Dry.Body)
-		//lastRelevantDrySha := activeTrailers["Sha-LastRelevantDry"]
-		//if lastRelevantDrySha != "" {
-		//	dryActiveMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, ctp.Status.LastRelevantActiveHydratedSha)
+		// lastRelevantDrySha := activeTrailers["Sha-LastRelevantDry"]
+		// if lastRelevantDrySha != "" {
+		//	sha, err := gitOperations.FindHydratedShaForDryShaFromBranch(ctx, ctp.Spec.ProposedBranch, lastRelevantDrySha)
 		//	if err != nil {
-		//		return fmt.Errorf("failed to get dry commit metadata for active SHA %q: %w", lastRelevantDrySha, err)
+		//		logger.Error(err, "failed to find hydrated SHA for dry SHA", "drySha", lastRelevantDrySha, "branch", ctp.Spec.ProposedBranch)
+		//	} else {
+		//		dryActiveMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, sha)
+		//		if err != nil {
+		//			logger.Error(err, "failed to get dry commit metadata for active SHA", "sha", lastRelevantDrySha)
+		//		} else {
+		//			h.Active.Dry = dryActiveMetadata
+		//			h.Active.Dry.Body = removeKnownTrailers(h.Active.Dry.Body)
+		//		}
 		//	}
-		//	h.Active.Dry = dryActiveMetadata
-		//	h.Active.Dry.Body = removeKnownTrailers(h.Active.Dry.Body)
-		//} else {
-		//	logger.V(4).Info("No Sha-Dry-Active trailer found for active SHA", "sha", sha)
+		// } else {
+		//	logger.V(4).Info("No Sha-LastRelevantDry trailer found for active SHA", "activeSha", sha)
 		//}
-
-		proposedSha := activeTrailers["Sha-Hydrated-Proposed"]
-		if proposedSha != "" {
-			hydratedProposedMetadata, err := gitOperations.GetShaMetadataFromGit(ctx, proposedSha)
-			if err != nil {
-				return fmt.Errorf("failed to get hydrated commit metadata for proposed SHA %q: %w", proposedSha, err)
-			}
-			h.Proposed.Hydrated.Sha = proposedSha
-			h.Proposed.Hydrated = hydratedProposedMetadata
-
-			dryProposedMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedSha)
-			if err != nil {
-				return fmt.Errorf("failed to get dry proposed commit metadata for proposed SHA %q: %w", proposedSha, err)
-			}
-			h.Proposed.Dry = dryProposedMetadata
+		lastRelevantDrySha := activeTrailers["Sha-LastRelevantDry"]
+		if lastRelevantDrySha == "" {
+			logger.V(4).Info("No Sha-LastRelevantDry trailer found for active SHA", "activeSha", sha)
+		} else if hydratedSha, err := gitOperations.FindHydratedShaForDryShaFromBranch(ctx, ctp.Spec.ProposedBranch, lastRelevantDrySha); err != nil {
+			logger.Error(err, "failed to find hydrated SHA for dry SHA", "drySha", lastRelevantDrySha, "branch", ctp.Spec.ProposedBranch)
+		} else if dryActiveMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, hydratedSha); err != nil {
+			logger.Error(err, "failed to get dry commit metadata for active SHA", "sha", lastRelevantDrySha)
 		} else {
-			logger.V(4).Info("No proposed SHA from trailer found for active SHA", "sha", sha)
+			h.Active.Dry = dryActiveMetadata
+			h.Active.Dry.Body = removeKnownTrailers(h.Active.Dry.Body)
+		}
+
+		// proposedSha := activeTrailers["Sha-Hydrated-Proposed"]
+		// if proposedSha != "" {
+		//	hydratedProposedMetadata, err := gitOperations.GetShaMetadataFromGit(ctx, proposedSha)
+		//	if err != nil {
+		//		logger.Error(err, "failed to get hydrated commit metadata for proposed SHA", "proposedSha", proposedSha)
+		//	} else {
+		//		h.Proposed.Hydrated.Sha = proposedSha
+		//		h.Proposed.Hydrated = hydratedProposedMetadata
+		//	}
+		//
+		//	dryProposedMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedSha)
+		//	if err != nil {
+		//		logger.Error(err, "failed to get dry commit metadata for proposed SHA", "proposedSha", proposedSha)
+		//	} else {
+		//		h.Proposed.Dry = dryProposedMetadata
+		//	}
+		// } else {
+		//	logger.V(4).Info("No Sha-Hydrated-Proposed trailer found for active SHA", "activeSha", sha)
+		//}
+		proposedSha := activeTrailers["Sha-Hydrated-Proposed"]
+		if proposedSha == "" { //nolint:nestif
+			logger.V(4).Info("No Sha-Hydrated-Proposed trailer found for active SHA", "activeSha", sha)
+		} else {
+			if meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedSha); err != nil {
+				logger.Error(err, "failed to get hydrated commit metadata for proposed SHA", "proposedSha", proposedSha)
+			} else {
+				meta.Sha = proposedSha
+				h.Proposed.Hydrated = meta
+			}
+			if meta, err := gitOperations.GetShaMetadataFromFile(ctx, proposedSha); err != nil {
+				logger.Error(err, "failed to get dry commit metadata for proposed SHA", "proposedSha", proposedSha)
+			} else {
+				h.Proposed.Dry = meta
+			}
 		}
 
 		if pullRequestID, ok := activeTrailers["PullRequest-ID"]; ok && pullRequestID != "" {
@@ -422,10 +451,10 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to find last effective dry SHA: %w", err)
 	}
 
-	err = r.findLastRelevantActiveHydratedSha(ctx, ctp, gitOperations)
-	if err != nil {
-		return fmt.Errorf("failed to find last effective hydrated SHA: %w", err)
-	}
+	// err = r.findLastRelevantActiveHydratedSha(ctx, ctp, gitOperations)
+	// if err != nil {
+	//	return fmt.Errorf("failed to find last effective hydrated SHA: %w", err)
+	//}
 
 	return nil
 }
@@ -436,15 +465,6 @@ func (r *ChangeTransferPolicyReconciler) findLastRelevantActiveDrySha(ctx contex
 		return fmt.Errorf("failed to get commit metadata for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
 	ctp.Status.LastRelevantActiveDrySha = commitShaState.Sha
-	return nil
-}
-
-func (r *ChangeTransferPolicyReconciler) findLastRelevantActiveHydratedSha(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
-	hydratedSha, err := gitOperations.FindHydratedShaForDryShaFromBranch(ctx, ctp.Spec.ActiveBranch, ctp.Status.LastRelevantActiveDrySha)
-	if err != nil {
-		return fmt.Errorf("failed to find hydrated SHA for dry SHA %q in active branch %q: %w", ctp.Status.LastRelevantActiveDrySha, ctp.Spec.ActiveBranch, err)
-	}
-	ctp.Status.LastRelevantActiveHydratedSha = hydratedSha
 	return nil
 }
 

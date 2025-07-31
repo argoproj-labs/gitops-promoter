@@ -502,6 +502,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Conte
 	return commitState, nil
 }
 
+// FindHydratedShaForDryShaFromBranch searches for the hydrated SHA corresponding to a given dry SHA in the specified branch.
 func (g *EnvironmentOperations) FindHydratedShaForDryShaFromBranch(ctx context.Context, branch string, drySha string) (string, error) {
 	logger := log.FromContext(ctx)
 
@@ -519,7 +520,7 @@ func (g *EnvironmentOperations) FindHydratedShaForDryShaFromBranch(ctx context.C
 	for _, sha := range shas {
 		metadata, err := g.GetShaMetadataFromFile(ctx, sha)
 		if err != nil {
-			logger.Error(err, "could not get sha metadata", "sha", sha)
+			logger.Error(err, "could not get sha metadata", "sha", sha, "drySha", drySha)
 			continue
 		}
 		if metadata.Sha == drySha {
