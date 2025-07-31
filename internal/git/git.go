@@ -434,16 +434,90 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	}
 	logger.V(4).Info("Got diff", "diff", stdout)
 
-	// Check if the diff contains any YAML files if so we expect a manifest to have changed
-	// TODO: This is temporary check we should add some path globbing support to the specs
-	for _, file := range strings.Split(stdout, "\n") {
-		if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
-			logger.V(4).Info("YAML file changed", "file", file)
-			return true, nil
+	return containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
+}
+
+func (g *EnvironmentOperations) DoesDiffContainYamlFiles(ctx context.Context, sha string) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	// Get the diff for the given SHA
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "diff", sha+"^!", "--name-only", "--diff-filter=ACMRT")
+	if err != nil {
+		logger.Error(err, "could not get diff", "gitError", stderr)
+		return false, fmt.Errorf("failed to get diff for sha %q: %w", sha, err)
+	}
+	logger.V(4).Info("Got diff", "diff", stdout)
+
+	return containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
+}
+
+// GetShaMetadataFromFileFiltered retrieves commit metadata from the hydrator.metadata file for a given SHA.
+func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Context, branch string) (v1alpha1.CommitShaState, error) {
+	logger := log.FromContext(ctx)
+
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	// List all commits on the branch (newest first) we can limit with "--max-count=25"
+	out, stderr, err := g.runCmd(ctx, gitPath, "rev-list", "origin/"+branch)
+	if err != nil {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("could not list commits: %w\n%s", err, stderr)
+	}
+	shas := strings.Fields(out)
+
+	foundSha := ""
+	for _, sha := range shas {
+		stdout, stderr, err := g.runCmd(ctx, gitPath, "diff", sha+"^!", "--name-only", "--diff-filter=ACMRT")
+		if err != nil {
+			logger.Error(err, "could not get diff", "gitError", stderr)
+			return v1alpha1.CommitShaState{}, err
+		}
+		logger.V(4).Info("Diff walking commits", "diff", stdout)
+
+		if containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")) {
+			logger.V(4).Info("Found commit with yaml file changes", "sha", sha)
+			foundSha = sha
+		}
+		if foundSha != "" {
+			break
 		}
 	}
 
-	return false, nil
+	if foundSha == "" {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("no commit with yaml file changes found on branch %q", branch)
+	}
+
+	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", foundSha+":hydrator.metadata")
+	if err != nil {
+		logger.Error(err, "could not git show file", "gitError", stderr)
+		return v1alpha1.CommitShaState{}, nil
+	}
+	logger.V(4).Info("Got metadata file", "sha", foundSha, "file", metadataFileStdout)
+
+	var hydratorFile HydratorMetadata
+	err = json.Unmarshal([]byte(metadataFileStdout), &hydratorFile)
+	if err != nil {
+		return v1alpha1.CommitShaState{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
+	}
+
+	commitState := v1alpha1.CommitShaState{
+		Sha:        hydratorFile.DrySha,
+		CommitTime: hydratorFile.Date,
+		RepoURL:    hydratorFile.RepoURL,
+		Author:     hydratorFile.Author,
+		Subject:    hydratorFile.Subject,
+		Body:       hydratorFile.Body,
+		References: hydratorFile.References,
+	}
+
+	return commitState, nil
 }
 
 // LsRemote returns a map of branch names to SHAs for the given branches using git ls-remote.
@@ -612,21 +686,39 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 	return lines, nil
 }
 
-func (g *EnvironmentOperations) GetTrailers(sha string) (map[string]string, error) {
-	logger := log.FromContext(context.TODO())
+func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string]string, error) {
+	logger := log.FromContext(ctx)
 	// run git interpret-trailers to get the trailers from the last commit
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
 	if gitPath == "" {
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 	//git log -1 --format=%B 7912b27cd144b24f21ca05bfa5fe57572e97a3b3 | git interpret-trailers --only-trailers
-	stdout, stderr, err := g.runCmd(context.TODO(), gitPath, "log", "-1", "--format=%B", sha, "|", "git", "interpret-trailers", "--only-trailers")
+	// First get the commit message
+	msgStdout, stderr, err := g.runCmd(ctx, gitPath, "log", "-1", "--format=%B", sha)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get trailers for sha %q: %w", sha, err)
+		return nil, fmt.Errorf("failed to get commit message for sha %q: %w", sha, err)
 	}
 	if stderr != "" {
-		return nil, fmt.Errorf("git interpret-trailers returned an error: %s", stderr)
+		logger.V(4).Info("git log returned an error", "stderr", stderr)
 	}
+
+	// Then pipe it to git interpret-trailers using stdin
+	cmd := exec.Command("git", "interpret-trailers", "--only-trailers")
+	cmd.Dir = gitPath
+	cmd.Stdin = strings.NewReader(msgStdout)
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	err = cmd.Run()
+	if err != nil {
+
+	}
+	stdout := stdoutBuf.String()
+	stderr = stderrBuf.String()
 
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	trailers := make(map[string]string, len(lines))

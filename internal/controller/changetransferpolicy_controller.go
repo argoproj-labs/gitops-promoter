@@ -164,47 +164,100 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	logger := log.FromContext(ctx)
 
-	historyMap := map[string]promoterv1alpha1.History{}
-	history := []promoterv1alpha1.History{}
-
+	var history []promoterv1alpha1.History
 	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ActiveBranch, "5")
 	if err != nil {
 		return fmt.Errorf("failed to get rev-list commit history for branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}
 	logger.V(4).Info("Rev-list history for active branch", "shaList", shaListActive)
 
-	shaListProposed, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ProposedBranch, "5")
-	if err != nil {
-		return fmt.Errorf("failed to get rev-list commit history for branch %q: %w", ctp.Spec.ProposedBranch, err)
-	}
-	logger.V(4).Info("Rev-list history for proposed branch", "shaList", shaListProposed)
-
 	for _, sha := range shaListActive {
-		if _, ok := historyMap[sha]; !ok {
-			historyMap[sha] = promoterv1alpha1.History{
-				Active:      promoterv1alpha1.CommitBranchState{},
-				Proposed:    promoterv1alpha1.CommitBranchState{},
-				PullRequest: &promoterv1alpha1.PullRequestCommonStatus{},
-			}
+
+		//containsYaml, err := gitOperations.DoesDiffContainYamlFiles(ctx, sha)
+		//if err != nil {
+		//	return fmt.Errorf("failed to check if diff contains YAML files for SHA %q: %w", sha, err)
+		//}
+		//if !containsYaml {
+		//	logger.V(4).Info("Skipping SHA without YAML changes", "sha", sha)
+		//	continue
+		//}
+
+		h := promoterv1alpha1.History{
+			Proposed:    promoterv1alpha1.CommitBranchState{},
+			Active:      promoterv1alpha1.CommitBranchState{},
+			PullRequest: &promoterv1alpha1.PullRequestCommonStatus{},
 		}
-		v := historyMap[sha]
-		v.Active.Hydrated.Sha = sha
+
 		hydratedActiveMetadata, err := gitOperations.GetShaMetadataFromGit(ctx, sha)
 		if err != nil {
-			return fmt.Errorf("failed to get hydrated commit metadata for SHA %q: %w", sha, err)
+			return fmt.Errorf("failed to get hydrated commit metadata for active SHA %q: %w", sha, err)
 		}
-		v.Active.Hydrated = hydratedActiveMetadata
+		h.Active.Hydrated = hydratedActiveMetadata
 		// TODO: can we / should we use git cli to do this?
-		v.Active.Hydrated.Body = removeKnownTrailers(v.Active.Hydrated.Body)
+		h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
 
-		dryActiveMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, sha)
+		activeTrailers, err := gitOperations.GetTrailers(ctx, sha)
 		if err != nil {
-			return fmt.Errorf("failed to get proposed commit metadata for SHA %q: %w", sha, err)
+			// We can only be best effort and getting the trails if we can't we just don't generate history this sha
+			logger.Error(err, "failed to get trailers for active SHA", "sha", sha)
+			continue
 		}
-		v.Active.Dry = dryActiveMetadata
 
-		historyMap[sha] = v
-		history = append(history, v)
+		lastRelevantDrySha := activeTrailers["Sha-LastRelevantDry"]
+		if lastRelevantDrySha != "" {
+			dryActiveMetadata, err := gitOperations.GetShaMetadataFromGit(ctx, lastRelevantDrySha)
+			if err != nil {
+				return fmt.Errorf("failed to get dry commit metadata for active SHA %q: %w", lastRelevantDrySha, err)
+			}
+			h.Active.Dry = dryActiveMetadata
+		} else {
+			logger.V(4).Info("No Sha-Dry-Active trailer found for active SHA", "sha", sha)
+		}
+
+		proposedSha := activeTrailers["Sha-Hydrated-Proposed"]
+		if proposedSha != "" {
+			hydratedProposedMetadata, err := gitOperations.GetShaMetadataFromGit(ctx, proposedSha)
+			if err != nil {
+				return fmt.Errorf("failed to get hydrated commit metadata for proposed SHA %q: %w", proposedSha, err)
+			}
+			h.Proposed.Hydrated.Sha = proposedSha
+			h.Proposed.Hydrated = hydratedProposedMetadata
+
+			dryProposedMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedSha)
+			if err != nil {
+				return fmt.Errorf("failed to get dry proposed commit metadata for proposed SHA %q: %w", proposedSha, err)
+			}
+			h.Proposed.Dry = dryProposedMetadata
+
+		} else {
+			logger.V(4).Info("No proposed SHA from trailer found for active SHA", "sha", sha)
+		}
+
+		if pullRequestID, ok := activeTrailers["PullRequest-ID"]; ok && pullRequestID != "" {
+			h.PullRequest.ID = pullRequestID
+		} else {
+			logger.V(4).Info("No PullRequest-ID found in trailers for active SHA", "sha", sha)
+		}
+
+		if pullRequestUrl, ok := activeTrailers["PullRequest-Url"]; ok && pullRequestUrl != "" {
+			h.PullRequest.Url = pullRequestUrl
+		} else {
+			logger.V(4).Info("No PullRequest-Url found in trailers for active SHA", "sha", sha)
+		}
+
+		if timeStr, ok := activeTrailers["PullRequest-CreationTime"]; ok && timeStr != "" {
+			creationTime, err := time.Parse(time.RFC3339, timeStr)
+			if err != nil {
+				logger.Error(err, "failed to parse PullRequest-CreationTime", "time", timeStr)
+				//return fmt.Errorf("failed to parse PullRequest-CreationTime %q: %w", timeStr, err)
+			} else {
+				h.PullRequest.PRCreationTime = metav1.NewTime(creationTime)
+			}
+		} else {
+			logger.V(4).Info("No PullRequest-CreationTime found in trailers for active SHA", "sha", sha)
+		}
+
+		history = append(history, h)
 	}
 
 	ctp.Status.History = history
@@ -222,7 +275,8 @@ var knownTrailerPrefixes = []string{
 	"Sha-Hydrated-Active:",
 	"Sha-Hydrated-Proposed:",
 	"Sha-Dry-Active:",
-	"Sha-Dry-Proposed:"}
+	"Sha-Dry-Proposed:",
+	"Sha-LastRelevantDry:"}
 
 func removeKnownTrailers(input string) string {
 	toRemove := knownTrailerPrefixes
@@ -365,6 +419,20 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set pull request status state: %w", err)
 	}
 
+	err = r.findLastEffectiveDrySha(ctx, ctp, gitOperations)
+	if err != nil {
+		return fmt.Errorf("failed to find last effective dry SHA: %w", err)
+	}
+
+	return nil
+}
+
+func (r *ChangeTransferPolicyReconciler) findLastEffectiveDrySha(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
+	commitShaState, err := gitOperations.GetShaMetadataFromFileFiltered(ctx, ctp.Spec.ProposedBranch)
+	if err != nil {
+		return fmt.Errorf("failed to get commit metadata for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
+	}
+	ctp.Status.LastRelevantDrySha = commitShaState.Sha
 	return nil
 }
 
@@ -627,7 +695,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	commitTrailers["PullRequest-ID"] = pr.Status.ID
 	commitTrailers["PullRequest-SourceBranch"] = pr.Spec.SourceBranch
 	commitTrailers["PullRequest-TargetBranch"] = pr.Spec.TargetBranch
-	commitTrailers["PullRequest-CreationTime"] = pr.Status.PRCreationTime.String()
+	commitTrailers["PullRequest-CreationTime"] = pr.Status.PRCreationTime.Format(time.RFC3339)
 	commitTrailers["PullRequest-Url"] = pr.Status.Url
 	pr.Spec.MergeCommitMessage = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
@@ -645,6 +713,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	commitTrailers["Sha-Hydrated-Proposed"] = ctp.Status.Proposed.Hydrated.Sha
 	commitTrailers["Sha-Dry-Active"] = ctp.Status.Active.Dry.Sha
 	commitTrailers["Sha-Dry-Proposed"] = ctp.Status.Proposed.Dry.Sha
+	commitTrailers["Sha-LastRelevantDry"] = ctp.Status.LastRelevantDrySha
 	commitMessage := fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 	// Pull Request already exists, update it.
