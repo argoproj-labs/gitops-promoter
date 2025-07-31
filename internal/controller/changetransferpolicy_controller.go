@@ -302,7 +302,7 @@ var knownTrailerPrefixes = []string{
 	"Sha-Dry-Active:",
 	"Sha-Dry-Proposed:",
 	"Sha-LastRelevantDry:",
-	"Argocd-reference-", // Used by ArgoCD hydrator, we probably don't want to hard code this, but for now it is fine.
+	// "Argocd-reference-", // Used by ArgoCD hydrator, we probably don't want to hard code this, but for now it is fine.
 }
 
 func removeKnownTrailers(input string) string {
@@ -332,6 +332,10 @@ func removeKnownTrailers(input string) string {
 	input = strings.TrimSpace(input)
 	input += "\n"
 
+	if input == "\n" {
+		// If the input is empty after removing known trailers, we return an empty string.
+		return ""
+	}
 	return input
 }
 
