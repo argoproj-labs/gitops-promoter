@@ -135,8 +135,10 @@ type ChangeTransferPolicyStatus struct {
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
-	// LastRelevantDrySha is the last dry SHA that had a change, excluding no-ops.
-	LastRelevantDrySha string `json:"lastRelevantDrySha,omitempty"`
+	// LastRelevantActiveDrySha is the last dry SHA that had a change, excluding no-ops.
+	LastRelevantActiveDrySha string `json:"lastRelevantActiveDrySha,omitempty"`
+	// LastRelevantActiveHydratedSha is the last hydrated active SHA that had a change, excluding no-ops.
+	LastRelevantActiveHydratedSha string `json:"lastRelevantActiveHydratedSha,omitempty"`
 }
 
 // History defines the history of promoted changes done by the ChangeTransferPolicy.

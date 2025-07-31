@@ -437,7 +437,8 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	return containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
 }
 
-// GetShaMetadataFromFileFiltered retrieves commit metadata from the hydrator.metadata file for a given SHA.
+// GetShaMetadataFromFileFiltered retrieves commit metadata from the hydrator.metadata file for a given branch, filtering
+// commits to find the first one that contains changes based on containsYamlFileSuffix function.
 func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Context, branch string) (v1alpha1.CommitShaState, error) {
 	logger := log.FromContext(ctx)
 
@@ -499,6 +500,35 @@ func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Conte
 	}
 
 	return commitState, nil
+}
+
+func (g *EnvironmentOperations) FindHydratedShaForDryShaFromBranch(ctx context.Context, branch string, drySha string) (string, error) {
+	logger := log.FromContext(ctx)
+
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	out, stderr, err := g.runCmd(ctx, gitPath, "rev-list", "origin/"+branch)
+	if err != nil {
+		return "", fmt.Errorf("could not list commits: %w\n%s", err, stderr)
+	}
+	shas := strings.Fields(out)
+
+	for _, sha := range shas {
+		metadata, err := g.GetShaMetadataFromFile(ctx, sha)
+		if err != nil {
+			logger.Error(err, "could not get sha metadata", "sha", sha)
+			continue
+		}
+		if metadata.Sha == drySha {
+			return sha, nil
+		}
+	}
+
+	logger.Info("No matching dry SHA found in branch", "branch", branch, "drySha", drySha)
+	return "", nil
 }
 
 // LsRemote returns a map of branch names to SHAs for the given branches using git ls-remote.

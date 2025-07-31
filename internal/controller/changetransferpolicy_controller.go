@@ -193,17 +193,23 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 			continue
 		}
 
-		lastRelevantDrySha := activeTrailers["Sha-LastRelevantDry"]
-		if lastRelevantDrySha != "" {
-			dryActiveMetadata, err := gitOperations.GetShaMetadataFromGit(ctx, lastRelevantDrySha)
-			if err != nil {
-				return fmt.Errorf("failed to get dry commit metadata for active SHA %q: %w", lastRelevantDrySha, err)
-			}
-			h.Active.Dry = dryActiveMetadata
-			h.Active.Dry.Body = removeKnownTrailers(h.Active.Dry.Body)
-		} else {
-			logger.V(4).Info("No Sha-Dry-Active trailer found for active SHA", "sha", sha)
+		dryActiveMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, ctp.Status.LastRelevantActiveHydratedSha)
+		if err != nil {
+			return fmt.Errorf("failed to get dry commit metadata for active SHA %q: %w", ctp.Status.LastRelevantActiveHydratedSha, err)
 		}
+		h.Active.Dry = dryActiveMetadata
+		h.Active.Dry.Body = removeKnownTrailers(h.Active.Dry.Body)
+		//lastRelevantDrySha := activeTrailers["Sha-LastRelevantDry"]
+		//if lastRelevantDrySha != "" {
+		//	dryActiveMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, ctp.Status.LastRelevantActiveHydratedSha)
+		//	if err != nil {
+		//		return fmt.Errorf("failed to get dry commit metadata for active SHA %q: %w", lastRelevantDrySha, err)
+		//	}
+		//	h.Active.Dry = dryActiveMetadata
+		//	h.Active.Dry.Body = removeKnownTrailers(h.Active.Dry.Body)
+		//} else {
+		//	logger.V(4).Info("No Sha-Dry-Active trailer found for active SHA", "sha", sha)
+		//}
 
 		proposedSha := activeTrailers["Sha-Hydrated-Proposed"]
 		if proposedSha != "" {
@@ -411,20 +417,34 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set pull request status state: %w", err)
 	}
 
-	err = r.findLastEffectiveDrySha(ctx, ctp, gitOperations)
+	err = r.findLastRelevantActiveDrySha(ctx, ctp, gitOperations)
 	if err != nil {
 		return fmt.Errorf("failed to find last effective dry SHA: %w", err)
+	}
+
+	err = r.findLastRelevantActiveHydratedSha(ctx, ctp, gitOperations)
+	if err != nil {
+		return fmt.Errorf("failed to find last effective hydrated SHA: %w", err)
 	}
 
 	return nil
 }
 
-func (r *ChangeTransferPolicyReconciler) findLastEffectiveDrySha(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
+func (r *ChangeTransferPolicyReconciler) findLastRelevantActiveDrySha(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	commitShaState, err := gitOperations.GetShaMetadataFromFileFiltered(ctx, ctp.Spec.ProposedBranch)
 	if err != nil {
 		return fmt.Errorf("failed to get commit metadata for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
-	ctp.Status.LastRelevantDrySha = commitShaState.Sha
+	ctp.Status.LastRelevantActiveDrySha = commitShaState.Sha
+	return nil
+}
+
+func (r *ChangeTransferPolicyReconciler) findLastRelevantActiveHydratedSha(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
+	hydratedSha, err := gitOperations.FindHydratedShaForDryShaFromBranch(ctx, ctp.Spec.ActiveBranch, ctp.Status.LastRelevantActiveDrySha)
+	if err != nil {
+		return fmt.Errorf("failed to find hydrated SHA for dry SHA %q in active branch %q: %w", ctp.Status.LastRelevantActiveDrySha, ctp.Spec.ActiveBranch, err)
+	}
+	ctp.Status.LastRelevantActiveHydratedSha = hydratedSha
 	return nil
 }
 
@@ -705,7 +725,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	commitTrailers["Sha-Hydrated-Proposed"] = ctp.Status.Proposed.Hydrated.Sha
 	commitTrailers["Sha-Dry-Active"] = ctp.Status.Active.Dry.Sha
 	commitTrailers["Sha-Dry-Proposed"] = ctp.Status.Proposed.Dry.Sha
-	commitTrailers["Sha-LastRelevantDry"] = ctp.Status.LastRelevantDrySha
+	commitTrailers["Sha-LastRelevantDry"] = ctp.Status.LastRelevantActiveDrySha
 	commitMessage := fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 	// Pull Request already exists, update it.
