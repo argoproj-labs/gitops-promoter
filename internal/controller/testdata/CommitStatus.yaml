@@ -2,6 +2,14 @@ apiVersion: promoter.argoproj.io/v1alpha1
 kind: CommitStatus
 metadata:
   name: example-commit-status
+  labels:
+    # This label is used to define the "key" of the commit status. The value is referenced via the `key` field in a
+    # PromotionStrategy's (or ChangeTransferPolicy's) `activeCommitStatuses` or `proposedCommitStatuses` field.
+    #
+    # CommitStatuses should be unique per key/sha combination. For example, there may be one CommitStatus with the key
+    # `example` for shas abc123 and def456, but there should not be two CommitStatuses with the key `example` for sha
+    # abc123.
+    promoter.argoproj.io/commit-status: example
 spec:
   gitRepositoryRef:
     name: example-git-repo
