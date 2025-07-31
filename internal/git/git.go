@@ -437,25 +437,6 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	return containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
 }
 
-func (g *EnvironmentOperations) DoesDiffContainYamlFiles(ctx context.Context, sha string) (bool, error) {
-	logger := log.FromContext(ctx)
-
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
-	if gitPath == "" {
-		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	// Get the diff for the given SHA
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "diff", sha+"^!", "--name-only", "--diff-filter=ACMRT")
-	if err != nil {
-		logger.Error(err, "could not get diff", "gitError", stderr)
-		return false, fmt.Errorf("failed to get diff for sha %q: %w", sha, err)
-	}
-	logger.V(4).Info("Got diff", "diff", stdout)
-
-	return containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
-}
-
 // GetShaMetadataFromFileFiltered retrieves commit metadata from the hydrator.metadata file for a given SHA.
 func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Context, branch string) (v1alpha1.CommitShaState, error) {
 	logger := log.FromContext(ctx)
@@ -686,6 +667,7 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 	return lines, nil
 }
 
+// GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
 func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string]string, error) {
 	logger := log.FromContext(ctx)
 	// run git interpret-trailers to get the trailers from the last commit
@@ -693,7 +675,7 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	if gitPath == "" {
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
-	//git log -1 --format=%B 7912b27cd144b24f21ca05bfa5fe57572e97a3b3 | git interpret-trailers --only-trailers
+	// git log -1 --format=%B 7912b27cd144b24f21ca05bfa5fe57572e97a3b3 | git interpret-trailers --only-trailers
 	// First get the commit message
 	msgStdout, stderr, err := g.runCmd(ctx, gitPath, "log", "-1", "--format=%B", sha)
 	if err != nil {
@@ -714,11 +696,12 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	cmd.Stderr = &stderrBuf
 
 	err = cmd.Run()
+	stderr = stderrBuf.String()
 	if err != nil {
-
+		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)
+		return nil, fmt.Errorf("failed to run git interpret-trailers: %w", err)
 	}
 	stdout := stdoutBuf.String()
-	stderr = stderrBuf.String()
 
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	trailers := make(map[string]string, len(lines))

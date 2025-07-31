@@ -2,8 +2,9 @@ package git
 
 import (
 	"context"
-	"github.com/go-logr/logr"
 	"strings"
+
+	"github.com/go-logr/logr"
 )
 
 // containsYamlFileSuffix Check if the provided list of files contains any file with a .yaml or .yml suffix.

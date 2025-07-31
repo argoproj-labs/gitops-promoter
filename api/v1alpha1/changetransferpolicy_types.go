@@ -149,14 +149,6 @@ type History struct {
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
 }
 
-type CommitBranchStateProposedHistory struct {
-	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
-	// +kubebuilder:validation:Optional
-	// +listType:=map
-	// +listMapKey=key
-	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
-}
-
 // PullRequestCommonStatus defines the common status fields for a pull request.
 type PullRequestCommonStatus struct {
 	// ID is the unique identifier of the pull request, set by the SCM.

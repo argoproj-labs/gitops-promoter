@@ -164,7 +164,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	logger := log.FromContext(ctx)
 
-	var history []promoterv1alpha1.History
+	history := make([]promoterv1alpha1.History, 0)
 	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ActiveBranch, "5")
 	if err != nil {
 		return fmt.Errorf("failed to get rev-list commit history for branch %q: %w", ctp.Spec.ActiveBranch, err)
@@ -172,16 +172,6 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 	logger.V(4).Info("Rev-list history for active branch", "shaList", shaListActive)
 
 	for _, sha := range shaListActive {
-
-		//containsYaml, err := gitOperations.DoesDiffContainYamlFiles(ctx, sha)
-		//if err != nil {
-		//	return fmt.Errorf("failed to check if diff contains YAML files for SHA %q: %w", sha, err)
-		//}
-		//if !containsYaml {
-		//	logger.V(4).Info("Skipping SHA without YAML changes", "sha", sha)
-		//	continue
-		//}
-
 		h := promoterv1alpha1.History{
 			Proposed:    promoterv1alpha1.CommitBranchState{},
 			Active:      promoterv1alpha1.CommitBranchState{},
@@ -228,7 +218,6 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 				return fmt.Errorf("failed to get dry proposed commit metadata for proposed SHA %q: %w", proposedSha, err)
 			}
 			h.Proposed.Dry = dryProposedMetadata
-
 		} else {
 			logger.V(4).Info("No proposed SHA from trailer found for active SHA", "sha", sha)
 		}
@@ -249,7 +238,7 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 			creationTime, err := time.Parse(time.RFC3339, timeStr)
 			if err != nil {
 				logger.Error(err, "failed to parse PullRequest-CreationTime", "time", timeStr)
-				//return fmt.Errorf("failed to parse PullRequest-CreationTime %q: %w", timeStr, err)
+				// return fmt.Errorf("failed to parse PullRequest-CreationTime %q: %w", timeStr, err)
 			} else {
 				h.PullRequest.PRCreationTime = metav1.NewTime(creationTime)
 			}
@@ -276,7 +265,8 @@ var knownTrailerPrefixes = []string{
 	"Sha-Hydrated-Proposed:",
 	"Sha-Dry-Active:",
 	"Sha-Dry-Proposed:",
-	"Sha-LastRelevantDry:"}
+	"Sha-LastRelevantDry:",
+}
 
 func removeKnownTrailers(input string) string {
 	toRemove := knownTrailerPrefixes
@@ -702,12 +692,12 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	for _, status := range ctp.Status.Active.CommitStatuses {
 		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Phase", status.Key)] = status.Phase
 		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Url", status.Key)] = status.Url
-		//commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Sha", status.Key)] = ctp.Status.Active.Hydrated.Sha
+		// commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Sha", status.Key)] = ctp.Status.Active.Hydrated.Sha
 	}
 	for _, status := range ctp.Status.Proposed.CommitStatuses {
 		commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Phase", status.Key)] = status.Phase
 		commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Url", status.Key)] = status.Url
-		//commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Sha", status.Key)] = ctp.Status.Proposed.Hydrated.Sha
+		// commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Sha", status.Key)] = ctp.Status.Proposed.Hydrated.Sha
 	}
 	commitTrailers["Sha-Hydrated-Active"] = ctp.Status.Active.Hydrated.Sha
 	commitTrailers["Sha-Hydrated-Proposed"] = ctp.Status.Proposed.Hydrated.Sha
