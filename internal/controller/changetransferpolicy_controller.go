@@ -182,7 +182,7 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 
 		activeTrailers, err := gitOperations.GetTrailers(ctx, sha)
 		if err != nil {
-			// We can only be best effort and getting the trails if we can't we just don't generate history this sha
+			// Best effort at getting the trailers if we cannot, we just don't generate history this sha
 			logger.Error(err, "failed to get trailers for active SHA", "sha", sha)
 			continue
 		}
@@ -743,19 +743,15 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	for _, status := range ctp.Status.Active.CommitStatuses {
 		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Phase", status.Key)] = status.Phase
 		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Url", status.Key)] = status.Url
-		// commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Sha", status.Key)] = ctp.Status.Active.Hydrated.Sha
 	}
 	for _, status := range ctp.Status.Proposed.CommitStatuses {
 		commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Phase", status.Key)] = status.Phase
 		commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Url", status.Key)] = status.Url
-		// commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Sha", status.Key)] = ctp.Status.Proposed.Hydrated.Sha
 	}
 	commitTrailers["Sha-Hydrated-Active"] = ctp.Status.Active.Hydrated.Sha
 	commitTrailers["Sha-Hydrated-Proposed"] = ctp.Status.Proposed.Hydrated.Sha
 	commitTrailers["Sha-Dry-Active"] = ctp.Status.Active.Dry.Sha
 	commitTrailers["Sha-Dry-Proposed"] = ctp.Status.Proposed.Dry.Sha
-	// commitTrailers["Sha-LastRelevantDry"] = ctp.Status.LastRelevantActiveDrySha
-	// commitTrailers["Sha-LastRelevantHydratedProposed"] = ctp.Status.LastRelevantProposedHydratedSha
 	commitMessage := fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 	// Pull Request already exists, update it.
