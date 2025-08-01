@@ -609,7 +609,7 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	if gitPath == "" {
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
-	
+
 	// First get the commit message
 	msgStdout, stderr, err := g.runCmd(ctx, gitPath, "log", "-1", "--format=%B", sha)
 	if err != nil {
