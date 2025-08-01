@@ -129,15 +129,33 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 		return err
 	}
 
+	err = pr.runGitCmd(gitPath, "config", "user.name", "GitOps Promoter")
+	if err != nil {
+		logger.Error(err, "could not set git config")
+		return err
+	}
+
+	err = pr.runGitCmd(gitPath, "config", "user.email", "GitOpsPromoter@argoproj.io")
+	if err != nil {
+		logger.Error(err, "could not set git config")
+		return err
+	}
+
 	err = pr.runGitCmd(gitPath, "config", "pull.rebase", "false")
 	if err != nil {
 		return err
 	}
 
-	err = pr.runGitCmd(gitPath, "pull", "origin", pullRequest.Spec.SourceBranch)
+	err = pr.runGitCmd(gitPath, "pull", "--no-edit", "origin", pullRequest.Spec.SourceBranch)
 	if err != nil {
 		return err
 	}
+
+	err = pr.runGitCmd(gitPath, "commit", "--amend", "-m", commitMessage)
+	if err != nil {
+		return fmt.Errorf("failed to amend commit: %w", err)
+	}
+
 	err = pr.runGitCmd(gitPath, "push")
 	if err != nil {
 		return err

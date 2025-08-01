@@ -476,7 +476,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
 			simulateWebhook(ctx, k8sClient, &ctpProd)
 
-			By("Checking that the pull request for the development environment is created")
+			By("Checking that the pull request for the development environment is closed because it is the lowest level env")
 			Eventually(func(g Gomega) {
 				// Dev PR should exist
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
@@ -484,7 +484,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
-				g.Expect(err).To(Succeed())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -897,7 +897,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(csList.Items)).To(Equal(0))
 
-			By("Checking that the pull request for the development environment is created")
+			By("Checking that the pull request for the development environment is closed")
 			Eventually(func(g Gomega) {
 				// Dev PR should exist
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
@@ -905,7 +905,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
-				g.Expect(err).To(Succeed())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -1599,8 +1599,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Body).To(Equal(""))
 
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("testuser"))
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("added pending commit from dry sha"))
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Body).To(Equal(""))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
 
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References).To(HaveLen(1))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References[0].Commit.Subject).To(Equal("This is a fix for an upstream issue"))
