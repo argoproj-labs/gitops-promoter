@@ -474,23 +474,8 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set pull request status state: %w", err)
 	}
 
-	// err = r.findLastRelevantHistoryShas(ctx, ctp, gitOperations)
-	// if err != nil {
-	//	return fmt.Errorf("failed to find last effective dry SHA: %w", err)
-	//}
-
 	return nil
 }
-
-// func (r *ChangeTransferPolicyReconciler) findLastRelevantHistoryShas(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
-//	commitShaState, hydratedSha, err := gitOperations.GetShaMetadataFromFileFiltered(ctx, ctp.Spec.ProposedBranch)
-//	if err != nil {
-//		return fmt.Errorf("failed to get commit metadata for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
-//	}
-//	ctp.Status.LastRelevantActiveDrySha = commitShaState.Sha
-//	ctp.Status.LastRelevantProposedHydratedSha = hydratedSha
-//	return nil
-//}
 
 // TooManyMatchingShaError is an error type that indicates that there are too many matching SHAs for a commit status.
 type TooManyMatchingShaError struct{}

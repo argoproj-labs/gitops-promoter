@@ -263,15 +263,6 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	ctp := promoterv1alpha1.ChangeTransferPolicy{}
-	if len(pr.OwnerReferences) != 1 {
-		return fmt.Errorf("pull request %s has no owner reference or multiple owner references", pr.Name)
-	}
-	err := r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.OwnerReferences[0].Name}, &ctp)
-	if err != nil {
-		return fmt.Errorf("failed to get ChangeTransferPolicy during pullrequest lookup: %w", err)
-	}
-
 	if err := provider.Merge(ctx, pr.Spec.MergeCommitMessage, *pr); err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
