@@ -475,7 +475,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	}
 
 	// err = r.findLastRelevantHistoryShas(ctx, ctp, gitOperations)
-	//if err != nil {
+	// if err != nil {
 	//	return fmt.Errorf("failed to find last effective dry SHA: %w", err)
 	//}
 

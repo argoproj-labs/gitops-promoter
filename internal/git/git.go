@@ -437,7 +437,7 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 
 // GetShaMetadataFromFileFiltered retrieves commit metadata from the hydrator.metadata file for a given branch, filtering
 // commits to find the first one that contains changes based on containsYamlFileSuffix function.
-//func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Context, branch string) (v1alpha1.CommitShaState, string, error) {
+// func (g *EnvironmentOperations) GetShaMetadataFromFileFiltered(ctx context.Context, branch string) (v1alpha1.CommitShaState, string, error) {
 //	logger := log.FromContext(ctx)
 //
 //	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -501,7 +501,7 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 //}
 
 // FindHydratedShaForDryShaFromBranch searches for the hydrated SHA corresponding to a given dry SHA in the specified branch.
-//func (g *EnvironmentOperations) FindHydratedShaForDryShaFromBranch(ctx context.Context, branch string, drySha string) (string, error) {
+// func (g *EnvironmentOperations) FindHydratedShaForDryShaFromBranch(ctx context.Context, branch string, drySha string) (string, error) {
 //	logger := log.FromContext(ctx)
 //
 //	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
