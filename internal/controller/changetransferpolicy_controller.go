@@ -24,6 +24,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/exp/slices"
+
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -173,18 +175,10 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 
 	for _, sha := range shaListActive {
 		h := promoterv1alpha1.History{
-			Proposed:    promoterv1alpha1.CommitBranchState{},
+			Proposed:    promoterv1alpha1.CommitBranchStateHistoryProposed{},
 			Active:      promoterv1alpha1.CommitBranchState{},
 			PullRequest: &promoterv1alpha1.PullRequestCommonStatus{},
 		}
-
-		hydratedActiveMetadata, err := gitOperations.GetShaMetadataFromGit(ctx, sha)
-		if err != nil {
-			return fmt.Errorf("failed to get hydrated commit metadata for active SHA %q: %w", sha, err)
-		}
-		h.Active.Hydrated = hydratedActiveMetadata
-		// TODO: can we / should we use git cli to do this?
-		h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
 
 		activeTrailers, err := gitOperations.GetTrailers(ctx, sha)
 		if err != nil {
@@ -193,68 +187,30 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 			continue
 		}
 
-		// lastRelevantDrySha := activeTrailers["Sha-LastRelevantDry"]
-		// if lastRelevantDrySha != "" {
-		//	sha, err := gitOperations.FindHydratedShaForDryShaFromBranch(ctx, ctp.Spec.ProposedBranch, lastRelevantDrySha)
-		//	if err != nil {
-		//		logger.Error(err, "failed to find hydrated SHA for dry SHA", "drySha", lastRelevantDrySha, "branch", ctp.Spec.ProposedBranch)
-		//	} else {
-		//		dryActiveMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, sha)
-		//		if err != nil {
-		//			logger.Error(err, "failed to get dry commit metadata for active SHA", "sha", lastRelevantDrySha)
-		//		} else {
-		//			h.Active.Dry = dryActiveMetadata
-		//			h.Active.Dry.Body = removeKnownTrailers(h.Active.Dry.Body)
-		//		}
-		//	}
-		// } else {
-		//	logger.V(4).Info("No Sha-LastRelevantDry trailer found for active SHA", "activeSha", sha)
-		//}
-		lastRelevantDrySha := activeTrailers["Sha-LastRelevantDry"]
-		if lastRelevantDrySha == "" {
-			logger.V(4).Info("No Sha-LastRelevantDry trailer found for active SHA", "activeSha", sha)
-		} else if hydratedSha, err := gitOperations.FindHydratedShaForDryShaFromBranch(ctx, ctp.Spec.ProposedBranch, lastRelevantDrySha); err != nil {
-			logger.Error(err, "failed to find hydrated SHA for dry SHA", "drySha", lastRelevantDrySha, "branch", ctp.Spec.ProposedBranch)
-		} else if dryActiveMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, hydratedSha); err != nil {
-			logger.Error(err, "failed to get dry commit metadata for active SHA", "sha", lastRelevantDrySha)
-		} else {
-			h.Active.Dry = dryActiveMetadata
-			h.Active.Dry.Body = removeKnownTrailers(h.Active.Dry.Body)
+		if activeTrailers["No-Op"] == "true" {
+			continue
 		}
 
-		// proposedSha := activeTrailers["Sha-Hydrated-Proposed"]
-		// if proposedSha != "" {
-		//	hydratedProposedMetadata, err := gitOperations.GetShaMetadataFromGit(ctx, proposedSha)
-		//	if err != nil {
-		//		logger.Error(err, "failed to get hydrated commit metadata for proposed SHA", "proposedSha", proposedSha)
-		//	} else {
-		//		h.Proposed.Hydrated.Sha = proposedSha
-		//		h.Proposed.Hydrated = hydratedProposedMetadata
-		//	}
-		//
-		//	dryProposedMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, proposedSha)
-		//	if err != nil {
-		//		logger.Error(err, "failed to get dry commit metadata for proposed SHA", "proposedSha", proposedSha)
-		//	} else {
-		//		h.Proposed.Dry = dryProposedMetadata
-		//	}
-		// } else {
-		//	logger.V(4).Info("No Sha-Hydrated-Proposed trailer found for active SHA", "activeSha", sha)
-		//}
-		proposedSha := activeTrailers["Sha-Hydrated-Proposed"]
-		if proposedSha == "" { //nolint:nestif
+		if activeHydrated, err := gitOperations.GetShaMetadataFromGit(ctx, sha); err != nil {
+			logger.Error(err, "failed to get hydrated commit metadata for proposed SHA", "activeSha", sha)
+		} else {
+			h.Active.Hydrated = activeHydrated
+			h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
+		}
+		if activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha); err != nil {
+			logger.Error(err, "failed to get dry commit metadata for proposed SHA", "activeSha", sha)
+		} else {
+			h.Active.Dry = activeDry
+		}
+
+		proposedHydratedSha := activeTrailers["Sha-Hydrated-Proposed"]
+		if proposedHydratedSha == "" {
 			logger.V(4).Info("No Sha-Hydrated-Proposed trailer found for active SHA", "activeSha", sha)
 		} else {
-			if meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedSha); err != nil {
-				logger.Error(err, "failed to get hydrated commit metadata for proposed SHA", "proposedSha", proposedSha)
+			if meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha); err != nil {
+				logger.Error(err, "failed to get hydrated commit metadata for proposed SHA", "proposedSha", proposedHydratedSha)
 			} else {
-				meta.Sha = proposedSha
 				h.Proposed.Hydrated = meta
-			}
-			if meta, err := gitOperations.GetShaMetadataFromFile(ctx, proposedSha); err != nil {
-				logger.Error(err, "failed to get dry commit metadata for proposed SHA", "proposedSha", proposedSha)
-			} else {
-				h.Proposed.Dry = meta
 			}
 		}
 
@@ -282,11 +238,80 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 			logger.V(4).Info("No PullRequest-CreationTime found in trailers for active SHA", "sha", sha)
 		}
 
+		activeKeys, proposedKeys := getCommitStatusKeysFromTrailers(ctx, activeTrailers)
+
+		for _, key := range activeKeys {
+			h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+				Key:   key,
+				Phase: activeTrailers[fmt.Sprintf("CommitStatus-Active-%s-Phase", key)],
+				Url:   activeTrailers[fmt.Sprintf("CommitStatus-Active-%s-Url", key)],
+			})
+		}
+
+		for _, key := range proposedKeys {
+			h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+				Key:   key,
+				Phase: activeTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Phase", key)],
+				Url:   activeTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Url", key)],
+			})
+		}
+
 		history = append(history, h)
 	}
 
 	ctp.Status.History = history
 	return nil
+}
+
+// getCommitStatusKeysFromTrailers extracts the commit status keys from the trailers in the given context.
+func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string]string) (activeKeys []string, proposedKeys []string) {
+	logger := log.FromContext(ctx)
+
+	activeKeys = []string{}
+	for key, trailer := range trailers {
+		if !strings.HasPrefix(key, "CommitStatus-Active-") {
+			continue
+		}
+		key = strings.TrimPrefix(key, "CommitStatus-Active-")
+		if key == "" {
+			logger.V(4).Info("Skipping empty CommitStatus-Active trailer key", "trailer", trailer)
+			continue
+		}
+		parts := strings.Split(key, "-")
+		if len(parts) < 2 {
+			logger.V(4).Info("Skipping CommitStatus-Active trailer with unexpected format", "trailer", trailer)
+			continue
+		}
+		csKey := strings.Join(parts[:len(parts)-1], "-")
+		// Append if it does if it does not exist in activeKeys
+		if slices.Index(activeKeys, csKey) == -1 {
+			activeKeys = append(activeKeys, csKey)
+		}
+	}
+
+	proposedKeys = []string{}
+	for key, trailer := range trailers {
+		if !strings.HasPrefix(key, "CommitStatus-Proposed-") {
+			continue
+		}
+		key = strings.TrimPrefix(key, "CommitStatus-Proposed-")
+		if key == "" {
+			logger.V(4).Info("Skipping empty CommitStatus-Active trailer key", "trailer", trailer)
+			continue
+		}
+		parts := strings.Split(key, "-")
+		if len(parts) < 2 {
+			logger.V(4).Info("Skipping CommitStatus-Active trailer with unexpected format", "trailer", trailer)
+			continue
+		}
+		csKey := strings.Join(parts[:len(parts)-1], "-")
+		// Append if it does if it does not exist in activeKeys
+		if slices.Index(proposedKeys, csKey) == -1 {
+			proposedKeys = append(proposedKeys, csKey)
+		}
+	}
+
+	return activeKeys, proposedKeys
 }
 
 var knownTrailerPrefixes = []string{
@@ -301,8 +326,7 @@ var knownTrailerPrefixes = []string{
 	"Sha-Hydrated-Proposed:",
 	"Sha-Dry-Active:",
 	"Sha-Dry-Proposed:",
-	"Sha-LastRelevantDry:",
-	// "Argocd-reference-", // Used by ArgoCD hydrator, we probably don't want to hard code this, but for now it is fine.
+	"No-Op:",
 }
 
 func removeKnownTrailers(input string) string {
@@ -450,27 +474,23 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 		return fmt.Errorf("failed to set pull request status state: %w", err)
 	}
 
-	err = r.findLastRelevantActiveDrySha(ctx, ctp, gitOperations)
-	if err != nil {
-		return fmt.Errorf("failed to find last effective dry SHA: %w", err)
-	}
-
-	// err = r.findLastRelevantActiveHydratedSha(ctx, ctp, gitOperations)
-	// if err != nil {
-	//	return fmt.Errorf("failed to find last effective hydrated SHA: %w", err)
+	// err = r.findLastRelevantHistoryShas(ctx, ctp, gitOperations)
+	//if err != nil {
+	//	return fmt.Errorf("failed to find last effective dry SHA: %w", err)
 	//}
 
 	return nil
 }
 
-func (r *ChangeTransferPolicyReconciler) findLastRelevantActiveDrySha(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
-	commitShaState, err := gitOperations.GetShaMetadataFromFileFiltered(ctx, ctp.Spec.ProposedBranch)
-	if err != nil {
-		return fmt.Errorf("failed to get commit metadata for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
-	}
-	ctp.Status.LastRelevantActiveDrySha = commitShaState.Sha
-	return nil
-}
+// func (r *ChangeTransferPolicyReconciler) findLastRelevantHistoryShas(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
+//	commitShaState, hydratedSha, err := gitOperations.GetShaMetadataFromFileFiltered(ctx, ctp.Spec.ProposedBranch)
+//	if err != nil {
+//		return fmt.Errorf("failed to get commit metadata for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
+//	}
+//	ctp.Status.LastRelevantActiveDrySha = commitShaState.Sha
+//	ctp.Status.LastRelevantProposedHydratedSha = hydratedSha
+//	return nil
+//}
 
 // TooManyMatchingShaError is an error type that indicates that there are too many matching SHAs for a commit status.
 type TooManyMatchingShaError struct{}
@@ -749,7 +769,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	commitTrailers["Sha-Hydrated-Proposed"] = ctp.Status.Proposed.Hydrated.Sha
 	commitTrailers["Sha-Dry-Active"] = ctp.Status.Active.Dry.Sha
 	commitTrailers["Sha-Dry-Proposed"] = ctp.Status.Proposed.Dry.Sha
-	commitTrailers["Sha-LastRelevantDry"] = ctp.Status.LastRelevantActiveDrySha
+	// commitTrailers["Sha-LastRelevantDry"] = ctp.Status.LastRelevantActiveDrySha
+	// commitTrailers["Sha-LastRelevantHydratedProposed"] = ctp.Status.LastRelevantProposedHydratedSha
 	commitMessage := fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 	// Pull Request already exists, update it.
