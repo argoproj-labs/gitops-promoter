@@ -60,4 +60,43 @@ export function formatDate(date?: string): string {
     timeZoneName: 'short'
   }).replace(',', '').replace(/:00 /, ' '); // Remove seconds if present
 }
+
+// Get the last commit time from a PromotionStrategy
+export function getLastCommitTime(ps: any): Date | null {
+  //Determine the last commit time between both active/proposed hydrated commit
+  const commitTimes = [
+    ...(ps.status?.environments?.map((env: any) => env.active?.dry?.commitTime) || []),
+    ...(ps.status?.environments?.map((env: any) => env.active?.hydrated?.commitTime) || []),
+    ...(ps.status?.environments?.map((env: any) => env.proposed?.dry?.commitTime) || []),
+    ...(ps.status?.environments?.map((env: any) => env.proposed?.hydrated?.commitTime) || [])
+  ].filter(Boolean);
+
+  if (commitTimes.length) {
+    return new Date(Math.max(...commitTimes.map(t => new Date(t as string).getTime())));
+  }
+
+  if (ps.metadata?.creationTimestamp) {
+    return new Date(ps.metadata.creationTimestamp);
+  }
+
+  return null;
+}
+  
+// Get the overall promotion status from individual environment statuses
+export function getOverallPromotionStatus(environmentStatuses: string[]): 'success' | 'failure' | 'pending' | 'default' {
+  if (environmentStatuses.length === 0) return 'default';
+  
+  if (environmentStatuses.some(status => status === 'failure')) {
+    return 'failure';
+  }
+  if (environmentStatuses.some(status => status === 'pending')) {
+    return 'pending';
+  }
+  
+  if (environmentStatuses.every(status => status === 'success')) {
+    return 'success';
+  }
+  
+  return 'default';
+}
   

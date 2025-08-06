@@ -8,6 +8,9 @@
   &.status-success {
     color: $argo-success;
   }
+  &.status-promoted {
+    color: $argo-success;
+  }
   &.status-pending {
     color: $argo-running;
   }
