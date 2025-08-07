@@ -1,3 +1,5 @@
+@use '../components-lib/src/components/Card/layouts' as layouts;
+@use '../components-lib/src/styles/colors' as *;
 
 .loading-indicator {
   display: flex;
@@ -8,128 +10,97 @@
 } 
 
 .extension-container {
-  .env-cards-container {
-    gap: 30px !important;
-  }
-  
-  .env-cards-wrapper {
-    gap: 20px !important;
-  }
-  
-  .env-card-column {
-    max-width: 400px !important;
-    width: 400px !important;
-  }
-  
-  .env-card {
-    width: 400px !important;
-  }
-
-  .commit-info{
-    padding: 40px 0px 40px 0% !important;
-  }
-
-  .commit-group-header{
-    margin-top: 10px !important;
-    margin-bottom: 5px !important;
-  }
-  
+  @include layouts.extension-overrides;
   
   // Override for horizontal layout when 4+ environments
   .env-cards-wrapper.horizontal-layout {
-    gap: 8px !important;
-    justify-content: flex-start !important;
-    align-items: flex-start !important;
-    margin: 0 !important;
-    padding-left: 0 !important;
+    gap: 8px;
+    justify-content: flex-start;
+    align-items: flex-start;
+    margin: 0;
+    padding-left: 0;
     
     .env-card-column {
-      width: 100% !important;
-      max-width: 100% !important;
+      width: 100%;
+      max-width: 100%;
     }
     
     .env-card {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-width: 700px !important;
+      width: 100%;
+      max-width: 100%;
+      min-width: 700px;
     }
   }
-  
-  // Override for horizontal layout when 4+ environments
-  .env-cards-container:has(.horizontal-layout) {
-    justify-content: flex-start !important;
-    align-items: flex-start !important;
-    margin: 0 !important;
-    padding-left: 0 !important;
+    .env-cards-container:has(.horizontal-layout) {
+    justify-content: flex-start;
+    align-items: flex-start;
+    margin: 0;
+    padding-left: 0;
   }
-  
+}
 
-  //COPY FROM HORIZONTAL LAYOUT
-  @media (max-width: 1500px) {
-    .env-cards-wrapper {
-      flex-direction: column !important;
-      align-items: center !important;
-      padding: 0 5px 0 5px !important;
-      max-width: 100vw !important;
-      max-width: 1000px !important;
-      box-sizing: border-box !important;
-      gap: 10px !important;
-      
-      .env-card-column {
-        width: 100% !important;
-        max-width: 100% !important;
-        margin-bottom: 10px !important;
-      }
-      
-      .env-card {
-        display: grid !important;
-        grid-template-columns: 1fr 1fr !important;
-        grid-template-rows: auto 1fr !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        min-width: 700px !important;
-        box-sizing: border-box !important;
-        min-height: auto !important;
-        
-        &:has(.commit-group:only-child),
-        &.single-commit-group {
-          grid-template-columns: 1fr !important;
-          max-width: 70% !important;
-          margin: 0 auto !important;
-          min-width: 500px !important;
-        }
-      }
-      
-      .env-card__title {
-        grid-column: 1 / -1 !important;
-        grid-row: 1 !important;
-        margin-bottom: 20px !important;
-      }
-      
-      .commit-group:not(.proposed) {
-        grid-column: 1 !important;
-        grid-row: 2 !important;
-        min-width: 0 !important;
-        padding-right: 16px !important;
-      }
-      
-      .commit-group.proposed {
-        grid-column: 2 !important;
-        grid-row: 1 / -1 !important;
-        margin: 0 !important;
-        margin-top: -24px !important;
-        margin-right: -24px !important;
-        margin-bottom: -24px !important;
-        padding: 12px !important;
-        padding-top: 60px !important;
-        border-radius: 8px 0 0 8px !important;
-        border-left: 3px solid #0dadea !important;
-        border-top: 0px !important;
-        background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%) !important;
-        min-width: 0 !important;
-      }
+//Promotion status panel
+.promotion-status-label {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: rgb(109, 127, 139) !important;
+  margin-bottom: 5px !important;
+  margin-top: 5px !important;
+  text-transform: uppercase;
+  position: relative !important;
+  top: -3px !important;
+}
+
+// Status icon colors and text styling
+.application-status-panel__item-value {
+  .synced {
+    color: $argo-success;
+  }
+  
+  .pending {
+    color: $argo-running;
+  }
+  
+  .unknown {
+    color: $argo-failed;
+  }
+  
+  .default {
+    color: $argo-color-gray-5;
+  }
+  
+  // Spacing between icon and text
+  i {
+    margin-right: 8px !important;
+  }
+  
+  .promotion-status-text {
+    &.promoted {
+      color: $argo-success !important;
+    }
+    
+    &.pending {
+      color: $argo-running !important;
+    }
+    
+    &.unknown {
+      color: $argo-failed !important;
+    }
+    
+    &.default {
+      color: $argo-color-gray-5 !important;
     }
   }
+}
+
+// Spacing between summary and button
+.promotion-summary {
+  margin-bottom: 8px !important;
+}
+
+.application-status-panel__item .status-icon {
+  margin-right: 8px !important;
+  font-size: 1em !important;
 }
 
 
