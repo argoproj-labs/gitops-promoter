@@ -11,29 +11,32 @@ import type {
 
 
 //TODO: HOW SHOULD WE HANDLE PROPOSED CARDS DISAPPEARING?
-function getEnvironmentStatus(env: Environment): 'pending' | 'success' | 'failure' | 'unknown' {
-  const { active = {}, proposed = {}, pullRequest } = env;
+function getEnvironmentStatus(env: Environment): 'pending' | 'promoted' | 'failure' | 'unknown' {
+  const { active = {}, proposed = {} } = env;
   
-  // Check for failures first (any check is failure)
-  if (active.commitStatuses?.some(cs => cs.phase === 'failure')) {
+  const proposedSha = proposed.dry?.sha;
+  const activeSha = active.dry?.sha;
+  
+  // Get checks
+  const proposedChecks = proposed.commitStatuses || [];
+  const activeChecks = active.commitStatuses || [];
+  
+  // Check for failures in any checks (proposed or active)
+  if (proposedChecks.some((cs: CommitStatus) => cs.phase === 'failure') ||
+      activeChecks.some((cs: CommitStatus) => cs.phase === 'failure')) {
     return 'failure';
   }
   
-  // If there's a pull request -> PENDING
-  if (pullRequest) {
+  // Pending (PR OPEN) - if proposed SHA is different from active SHA
+  if (proposedSha && proposedSha !== activeSha) {
     return 'pending';
   }
   
-  // If no pull request and active SHA = proposed SHA -> PROMOTED
-  if (proposed.dry?.sha === active.dry?.sha && proposed.dry?.sha) {
-    return 'success';
+  // Promoted (PR MERGED && ACTIVE CHECKS IN PROGRESS)
+  if (proposedSha === activeSha) {
+    return 'promoted';
   }
   
-  // If no pull request but different SHAs -> UNKNOWN
-  if (proposed.dry?.sha !== active.dry?.sha && proposed.dry?.sha) {
-    return 'unknown';
-  }
-
   return 'unknown';
 }
 
@@ -227,7 +230,7 @@ export function getPromotionStatus(ps: PromotionStrategy): {
 } {
 
   if (!ps.status?.environments) {
-    return { total: 0, promoted: 0, pending: 0, failed: 0, overallStatus: 'default', displayText: '' };
+    return { total: 0, promoted: 0, pending: 0, failed: 0, overallStatus: 'unknown', displayText: '' };
   }
 
   const envs = ps.status.environments;
@@ -239,7 +242,7 @@ export function getPromotionStatus(ps: PromotionStrategy): {
   for (const env of envs) {
     const status = getEnvironmentStatus(env);
     if (status === 'failure') failed++;
-    else if (status === 'success') promoted++;
+    else if (status === 'promoted') promoted++;
     else if (status === 'pending') pending++;
   }
 
@@ -248,7 +251,7 @@ export function getPromotionStatus(ps: PromotionStrategy): {
   // Determine overall status
   const overallStatus = failed > 0 ? 'failure' : 
                        pending > 0 ? 'pending' : 
-                       promoted === total ? 'success' : 'default';
+                       promoted === total ? 'promoted' : 'unknown';
 
   // E.g: 1/1 environments failed
   const displayText = failed > 0 ? `${failed}/${total} environments failed` :

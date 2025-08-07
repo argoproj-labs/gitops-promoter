@@ -5,10 +5,10 @@
   font-size: 1.3em;
   vertical-align: middle;
 
-  &.status-success {
+  &.status-promoted {
     color: $argo-success;
   }
-  &.status-promoted {
+  &.status-success {
     color: $argo-success;
   }
   &.status-pending {

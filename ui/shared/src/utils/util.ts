@@ -83,8 +83,8 @@ export function getLastCommitTime(ps: any): Date | null {
 }
   
 // Get the overall promotion status from individual environment statuses
-export function getOverallPromotionStatus(environmentStatuses: string[]): 'success' | 'failure' | 'pending' | 'default' {
-  if (environmentStatuses.length === 0) return 'default';
+export function getOverallPromotionStatus(environmentStatuses: string[]): 'promoted' | 'failure' | 'pending' | 'unknown' {
+  if (environmentStatuses.length === 0) return 'unknown';
   
   if (environmentStatuses.some(status => status === 'failure')) {
     return 'failure';
@@ -93,10 +93,10 @@ export function getOverallPromotionStatus(environmentStatuses: string[]): 'succe
     return 'pending';
   }
   
-  if (environmentStatuses.every(status => status === 'success')) {
-    return 'success';
+  if (environmentStatuses.every(status => status === 'promoted')) {
+    return 'promoted';
   }
   
-  return 'default';
+  return 'unknown';
 }
   

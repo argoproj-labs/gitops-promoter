@@ -2,7 +2,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 import { PromotionStrategyTile } from '../PromotionStrategySummary/PromotionStrategyTile';
-import { getLastCommitTime, formatDate } from '@shared/utils/util';
+import { getLastCommitTime, formatDate, getOverallPromotionStatus } from '@shared/utils/util';
+import { enrichPromotionStrategy } from '@shared/utils/PSData';
 import './PromotionStrategyTiles.scss';
 
 export interface PromotionStrategyTilesProps {
@@ -19,12 +20,16 @@ export const PromotionStrategiesTiles: React.FC<PromotionStrategyTilesProps> = (
         const lastCommitTime = getLastCommitTime(ps);
         const lastUpdated = lastCommitTime ? formatDate(lastCommitTime.toISOString()) : '-';
         
+        const enrichedEnvs = enrichPromotionStrategy(ps);
+        const environmentStatuses = enrichedEnvs.map(env => env.promotionStatus || 'unknown');
+        const borderStatus = getOverallPromotionStatus(environmentStatuses);
+        
         return (
           <PromotionStrategyTile
             key={ps.metadata?.name || `ps-${idx}`}
             ps={ps}
             namespace={namespace}
-            borderStatus="default"
+            borderStatus={borderStatus}
             lastUpdated={lastUpdated}
             onClick={() => navigate(`/promotion-strategies/${namespace}/${ps.metadata?.name || ''}`)}
           />

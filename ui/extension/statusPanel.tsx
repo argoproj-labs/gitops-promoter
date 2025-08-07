@@ -30,10 +30,21 @@ interface Resource {
 }
 
 const findPromotionStrategy = (application: Application) => {
-  return application.status?.resources?.find(resource => 
+  const promotionStrategies = application.status?.resources?.filter(resource => 
     resource.kind === 'PromotionStrategy' && 
     resource.group === 'promoter.argoproj.io'
   );
+  
+  if (!promotionStrategies || promotionStrategies.length === 0) {
+    return null;
+  }
+  
+  // Multiple promotions found
+  if (promotionStrategies.length > 1) {
+    return { error: 'Multiple promotions found' };
+  }
+  
+  return promotionStrategies[0];
 };
 
 // Only way to get CRD data is to fetch from ArgoCD API
@@ -61,10 +72,10 @@ const fetchPromotionStrategyData = async (application: Application, promotionStr
 
 const getStatusInfo = (phase: PromotionPhase) => {
   const statusMap = {
-    success: { text: 'Promoted', icon: 'success' as StatusType },
+    promoted: { text: 'Promoted', icon: 'success' as StatusType },
     failure: { text: 'Failed', icon: 'failure' as StatusType },
     pending: { text: 'Pending', icon: 'pending' as StatusType },
-    default: { text: 'Unknown', icon: 'unknown' as StatusType }
+    unknown: { text: 'Unknown', icon: 'unknown' as StatusType }
   };
   
   return statusMap[phase];
@@ -73,7 +84,7 @@ const getStatusInfo = (phase: PromotionPhase) => {
 // Status panel component for promotion strategy summary
 const StatusPanelComponent: React.FC<{ application: Application }> = ({ application }) => {
   const [promotionData, setPromotionData] = React.useState({
-    phase: 'default' as PromotionPhase,
+    phase: 'unknown' as PromotionPhase,
     total: 0,
     promoted: 0,
     summary: '',
@@ -85,6 +96,12 @@ const StatusPanelComponent: React.FC<{ application: Application }> = ({ applicat
   React.useEffect(() => {
     const promotionStrategy = findPromotionStrategy(application);
     if (!promotionStrategy) return;
+
+    // Error handling
+    if ('error' in promotionStrategy) {
+      setPromotionData(prev => ({ ...prev, error: promotionStrategy.error }));
+      return;
+    }
 
     const loadPromotionData = async () => {
       try {
@@ -118,20 +135,30 @@ const StatusPanelComponent: React.FC<{ application: Application }> = ({ applicat
   }, [application]);
 
   // Don't render if no promotion strategy found
-  if (!findPromotionStrategy(application)) {
+  const promotionStrategy = findPromotionStrategy(application);
+  if (!promotionStrategy) {
     return null;
+  }
+
+  // Display error if it exists
+  if ('error' in promotionStrategy) {
+    return (
+      <div className="application-status-panel__item">
+        <label className="promotion-status-label">Promotion Status</label>
+        <div className="application-status-panel__item-value">
+          <span>{promotionStrategy.error}</span>
+        </div>
+      </div>
+    );
   }
 
   const { phase, total, summary, loading, error } = promotionData;
   const { text: statusText, icon: statusIcon } = getStatusInfo(phase);
 
   const navigateToPromotionStrategyTab = () => {
-    const promotionStrategy = findPromotionStrategy(application);
-    if (promotionStrategy) {
-      const treeUrl = `/applications/${application.metadata.name}?view=tree&node=promoter.argoproj.io%2FPromotionStrategy%2F${promotionStrategy.namespace}%2F${promotionStrategy.name}&tab=extension-0`;
-      window.history.pushState({}, '', treeUrl);
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    }
+    const treeUrl = `/applications/${application.metadata.name}?view=tree&node=promoter.argoproj.io%2FPromotionStrategy%2F${promotionStrategy.namespace}%2F${promotionStrategy.name}&tab=extension-0`;
+    window.history.pushState({}, '', treeUrl);
+    window.dispatchEvent(new PopStateEvent('popstate'));
   };
 
 

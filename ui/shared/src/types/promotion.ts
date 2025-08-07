@@ -124,4 +124,4 @@ export interface EnrichedEnvDetails {
   proposedReferenceCommitBody: string;
 }
 
-export type PromotionPhase = 'success' | 'failure' | 'pending' | 'default'; 
+export type PromotionPhase = 'promoted' | 'failure' | 'pending' | 'unknown'; 

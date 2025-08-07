@@ -8,7 +8,7 @@ import './PromotionStrategyTiles.scss';
 
 export const PromotionStrategyTile = ({ps, borderStatus, lastUpdated, onClick}:{
   ps: PromotionStrategy, namespace: string,
-  borderStatus: 'success' | 'failure' | 'pending' | 'default',
+  borderStatus: 'promoted' | 'failure' | 'pending' | 'unknown',
   lastUpdated: string,
   onClick: () => void
 }) => {
@@ -19,7 +19,7 @@ export const PromotionStrategyTile = ({ps, borderStatus, lastUpdated, onClick}:{
   
   const enrichedEnvs = enrichPromotionStrategy(ps);
   const { overallStatus } = getPromotionStatus(ps);
-  const statusIconPhase = overallStatus === 'default' ? 'unknown' : overallStatus;
+  const statusIconPhase = overallStatus === 'unknown' ? 'unknown' : overallStatus;
   
   return (
     <div
