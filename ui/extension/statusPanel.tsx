@@ -7,10 +7,7 @@ import type { PromotionPhase, PromotionStrategy } from '../shared/src/types/prom
 
 // Types
 interface Application {
-  metadata: {
-    name: string;
-    namespace: string;
-  };
+  metadata: { name: string; namespace: string };
   status?: {
     resources?: Array<{
       kind: string;
@@ -71,14 +68,16 @@ const fetchPromotionStrategyData = async (application: Application, promotionStr
 };
 
 const getStatusInfo = (phase: PromotionPhase) => {
-  const statusMap = {
-    promoted: { text: 'Promoted', icon: 'success' as StatusType },
-    failure: { text: 'Failed', icon: 'failure' as StatusType },
-    pending: { text: 'Pending', icon: 'pending' as StatusType },
-    unknown: { text: 'Unknown', icon: 'unknown' as StatusType }
-  };
+  const statusText = {
+    promoted: 'Promoted',
+    failure: 'Failed', 
+    pending: 'Pending',
+    unknown: 'Unknown'
+  }[phase] || 'Unknown';
   
-  return statusMap[phase];
+  const statusIcon = phase === 'promoted' ? 'success' : phase as StatusType;
+  
+  return { text: statusText, icon: statusIcon };
 };
 
 // Status panel component for promotion strategy summary
@@ -97,7 +96,7 @@ const StatusPanelComponent: React.FC<{ application: Application }> = ({ applicat
     const promotionStrategy = findPromotionStrategy(application);
     if (!promotionStrategy) return;
 
-    // Error handling
+    // Handle multiple promotion strategies error
     if ('error' in promotionStrategy) {
       setPromotionData(prev => ({ ...prev, error: promotionStrategy.error }));
       return;
@@ -125,11 +124,9 @@ const StatusPanelComponent: React.FC<{ application: Application }> = ({ applicat
       }
     };
 
-    // Load initial data
     setPromotionData(prev => ({ ...prev, loading: true, error: null }));
     loadPromotionData();
 
-    // Poll every 4 seconds
     const interval = setInterval(loadPromotionData, 4000);
     return () => clearInterval(interval);
   }, [application]);
