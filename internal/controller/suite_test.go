@@ -38,7 +38,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
@@ -627,17 +626,13 @@ func randomString(length int) string {
 
 func simulateWebhook(ctx context.Context, k8sClient client.Client, ctp *promoterv1alpha1.ChangeTransferPolicy) {
 	Eventually(func(g Gomega) {
-		err := k8sClient.Get(ctx, types.NamespacedName{
-			Name:      ctp.Name,
-			Namespace: ctp.Namespace,
-		}, ctp)
-		g.Expect(err).To(Succeed())
+		orig := ctp.DeepCopy()
 		if ctp.Annotations == nil {
-			ctp.Annotations = map[string]string{}
+			ctp.Annotations = make(map[string]string)
 		}
 		ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = metav1.Now().Format(time.RFC3339)
-		err = k8sClient.Update(ctx, ctp)
-		g.Expect(err).To(Succeed())
+		err := k8sClient.Patch(ctx, ctp, client.MergeFrom(orig))
+		Expect(err).To(Succeed())
 	}, constants.EventuallyTimeout).Should(Succeed())
 }
 

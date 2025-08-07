@@ -61,7 +61,10 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	pullRequestCopy := pullRequest.DeepCopy()
 	if p, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]; ok {
-		logger.Info("Pull request already exists", "id", p.id)
+		logger.Info("Pull request already exists", "id", p.id, "pullRequestSpec", pullRequest.Spec, "pullRequestStatus", pullRequest.Status)
+		if p.state == v1alpha1.PullRequestOpen {
+			return id, errors.New("pull request already exists and is open")
+		}
 	}
 	if pullRequestCopy == nil {
 		return "", errors.New("pull request is nil")
@@ -84,13 +87,12 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 
 // Close closes an existing pull request.
 func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
-	mutexPR.Lock()
-
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
+	mutexPR.Lock()
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
@@ -106,6 +108,11 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 // Merge merges an existing pull request with the specified commit message.
 func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
+
+	if pullRequest.Status.ID == "" {
+		return errors.New("pull request ID is empty, cannot merge")
+	}
+
 	gitPath, err := os.MkdirTemp("", "*")
 	defer func() {
 		err := os.RemoveAll(gitPath)
@@ -129,15 +136,33 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 		return err
 	}
 
+	err = pr.runGitCmd(gitPath, "config", "user.name", "GitOps Promoter")
+	if err != nil {
+		logger.Error(err, "could not set git config")
+		return err
+	}
+
+	err = pr.runGitCmd(gitPath, "config", "user.email", "GitOpsPromoter@argoproj.io")
+	if err != nil {
+		logger.Error(err, "could not set git config")
+		return err
+	}
+
 	err = pr.runGitCmd(gitPath, "config", "pull.rebase", "false")
 	if err != nil {
 		return err
 	}
 
-	err = pr.runGitCmd(gitPath, "pull", "origin", pullRequest.Spec.SourceBranch)
+	err = pr.runGitCmd(gitPath, "pull", "--no-edit", "origin", pullRequest.Spec.SourceBranch)
 	if err != nil {
 		return err
 	}
+
+	err = pr.runGitCmd(gitPath, "commit", "--amend", "-m", commitMessage)
+	if err != nil {
+		return fmt.Errorf("failed to amend commit: %w", err)
+	}
+
 	err = pr.runGitCmd(gitPath, "push")
 	if err != nil {
 		return err
