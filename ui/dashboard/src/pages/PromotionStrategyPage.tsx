@@ -5,7 +5,7 @@ import { viewStore } from '../stores/ViewStore';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
 import BackButton from '../components/BackButton';
 import HeaderBar from '@lib/components/HeaderBar';
-import PromotionStrategyDetailsView from '@lib/components/PromotionStrategyDetailsView';
+import PromotionStrategyDetailsView from '../components/PromotionStrategyDetailsView';
 import { LiveManifestView } from '../components/LiveManifestView';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 import './PromotionStrategyPage.scss';
