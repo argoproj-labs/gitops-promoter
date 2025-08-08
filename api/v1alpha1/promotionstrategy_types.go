@@ -141,6 +141,9 @@ type EnvironmentStatus struct {
 	// LastHealthyDryShas is a list of dry commits that were observed to be healthy in the environment.
 	// +kubebuilder:validation:Optional
 	LastHealthyDryShas []HealthyDryShas `json:"lastHealthyDryShas"`
+
+	// History defines the history of promoted changes done by the PromotionStrategy for this environment.
+	History []History `json:"history,omitempty"`
 }
 
 // HealthyDryShas is a list of dry commits that were observed to be healthy in the environment.

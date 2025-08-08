@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -262,11 +263,28 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	if err := provider.Merge(ctx, "", *pr); err != nil {
+	if err := provider.Merge(ctx, pr.Spec.MergeCommitMessage, *pr); err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestMerged
 	return nil
+}
+
+type trailers map[string]string
+
+func (t trailers) String() string {
+	keys := make([]string, 0, len(t))
+
+	for k := range t {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var result string
+	for _, k := range keys {
+		result += fmt.Sprintf("%s: %s\n", k, t[k])
+	}
+	return result
 }
 
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
