@@ -44,6 +44,19 @@ interface Environment {
     commitStatuses?: CommitStatus[];
   };
   pullRequest?: PullRequest;
+  history?: Array<{
+    active: {
+      dry?: Commit;
+      hydrated?: Commit;
+      commitStatuses?: CommitStatus[];
+    };
+    proposed: {
+      dry?: Commit;
+      hydrated?: Commit;
+      commitStatuses?: CommitStatus[];
+    };
+    pullRequest?: PullRequest;
+  }>;
 }
 
 export interface PromotionStrategy {
@@ -223,16 +236,17 @@ function extractReferenceCommitData(dryCommit: any): {
 }
 
 function getEnvDetails(environment: Environment, specEnvs: { branch: string; autoMerge?: boolean }[]): EnrichedEnvDetails {
-  const { active = {}, proposed = {}, pullRequest } = environment;
+  const { active = {}, proposed = {}, pullRequest, history = [] } = environment;
 
   const branch = environment.branch || '';
 
-  // Phase
-  const commitStatuses = active.commitStatuses || [];
+  // Use history[0] for active data, fallback to current active
+  const activeData = history[0]?.active || active;
+  const commitStatuses = activeData.commitStatuses || [];
   const phase = commitStatuses[0]?.phase || 'unknown';
 
     //Dry Commit (Active)
-    const dry = active.dry || {};
+    const dry = activeData.dry || {};
     const drySha = dry.sha ? dry.sha.slice(0, 7) : '-';
     const dryCommitAuthor = extractNameOnly(dry.author || '-');
     const dryCommitSubject = dry.subject || '-';
@@ -251,7 +265,6 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
     const referenceCommitBody = activeReferenceData.body;
     const referenceCommitDate = activeReferenceData.date;
     const referenceCommitUrl = activeReferenceData.url;
-
 
     // Proposed Dry
     const proposedDry = proposed.dry || {};
@@ -276,7 +289,6 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
     const proposedReferenceCommitDate = proposedReferenceData.date;
     const proposedReferenceCommitUrl = proposedReferenceData.url;
 
-
     // PR number and url
     const prNumber = pullRequest?.id ? parseInt(pullRequest.id, 10) : null;
     const prUrl = pullRequest?.url || null;
@@ -286,7 +298,6 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
       branch,
       phase,
       promotionStatus: 'unknown',
-      
 
       drySha,
       dryCommitAuthor,
