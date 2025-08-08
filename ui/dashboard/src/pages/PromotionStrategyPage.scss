@@ -1,0 +1,50 @@
+.strategy-page-header {
+  display: flex;
+  align-items: center;
+  background: white;
+  padding: 5px 0;
+  position: relative;
+}
+
+.strategy-page-header-left {
+  width: 60px;
+}
+
+.strategy-page-header-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.strategy-page-header-right {
+  margin-left: auto;
+  margin-right: 16px;
+}
+
+.strategy-page-tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.strategy-page-tab {
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #666;
+}
+
+.strategy-page-tab:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: #333;
+}
+
+.strategy-page-tab.active {
+  background: #6d7f8b;
+  color: white;
+} 

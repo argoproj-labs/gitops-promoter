@@ -1,0 +1,58 @@
+.strategy-json-editor {
+  margin: 20px;
+  height: 100%;
+  background: white;
+  border-radius: 8px;
+  display: flex;
+}
+
+.strategy-json-editor-content {
+  display: flex;
+  flex: 1;
+  padding: 20px;
+}
+
+.line-numbers {
+  color: #237893;
+  border-right: 1px solid #e0e0e0;
+  padding-right: 10px;
+  text-align: right;
+  min-width: 50px;
+  font-family: Menlo, Monaco, monospace;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.line-number {
+  height: 18px;
+}
+
+.json-content {
+  flex: 1;
+  padding-left: 10px;
+  font-family: Menlo, Monaco, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre;
+}
+
+.json-line {
+  height: 18px;
+}
+
+.json-key {
+  color: #008080;
+}
+
+.json-value {
+  color: #0451a5;
+}
+
+.strategy-json-editor-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  font-size: 16px;
+  color: #333;
+} 
