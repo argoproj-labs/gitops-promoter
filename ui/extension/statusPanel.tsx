@@ -180,9 +180,11 @@ const StatusPanelComponent: React.FC<{ application: Application }> = ({ applicat
         </div>
       )}
       
-      <button onClick={navigateToPromotionStrategyTab} className="argo-button argo-button--base">
-        View Details
-      </button>
+      {!loading && !error && total > 0 && (
+        <button onClick={navigateToPromotionStrategyTab} className="argo-button argo-button--base">
+          View Details
+        </button>
+      )}
     </div>
   );
 };
