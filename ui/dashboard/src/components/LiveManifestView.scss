@@ -33,11 +33,13 @@
   font-family: Menlo, Monaco, monospace;
   font-size: 12px;
   line-height: 18px;
-  white-space: pre;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
 }
 
 .json-line {
-  height: 18px;
+  height: auto;
 }
 
 .json-key {

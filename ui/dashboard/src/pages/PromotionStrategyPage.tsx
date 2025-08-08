@@ -99,7 +99,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({ namespace
               className={`strategy-page-tab ${currentView === 'json' ? 'active' : ''}`}
               onClick={() => setView('json')}
             >
-              Live Manifest
+              Live<br />Manifest
             </button>
           </div>
         </div>
