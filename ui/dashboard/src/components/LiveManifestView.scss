@@ -4,12 +4,14 @@
   background: white;
   border-radius: 8px;
   display: flex;
+  overflow: auto;
 }
 
 .strategy-json-editor-content {
   display: flex;
   flex: 1;
   padding: 20px;
+  min-width: 0;
 }
 
 .line-numbers {
@@ -21,6 +23,7 @@
   font-family: Menlo, Monaco, monospace;
   font-size: 12px;
   line-height: 18px;
+  flex-shrink: 0;
 }
 
 .line-number {
@@ -33,13 +36,13 @@
   font-family: Menlo, Monaco, monospace;
   font-size: 12px;
   line-height: 18px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: break-word;
+  overflow-x: auto;
+  white-space: pre;
+  min-width: 0;
 }
 
 .json-line {
-  height: auto;
+  height: 18px;
 }
 
 .json-key {
