@@ -274,7 +274,10 @@ func runController(
 
 	processSignals := ctrl.SetupSignalHandler()
 
-	whr := webhookreceiver.NewWebhookReceiver(localManager)
+	whr := webhookreceiver.NewWebhookReceiver(
+		localManager,
+		settingsMgr,
+	)
 
 	g, ctx := errgroup.WithContext(processSignals)
 
