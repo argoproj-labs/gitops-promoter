@@ -10,6 +10,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
 	"github.com/tidwall/gjson"
 
@@ -23,16 +24,20 @@ var logger = ctrl.Log.WithName("webhookReceiver")
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
-	mgr       controllerruntime.Manager
-	k8sClient client.Client
+	mgr         controllerruntime.Manager
+	k8sClient   client.Client
+	settingsMgr *settings.Manager
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager) WebhookReceiver {
-	return WebhookReceiver{
-		mgr:       mgr,
-		k8sClient: mgr.GetClient(),
+func NewWebhookReceiver(mgr controllerruntime.Manager, settingsMgr *settings.Manager) WebhookReceiver {
+	wr := WebhookReceiver{
+		mgr:         mgr,
+		k8sClient:   mgr.GetClient(),
+		settingsMgr: settingsMgr,
 	}
+
+	return wr
 }
 
 // Start starts the webhook receiver server on the given address.
@@ -85,8 +90,23 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// TODO: add a configurable payload max side for DoS protection.
+	maxWebhookPayloadSize, err := wr.settingsMgr.GetWebhookMaxPayloadSize(r.Context())
+	if err != nil {
+		logger.Error(err, "failed to get webhook max payload size from settings manager")
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !maxWebhookPayloadSize.IsZero() {
+		r.Body = http.MaxBytesReader(w, r.Body, maxWebhookPayloadSize.Value())
+	}
 	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "payload size exceeds limit", http.StatusRequestEntityTooLarge)
+			return
+		}
+
 		responseCode = http.StatusInternalServerError
 		http.Error(w, "error reading body", responseCode)
 		return
