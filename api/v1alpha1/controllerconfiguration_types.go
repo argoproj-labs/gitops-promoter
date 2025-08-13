@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,6 +30,9 @@ type ControllerConfigurationSpec struct {
 
 	// +required
 	PullRequest PullRequestConfiguration `json:"pullRequest,omitempty"`
+
+	// +required
+	Webhook WebhookConfiguration `json:"webhook,omitempty"`
 
 	// How frequently to requeue promotion strategy resources for auto reconciliation. Default: "5m".
 	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
@@ -56,6 +60,15 @@ type PullRequestConfiguration struct {
 	// Template is the template used to generate pull requests.
 	// +required
 	Template PullRequestTemplate `json:"template,omitempty"`
+}
+
+// WebhookConfiguration defines the configuration for webhooks.
+type WebhookConfiguration struct {
+	// Maximum allowed payload size in bytes.
+	// The default value is 25Mi.
+	// Set to 0 for no limit on the payload size.
+	// +required
+	MaxPayloadSize resource.Quantity `json:"maxPayloadSize,omitempty"`
 }
 
 // PullRequestTemplate defines the template for pull requests.

@@ -85,12 +85,29 @@ spec:
                   How frequently to requeue pull request resources for auto reconciliation. Default: "5m".
                   Format is go's time.Duration, e.g. "5m" for 5 minutes.
                 type: string
+              webhook:
+                description: WebhookConfiguration defines the configuration for webhooks.
+                properties:
+                  maxPayloadSize:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      Maximum allowed payload size in bytes.
+                      The default value is 25Mi.
+                      Set to 0 for no limit on the payload size.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                required:
+                - maxPayloadSize
+                type: object
             required:
             - argocdCommitStatusRequeueDuration
             - changeTransferPolicyRequeueDuration
             - promotionStrategyRequeueDuration
             - pullRequest
             - pullRequestRequeueDuration
+            - webhook
             type: object
           status:
             description: ControllerConfigurationStatus defines the observed state
