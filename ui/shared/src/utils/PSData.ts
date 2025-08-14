@@ -95,12 +95,13 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
 
   const branch = environment.branch || '';
 
-  // Phase
-  const commitStatuses = active.commitStatuses || [];
+  // Use history[0] for active data, fallback to current active
+  const activeData = history[0]?.active || active;
+  const commitStatuses = activeData.commitStatuses || [];
   const phase = commitStatuses[0]?.phase || 'unknown';
 
   // Active data
-  const dry = active.dry || {};
+  const dry = activeData.dry || {};
   const activeChecks = getChecks(commitStatuses);
   const activeChecksSummary = calculateHealthSummary(activeChecks);
   const activeReferenceData = extractReferenceCommitData(dry);
