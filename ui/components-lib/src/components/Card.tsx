@@ -17,7 +17,6 @@ const Card: React.FC<CardProps> = ({ environments }) => {
       <div className={`env-cards-wrapper ${isHorizontalLayout ? 'horizontal-layout' : ''}`}>
         {environments.map((env: any, envIdx: number) => {
           const branch = env.branch;
-          const phase = env.phase;
           const proposedStatus = env.promotionStatus;
 
           // Active commits (currently deployed)
@@ -67,17 +66,20 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                   deploymentCommit={activeDeploymentCommit}
                   codeCommit={activeCodeCommit}
                   isActive={true}
-                  status={phase as StatusType}
+                  status={env.phase as StatusType}
                   deploymentCommitUrl={env.dryCommitUrl}
                   codeCommitUrl={env.referenceCommitUrl}
                   activeChecks={env.activeChecks}
                   proposedChecks={env.proposedChecks}
                   activeChecksSummary={env.activeChecksSummary}
                   proposedChecksSummary={env.proposedChecksSummary}
+                  prUrl={env.activePrUrl}
+                  prNumber={env.activePrNumber?.toString()}
+                  isMerged={true}
                 />
 
 
-                {/* Proposed Commits Section - Only show if not promoted/success */}
+                {/* Proposed Commits Section*/}
                 {proposedStatus !== 'promoted' && proposedStatus !== 'success' && (
                   <CommitInfo
                     title="Proposed"
@@ -94,6 +96,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                     proposedChecksSummary={env.proposedChecksSummary}
                     prUrl={env.prUrl}
                     prNumber={env.prNumber?.toString()}
+                    isMerged={false}
                   />
                 )}
               </div>

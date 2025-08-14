@@ -1,4 +1,4 @@
-import { FaRegFileAlt } from 'react-icons/fa';
+import { GoArchive } from "react-icons/go";
 import { BsBraces } from 'react-icons/bs';
 import { GoGitPullRequest } from 'react-icons/go';
 import { StatusIcon, StatusType } from './StatusIcon';
@@ -21,6 +21,7 @@ export interface CommitInfoProps {
   proposedChecksSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
   prUrl?: string;
   prNumber?: string;
+  isMerged?: boolean;
 }
 
 // Combined component to display commit information and groups
@@ -38,11 +39,12 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
   activeChecksSummary,
   proposedChecksSummary,
   prUrl, 
-  prNumber 
+  prNumber,
+  isMerged = false
 }) => {
   const getIcon = (iconType: 'file' | 'code') => {
     if (iconType === 'code') return <BsBraces className="commit-icon" />;
-    return <FaRegFileAlt className="commit-icon" />;
+    return <GoArchive className="commit-icon" />;
   };
 
   const getStatusClass = (type: 'deployment' | 'code') => {
@@ -164,8 +166,8 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               href={prUrl} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="pr-indicator"
-              title={`View PR #${prNumber}`}
+              className={`pr-indicator ${isMerged ? 'pr-merged' : ''}`}
+              title={`View PR #${prNumber}${isMerged ? ' (Merged)' : ''}`}
             >
               <GoGitPullRequest className="pr-icon" />
               PR #{prNumber}

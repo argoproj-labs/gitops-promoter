@@ -2,7 +2,6 @@
 export { default as Card } from './Card';
 export { default as CommitInfo } from './CommitInfo';
 export { StatusIcon, statusLabel } from './StatusIcon';
-export { default as PromotionStrategyDetailsView } from './PromotionStrategyDetailsView';
 
 // Utility components
 export { default as TimeAgo } from './TimeAgo';
