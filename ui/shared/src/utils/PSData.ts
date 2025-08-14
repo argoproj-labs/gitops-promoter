@@ -95,9 +95,9 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
 
   const branch = environment.branch || '';
 
-  // Use history[0] for active data, fallback to current active
+  // Use history[0] for commits, current active for status [history doesn't have commit statuses]
   const activeData = history[0]?.active || active;
-  const commitStatuses = activeData.commitStatuses || [];
+  const commitStatuses = active.commitStatuses || activeData.commitStatuses || [];
   const phase = commitStatuses[0]?.phase || 'unknown';
 
   // Active data
