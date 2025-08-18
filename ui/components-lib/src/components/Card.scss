@@ -18,6 +18,18 @@
   display: flex;
   flex-direction: column;
   
+  // When proposed cards disappear, make the card shorter
+  &.single-commit-group {
+    min-height: 250px;
+    height: auto;
+  }
+}
+
+// Force height override for single-commit-group - very specific rule
+.env-card.single-commit-group {
+  min-height: 300px;
+  height: auto;
+  max-height: 350px;
 }
 
 // Card title
@@ -104,20 +116,20 @@
 // Commit info
 .commit-info {
   margin-bottom: 12px;
-  padding: 16px 0px 16px 0%;
+  padding: 16px 0;
   min-width: 180px;
-  height: 50px !important;
+  height: 50px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   position: relative;
   
   .commit-sha {
-    font-size: 13px !important;
+    font-size: 13px;
   }
   
   .commit-subject {
-    font-size: 13px !important;
+    font-size: 13px;
   }
   
   .commit-meta {
@@ -131,7 +143,7 @@
 
 .commit-icon-wrapper {
   position: absolute;
-  left: 0px;
+  left: 0;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
@@ -142,7 +154,7 @@
 }
 
 .commit-icon {
-  font-size: 35px !important;
+  font-size: 35px;
   color: $argo-color-gray-7;
   flex-shrink: 0;
   margin: 0;
@@ -150,7 +162,7 @@
 
 .commit-code {
   margin-left: 50px;
-  margin-top: -30px !important;
+  margin-top: -30px;
   position: relative;
   
   &::before {
@@ -175,9 +187,9 @@
 }
 
 .commit-info.commit-code .commit-content .commit-header .commit-subject {
-  max-width: 350px !important;
-  width: 350px !important;
-  flex: 1.2 !important;
+  max-width: 350px;
+  width: 350px;
+  flex: 1.2;
 }
 
 .commit-header {
@@ -187,7 +199,7 @@
 }
 
 .commit-meta {
-  font-size: 12px !important;
+  font-size: 12px;
   color: $argo-color-gray-5;
   min-height: 16px;
 }
@@ -203,48 +215,48 @@
 }
 
 .commit-sha {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace !important;
-  font-size: 12px !important;
-  font-weight: 500 !important;
-  color: $argo-color-gray-7 !important;
-  background-color: #f5f5f5 !important;
-  padding: 2px 6px !important;
-  border-radius: 3px !important;
-  border: 1px solid #e0e0e0 !important;
-  letter-spacing: 0.5px !important;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: $argo-color-gray-7;
+  background-color: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid #e0e0e0;
+  letter-spacing: 0.5px;
 }
 
 .commit-sha-link {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace !important;
-  font-size: 12px !important;
-  font-weight: 500 !important;
-  color: $argo-color-gray-7 !important;
-  background-color: #f5f5f5 !important;
-  padding: 2px 6px !important;
-  border-radius: 3px !important;
-  border: 1px solid #e0e0e0 !important;
-  letter-spacing: 0.5px !important;
-  text-decoration: none !important;
-  transition: all 0.2s ease !important;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 500;
+  color: $argo-color-gray-7;
+  background-color: #f5f5f5;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid #e0e0e0;
+  letter-spacing: 0.5px;
+  text-decoration: none;
+  transition: all 0.2s ease;
   
   &:hover {
-    text-decoration: underline !important;
-    background-color: #e8f4fd !important;
-    border-color: #007bff !important;
-    color: #007bff !important;
+    text-decoration: underline;
+    background-color: #e8f4fd;
+    border-color: #007bff;
+    color: #007bff;
   }
   
   &:focus {
-    outline: 2px solid #007bff !important;
-    outline-offset: 1px !important;
+    outline: 2px solid #007bff;
+    outline-offset: 1px;
   }
 }
 
 .commit-subject {
-  font-family: 'Heebo', sans-serif !important;
-  font-size: 15px !important;
-  font-weight: 400 !important;
-  color: $argo-color-gray-7 !important;
+  font-family: 'Heebo', sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  color: $argo-color-gray-7;
   margin-left: 12px;
   flex: 0.9;
   overflow: hidden;
@@ -356,12 +368,12 @@
   
   &:hover {
     background: rgba(108, 117, 125, 0.15);
-    text-decoration: underline !important;
+    text-decoration: underline;
   }
 }
 
 // Media queries
-@media (max-width: 1500px) {
+@media (max-width: 1600px) {
   @include layouts.horizontal-layout;
 }
 
@@ -372,66 +384,5 @@
 
 // Manual horizontal layout class (for when :has() doesn't work)
 .env-cards-wrapper.horizontal-layout {
-  flex-direction: column !important;
-  align-items: center !important;
-  padding: 0 5px 0 5px !important;
-  max-width: 100vw !important;
-  max-width: 1000px !important;
-  box-sizing: border-box !important;
-  gap: 10px !important;
-  
-  .env-card-column {
-    width: 100% !important;
-    max-width: 100% !important;
-    margin-bottom: 10px !important;
-  }
-  
-  .env-card {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    grid-template-rows: auto 1fr !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 700px !important;
-    box-sizing: border-box !important;
-    min-height: auto !important;
-    
-    // When proposed cards disappear, center the active content and shorten
-    &:has(.commit-group:only-child),
-    &.single-commit-group {
-      grid-template-columns: 1fr !important;
-      max-width: 70% !important;
-      margin: 0 auto !important;
-      min-width: 500px !important;
-    }
-  }
-  
-  .env-card__title {
-    grid-column: 1 / -1 !important;
-    grid-row: 1 !important;
-    margin-bottom: 20px !important;
-  }
-  
-  .commit-group:not(.proposed) {
-    grid-column: 1 !important;
-    grid-row: 2 !important;
-    min-width: 0 !important;
-    padding-right: 16px !important;
-  }
-  
-  .commit-group.proposed {
-    grid-column: 2 !important;
-    grid-row: 1 / -1 !important;
-    margin: 0 !important;
-    margin-top: -24px !important;
-    margin-right: -24px !important;
-    margin-bottom: -24px !important;
-    padding: 12px !important;
-    padding-top: 60px !important;
-    border-radius: 8px 0 0 8px !important;
-    border-left: 3px solid $argo-running !important;
-    border-top: 0px !important;
-    background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%) !important;
-    min-width: 0 !important;
-  }
+  @include layouts.horizontal-layout;
 }

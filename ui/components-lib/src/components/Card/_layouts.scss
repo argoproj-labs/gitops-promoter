@@ -1,5 +1,19 @@
 @use '../../styles/colors' as *;
 
+// Layout breakpoints and dimensions
+$breakpoint-horizontal: 1500px;
+$card-max-width: 1000px;
+$card-min-width-horizontal: 700px;
+$card-min-width-single: 500px;
+$card-gap-vertical: 100px;
+$card-gap-horizontal: 10px;
+$card-padding: 24px;
+
+// Extension-specific overrides
+$extension-card-width: 400px;
+$extension-card-gap: 30px;
+$extension-wrapper-gap: 20px;
+
 // Mixin for vertical layout (normal view)
 @mixin vertical-layout {
   .env-cards-container {
@@ -11,13 +25,13 @@
     justify-content: center; 
     scroll-behavior: smooth;
     box-sizing: border-box;
-    margin: 0 0px;
+    margin: 0;
   }
   
   .env-cards-wrapper {
     padding: 0;
     display: flex;
-    gap: 100px;
+    gap: $card-gap-vertical;
     margin: 0 auto;
     align-items: stretch;
   }
@@ -38,7 +52,15 @@
     // When proposed cards disappear, make the card shorter
     &.single-commit-group {
       min-height: 250px;
+      height: auto;
     }
+  }
+  
+  // Force height override for single-commit-group in vertical layout
+  .env-card.single-commit-group {
+    min-height: 300px;
+    height: auto;
+    max-height: 350px;
   }
   
   .commit-group.proposed {
@@ -58,17 +80,17 @@
   .env-cards-wrapper {
     flex-direction: column;
     align-items: center;
-    padding: 0 5px 0 5px;
+    padding: 0 5px;
     max-width: 100vw;
-    max-width: 1000px;
+    max-width: $card-max-width;
     box-sizing: border-box;
-    gap: 10px; 
+    gap: $card-gap-horizontal; 
   }
   
   .env-card-column {
     width: 100%;
     max-width: 100%;
-    margin-bottom: 10px;
+    margin-bottom: $card-gap-horizontal;
   }
   
   .env-card {
@@ -77,7 +99,7 @@
     grid-template-rows: auto 1fr;
     width: 100%;
     max-width: 100%;
-    min-width: 700px; 
+    min-width: $card-min-width-horizontal; 
     box-sizing: border-box;
     min-height: auto;
     
@@ -87,8 +109,17 @@
       grid-template-columns: 1fr;
       max-width: 70%; 
       margin: 0 auto; 
-      min-width: 500px; 
+      min-width: $card-min-width-single; 
+      min-height: 250px;
+      height: auto;
     }
+  }
+  
+  // Force height override for single-commit-group in horizontal layout
+  .env-card.single-commit-group {
+    min-height: 300px;
+    height: auto;
+    max-height: 350px;
   }
   
   .env-card__title {
@@ -108,15 +139,119 @@
     grid-column: 2;
     grid-row: 1 / -1;
     margin: 0;
-    margin-top: -24px;
-    margin-right: -24px;
-    margin-bottom: -24px;
+    margin-top: -$card-padding;
+    margin-right: -$card-padding;
+    margin-bottom: -$card-padding;
     padding: 12px;
     padding-top: 60px;
     border-radius: 8px 0 0 8px;
     border-left: 3px solid $argo-running;
-    border-top: 0px;
+    border-top: 0;
     background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
     min-width: 0;
+  }
+}
+
+// Mixin for extension-specific overrides
+@mixin extension-overrides {
+  .env-cards-container {
+    gap: $extension-card-gap;
+  }
+  
+  .env-cards-wrapper {
+    gap: $extension-wrapper-gap;
+  }
+  
+  .env-card-column {
+    max-width: $extension-card-width;
+    width: $extension-card-width;
+  }
+  
+  .env-card {
+    width: $extension-card-width;
+  }
+
+  .commit-info {
+    padding: 40px 0;
+  }
+
+  .commit-group-header {
+    margin-top: 10px;
+    margin-bottom: 5px;
+  }
+  
+  // Extension-specific horizontal layout overrides
+  @media (max-width: $breakpoint-horizontal) {
+    .env-cards-wrapper {
+      flex-direction: column;
+      align-items: center;
+      padding: 0 5px;
+      max-width: 100vw;
+      max-width: $card-max-width;
+      box-sizing: border-box;
+      gap: $card-gap-horizontal;
+      
+      .env-card-column {
+        width: 100%;
+        max-width: 100%;
+        margin-bottom: $card-gap-horizontal;
+      }
+      
+      .env-card {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto 1fr;
+        width: 100%;
+        max-width: 100%;
+        min-width: $card-min-width-horizontal;
+        box-sizing: border-box;
+        min-height: auto;
+        
+        &:has(.commit-group:only-child),
+        &.single-commit-group {
+          grid-template-columns: 1fr;
+          max-width: 70%;
+          margin: 0 auto;
+          min-width: $card-min-width-single;
+          min-height: 250px;
+          height: auto;
+        }
+      }
+      
+      .env-card.single-commit-group {
+        min-height: 300px;
+        height: auto;
+        max-height: 350px;
+      }
+      
+      .env-card__title {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        margin-bottom: 20px;
+      }
+      
+      .commit-group:not(.proposed) {
+        grid-column: 1;
+        grid-row: 2;
+        min-width: 0;
+        padding-right: 16px;
+      }
+      
+      .commit-group.proposed {
+        grid-column: 2;
+        grid-row: 1 / -1;
+        margin: 0;
+        margin-top: -$card-padding;
+        margin-right: -$card-padding;
+        margin-bottom: -$card-padding;
+        padding: 12px;
+        padding-top: 60px;
+        border-radius: 8px 0 0 8px;
+        border-left: 3px solid $argo-running;
+        border-top: 0;
+        background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
+        min-width: 0;
+      }
+    }
   }
 } 
