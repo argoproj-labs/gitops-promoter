@@ -1071,7 +1071,6 @@ spec:
                 type: string
             required:
             - id
-            - phase
             - sha
             type: object
         type: object
