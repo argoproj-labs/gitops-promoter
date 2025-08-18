@@ -11,14 +11,13 @@ import (
 	"strings"
 	"time"
 
-	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
-	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/client-go/tools/record"
-
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
