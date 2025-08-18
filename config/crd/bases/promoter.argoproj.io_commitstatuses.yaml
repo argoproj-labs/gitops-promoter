@@ -151,13 +151,17 @@ spec:
                   by the SCM
                 type: string
               phase:
+                default: pending
                 description: CommitStatusPhase represents the phase of a commit status.
+                enum:
+                - pending
+                - success
+                - failure
                 type: string
               sha:
                 type: string
             required:
             - id
-            - phase
             - sha
             type: object
         type: object

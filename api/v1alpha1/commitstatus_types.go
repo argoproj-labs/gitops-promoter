@@ -59,9 +59,12 @@ type CommitStatusStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Id is the unique identifier of the commit status, set by the SCM
-	Id    string            `json:"id"`
-	Sha   string            `json:"sha"`
-	Phase CommitStatusPhase `json:"phase"`
+	Id  string `json:"id"`
+	Sha string `json:"sha"`
+	// +kubebuilder:default:=pending
+	// +kubebuilder:validation:Enum:=pending;success;failure;
+	// +kubebuilder:validation:Optional
+	Phase CommitStatusPhase `json:"phase,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
