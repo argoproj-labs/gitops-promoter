@@ -2149,7 +2149,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
 					lastTransitionTime := metav1.Now()
 					argoCDAppDev.Status.Health.LastTransitionTime = &lastTransitionTime
-					err = k8sClient.Update(ctx, &argoCDAppDev)
+					err = k8sClientDev.Update(ctx, &argoCDAppDev)
 					Expect(err).To(Succeed())
 				}
 
@@ -2188,7 +2188,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
 					lastTransitionTime = metav1.Now()
 					argoCDAppStaging.Status.Health.LastTransitionTime = &lastTransitionTime
-					err = k8sClient.Update(ctx, &argoCDAppStaging)
+					err = k8sClientStaging.Update(ctx, &argoCDAppStaging)
 					Expect(err).To(Succeed())
 				}
 
