@@ -13,6 +13,11 @@ export default {
       '@components-lib': path.resolve(process.cwd(), '../components-lib/src'),
       '@shared': path.resolve(process.cwd(), '../shared/src'),
     },
+    modules: [
+      'node_modules',
+      path.resolve(process.cwd(), 'node_modules'),
+      path.resolve(process.cwd(), '../node_modules'),
+    ],
   },
   externals: {
     react: 'React',
