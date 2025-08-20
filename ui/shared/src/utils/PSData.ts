@@ -108,7 +108,7 @@ function getEnvDetails(environment: Environment): EnrichedEnvDetails {
     activeChecksSummary,
 
     // PROPOSED
-    proposedStatus: getHealthStatus(proposedChecks),
+    proposedStatus: proposedDry.sha && proposedDry.sha !== activeCommit.sha ? 'pending' : getHealthStatus(proposedChecks),
     prNumber: pullRequest?.id ? parseInt(pullRequest.id, 10) : null,
     prUrl: pullRequest?.url || null,
     proposedDryCommitSubject: proposedDry.subject || '-',
