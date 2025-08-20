@@ -17,7 +17,7 @@
     "composite": true,
     "lib": ["DOM", "ES2020", "ESNext.AsyncIterable"],
     "baseUrl": ".",
-    "rootDir": ".",
+    "rootDir": "..",
     "paths": {
       "@shared/*": ["../shared/src/*"]
     }

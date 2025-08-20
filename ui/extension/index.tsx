@@ -1,108 +1,71 @@
 import React from 'react';
-import { enrichPromotionStrategy } from '../shared/src/utils/PSData';
-import Card from '../components-lib/src/components/Card';
 import './index.scss';
+import StatusPanelComponent from './statusPanel';
+import ResourceExtension from './resourceExtension';
+import type { PromotionStrategy } from '../shared/src/types/promotion';
 
-// CRD Objects
-interface ResourceMetadata {
-  name: string;
-  namespace: string;
-  uid: string;
-  resourceVersion: string;
-  generation: number;
-  creationTimestamp: string;
-  annotations?: Record<string, string>;
-  labels?: Record<string, string>;
-  ownerReferences?: Array<Record<string, unknown>>;
-}
-
-interface CustomResource {
-  apiVersion: string;
-  kind: string;
-  metadata: ResourceMetadata;
-  spec: {
-    gitRepositoryRef: {
-      name: string;
-      namespace?: string;
-    };
-    activeCommitStatuses?: { key: string }[] | null;
-    proposedCommitStatuses?: { key: string }[] | null;
-    environments: {
-      branch: string;
-      autoMerge?: boolean;
-      activeCommitStatuses?: { key: string }[] | null;
-      proposedCommitStatuses?: { key: string }[] | null;
-    }[];
-  };
-  status: Record<string, unknown>;
-}
-
-// Argo CD extension component
-interface ExtensionProps {
+// ArgoCD extension API definitions
+interface ResourceExtensionProps {
   application: {
     metadata: {
       name: string;
       namespace: string;
     };
   };
-  resource: CustomResource;
+  resource: PromotionStrategy;
 }
 
-// ArgoCD  definition
+interface StatusPanelProps {
+  application: {
+    metadata: {
+      name: string;
+      namespace: string;
+    };
+    status?: {
+      resources?: Array<{
+        kind: string;
+        group: string;
+        name: string;
+        namespace: string;
+        status: string;
+      }>;
+    };
+  };
+}
+
 declare global {
   interface Window {
     extensionsAPI?: {
       registerResourceExtension: (
-        component: React.FC<ExtensionProps>,
+        component: React.FC<ResourceExtensionProps>,
         group: string,
         kind: string,
         title: string,
         options?: { icon: string }
       ) => void;
+
+      registerStatusPanelExtension: (
+        component: React.FC<StatusPanelProps>,
+        title: string,
+        id: string,
+        flyout?: React.FC<StatusPanelProps>
+      ) => void;
     };
   }
 }
 
-const Extension: React.FC<ExtensionProps> = ({ resource }) => {
-  const [enrichedEnvs, setEnrichedEnvs] = React.useState<ReturnType<typeof enrichPromotionStrategy>>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    //Checks if data is loaded and sets the state for the component
-    let isMounted = true;
-    async function enrich() {
-      if (resource) {
-        const enriched = await enrichPromotionStrategy(resource);
-        if (isMounted) {
-          setEnrichedEnvs(enriched);
-          setIsLoading(false);
-        }
-      }
-    }
-    enrich();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [resource]);
-
-  return (
-    <div className="extension-container">
-      {isLoading ? (
-        <div className="loading-indicator">Loading environment details...</div>
-      ) : (
-        <Card environments={enrichedEnvs} />
-      )}
-    </div>
-  );
-};
-
-// Register extension
+// Register resource extension (PromotionStrategy tab)
 window.extensionsAPI?.registerResourceExtension(
-  Extension,
+  ResourceExtension,
   'promoter.argoproj.io',
   'PromotionStrategy',
   'PromotionStrategy',
   { icon: 'fa-code-branch' }
 );
 
+// Register status panel extension 
+window.extensionsAPI?.registerStatusPanelExtension(
+  StatusPanelComponent,
+  'Promotion Strategy',
+  'promotion_strategy_status'
+);

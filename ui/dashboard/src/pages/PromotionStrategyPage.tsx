@@ -4,7 +4,7 @@ import { namespaceStore } from '../stores/NamespaceStore'
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
 import BackButton from '../components/BackButton';
 import HeaderBar from '@lib/components/HeaderBar';
-import PromotionStrategyDetailsView from '@lib/components/PromotionStrategyDetailsView';
+import PromotionStrategyDetailsView from '../components/PromotionStrategyDetailsView';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 
 interface NamespaceStore {

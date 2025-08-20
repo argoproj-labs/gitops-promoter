@@ -2,47 +2,35 @@ import React from 'react';
 import { FaCheckCircle, FaTimesCircle, FaCircleNotch, FaHeart, FaHeartBroken } from 'react-icons/fa';
 import './StatusIcon.scss';
 
+export type StatusType = 'promoted' | 'pending' | 'failure' | 'unknown' | 'success';
 
-export type StatusType = 'success' | 'pending' | 'promoted' | 'failure' | 'unknown';
 
-
+// Active and Inactive Status
 export const statusLabel = (phase: StatusType) => {
-  switch (phase) {
-    case 'success': return 'Active';
-    case 'pending': return 'Inactive';
-    case 'promoted': return 'Active';
-    case 'failure': return 'Inactive';
-    default: return 'Inactive';
-  }
+  return phase === 'promoted' || phase === 'success' ? 'Active' : 'Inactive';
 };
 
-
-
 export const StatusIcon: React.FC<{ phase: StatusType; type?: 'status' | 'health' }> = ({ phase, type = 'status' }) => {
-  let iconProps = { className: `status-icon status-${phase}` };
+  const iconClass = `status-icon status-${phase}`;
+  
 
-
-  //Promoted status icon
+  // Promoted Status
   if (type === 'status') {
     switch (phase) {
-      case 'success': return <FaCheckCircle {...iconProps} />;
-      case 'pending': return <FaCircleNotch {...iconProps} className={iconProps.className + ' fa-spin'} />;
-      case 'promoted': return <FaCheckCircle {...iconProps} />;
-      case 'failure': return <FaTimesCircle {...iconProps} />;
-
-      default: return <FaCircleNotch {...iconProps} />;
+      case 'pending': return <FaCircleNotch className={iconClass + ' fa-spin'} />;
+      case 'promoted':
+      case 'success': return <FaCheckCircle className={iconClass} />;
+      case 'failure': return <FaTimesCircle className={iconClass} />;
+      default: return <FaCircleNotch className={iconClass} />;
     }
-  } else {
-
-
-    //Health status icon
-    switch (phase) {
-
-      case 'success': return <FaHeart {...iconProps} />;
-      case 'pending': return <FaCircleNotch {...iconProps} className={iconProps.className + ' fa-spin'} />;
-      case 'promoted': return <FaHeart {...iconProps} />;
-      case 'failure': return <FaHeartBroken {...iconProps} />;
-      default: return <FaHeart {...iconProps} />;
-    }
+  }
+  
+  // Health status
+  switch (phase) {
+    case 'pending': return <FaCircleNotch className={iconClass + ' fa-spin'} />;
+    case 'promoted':
+    case 'success': return <FaHeart className={iconClass} />;
+    case 'failure': return <FaHeartBroken className={iconClass} />;
+    default: return <FaHeart className={iconClass} />;
   }
 }; 
