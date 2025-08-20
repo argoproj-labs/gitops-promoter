@@ -2582,7 +2582,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			// TODO: make a no op commit then check the field of status.active and status.history
+			// TODO: make a no op commit via a new function called makeChangeAndHydrateRepoNoOp then check all the fields of status.active and status.history dev and staging.
+			//
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
