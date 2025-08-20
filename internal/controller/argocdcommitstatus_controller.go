@@ -215,7 +215,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 				}
 			}
 		}
-		logger.V(4).Info("Calculated most recent last transition time", "mostRecentLastTransitionTime", mostRecentLastTransitionTime)
+		logger.V(4).Info("Calculated most recent last transition time", "targetBranch", targetBranch, "mostRecentLastTransitionTime", mostRecentLastTransitionTime)
 
 		err = r.updateAggregatedCommitStatus(ctx, &promotionStrategy, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
 		if err != nil {
