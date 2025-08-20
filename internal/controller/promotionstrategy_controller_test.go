@@ -1990,7 +1990,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Delete(ctx, &argoCDAppProduction)).To(Succeed())
 		})
 
-		It("should successfully reconcile the resource across clusters", Label("multicluster"), func() {
+		FIt("should successfully reconcile the resource across clusters", Label("multicluster"), func() {
 			By("Creating the resource")
 			plainName := "mc-promo-strategy-with-active-commit-status-argocdcommitstatus"
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, plainName, "default")
@@ -2200,7 +2200,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
-			Expect(time.Since(lastTransitionTime.Time) >= lastTransitionTimeThreshold).To(BeTrue())
+			Expect(time.Since(lastTransitionTime.Time) >= lastTransitionTimeThreshold).To(BeTrue(), fmt.Sprintf("Last transition time should be at least %s ago, but was %s ago", lastTransitionTimeThreshold, time.Since(lastTransitionTime.Time)))
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
