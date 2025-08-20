@@ -369,22 +369,20 @@ func (g *EnvironmentOperations) PromoteEnvironmentWithMerge(ctx context.Context,
 	}
 	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
 
-	// Don't think this is needed
-	// _, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "pull", "--progress")
-	// if err != nil {
-	// 	logger.Error(err, "could not git pull", "gitError", stderr)
-	// 	return err
-	// }
-	// logger.V(4).Info("Pulled branch", "branch", environmentBranch)
-
 	start = time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "pull", "--progress", "origin", environmentNextBranch)
+	_, stderr, err = g.runCmd(ctx, gitPath, "pull", "--progress", "--no-edit", "origin", environmentNextBranch)
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not git pull", "gitError", stderr)
 		return err
 	}
 	logger.V(4).Info("Pulled branch", "branch", environmentNextBranch)
+
+	_, stderr, err = g.runCmd(ctx, gitPath, "commit", "--amend", "-m", "This is a no-op commit merging from "+environmentNextBranch+" into "+environmentBranch+"\n\nNo-Op: true\n")
+	if err != nil {
+		logger.Error(err, "could not git commit amend", "gitError", stderr)
+		return fmt.Errorf("could not git commit amend: %w", err)
+	}
 
 	start = time.Now()
 	_, stderr, err = g.runCmd(ctx, gitPath, "push", "--progress", "origin", environmentBranch)
@@ -434,16 +432,7 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	}
 	logger.V(4).Info("Got diff", "diff", stdout)
 
-	// Check if the diff contains any YAML files if so we expect a manifest to have changed
-	// TODO: This is temporary check we should add some path globbing support to the specs
-	for _, file := range strings.Split(stdout, "\n") {
-		if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
-			logger.V(4).Info("YAML file changed", "file", file)
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
 }
 
 // LsRemote returns a map of branch names to SHAs for the given branches using git ls-remote.
@@ -585,4 +574,83 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 
 	logger.Info("Successfully merged branches with 'ours' strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
 	return nil
+}
+
+// GetRevListFirstParent retrieves the first parent commit SHAs for the given branch using git rev-list.
+func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount string) ([]string, error) {
+	logger := log.FromContext(ctx)
+
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	args := []string{"rev-list", "--first-parent"}
+	if maxCount != "" {
+		args = append(args, "--max-count="+maxCount)
+	}
+	args = append(args, branch)
+
+	stdout, stderr, err := g.runCmd(ctx, gitPath, args...)
+	if err != nil {
+		logger.Error(err, "could not get rev-list first parent", "gitError", stderr)
+		return nil, fmt.Errorf("failed to get rev-list first parent for branch %q: %w", branch, err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	return lines, nil
+}
+
+// GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
+func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string]string, error) {
+	logger := log.FromContext(ctx)
+	// run git interpret-trailers to get the trailers from the last commit
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	// First get the commit message
+	msgStdout, stderr, err := g.runCmd(ctx, gitPath, "log", "-1", "--format=%B", sha)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit message for sha %q: %w", sha, err)
+	}
+	if stderr != "" {
+		logger.V(4).Info("git log returned an error", "stderr", stderr)
+	}
+
+	// Then pipe it to git interpret-trailers using stdin
+	cmd := exec.Command("git", "interpret-trailers", "--only-trailers")
+	cmd.Dir = gitPath
+	cmd.Stdin = strings.NewReader(msgStdout)
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	err = cmd.Run()
+	stderr = stderrBuf.String()
+	if err != nil {
+		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)
+		return nil, fmt.Errorf("failed to run git interpret-trailers: %w", err)
+	}
+	stdout := stdoutBuf.String()
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	trailers := make(map[string]string, len(lines))
+	for _, line := range lines {
+		if strings.Contains(line, ":") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				value := strings.TrimSpace(parts[1])
+				trailers[key] = value
+			} else {
+				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
+			}
+		}
+	}
+	logger.V(4).Info("Got trailers", "sha", sha, "trailers", trailers)
+	return trailers, nil
 }
