@@ -1,6 +1,6 @@
 import React from 'react';
 import axios from 'axios';
-import { getPromotionStatus } from '../shared/src/utils/PSData';
+import { getPromotionStatus } from '../shared/src/utils/getStatus';
 import { StatusIcon } from '../components-lib/src/components/StatusIcon';
 import type { StatusType } from '../components-lib/src/components/StatusIcon';
 import type { PromotionPhase, PromotionStrategy } from '../shared/src/types/promotion';

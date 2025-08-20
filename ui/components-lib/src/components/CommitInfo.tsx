@@ -15,13 +15,10 @@ export interface CommitInfoProps {
   className?: string;
   deploymentCommitUrl?: string;
   codeCommitUrl?: string;
-  activeChecks?: any[];
-  proposedChecks?: any[];
-  activeChecksSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
-  proposedChecksSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  checks?: any[];
+  healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
   prUrl?: string;
   prNumber?: string;
-  isMerged?: boolean;
 }
 
 // Combined component to display commit information and groups
@@ -34,13 +31,10 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
   className = '', 
   deploymentCommitUrl, 
   codeCommitUrl, 
-  activeChecks, 
-  proposedChecks, 
-  activeChecksSummary,
-  proposedChecksSummary,
+  checks,
+  healthSummary,
   prUrl, 
-  prNumber,
-  isMerged = false
+  prNumber
 }) => {
   const getIcon = (iconType: 'file' | 'code') => {
     if (iconType === 'code') return <BsBraces className="commit-icon" />;
@@ -166,8 +160,8 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               href={prUrl} 
               target="_blank" 
               rel="noopener noreferrer"
-              className={`pr-indicator ${isMerged ? 'pr-merged' : ''}`}
-              title={`View PR #${prNumber}${isMerged ? ' (Merged)' : ''}`}
+              className={`pr-indicator ${isActive ? 'pr-merged' : ''}`}
+              title={`View PR #${prNumber}${isActive ? ' (Merged)' : ''}`}
             >
               <GoGitPullRequest className="pr-icon" />
               PR #{prNumber}
@@ -180,21 +174,13 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         {renderCommit(codeCommit, 'code', codeCommitUrl)}
       </div>
       
-      {/* Display checks */}
-      {title === "Active" && activeChecksSummary?.shouldDisplay && activeChecks && (
+      {/* Display checks for this section */}
+      {healthSummary?.shouldDisplay && checks && (
         <HealthSummary 
-          checks={activeChecks} 
-          title="Active Checks" 
+          checks={checks} 
+          title={`${title || 'Section'} Checks`} 
           status={status} 
-          healthSummary={activeChecksSummary}
-        />
-      )}
-      {title === "Proposed" && proposedChecksSummary?.shouldDisplay && proposedChecks && (
-        <HealthSummary 
-          checks={proposedChecks} 
-          title="Proposed Checks" 
-          status={status} 
-          healthSummary={proposedChecksSummary}
+          healthSummary={healthSummary}
         />
       )}
     </div>

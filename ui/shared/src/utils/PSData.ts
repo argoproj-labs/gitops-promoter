@@ -1,44 +1,14 @@
 import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, formatDate } from './util';
+import { getEnvironmentStatus , getPromotionStatus, getHealthStatus } from './getStatus';
 import type { 
   CommitStatus, 
   Commit, 
   Environment, 
   PromotionStrategy, 
   Check, 
-  EnrichedEnvDetails,
-  PromotionPhase 
+  EnrichedEnvDetails
 } from '../types/promotion';
 
-
-//TODO: HOW SHOULD WE HANDLE PROPOSED CARDS DISAPPEARING?
-function getEnvironmentStatus(env: Environment): 'pending' | 'promoted' | 'failure' | 'unknown' {
-  const { active = {}, proposed = {} } = env;
-  
-  const proposedSha = proposed.dry?.sha;
-  const activeSha = active.dry?.sha;
-  
-  // Get checks
-  const proposedChecks = proposed.commitStatuses || [];
-  const activeChecks = active.commitStatuses || [];
-  
-  // Check for failures in any checks (proposed or active)
-  if (proposedChecks.some((cs: CommitStatus) => cs.phase === 'failure') ||
-      activeChecks.some((cs: CommitStatus) => cs.phase === 'failure')) {
-    return 'failure';
-  }
-  
-  // Pending (PR OPEN) - if proposed SHA is different from active SHA
-  if (proposedSha && proposedSha !== activeSha) {
-    return 'pending';
-  }
-  
-  // Promoted (PR MERGED && ACTIVE CHECKS IN PROGRESS)
-  if (proposedSha === activeSha) {
-    return 'promoted';
-  }
-  
-  return 'unknown';
-}
 
 function getChecks(commitStatuses: CommitStatus[]): Check[] {
   return commitStatuses.map((cs: CommitStatus) => ({
@@ -90,21 +60,18 @@ function extractReferenceCommitData(dryCommit: Commit): {
   return { sha, author, subject, body, date, url };
 }
 
-function getEnvDetails(environment: Environment, specEnvs: { branch: string; autoMerge?: boolean }[]): EnrichedEnvDetails {
+
+function getEnvDetails(environment: Environment): EnrichedEnvDetails {
   const { active = {}, proposed = {}, pullRequest, history = [] } = environment;
 
   const branch = environment.branch || '';
 
-  // Use history[0] for commits, current active for status [history doesn't have commit statuses]
-  const activeData = history[0]?.active || active;
-  const commitStatuses = active.commitStatuses || activeData.commitStatuses || [];
-  const phase = commitStatuses[0]?.phase || 'unknown';
-
-  // Active data
-  const dry = activeData.dry || {};
-  const activeChecks = getChecks(commitStatuses);
+  // Active Data - Use history[0] for commit detail, current active for status
+  const activeEnv = history[0]?.active || active;
+  const activeCommit = activeEnv.dry || {};
+  const activeChecks = getChecks(active.commitStatuses || []);
   const activeChecksSummary = calculateHealthSummary(activeChecks);
-  const activeReferenceData = extractReferenceCommitData(dry);
+  const activeReferenceData = extractReferenceCommitData(activeCommit);
 
   // Proposed data
   const proposedDry = proposed.dry || {};
@@ -113,55 +80,51 @@ function getEnvDetails(environment: Environment, specEnvs: { branch: string; aut
   const proposedChecksSummary = calculateHealthSummary(proposedChecks);
   const proposedReferenceData = extractReferenceCommitData(proposedDry);
 
-  // Determine promotion status
   const promotionStatus = getEnvironmentStatus(environment);
-
   const historyWithPr = history.length > 0 ? history[0] : null;
 
   return {
-    
     // Environment info
     branch,
-    phase,
     promotionStatus,
-    
-    // Active commits
-    drySha: dry.sha ? dry.sha.slice(0, 7) : '-',
-    dryCommitAuthor: extractNameOnly(dry.author || '-'),
-    dryCommitSubject: dry.subject || '-',
-    dryCommitMessage: extractBodyPreTrailer(dry.body || '-'),
-    dryCommitDate: dry.commitTime ? formatDate(dry.commitTime) : '-',
-    dryCommitUrl: getCommitUrl(dry.repoURL ?? '', dry.sha ?? ''),
-    activeChecks,
-    activeChecksSummary,
+
+    // ACTIVE
+    activeStatus: getHealthStatus(activeChecks),
     activePrUrl: historyWithPr?.pullRequest?.url || null,
     activePrNumber: historyWithPr?.pullRequest?.id ? parseInt(historyWithPr.pullRequest.id, 10) : null,
-    
-    referenceSha: activeReferenceData.sha,
-    referenceCommitAuthor: activeReferenceData.author,
-    referenceCommitSubject: activeReferenceData.subject,
-    referenceCommitDate: activeReferenceData.date,
-    referenceCommitUrl: activeReferenceData.url,
-    referenceCommitBody: activeReferenceData.body,
-    
-    // Proposed commits
-    proposedSha: proposedDry.sha ? proposedDry.sha.slice(0, 7) : '-',
+    activeCommitSubject: activeCommit.subject || '-',
+    activeCommitMessage: extractBodyPreTrailer(activeCommit.body || '-'),
+    activeCommitAuthor: extractNameOnly(activeCommit.author || '-'),
+    activeCommitDate: activeCommit.commitTime ? formatDate(activeCommit.commitTime) : '-',
+    activeCommitUrl: getCommitUrl(activeCommit.repoURL ?? '', activeCommit.sha ?? ''),
+    activeSha: activeCommit.sha ? activeCommit.sha.slice(0, 7) : '-',
+    activeReferenceCommitSubject: activeReferenceData.subject,
+    activeReferenceCommitBody: activeReferenceData.body,
+    activeReferenceCommitAuthor: activeReferenceData.author,
+    activeReferenceCommitDate: activeReferenceData.date,
+    activeReferenceCommitUrl: activeReferenceData.url,
+    activeReferenceSha: activeReferenceData.sha,
+    activeChecks,
+    activeChecksSummary,
+
+    // PROPOSED
+    proposedStatus: getHealthStatus(proposedChecks),
     prNumber: pullRequest?.id ? parseInt(pullRequest.id, 10) : null,
     prUrl: pullRequest?.url || null,
-    proposedDryCommitAuthor: extractNameOnly(proposedDry.author || '-'),
     proposedDryCommitSubject: proposedDry.subject || '-',
     proposedDryCommitBody: extractBodyPreTrailer(proposedDry.body || '-'),
+    proposedDryCommitAuthor: extractNameOnly(proposedDry.author || '-'),
     proposedDryCommitDate: proposedDry.commitTime ? formatDate(proposedDry.commitTime) : '-',
     proposedDryCommitUrl: getCommitUrl(proposedDry.repoURL ?? '', proposedDry.sha ?? ''),
-    proposedChecks,
-    proposedChecksSummary,
-
-    proposedReferenceSha: proposedReferenceData.sha,
-    proposedReferenceCommitAuthor: proposedReferenceData.author,
+    proposedSha: proposedDry.sha ? proposedDry.sha.slice(0, 7) : '-',
     proposedReferenceCommitSubject: proposedReferenceData.subject,
+    proposedReferenceCommitBody: proposedReferenceData.body,
+    proposedReferenceCommitAuthor: proposedReferenceData.author,
     proposedReferenceCommitDate: proposedReferenceData.date,
     proposedReferenceCommitUrl: proposedReferenceData.url,
-    proposedReferenceCommitBody: proposedReferenceData.body,
+    proposedReferenceSha: proposedReferenceData.sha,
+    proposedChecks,
+    proposedChecksSummary,
   };
 }
 
@@ -172,55 +135,10 @@ export function enrichPromotionStrategy(ps: PromotionStrategy): EnrichedEnvDetai
 
   // Pass spec environments to getEnvDetails
   return ps.status.environments.map((environment: Environment) =>
-    getEnvDetails(environment, ps.spec?.environments || [])
+    getEnvDetails(environment)
   );
 }
 
-// Get overall promotion status and counts
-export function getPromotionStatus(ps: PromotionStrategy): {
-  total: number;
-  promoted: number;
-  pending: number;
-  failed: number;
-  overallStatus: PromotionPhase;
-  displayText: string;
-} {
-
-  if (!ps.status?.environments) {
-    return { total: 0, promoted: 0, pending: 0, failed: 0, overallStatus: 'unknown', displayText: '' };
-  }
-
-  const envs = ps.status.environments;
-  let promoted = 0, pending = 0, failed = 0;
-
-  // Count statuses
-  for (const env of envs) {
-    const status = getEnvironmentStatus(env);
-    if (status === 'failure') failed++;
-    else if (status === 'promoted') promoted++;
-    else if (status === 'pending') pending++;
-  }
-
-  const total = envs.length;
-  
-  // Determine overall status
-  const overallStatus = failed > 0 ? 'failure' : 
-                       pending > 0 ? 'pending' : 
-                       promoted === total ? 'promoted' : 'unknown';
-
-  // E.g: 1/1 environments failed
-  const displayText = failed > 0 ? `${failed}/${total} environments failed` :
-                     pending > 0 ? `${pending}/${total} environments pending` :
-                     promoted > 0 ? `${promoted}/${total} environments promoted` :
-                     `${total}/${total} environments`;
-
-  return { total, promoted, pending, failed, overallStatus, displayText };
-}
-
-//Wrappers
-export function getPromotionPhase(ps: PromotionStrategy): PromotionPhase {
-  return getPromotionStatus(ps).overallStatus;
-}
 
 export function getEnvironmentCountSummary(ps: PromotionStrategy): { total: number; promoted: number; summary: string } {
   const { total, promoted, displayText } = getPromotionStatus(ps);

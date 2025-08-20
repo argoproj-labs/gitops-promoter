@@ -19,21 +19,21 @@ const Card: React.FC<CardProps> = ({ environments }) => {
           const branch = env.branch;
           const proposedStatus = env.promotionStatus;
 
-          // Active commits (currently deployed)
+          // Active/Proposed deployment and code commits
           const activeDeploymentCommit = {
-            sha: env.drySha,
-            author: env.dryCommitAuthor,
-            subject: env.dryCommitSubject,
-            body: env.dryCommitMessage,
-            date: env.dryCommitDate
+            sha: env.activeSha,
+            author: env.activeCommitAuthor,
+            subject: env.activeCommitSubject,
+            body: env.activeCommitMessage,
+            date: env.activeCommitDate
           };
 
           const activeCodeCommit = {
-            sha: env.referenceSha,
-            author: env.referenceCommitAuthor,
-            subject: env.referenceCommitSubject,
-            body: env.referenceCommitBody || '',
-            date: env.referenceCommitDate
+            sha: env.activeReferenceSha,
+            author: env.activeReferenceCommitAuthor,
+            subject: env.activeReferenceCommitSubject,
+            body: env.activeReferenceCommitBody || '',
+            date: env.activeReferenceCommitDate
           };
 
           const proposedDeploymentCommit = {
@@ -66,16 +66,13 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                   deploymentCommit={activeDeploymentCommit}
                   codeCommit={activeCodeCommit}
                   isActive={true}
-                  status={env.phase as StatusType}
-                  deploymentCommitUrl={env.dryCommitUrl}
-                  codeCommitUrl={env.referenceCommitUrl}
-                  activeChecks={env.activeChecks}
-                  proposedChecks={env.proposedChecks}
-                  activeChecksSummary={env.activeChecksSummary}
-                  proposedChecksSummary={env.proposedChecksSummary}
+                  status={env.activeStatus as StatusType}
+                  deploymentCommitUrl={env.activeCommitUrl}
+                  codeCommitUrl={env.activeReferenceCommitUrl}
+                  checks={env.activeChecks}
+                  healthSummary={env.activeChecksSummary}
                   prUrl={env.activePrUrl}
                   prNumber={env.activePrNumber?.toString()}
-                  isMerged={true}
                 />
 
 
@@ -86,17 +83,14 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                     deploymentCommit={proposedDeploymentCommit}
                     codeCommit={proposedCodeCommit}
                     isActive={false}
-                    status={proposedStatus as StatusType}
+                    status={env.proposedStatus as StatusType}
                     className="proposed"
                     deploymentCommitUrl={env.proposedDryCommitUrl}
                     codeCommitUrl={env.proposedReferenceCommitUrl}
-                    activeChecks={env.activeChecks}
-                    proposedChecks={env.proposedChecks}
-                    activeChecksSummary={env.activeChecksSummary}
-                    proposedChecksSummary={env.proposedChecksSummary}
+                    checks={env.proposedChecks}
+                    healthSummary={env.proposedChecksSummary}
                     prUrl={env.prUrl}
                     prNumber={env.prNumber?.toString()}
-                    isMerged={false}
                   />
                 )}
               </div>
