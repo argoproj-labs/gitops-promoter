@@ -2441,6 +2441,86 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpProd.Status.PullRequest).To(Not(BeNil()))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
+			By("Updating the commit status for the staging environment to success")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      proposedCommitStatusStaging.Name,
+					Namespace: proposedCommitStatusStaging.Namespace,
+				}, proposedCommitStatusStaging)
+				g.Expect(err).To(Succeed())
+
+				_, err = runGitCmd(gitPath, "fetch")
+				Expect(err).NotTo(HaveOccurred())
+				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ProposedBranch)
+				Expect(err).NotTo(HaveOccurred())
+				sha = strings.TrimSpace(sha)
+
+				// Check that the proposed commit has the correct sha, aka it has reconciled at least once since adding new commits
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Proposed.Hydrated.Sha).To(Equal(sha))
+
+				g.Expect(sha).To(Not(Equal("")))
+				proposedCommitStatusStaging.Spec.Sha = sha
+				proposedCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				err = k8sClient.Update(ctx, proposedCommitStatusStaging)
+				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
+				g.Expect(err).To(Succeed())
+
+				g.Expect(len(ctpStaging.Status.Proposed.CommitStatuses)).To(Not(BeZero()))
+				g.Expect(ctpStaging.Status.Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusStaging.Spec.Url))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("By checking that the development and staging pull requests are closed and production pull request are still open")
+			Eventually(func(g Gomega) {
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestDev)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.PullRequest).To(BeNil())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestStaging)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.PullRequest).To(BeNil())
+
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Status.PullRequest).To(Not(BeNil()))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      promotionStrategy.Name,
@@ -2449,10 +2529,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 
 				g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
-				g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(Not(BeNil()))
-				g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				g.Expect(promotionStrategy.Status.Environments[1].PullRequest.ID).To(Not(BeZero()))
-				g.Expect(promotionStrategy.Status.Environments[1].PullRequest.Url).To(ContainSubstring("localhost"))
+				g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(BeNil())
 				g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
 				g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(promotionStrategy.Status.Environments[2].PullRequest.ID).To(Not(BeZero()))
@@ -2492,13 +2569,20 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References[0].Commit.RepoURL).To(Equal("https://github.com/upstream/repo"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.References[0].Commit.Sha).To(Equal("c4c862564afe56abf8cc8ac683eee3dc8bf96108"))
 
-				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Author).To(Equal(""))
-				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Subject).To(Equal(""))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Subject).To(Equal("added fake manifests commit with timestamp"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Body).To(Equal(""))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Author).To(Equal("testuser"))
-				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("initial commit"))
-				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(Equal(""))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
+
+				g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
+				g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(BeNil())
+				g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
+
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// TODO: make a no op commit then check the field of status.active and status.history
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
