@@ -200,25 +200,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha)
 
 		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
-		if mostRecentLastTransitionTime != nil {
-			// metav1.Time is marshaled to second-level precision. Any nanoseconds are lost. So we set the last
-			// transition time to the latest possible time that it could have been before it was truncated. That time is
-			// the rounded time plus a second minus a nanosecond. Anything more than that would have been truncated to
-			// the next whole second.
-			timeSinceLastTransition := time.Since(mostRecentLastTransitionTime.Time) + time.Second - time.Nanosecond
-			if timeSinceLastTransition < lastTransitionTimeThreshold {
-				// Don't consider the aggregate status healthy until 5s after the most recent transition.
-				// This helps avoid prematurely accepting a transitive healthy state.
-				resolvedPhase = promoterv1alpha1.CommitPhasePending
-
-				timeUntilThreshold := lastTransitionTimeThreshold - timeSinceLastTransition
-				if timeUntilThreshold > maxTimeUntilThreshold {
-					// We take the higher of the requeue times so that the next reconcile is after all transition times
-					// meet the threshold.
-					maxTimeUntilThreshold = timeUntilThreshold
-				}
-			}
-		}
+		resolvedPhase, maxTimeUntilThreshold = getRequeueTimeAndPhase(mostRecentLastTransitionTime, resolvedPhase, maxTimeUntilThreshold)
 		logger.V(4).Info("Calculated most recent last transition time", "targetBranch", targetBranch, "mostRecentLastTransitionTime", mostRecentLastTransitionTime)
 
 		err = r.updateAggregatedCommitStatus(ctx, &promotionStrategy, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
@@ -243,6 +225,29 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil // Timer for now :(
+}
+
+func getRequeueTimeAndPhase(mostRecentLastTransitionTime *metav1.Time, resolvedPhase promoterv1alpha1.CommitStatusPhase, maxTimeUntilThreshold time.Duration) (promoterv1alpha1.CommitStatusPhase, time.Duration) {
+	if mostRecentLastTransitionTime != nil {
+		// metav1.Time is marshaled to second-level precision. Any nanoseconds are lost. So we set the last
+		// transition time to the latest possible time that it could have been before it was truncated. That time is
+		// the rounded time plus a second minus a nanosecond. Anything more than that would have been truncated to
+		// the next whole second.
+		timeSinceLastTransition := time.Since(mostRecentLastTransitionTime.Time.Add(time.Second - time.Nanosecond))
+		if timeSinceLastTransition < lastTransitionTimeThreshold {
+			// Don't consider the aggregate status healthy until 5s after the most recent transition.
+			// This helps avoid prematurely accepting a transitive healthy state.
+			resolvedPhase = promoterv1alpha1.CommitPhasePending
+
+			timeUntilThreshold := lastTransitionTimeThreshold - timeSinceLastTransition
+			if timeUntilThreshold > maxTimeUntilThreshold {
+				// We take the higher of the requeue times so that the next reconcile is after all transition times
+				// meet the threshold.
+				maxTimeUntilThreshold = timeUntilThreshold
+			}
+		}
+	}
+	return resolvedPhase, maxTimeUntilThreshold
 }
 
 // getHeadShasForBranches returns a map. The key is a branch name. The value is the resolved head sha for that branch.
