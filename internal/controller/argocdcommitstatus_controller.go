@@ -201,7 +201,11 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
 		if mostRecentLastTransitionTime != nil {
-			timeSinceLastTransition := time.Since(mostRecentLastTransitionTime.Time)
+			// metav1.Time is marshaled to second-level precision. Any nanoseconds are lost. So we set the last
+			// transition time to the latest possible time that it could have been before it was truncated. That time is
+			// the rounded time plus a second minus a nanosecond. Anything more than that would have been truncated to
+			// the next whole second.
+			timeSinceLastTransition := time.Since(mostRecentLastTransitionTime.Time) + time.Second - time.Nanosecond
 			if timeSinceLastTransition < lastTransitionTimeThreshold {
 				// Don't consider the aggregate status healthy until 5s after the most recent transition.
 				// This helps avoid prematurely accepting a transitive healthy state.
