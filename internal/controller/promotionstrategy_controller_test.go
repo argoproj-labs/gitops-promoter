@@ -1921,12 +1921,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
 
-				argoCDAppDev.Status.Sync.Status = argocd.SyncStatusCodeSynced
-				argoCDAppDev.Status.Health.Status = argocd.HealthStatusHealthy
-				argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
-				argoCDAppDev.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
-				err = k8sClient.Update(ctx, &argoCDAppDev)
-				Expect(err).To(Succeed())
+				if argoCDAppDev.Status.Sync.Status != argocd.SyncStatusCodeSynced ||
+					argoCDAppDev.Status.Health.Status != argocd.HealthStatusHealthy ||
+					argoCDAppDev.Status.Sync.Revision != ctpDev.Status.Active.Hydrated.Sha {
+					// Most likely the CTP sha changed. Update the app to simulate the app having been synced to the new commit.
+					argoCDAppDev.Status.Sync.Status = argocd.SyncStatusCodeSynced
+					argoCDAppDev.Status.Health.Status = argocd.HealthStatusHealthy
+					argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
+					lastTransitionTime := metav1.Now()
+					argoCDAppDev.Status.Health.LastTransitionTime = &lastTransitionTime
+					err = k8sClient.Update(ctx, &argoCDAppDev)
+					Expect(err).To(Succeed())
+				}
 
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -1946,8 +1952,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the staging Argo CD application to synced and health we should close production PR")
 
-			timeDelay := time.Now().Add(10 * time.Second)
-			waitedForDelay := false
+			lastTransitionTime := metav1.Now()
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
@@ -1955,17 +1960,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpStaging)
 				g.Expect(err).To(Succeed())
 
-				argoCDAppStaging.Status.Sync.Status = argocd.SyncStatusCodeSynced
-				argoCDAppStaging.Status.Health.Status = argocd.HealthStatusHealthy
-				argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
-				if time.Now().After(timeDelay) {
-					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
-					waitedForDelay = true
-				} else {
-					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now()}
+				if argoCDAppStaging.Status.Sync.Status != argocd.SyncStatusCodeSynced ||
+					argoCDAppStaging.Status.Health.Status != argocd.HealthStatusHealthy ||
+					argoCDAppStaging.Status.Sync.Revision != ctpStaging.Status.Active.Hydrated.Sha {
+					// Most likely the CTP sha changed. Update the app to simulate the app having been synced to the new commit.
+					argoCDAppStaging.Status.Sync.Status = argocd.SyncStatusCodeSynced
+					argoCDAppStaging.Status.Health.Status = argocd.HealthStatusHealthy
+					argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
+					lastTransitionTime = metav1.Now()
+					argoCDAppStaging.Status.Health.LastTransitionTime = &lastTransitionTime
+					err = k8sClient.Update(ctx, &argoCDAppStaging)
+					Expect(err).To(Succeed())
 				}
-				err = k8sClient.Update(ctx, &argoCDAppStaging)
-				Expect(err).To(Succeed())
 
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -1975,7 +1981,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
-			Expect(waitedForDelay).To(BeTrue())
+			Expect(time.Since(lastTransitionTime.Time) >= lastTransitionTimeThreshold).To(BeTrue())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
@@ -2134,12 +2140,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
 
-				argoCDAppDev.Status.Sync.Status = argocd.SyncStatusCodeSynced
-				argoCDAppDev.Status.Health.Status = argocd.HealthStatusHealthy
-				argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
-				argoCDAppDev.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
-				err = k8sClientDev.Update(ctx, &argoCDAppDev)
-				Expect(err).To(Succeed())
+				if argoCDAppDev.Status.Sync.Status != argocd.SyncStatusCodeSynced ||
+					argoCDAppDev.Status.Health.Status != argocd.HealthStatusHealthy ||
+					argoCDAppDev.Status.Sync.Revision != ctpDev.Status.Active.Hydrated.Sha {
+					// Most likely the CTP sha changed. Update the app to simulate the app having been synced to the new commit.
+					argoCDAppDev.Status.Sync.Status = argocd.SyncStatusCodeSynced
+					argoCDAppDev.Status.Health.Status = argocd.HealthStatusHealthy
+					argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
+					lastTransitionTime := metav1.Now()
+					argoCDAppDev.Status.Health.LastTransitionTime = &lastTransitionTime
+					err = k8sClientDev.Update(ctx, &argoCDAppDev)
+					Expect(err).To(Succeed())
+				}
 
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2159,8 +2171,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the staging Argo CD application to synced and health we should close production PR")
 
-			timeDelay := time.Now().Add(10 * time.Second)
-			waitedForDelay := false
+			lastTransitionTime := metav1.Now()
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
@@ -2168,17 +2179,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpStaging)
 				g.Expect(err).To(Succeed())
 
-				argoCDAppStaging.Status.Sync.Status = argocd.SyncStatusCodeSynced
-				argoCDAppStaging.Status.Health.Status = argocd.HealthStatusHealthy
-				argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
-				if time.Now().After(timeDelay) {
-					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
-					waitedForDelay = true
-				} else {
-					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now()}
+				if argoCDAppStaging.Status.Sync.Status != argocd.SyncStatusCodeSynced ||
+					argoCDAppStaging.Status.Health.Status != argocd.HealthStatusHealthy ||
+					argoCDAppStaging.Status.Sync.Revision != ctpStaging.Status.Active.Hydrated.Sha {
+					// Most likely the CTP sha changed. Update the app to simulate the app having been synced to the new commit.
+					argoCDAppStaging.Status.Sync.Status = argocd.SyncStatusCodeSynced
+					argoCDAppStaging.Status.Health.Status = argocd.HealthStatusHealthy
+					argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
+					lastTransitionTime = metav1.Now()
+					argoCDAppStaging.Status.Health.LastTransitionTime = &lastTransitionTime
+					err = k8sClientStaging.Update(ctx, &argoCDAppStaging)
+					Expect(err).To(Succeed())
 				}
-				err = k8sClientStaging.Update(ctx, &argoCDAppStaging)
-				Expect(err).To(Succeed())
 
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2188,7 +2200,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
-			Expect(waitedForDelay).To(BeTrue())
+			Expect(time.Since(lastTransitionTime.Time) >= lastTransitionTimeThreshold).To(BeTrue(), fmt.Sprintf("Last transition time should be at least %s ago, but was %s ago", lastTransitionTimeThreshold, time.Since(lastTransitionTime.Time)))
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
