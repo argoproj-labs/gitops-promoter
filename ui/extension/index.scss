@@ -195,6 +195,11 @@
   }
 }
 
+.extension-container .commit-group-header .status-icon {
+  position: relative;
+  top: -4px;
+}
+
 // Spacing between summary and button
 .promotion-summary {
   margin-bottom: 8px !important;
