@@ -1,12 +1,13 @@
 import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, formatDate } from './util';
-import { getEnvironmentStatus , getPromotionStatus, getHealthStatus } from './getStatus';
+import { getEnvironmentStatus, getHealthStatus } from './getStatus';
 import type { 
   CommitStatus, 
   Commit, 
   Environment, 
   PromotionStrategy, 
   Check, 
-  EnrichedEnvDetails
+  EnrichedEnvDetails,
+  PromotionPhase
 } from '../types/promotion';
 
 
@@ -222,12 +223,3 @@ export type {
   EnrichedEnvDetails, 
   PromotionPhase 
 } from '../types/promotion';
-
-
-export type { 
-  PromotionStrategy, 
-  EnrichedEnvDetails, 
-  PromotionPhase 
-} from '../types/promotion';
-
-
