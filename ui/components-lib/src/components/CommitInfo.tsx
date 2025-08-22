@@ -5,6 +5,7 @@ import { StatusIcon, StatusType } from './StatusIcon';
 import React from 'react';
 import TimeAgo from './TimeAgo';
 import HealthSummary from './HealthSummary';
+import './CommitInfo.scss';
 
 export interface CommitInfoProps {
   title?: string;
@@ -138,7 +139,6 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     }
   };
 
-  // If no title, render just the commits without group structure
   if (!title) {
     return (
       <div className="commits-section">

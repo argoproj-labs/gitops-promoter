@@ -27,7 +27,7 @@ function calculateHealthSummary(checks: Check[]): { successCount: number; totalC
   return { successCount, totalCount, shouldDisplay };
 }
 
-// Helper function to extract reference commit data consistently
+// Extract reference commit data
 function extractReferenceCommitData(dryCommit: Commit): {
   sha: string;
   author: string;
@@ -61,27 +61,44 @@ function extractReferenceCommitData(dryCommit: Commit): {
 }
 
 
-function getEnvDetails(environment: Environment): EnrichedEnvDetails {
+function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnvDetails {
   const { active = {}, proposed = {}, pullRequest, history = [] } = environment;
-
   const branch = environment.branch || '';
 
-  // Active Data - Use history[0] for commit detail, current active for status
-  const activeEnv = history[0]?.active || active;
-  const activeCommit = activeEnv.dry || {};
-  const activeChecks = getChecks(active.commitStatuses || []);
-  const activeChecksSummary = calculateHealthSummary(activeChecks);
-  const activeReferenceData = extractReferenceCommitData(activeCommit);
-
-  // Proposed data
+  //
+  const activeHistory = history[index]?.active || active;
+  const activeCommitInfo = activeHistory.dry || {};
+  
+  // Use active field for current view, history field for history view
+  const activeChecks = getChecks(index > 0 ? 
+    history[index]?.active?.commitStatuses || [] : 
+    active.commitStatuses || []
+  );
+  
+  // In historical view, combine active and proposed checks for a single view
+  const historicalChecks = index > 0 ? 
+    getChecks([
+      ...(history[index]?.active?.commitStatuses || []),
+      ...(history[index]?.proposed?.commitStatuses || [])
+    ]) : 
+    activeChecks;
+  const activeChecksSummary = calculateHealthSummary(historicalChecks);
+  const activeReferenceData = extractReferenceCommitData(activeCommitInfo);
+  
+  // PROPOSED DATA
   const proposedDry = proposed.dry || {};
-  const proposedCommitStatuses = proposed.commitStatuses || [];
-  const proposedChecks = getChecks(proposedCommitStatuses);
+  const proposedChecks = getChecks(proposed.commitStatuses || []);
   const proposedChecksSummary = calculateHealthSummary(proposedChecks);
   const proposedReferenceData = extractReferenceCommitData(proposedDry);
 
   const promotionStatus = getEnvironmentStatus(environment);
-  const historyWithPr = history.length > 0 ? history[0] : null;
+  
+  // Use PR data from selected history entry
+  const selectedHistoryEntry = history[index] || history[0];
+  const historyWithPr = selectedHistoryEntry?.pullRequest;
+
+  // In historical view, proposed cards should only show status info, not commit details
+  const isHistoric = index > 0;
 
   return {
     // Environment info
@@ -89,26 +106,26 @@ function getEnvDetails(environment: Environment): EnrichedEnvDetails {
     promotionStatus,
 
     // ACTIVE
-    activeStatus: getHealthStatus(activeChecks),
-    activePrUrl: historyWithPr?.pullRequest?.url || null,
-    activePrNumber: historyWithPr?.pullRequest?.id ? parseInt(historyWithPr.pullRequest.id, 10) : null,
-    activeCommitSubject: activeCommit.subject || '-',
-    activeCommitMessage: extractBodyPreTrailer(activeCommit.body || '-'),
-    activeCommitAuthor: extractNameOnly(activeCommit.author || '-'),
-    activeCommitDate: activeCommit.commitTime ? formatDate(activeCommit.commitTime) : '-',
-    activeCommitUrl: getCommitUrl(activeCommit.repoURL ?? '', activeCommit.sha ?? ''),
-    activeSha: activeCommit.sha ? activeCommit.sha.slice(0, 7) : '-',
+    activeStatus: getHealthStatus(historicalChecks),
+    activePrUrl: historyWithPr?.url || null,
+    activePrNumber: historyWithPr?.id ? parseInt(historyWithPr.id, 10) : null,
+    activeCommitSubject: activeCommitInfo.subject || '-',
+    activeCommitMessage: extractBodyPreTrailer(activeCommitInfo.body || '-'),
+    activeCommitAuthor: extractNameOnly(activeCommitInfo.author || '-'),
+    activeCommitDate: activeCommitInfo.commitTime ? formatDate(activeCommitInfo.commitTime) : '-',
+    activeCommitUrl: getCommitUrl(activeCommitInfo.repoURL ?? '', activeCommitInfo.sha ?? ''),
+    activeSha: activeCommitInfo.sha ? activeCommitInfo.sha.slice(0, 7) : '-',
     activeReferenceCommitSubject: activeReferenceData.subject,
     activeReferenceCommitBody: activeReferenceData.body,
     activeReferenceCommitAuthor: activeReferenceData.author,
     activeReferenceCommitDate: activeReferenceData.date,
     activeReferenceCommitUrl: activeReferenceData.url,
     activeReferenceSha: activeReferenceData.sha,
-    activeChecks,
+    activeChecks: historicalChecks,
     activeChecksSummary,
 
     // PROPOSED
-    proposedStatus: proposedDry.sha && proposedDry.sha !== activeCommit.sha ? 'pending' : getHealthStatus(proposedChecks),
+    proposedStatus: isHistoric ? getHealthStatus(proposedChecks) : (proposedDry.sha && proposedDry.sha !== activeCommitInfo.sha ? 'pending' : getHealthStatus(proposedChecks)),
     prNumber: pullRequest?.id ? parseInt(pullRequest.id, 10) : null,
     prUrl: pullRequest?.url || null,
     proposedDryCommitSubject: proposedDry.subject || '-',
@@ -128,22 +145,27 @@ function getEnvDetails(environment: Environment): EnrichedEnvDetails {
   };
 }
 
-export function enrichPromotionStrategy(ps: PromotionStrategy): EnrichedEnvDetails[] {
+// Takes the PS objects (for dashboard)
+export function enrichFromCRD(ps: PromotionStrategy, historyIndex: number = 0): EnrichedEnvDetails[] {
   if (!ps?.status?.environments) {
     return [];
   } 
 
-  // Pass spec environments to getEnvDetails
   return ps.status.environments.map((environment: Environment) =>
-    getEnvDetails(environment)
+    getEnvDetails(environment, historyIndex)
   );
 }
 
-
-export function getEnvironmentCountSummary(ps: PromotionStrategy): { total: number; promoted: number; summary: string } {
-  const { total, promoted, displayText } = getPromotionStatus(ps);
-  return { total, promoted, summary: displayText };
+// Takes the environments objects (for Card)
+export function enrichFromEnvironments(environments: Environment[], historyIndex: number = 0): EnrichedEnvDetails[] {
+  if (!environments) {
+    return [];
+  } 
+  return environments.map((environment: Environment) =>
+    getEnvDetails(environment, historyIndex)
+  );
 }
+
 
 export type { 
   PromotionStrategy, 

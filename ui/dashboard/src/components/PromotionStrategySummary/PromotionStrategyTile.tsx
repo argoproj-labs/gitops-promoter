@@ -2,7 +2,7 @@ import { FaGitAlt } from 'react-icons/fa';
 import { StatusIcon } from '@lib/components/StatusIcon';
 import type { StatusType } from '@lib/components/StatusIcon';
 import { getLastCommitTime, formatDate } from '@shared/utils/util';
-import { enrichPromotionStrategy } from '@shared/utils/PSData';
+import { enrichFromCRD } from '@shared/utils/PSData';
 import { getPromotionStatus } from '@shared/utils/getStatus';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 import './PromotionStrategyTiles.scss';
@@ -18,7 +18,7 @@ export const PromotionStrategyTile = ({ps, borderStatus, lastUpdated, onClick}:{
   
 
   
-  const enrichedEnvs = enrichPromotionStrategy(ps);
+  const enrichedEnvs = enrichFromCRD(ps);
   const { overallStatus } = getPromotionStatus(ps);
   const statusIconPhase = overallStatus === 'unknown' ? 'unknown' : overallStatus;
   

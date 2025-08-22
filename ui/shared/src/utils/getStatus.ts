@@ -1,6 +1,8 @@
 import type { Environment, PromotionPhase, PromotionStrategy, Check } from '../types/promotion';
 
 
+
+// Health status for proposed/active checks
 export function getHealthStatus(checks: Check[]): 'success' | 'failure' | 'pending' | 'unknown' {
   if (!Array.isArray(checks) || checks.length === 0) {
     return 'unknown';
