@@ -252,3 +252,27 @@ spec:
 
     The `autoMerge` field is optional and defaults to `true`. We set it to `false` here because we do not have any
     CommitStatus checks configured. With these all set to `false` we will have to manually merge the PRs.
+
+## Launching the UI
+
+GitOps Promoter comes with a web UI that you can use to visualize the state of your PromotionStrategy resources.
+
+To launch the UI, first download the gitops-promoter CLI from the [releases page](https://github.com/argoproj-labs/gitops-promoter/releases).
+
+Make the file executable and add it to your PATH.
+
+Then run the following command:
+
+```bash
+gitops-promoter dashboard
+```
+
+The UI will be available at `http://localhost:8080`.
+
+To use a different port, you can use the `--port` flag.
+
+By default, the UI uses your current kubeconfig context. If you want to use a different context, you can use the `--kubecontext` flag.
+
+```bash
+gitops-promoter dashboard --port <your-port> --kubecontext <your-kube-context>
+```
