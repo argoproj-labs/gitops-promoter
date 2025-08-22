@@ -198,10 +198,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 			return ctrl.Result{}, fmt.Errorf("failed to resolve target branch %q: %w", targetBranch, err)
 		}
 		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha)
-
-		mostRecentLastTransitionTime := r.getMostRecentLastTransitionTime(appsInEnvironment)
-		resolvedPhase, maxTimeUntilThreshold = getRequeueTimeAndPhase(mostRecentLastTransitionTime, resolvedPhase, maxTimeUntilThreshold)
-		logger.V(4).Info("Calculated most recent last transition time", "targetBranch", targetBranch, "mostRecentLastTransitionTime", mostRecentLastTransitionTime)
+		resolvedPhase, maxTimeUntilThreshold = getRequeueTimeAndPhase(appsInEnvironment, resolvedPhase, maxTimeUntilThreshold)
 
 		err = r.updateAggregatedCommitStatus(ctx, &promotionStrategy, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
 		if err != nil {
@@ -227,8 +224,21 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil // Timer for now :(
 }
 
-// getRequeueTimeAndPhase determines the phase and requeue time based on the most recent last transition time.
-func getRequeueTimeAndPhase(mostRecentLastTransitionTime *metav1.Time, resolvedPhase promoterv1alpha1.CommitStatusPhase, maxTimeUntilThreshold time.Duration) (promoterv1alpha1.CommitStatusPhase, time.Duration) {
+// getRequeueTimeAndPhase determines the phase and requeue time based on the most recent last transition time of the
+// given applications. The current resolved phase and maxTimeUntilThreshold are taken as parameters to that they can be
+// returned unmodified if nothing needs to be changed.
+//
+// If none of the apps has a last transition time, the given phase and maxTimeUntilThreshold are returned unmodified.
+//
+// If the most recent last transition time is older than the threshold, the given phase and maxTimeUntilThreshold are
+// returned unmodified.
+//
+// If the most recent last transition time is within the threshold, the phase is set to Pending, and the requeue time is
+// set to the time remaining until the threshold is met for all the given applications or the current
+// maxTimeUntilThreshold, whichever is greater.
+func getRequeueTimeAndPhase(appsInEnvironment []*aggregate, resolvedPhase promoterv1alpha1.CommitStatusPhase, maxTimeUntilThreshold time.Duration) (promoterv1alpha1.CommitStatusPhase, time.Duration) {
+	mostRecentLastTransitionTime := getMostRecentLastTransitionTime(appsInEnvironment)
+
 	if mostRecentLastTransitionTime == nil {
 		// If we don't have any information about the most recent last transition time, don't modify the phase or max
 		// time until threshold.
@@ -392,7 +402,7 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(ap
 	return resolvedPhase, desc
 }
 
-func (r *ArgoCDCommitStatusReconciler) getMostRecentLastTransitionTime(aggregateItem []*aggregate) *metav1.Time {
+func getMostRecentLastTransitionTime(aggregateItem []*aggregate) *metav1.Time {
 	var mostRecentLastTransitionTime *metav1.Time
 	for _, s := range aggregateItem {
 		// Find the most recent last transition time
