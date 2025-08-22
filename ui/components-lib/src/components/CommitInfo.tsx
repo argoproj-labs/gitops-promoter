@@ -2,7 +2,7 @@ import { GoArchive } from "react-icons/go";
 import { BsBraces } from 'react-icons/bs';
 import { GoGitPullRequest } from 'react-icons/go';
 import { StatusIcon, StatusType } from './StatusIcon';
-import React from 'react';
+import React, { useState } from 'react';
 import TimeAgo from './TimeAgo';
 import HealthSummary from './HealthSummary';
 import './CommitInfo.scss';
@@ -65,32 +65,34 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     return <span className="commit-sha">{sha}</span>;
   };
 
-  // Create full commit message for tooltip
-  const getFullCommitMessage = (commit: any) => {
+  // Create tooltip on subject and body
+  const getTooltipContent = (commit: any) => {
     const subject = commit.subject || '';
     const body = commit.body || '';
     
-    // If we have both subject and body, show them separately
     if (subject && body) {
-      return `${subject}\n\n${body}`;
+      return (
+        <div className="github-tooltip">
+          <div className="tooltip-subject">{subject}</div>
+          <div className="tooltip-body">{body}</div>
+        </div>
+      );
     }
     
-    // If we only have body, show just the body
     if (body) {
-      return body;
+      return <div className="github-tooltip">{body}</div>;
     }
     
-    // If we only have subject, show just the subject
     if (subject) {
-      return subject;
+      return <div className="github-tooltip">{subject}</div>;
     }
     
-    // Fallback
-    return 'N/A';
+    return '';
   };
 
   const renderCommit = (commit: any, type: 'deployment' | 'code', commitUrl?: string) => {
     const iconType = type === 'deployment' ? 'file' : 'code';
+    const [showTooltip, setShowTooltip] = useState(false);
     
     if (commit && (commit.sha || commit.subject || commit.author)) {
       return (
@@ -100,9 +102,15 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               {renderSha(commit, commitUrl)}
               <span 
                 className="commit-subject" 
-                title={getFullCommitMessage(commit)}
+                onMouseEnter={() => setShowTooltip(true)}
+                onMouseLeave={() => setShowTooltip(false)}
               >
                 {commit.subject || 'N/A'}
+                {showTooltip && (
+                  <div className="tooltip-container">
+                    {getTooltipContent(commit)}
+                  </div>
+                )}
               </span>
             </div>
             <div className="commit-meta">

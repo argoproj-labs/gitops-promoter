@@ -1,5 +1,26 @@
 @use '../styles/colors' as *;
 
+// Tooltip
+.tooltip-container {
+  position: absolute;
+  top: 100%;
+  z-index: 1000;
+  margin-top: -20px;
+}
+
+.github-tooltip {
+  background: #24292e;
+  color: white;
+  padding: 6px 8px;
+  font-size: 12px;
+  max-width: 250px;
+}
+
+.tooltip-subject {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
 .commits-section {
   position: relative;
   margin-top: -10px;
@@ -21,7 +42,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: -15px;
+  margin-top: -5px;
 }
 
 .commit-group-title {
