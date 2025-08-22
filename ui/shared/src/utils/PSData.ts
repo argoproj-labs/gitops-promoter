@@ -166,6 +166,63 @@ export function enrichFromEnvironments(environments: Environment[], historyIndex
   );
 }
 
+// Get overall promotion status and counts
+export function getPromotionStatus(ps: PromotionStrategy): {
+  total: number;
+  promoted: number;
+  pending: number;
+  failed: number;
+  overallStatus: PromotionPhase;
+  displayText: string;
+} {
+
+  if (!ps.status?.environments) {
+    return { total: 0, promoted: 0, pending: 0, failed: 0, overallStatus: 'unknown', displayText: '' };
+  }
+
+  const envs = ps.status.environments;
+  let promoted = 0, pending = 0, failed = 0;
+
+  // Count statuses
+  for (const env of envs) {
+    const status = getEnvironmentStatus(env);
+    if (status === 'failure') failed++;
+    else if (status === 'promoted') promoted++;
+    else if (status === 'pending') pending++;
+  }
+
+  const total = envs.length;
+  
+  // Determine overall status
+  const overallStatus = failed > 0 ? 'failure' : 
+                       pending > 0 ? 'pending' : 
+                       promoted === total ? 'promoted' : 'unknown';
+
+  // E.g: 1/1 environments failed
+  const displayText = failed > 0 ? `${failed}/${total} environments failed` :
+                     pending > 0 ? `${pending}/${total} environments pending` :
+                     promoted > 0 ? `${promoted}/${total} environments promoted` :
+                     `${total}/${total} environments`;
+
+  return { total, promoted, pending, failed, overallStatus, displayText };
+}
+
+//Wrappers
+export function getPromotionPhase(ps: PromotionStrategy): PromotionPhase {
+  return getPromotionStatus(ps).overallStatus;
+}
+
+export function getEnvironmentCountSummary(ps: PromotionStrategy): { total: number; promoted: number; summary: string } {
+  const { total, promoted, displayText } = getPromotionStatus(ps);
+  return { total, promoted, summary: displayText };
+}
+
+export type { 
+  PromotionStrategy, 
+  EnrichedEnvDetails, 
+  PromotionPhase 
+} from '../types/promotion';
+
 
 export type { 
   PromotionStrategy, 

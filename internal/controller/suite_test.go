@@ -115,6 +115,8 @@ var _ = BeforeSuite(func() {
 		panic("could not make temp dir for repo server")
 	}
 	gitServerPort, gitServer = startGitServer(gitStoragePath)
+	logf.Log.Info("Git server started on port", "port", gitServerPort)
+	logf.Log.Info("Git storage path", "path", gitStoragePath)
 
 	By("bootstrapping test environments")
 	// Create a local test environment to test the single cluster functionality

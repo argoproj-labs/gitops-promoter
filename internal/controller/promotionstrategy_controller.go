@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
-
 	"k8s.io/client-go/util/retry"
 
 	"k8s.io/client-go/tools/record"
