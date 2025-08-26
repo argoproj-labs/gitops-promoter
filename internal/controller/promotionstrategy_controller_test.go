@@ -2561,10 +2561,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			// TODO: make a no op commit via a new function called makeChangeAndHydrateRepoNoOp then check all the fields of status.active and status.history dev and staging.
-
 			By("By making a no-op commit and checking that the promotion strategy status reflects it")
-
 			makeChangeAndHydrateRepoNoOp(gitPath, name, name, "", "")
 			simulateWebhook(ctx, k8sClient, &ctpDev)
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
@@ -2576,6 +2573,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: promotionStrategy.Namespace,
 				}, promotionStrategy)
 				g.Expect(err).To(Succeed())
+				By("Checking that the active and proposed commits are correct for the development environment and are set to the no-op commit")
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Subject).To(ContainSubstring("no-op commit"))
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Author).To(ContainSubstring("testuser <testmail@test.com>"))
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Subject).To(ContainSubstring("added no-op commit from dry sha"))
@@ -2586,8 +2584,36 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("This is a no-op commit merging from"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(ContainSubstring("GitOps Promoter"))
 
-				g.Expect(promotionStrategy.Status.Environments[0].History[0].PullRequest.ID).ToNot(Equal(""))
-				g.Expect(promotionStrategy.Status.Environments[1].History[0].PullRequest.ID).ToNot(Equal(""))
+				By("Checking that the history is populated correctly")
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].PullRequest.ID).To(Equal("1"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.Subject).To(ContainSubstring("added fake manifests commit with timestamp"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.References).To(HaveLen(1))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
+
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.Hydrated.Author).To(ContainSubstring("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.Hydrated.Subject).To(ContainSubstring("added pending commit from dry sha"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses).To(HaveLen(1))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Key).To(Equal("no-deployments-allowed"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].PullRequest.ID).To(Equal("2"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.Subject).To(ContainSubstring("added fake manifests commit with timestamp"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.References).To(HaveLen(1))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
+
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.Hydrated.Author).To(ContainSubstring("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.Hydrated.Subject).To(ContainSubstring("added pending commit from dry sha"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses).To(HaveLen(1))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses[0].Key).To(Equal("no-deployments-allowed"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+				g.Expect(promotionStrategy.Status.Environments[2].History).To(HaveLen(1))
 			}, constants.EventuallyTimeout).To(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
