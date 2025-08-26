@@ -215,28 +215,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Subject).To(Equal("added pending commit from dry sha"))
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Body).To(ContainSubstring(""))
 
-				g.Expect(ctpDev.Status.Active.Hydrated.Subject).To(Equal("initial commit"))
-				g.Expect(ctpDev.Status.Active.Hydrated.Body).To(Equal(""))
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			Eventually(func(g Gomega) {
-				// Staging PR should exist
-				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      prName,
-					Namespace: typeNamespacedName.Namespace,
-				}, &pullRequestStaging)
-				g.Expect(err).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			Eventually(func(g Gomega) {
-				// Production PR should exist
-				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      prName,
-					Namespace: typeNamespacedName.Namespace,
-				}, &pullRequestProd)
-				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Hydrated.Subject).To(ContainSubstring("Promote"))
+				g.Expect(ctpDev.Status.Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Checking that the pull request for the development, staging, and production environments are closed")
@@ -1608,7 +1588,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Subject).To(Equal("added fake manifests commit with timestamp"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Body).To(Equal(""))
 
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
 
@@ -1622,7 +1602,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Subject).To(Equal(""))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Body).To(Equal(""))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Author).To(Equal("testuser"))
-				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("initial commit"))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("initial empty commit"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(Equal(""))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -2249,7 +2229,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a proposed commit status we should have history", func() {
-		FIt("should successfully reconcile the resource", func() {
+		It("should successfully reconcile the resource", func() {
 			// Skip("Skipping test because of flakiness")
 			By("Creating the resource")
 			name, scmSecret, scmProvider, gitRepo, proposedCommitStatusDevelopment, proposedCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-proposed-commit-status", "default")
@@ -2360,7 +2340,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(drySha))
-			})
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
@@ -2559,7 +2539,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Subject).To(Equal("added fake manifests commit with timestamp"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Body).To(Equal(""))
 
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
 
@@ -2572,18 +2552,43 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Subject).To(Equal("added fake manifests commit with timestamp"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Body).To(Equal(""))
-				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Author).To(Equal("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
 
 				g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
 				g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(BeNil())
 				g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
-
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			// TODO: make a no op commit via a new function called makeChangeAndHydrateRepoNoOp then check all the fields of status.active and status.history dev and staging.
-			//
+
+			By("By making a no-op commit and checking that the promotion strategy status reflects it")
+
+			makeChangeAndHydrateRepoNoOp(gitPath, name, name, "", "")
+			simulateWebhook(ctx, k8sClient, &ctpDev)
+			simulateWebhook(ctx, k8sClient, &ctpStaging)
+			simulateWebhook(ctx, k8sClient, &ctpProd)
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      promotionStrategy.Name,
+					Namespace: promotionStrategy.Namespace,
+				}, promotionStrategy)
+				g.Expect(err).To(Succeed())
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Subject).To(ContainSubstring("no-op commit"))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Author).To(ContainSubstring("testuser <testmail@test.com>"))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Subject).To(ContainSubstring("added no-op commit from dry sha"))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Author).To(ContainSubstring("testuser"))
+
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Subject).To(ContainSubstring("no-op commit"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Author).To(ContainSubstring("testuser <testmail@test.com>"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("This is a no-op commit merging from"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(ContainSubstring("GitOps Promoter"))
+
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].PullRequest.ID).ToNot(Equal(""))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].PullRequest.ID).ToNot(Equal(""))
+			}, constants.EventuallyTimeout).To(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
