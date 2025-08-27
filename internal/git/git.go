@@ -571,7 +571,7 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 }
 
 // GetRevListFirstParent retrieves the first parent commit SHAs for the given branch using git rev-list.
-func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount int32) ([]string, error) {
+func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount int) ([]string, error) {
 	logger := log.FromContext(ctx)
 
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -580,7 +580,7 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 	}
 
 	args := []string{"rev-list", "--first-parent"}
-	args = append(args, "--max-count="+string(maxCount))
+	args = append(args, "--max-count="+fmt.Sprintf("%d", maxCount))
 	args = append(args, branch)
 
 	stdout, stderr, err := g.runCmd(ctx, gitPath, args...)
