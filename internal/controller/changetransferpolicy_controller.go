@@ -293,8 +293,8 @@ func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Cont
 	for _, key := range activeKeys {
 		h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:   key,
-			Phase: activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Phase", key)],
-			Url:   activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Url", key)],
+			Phase: activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-phase"],
+			Url:   activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-url"],
 		})
 	}
 
@@ -302,8 +302,8 @@ func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Cont
 	for _, key := range proposedKeys {
 		h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:   key,
-			Phase: activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Phase", key)],
-			Url:   activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Url", key)],
+			Phase: activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-phase"],
+			Url:   activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-url"],
 		})
 	}
 }
@@ -767,12 +767,12 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	commitTrailers[constants.TrailerPullRequestUrl] = pr.Status.Url
 
 	for _, status := range ctp.Status.Active.CommitStatuses {
-		commitTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Phase", status.Key)] = status.Phase
-		commitTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Url", status.Key)] = status.Url
+		commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-phase"] = status.Phase
+		commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-url"] = status.Url
 	}
 	for _, status := range ctp.Status.Proposed.CommitStatuses {
-		commitTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Phase", status.Key)] = status.Phase
-		commitTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Url", status.Key)] = status.Url
+		commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-phase"] = status.Phase
+		commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-url"] = status.Url
 	}
 	commitTrailers[constants.TrailerShaHydratedActive] = ctp.Status.Active.Hydrated.Sha
 	commitTrailers[constants.TrailerShaHydratedProposed] = ctp.Status.Proposed.Hydrated.Sha

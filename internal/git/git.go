@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/relvacode/iso8601"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -371,7 +372,7 @@ func (g *EnvironmentOperations) PromoteEnvironmentWithMerge(ctx context.Context,
 	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
 
 	start = time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+environmentNextBranch, "-m", "This is a no-op commit merging from "+environmentNextBranch+" into "+environmentBranch+"\n\nNo-Op: true\n")
+	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+environmentNextBranch, "-m", "This is a no-op commit merging from "+environmentNextBranch+" into "+environmentBranch+"\n\n"+constants.TrailerNoOp+": true\n")
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
 		logger.Error(err, "could not git merge", "gitError", stderr)
