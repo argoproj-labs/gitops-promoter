@@ -355,6 +355,9 @@ spec:
                             properties:
                               key:
                                 description: Key staging hydrated branch
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                                 type: string
                               phase:
                                 description: Phase what phase is the status in
@@ -521,6 +524,9 @@ spec:
                             properties:
                               key:
                                 description: Key staging hydrated branch
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                                 type: string
                               phase:
                                 description: Phase what phase is the status in
