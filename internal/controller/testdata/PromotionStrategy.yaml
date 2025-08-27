@@ -43,6 +43,19 @@ status:
         repoURL: "https://git.example.com/org/repo.git"
         sha: "abcdef1234567890abcdef1234567890abcdef12"
         subject: "chore: Example commit subject line"
+        references:
+          # An array of reference commits that where used to create the dry commit. This is used generally via CI systems to add tracing information to the commit.
+          # For example, in a code/deployment repo setup this could contain the commit from the code repo that triggered the deployment commit in the deployment repo.
+          - commit:
+              author: '"Zach Aller" <code@example.com>'
+              body: |-
+                Commit message of the code commit
+                
+                Signed-off-by: Author Name <author@example.com>
+              date: '2025-07-19T17:50:18Z'
+              repoURL: https://github.com/org/repo
+              sha: 9d5ccef278218dea4caa903bb6abb9ed974a1d90
+              subject: This change fixes a bug in the code
       hydrated:
         # The hydrated field contains the same fields as proposed.dry, but the contents correspond to a hydrated commit
         # instead of a dry commit.
@@ -51,6 +64,19 @@ status:
           phase: pending # pending, success, or failure
     active:
     # The active field contains the same fields as proposed.
+    history:
+      # The history field contains a snapshot of each promotion that has occurred in the environment. The most recent promotion
+      # is at the front of the list. The fields here are similar to those in proposed and active top level fields. They only differ in
+      # that the proposed field does not contain a dry field, because in the context of history proposed becomes active when promoted.
+      - active:
+        # same as top level active
+        proposed:
+        # same as top level proposed but without dry field because in the context of history proposed.dry becomes active when promoted.
+        pullRequest:
+          # The pullRequest field contains information about the pull request that was created that was merged to create this history item.
+          id: '848'
+          prCreationTime: '2025-08-04T19:50:15Z'
+          url: https://github.com/org/repo/pull/848
     lastHealthyDryShas:
     - sha: "abcdef1234567890abcdef1234567890abcdef12"
       time: 2023-10-01T00:00:00Z
