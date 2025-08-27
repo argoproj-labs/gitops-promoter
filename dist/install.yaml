@@ -2031,7 +2031,7 @@ spec:
                       type: string
                     history:
                       description: History defines the history of promoted changes
-                        done by the PromotionStrategy for this environment.
+                        done by the PromotionStrategy for each environment.
                       items:
                         description: History defines the history of promoted changes
                           done by the ChangeTransferPolicy.

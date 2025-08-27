@@ -15,7 +15,7 @@ type PullRequestProvider interface {
 	// Update updates an existing pull request with the specified title, description, and pull request details.
 	Update(ctx context.Context, title, description string, pullRequest v1alpha1.PullRequest) error
 	// Merge merges an existing pull request with the specified commit message.
-	Merge(ctx context.Context, commitMessage string, pullRequest v1alpha1.PullRequest) error
+	Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error
 	// FindOpen checks if a pull request is open and returns its status.
 	FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error)
 	// GetUrl retrieves the URL of the pull request.

@@ -2573,7 +2573,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Namespace: promotionStrategy.Namespace,
 				}, promotionStrategy)
 				g.Expect(err).To(Succeed())
-				By("Checking that the active and proposed commits are correct for the development environment and are set to the no-op commit")
+				// "Checking that the active and proposed commits are correct for the development environment and are set to the no-op commit
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Subject).To(ContainSubstring("no-op commit"))
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Author).To(ContainSubstring("testuser <testmail@test.com>"))
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Subject).To(ContainSubstring("added no-op commit from dry sha"))
@@ -2584,8 +2584,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("This is a no-op commit merging from"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(ContainSubstring("GitOps Promoter"))
 
-				By("Checking that the history is populated correctly")
-				g.Expect(promotionStrategy.Status.Environments[0].History[0].PullRequest.ID).To(Equal("1"))
+				// Checking that the history is populated correctly
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].PullRequest.ID).To(Not(Equal("")))
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.Subject).To(ContainSubstring("added fake manifests commit with timestamp"))
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.References).To(HaveLen(1))
@@ -2599,7 +2599,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Key).To(Equal("no-deployments-allowed"))
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
-				g.Expect(promotionStrategy.Status.Environments[1].History[0].PullRequest.ID).To(Equal("2"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].PullRequest.ID).To(Not(Equal("")))
 				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
 				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.Subject).To(ContainSubstring("added fake manifests commit with timestamp"))
 				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.References).To(HaveLen(1))

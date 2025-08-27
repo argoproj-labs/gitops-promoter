@@ -142,7 +142,7 @@ type EnvironmentStatus struct {
 	// +kubebuilder:validation:Optional
 	LastHealthyDryShas []HealthyDryShas `json:"lastHealthyDryShas"`
 
-	// History defines the history of promoted changes done by the PromotionStrategy for this environment.
+	// History defines the history of promoted changes done by the PromotionStrategy for each environment.
 	History []History `json:"history,omitempty"`
 }
 

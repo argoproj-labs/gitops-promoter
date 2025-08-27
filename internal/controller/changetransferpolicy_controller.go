@@ -163,6 +163,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}, nil
 }
 
+// calculateHistory this function calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
 func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	logger := log.FromContext(ctx)
 
@@ -187,7 +188,8 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 			continue
 		}
 
-		if activeTrailers["No-Op"] == "true" {
+		// If it is a no-op commit we don't do anything this should move to the hydrator in the future
+		if activeTrailers[constants.TrailerNoOp] == "true" {
 			continue
 		}
 
@@ -203,7 +205,7 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 			h.Active.Dry = activeDry
 		}
 
-		proposedHydratedSha := activeTrailers["Sha-Hydrated-Proposed"]
+		proposedHydratedSha := activeTrailers[constants.TrailerShaHydratedProposed]
 		if proposedHydratedSha == "" {
 			logger.V(4).Info("No Sha-Hydrated-Proposed trailer found for active SHA", "activeSha", sha)
 		} else {
@@ -214,23 +216,22 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 			}
 		}
 
-		if pullRequestID, ok := activeTrailers["PullRequest-ID"]; ok && pullRequestID != "" {
+		if pullRequestID, ok := activeTrailers[constants.TrailerPullRequestID]; ok && pullRequestID != "" {
 			h.PullRequest.ID = pullRequestID
 		} else {
 			logger.V(4).Info("No PullRequest-ID found in trailers for active SHA", "sha", sha)
 		}
 
-		if pullRequestUrl, ok := activeTrailers["PullRequest-Url"]; ok && pullRequestUrl != "" {
+		if pullRequestUrl, ok := activeTrailers[constants.TrailerPullRequestUrl]; ok && pullRequestUrl != "" {
 			h.PullRequest.Url = pullRequestUrl
 		} else {
 			logger.V(4).Info("No PullRequest-Url found in trailers for active SHA", "sha", sha)
 		}
 
-		if timeStr, ok := activeTrailers["PullRequest-CreationTime"]; ok && timeStr != "" {
+		if timeStr, ok := activeTrailers[constants.TrailerPullRequestCreationTime]; ok && timeStr != "" {
 			creationTime, err := time.Parse(time.RFC3339, timeStr)
 			if err != nil {
 				logger.Error(err, "failed to parse PullRequest-CreationTime", "time", timeStr)
-				// return fmt.Errorf("failed to parse PullRequest-CreationTime %q: %w", timeStr, err)
 			} else {
 				h.PullRequest.PRCreationTime = metav1.NewTime(creationTime)
 			}
@@ -243,16 +244,16 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 		for _, key := range activeKeys {
 			h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:   key,
-				Phase: activeTrailers[fmt.Sprintf("CommitStatus-Active-%s-Phase", key)],
-				Url:   activeTrailers[fmt.Sprintf("CommitStatus-Active-%s-Url", key)],
+				Phase: activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Phase", key)],
+				Url:   activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Url", key)],
 			})
 		}
 
 		for _, key := range proposedKeys {
 			h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:   key,
-				Phase: activeTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Phase", key)],
-				Url:   activeTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Url", key)],
+				Phase: activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Phase", key)],
+				Url:   activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Url", key)],
 			})
 		}
 
@@ -267,70 +268,52 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string]string) (activeKeys []string, proposedKeys []string) {
 	logger := log.FromContext(ctx)
 
-	activeKeys = []string{}
-	for key, trailer := range trailers {
-		if !strings.HasPrefix(key, "CommitStatus-Active-") {
-			continue
+	extractKeys := func(prefix string) []string {
+		keys := []string{}
+		for key, trailer := range trailers {
+			if !strings.HasPrefix(key, prefix) {
+				continue
+			}
+			key = strings.TrimPrefix(key, prefix)
+			if key == "" {
+				logger.V(4).Info("Skipping empty trailer key", "trailer", trailer)
+				continue
+			}
+			parts := strings.Split(key, "-")
+			if len(parts) < 2 {
+				logger.V(4).Info("Skipping trailer with unexpected format", "trailer", trailer)
+				continue
+			}
+			csKey := strings.Join(parts[:len(parts)-1], "-")
+			// Append if it does not exist in keys
+			if slices.Index(keys, csKey) == -1 {
+				keys = append(keys, csKey)
+			}
 		}
-		key = strings.TrimPrefix(key, "CommitStatus-Active-")
-		if key == "" {
-			logger.V(4).Info("Skipping empty CommitStatus-Active trailer key", "trailer", trailer)
-			continue
-		}
-		parts := strings.Split(key, "-")
-		if len(parts) < 2 {
-			logger.V(4).Info("Skipping CommitStatus-Active trailer with unexpected format", "trailer", trailer)
-			continue
-		}
-		csKey := strings.Join(parts[:len(parts)-1], "-")
-		// Append if it does if it does not exist in activeKeys
-		if slices.Index(activeKeys, csKey) == -1 {
-			activeKeys = append(activeKeys, csKey)
-		}
+		return keys
 	}
 
-	proposedKeys = []string{}
-	for key, trailer := range trailers {
-		if !strings.HasPrefix(key, "CommitStatus-Proposed-") {
-			continue
-		}
-		key = strings.TrimPrefix(key, "CommitStatus-Proposed-")
-		if key == "" {
-			logger.V(4).Info("Skipping empty CommitStatus-Active trailer key", "trailer", trailer)
-			continue
-		}
-		parts := strings.Split(key, "-")
-		if len(parts) < 2 {
-			logger.V(4).Info("Skipping CommitStatus-Active trailer with unexpected format", "trailer", trailer)
-			continue
-		}
-		csKey := strings.Join(parts[:len(parts)-1], "-")
-		// Append if it does if it does not exist in activeKeys
-		if slices.Index(proposedKeys, csKey) == -1 {
-			proposedKeys = append(proposedKeys, csKey)
-		}
-	}
+	activeKeys = extractKeys(constants.TrailerCommitStatusActivePrefix)
+	proposedKeys = extractKeys(constants.TrailerCommitStatusProposedPrefix)
 
 	return activeKeys, proposedKeys
 }
 
-var knownTrailerPrefixes = []string{
-	"PullRequest-ID:",
-	"PullRequest-SourceBranch:",
-	"PullRequest-TargetBranch:",
-	"PullRequest-CreationTime:",
-	"PullRequest-Url:",
-	"CommitStatus-Active-",
-	"CommitStatus-Proposed-",
-	"Sha-Hydrated-Active:",
-	"Sha-Hydrated-Proposed:",
-	"Sha-Dry-Active:",
-	"Sha-Dry-Proposed:",
-	"No-Op:",
-}
-
 func removeKnownTrailers(input string) string {
-	toRemove := knownTrailerPrefixes
+	toRemove := []string{
+		constants.TrailerPullRequestID,
+		constants.TrailerPullRequestSourceBranch,
+		constants.TrailerPullRequestTargetBranch,
+		constants.TrailerPullRequestCreationTime,
+		constants.TrailerPullRequestUrl,
+		constants.TrailerCommitStatusActivePrefix,
+		constants.TrailerCommitStatusProposedPrefix,
+		constants.TrailerShaHydratedActive,
+		constants.TrailerShaHydratedProposed,
+		constants.TrailerShaDryActive,
+		constants.TrailerShaDryProposed,
+		constants.TrailerNoOp,
+	}
 
 	if !strings.HasSuffix(input, "\n") {
 		input += "\n"
@@ -714,13 +697,13 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 				},
 			},
 			Spec: promoterv1alpha1.PullRequestSpec{
-				RepositoryReference: ctp.Spec.RepositoryReference,
-				Title:               title,
-				TargetBranch:        ctp.Spec.ActiveBranch,
-				SourceBranch:        ctp.Spec.ProposedBranch,
-				Description:         description,
-				MergeCommitMessage:  fmt.Sprintf("%s\n\n%s", title, description),
-				State:               "open",
+				RepositoryReference:  ctp.Spec.RepositoryReference,
+				Title:                title,
+				TargetBranch:         ctp.Spec.ActiveBranch,
+				SourceBranch:         ctp.Spec.ProposedBranch,
+				Description:          description,
+				PromoteCommitMessage: fmt.Sprintf("%s\n\n%s", title, description),
+				State:                "open",
 			},
 		}
 		err = r.Create(ctx, &pr)
@@ -733,25 +716,25 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	}
 
 	commitTrailers := trailers{}
-	commitTrailers["PullRequest-ID"] = pr.Status.ID
-	commitTrailers["PullRequest-SourceBranch"] = pr.Spec.SourceBranch
-	commitTrailers["PullRequest-TargetBranch"] = pr.Spec.TargetBranch
-	commitTrailers["PullRequest-CreationTime"] = pr.Status.PRCreationTime.Format(time.RFC3339)
-	commitTrailers["PullRequest-Url"] = pr.Status.Url
-	pr.Spec.MergeCommitMessage = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
+	commitTrailers[constants.TrailerPullRequestID] = pr.Status.ID
+	commitTrailers[constants.TrailerPullRequestSourceBranch] = pr.Spec.SourceBranch
+	commitTrailers[constants.TrailerPullRequestTargetBranch] = pr.Spec.TargetBranch
+	commitTrailers[constants.TrailerPullRequestCreationTime] = pr.Status.PRCreationTime.Format(time.RFC3339)
+	commitTrailers[constants.TrailerPullRequestUrl] = pr.Status.Url
+	pr.Spec.PromoteCommitMessage = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 	for _, status := range ctp.Status.Active.CommitStatuses {
-		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Phase", status.Key)] = status.Phase
-		commitTrailers[fmt.Sprintf("CommitStatus-Active-%s-Url", status.Key)] = status.Url
+		commitTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Phase", status.Key)] = status.Phase
+		commitTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Url", status.Key)] = status.Url
 	}
 	for _, status := range ctp.Status.Proposed.CommitStatuses {
-		commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Phase", status.Key)] = status.Phase
-		commitTrailers[fmt.Sprintf("CommitStatus-Proposed-%s-Url", status.Key)] = status.Url
+		commitTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Phase", status.Key)] = status.Phase
+		commitTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Url", status.Key)] = status.Url
 	}
-	commitTrailers["Sha-Hydrated-Active"] = ctp.Status.Active.Hydrated.Sha
-	commitTrailers["Sha-Hydrated-Proposed"] = ctp.Status.Proposed.Hydrated.Sha
-	commitTrailers["Sha-Dry-Active"] = ctp.Status.Active.Dry.Sha
-	commitTrailers["Sha-Dry-Proposed"] = ctp.Status.Proposed.Dry.Sha
+	commitTrailers[constants.TrailerShaHydratedActive] = ctp.Status.Active.Hydrated.Sha
+	commitTrailers[constants.TrailerShaHydratedProposed] = ctp.Status.Proposed.Hydrated.Sha
+	commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
+	commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
 	commitMessage := fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 	// Pull Request already exists, update it.
@@ -767,7 +750,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prUpdated.Spec.TargetBranch = ctp.Spec.ActiveBranch
 		prUpdated.Spec.SourceBranch = ctp.Spec.ProposedBranch
 		prUpdated.Spec.Description = description
-		prUpdated.Spec.MergeCommitMessage = commitMessage
+		prUpdated.Spec.PromoteCommitMessage = commitMessage
 		logger.V(4).Info("Updating pull request", "pullRequestName", prUpdated.Namespace+"/"+prUpdated.Name, "pullRequestSpec", prUpdated.Spec, "pullRequestStatus", prUpdated.Status)
 		return r.Update(ctx, &prUpdated)
 	})
