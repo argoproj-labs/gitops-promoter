@@ -305,20 +305,24 @@ func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Cont
 func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string]string) (activeKeys []string, proposedKeys []string) {
 	logger := log.FromContext(ctx)
 
+	// This function extracts commit status keys from trailers with the given prefix.
+	// It looks for keys that start with the prefix, trims the prefix, splits by "-", and joins all but the last part to form the commit status key.
+	// This is under the assumption that the last part is always "-phase" or "-url" today and that it does not go over multiple "-" aka the ending can not be
+	// -what-am-i-doing. This would return a bad key because it would contain -what-am-i.
 	extractKeys := func(prefix string) []string {
 		keys := []string{}
-		for key, trailer := range trailers {
+		for key, _ := range trailers {
 			if !strings.HasPrefix(key, prefix) {
 				continue
 			}
 			key = strings.TrimPrefix(key, prefix)
 			if key == "" {
-				logger.Info("Skipping empty trailer key", "trailer", trailer)
+				logger.Info("Skipping empty trailer key", "key", key)
 				continue
 			}
 			parts := strings.Split(key, "-")
 			if len(parts) < 2 {
-				logger.Info("Skipping trailer with unexpected format", "trailer", trailer)
+				logger.Info("Skipping trailer with unexpected format", "key", key)
 				continue
 			}
 			csKey := strings.Join(parts[:len(parts)-1], "-")
@@ -352,10 +356,6 @@ func removeKnownTrailers(input string) string {
 		constants.TrailerNoOp,
 	}
 
-	if !strings.HasSuffix(input, "\n") {
-		input += "\n"
-	}
-
 	lines := strings.Split(input, "\n")
 	filtered := make([]string, 0, len(lines))
 
@@ -372,15 +372,13 @@ func removeKnownTrailers(input string) string {
 		}
 	}
 
-	input = strings.Join(filtered, "\n")
-	input = strings.TrimSpace(input)
-	input += "\n"
+	result := strings.Join(filtered, "\n")
+	result = strings.TrimSpace(result)
 
-	if input == "\n" {
-		// If the input is empty after removing known trailers, we return an empty string.
+	if result == "" {
 		return ""
 	}
-	return input
+	return result + "\n"
 }
 
 // SetupWithManager sets up the controller with the Manager.
