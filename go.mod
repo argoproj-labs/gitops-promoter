@@ -24,7 +24,6 @@ require (
 	github.com/tidwall/gjson v1.18.0
 	gitlab.com/gitlab-org/api/client-go v0.142.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/sync v0.16.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.33.4
