@@ -263,7 +263,11 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 	}
 
 	if pullRequestUrl := activeTrailers[constants.TrailerPullRequestUrl]; pullRequestUrl != "" {
-		h.PullRequest.Url = pullRequestUrl
+		if !strings.HasPrefix(pullRequestUrl, "http://") && !strings.HasPrefix(pullRequestUrl, "https://") {
+			logger.Error(errors.New("invalid URL"), "pull request URL does not start with http:// or https://", "url", pullRequestUrl)
+		} else {
+			h.PullRequest.Url = pullRequestUrl
+		}
 	} else {
 		logger.Info("No " + constants.TrailerPullRequestUrl + " found in trailers")
 	}
