@@ -164,6 +164,8 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 // calculateHistory this function calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
 // calculateHistory calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
+// This function is best effort and will log errors but continue processing if it encounters issues with individual commits. This is because history is stored in git
+// in order to get out of a bad state requires re-writing git history or pushing a bunch of no-op commits greater than the max history limit.
 func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	logger := log.FromContext(ctx)
 
@@ -208,14 +210,8 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 		PullRequest: &promoterv1alpha1.PullRequestCommonStatus{},
 	}
 
-	err = r.populateActiveMetadata(ctx, &historyEntry, sha, gitOperations)
-	if err != nil {
-		return promoterv1alpha1.History{}, false, fmt.Errorf("failed to populate active metadata for SHA %q: %w", sha, err)
-	}
-	err = r.populateProposedMetadata(ctx, &historyEntry, activeTrailers, gitOperations)
-	if err != nil {
-		return promoterv1alpha1.History{}, false, fmt.Errorf("failed to populate proposed metadata for SHA %q: %w", sha, err)
-	}
+	r.populateActiveMetadata(ctx, &historyEntry, sha, gitOperations)
+	r.populateProposedMetadata(ctx, &historyEntry, activeTrailers, gitOperations)
 	r.populatePullRequestMetadata(ctx, &historyEntry, activeTrailers)
 	r.populateCommitStatuses(ctx, &historyEntry, activeTrailers)
 
@@ -223,39 +219,36 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 }
 
 // populateActiveMetadata populates the active metadata for a history entry
-func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Context, h *promoterv1alpha1.History, sha string, gitOperations *git.EnvironmentOperations) error {
+func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Context, h *promoterv1alpha1.History, sha string, gitOperations *git.EnvironmentOperations) {
+	logger := log.FromContext(ctx)
 	activeHydrated, err := gitOperations.GetShaMetadataFromGit(ctx, sha)
 	if err != nil {
-		return fmt.Errorf("failed to get active hydrated commit metadata from git: %w", err)
+		logger.Error(err, "failed to get active historic metadata from git", "sha", sha)
 	}
 	h.Active.Hydrated = activeHydrated
 	h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
 
 	activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha)
 	if err != nil {
-		return fmt.Errorf("failed to get active dry commit metadata from file: %w", err)
+		logger.Error(err, "failed to get active historic metadata from file", "sha", sha)
 	}
 	h.Active.Dry = activeDry
-	return nil
 }
 
 // populateProposedMetadata populates the proposed metadata for a history entry
-func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string, gitOperations *git.EnvironmentOperations) error {
+func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string, gitOperations *git.EnvironmentOperations) {
 	logger := log.FromContext(ctx)
 
 	proposedHydratedSha := activeTrailers[constants.TrailerShaHydratedProposed]
 	if proposedHydratedSha == "" {
-		logger.V(4).Info("No Sha-Hydrated-Proposed trailer found")
-		return nil
+		logger.Info("No + " + constants.TrailerShaHydratedProposed + " trailer found")
 	}
 
 	meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha)
 	if err != nil {
-		return fmt.Errorf("failed to get proposed hydrated commit metadata from git: %w", err)
+		logger.Error(err, "failed to get proposed historic metadata from git", "sha", proposedHydratedSha)
 	}
 	h.Proposed.Hydrated = meta
-
-	return nil
 }
 
 // populatePullRequestMetadata populates the pull request metadata for a history entry
@@ -265,23 +258,23 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 	if pullRequestID := activeTrailers[constants.TrailerPullRequestID]; pullRequestID != "" {
 		h.PullRequest.ID = pullRequestID
 	} else {
-		logger.V(4).Info("No PullRequest-ID found in trailers")
+		logger.Info("No " + constants.TrailerPullRequestID + " found in trailers")
 	}
 
 	if pullRequestUrl := activeTrailers[constants.TrailerPullRequestUrl]; pullRequestUrl != "" {
 		h.PullRequest.Url = pullRequestUrl
 	} else {
-		logger.V(4).Info("No PullRequest-Url found in trailers")
+		logger.Info("No " + constants.TrailerPullRequestUrl + " found in trailers")
 	}
 
 	if timeStr := activeTrailers[constants.TrailerPullRequestCreationTime]; timeStr != "" {
 		if creationTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
-			logger.Error(err, "failed to parse PullRequest-CreationTime", "time", timeStr)
+			logger.Error(err, "failed to parse "+constants.TrailerPullRequestCreationTime, "time", timeStr)
 		} else {
 			h.PullRequest.PRCreationTime = metav1.NewTime(creationTime)
 		}
 	} else {
-		logger.V(4).Info("No PullRequest-CreationTime found in trailers")
+		logger.Info("No " + constants.TrailerPullRequestCreationTime + " found in trailers")
 	}
 }
 
@@ -320,12 +313,12 @@ func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string]st
 			}
 			key = strings.TrimPrefix(key, prefix)
 			if key == "" {
-				logger.V(4).Info("Skipping empty trailer key", "trailer", trailer)
+				logger.Info("Skipping empty trailer key", "trailer", trailer)
 				continue
 			}
 			parts := strings.Split(key, "-")
 			if len(parts) < 2 {
-				logger.V(4).Info("Skipping trailer with unexpected format", "trailer", trailer)
+				logger.Info("Skipping trailer with unexpected format", "trailer", trailer)
 				continue
 			}
 			csKey := strings.Join(parts[:len(parts)-1], "-")
