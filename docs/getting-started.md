@@ -244,6 +244,15 @@ spec:
     name: <git-repository-ref-name> # The name of the GitRepository resource
 ```
 
+!!! important
+
+    Each `branch` configured here is the branch that GitOps Promoter will merge into. Your [hydrator](index.md#prerequisites)
+    configuration must hydrate to these branch names, but **suffixed with `-next`**. This convention is hard-coded in
+    GitOps Promoter.
+
+    For an example of how to configure the Argo CD Source Hydrator, see the [Argo CD tutorial](tutorial-argocd-apps.md#deploy-an-application-for-3-environments).
+    (Note the difference between the `syncSource` and the `hydrateTo` fields.)
+
 !!! note 
 
     Notice that the branches are prefixed with `environment/`. This is a convention that we recommend you follow.
