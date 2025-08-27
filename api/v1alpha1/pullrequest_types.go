@@ -44,7 +44,7 @@ type PullRequestSpec struct {
 	SourceBranch string `json:"sourceBranch"`
 	// Description is the description body of the pull/merge request
 	Description string `json:"description,omitempty"`
-	// PromoteCommitMessage is the commit message to use when merging the pull request.
+	// Commit contains configuration for how we will merge/squash/etc the pull request.
 	Commit CommitConfiguration `json:"commit,omitempty"`
 	// State of the merge request closed/merged/open
 	// +kubebuilder:default:=open

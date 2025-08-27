@@ -2624,8 +2624,8 @@ spec:
             description: PullRequestSpec defines the desired state of PullRequest
             properties:
               commit:
-                description: PromoteCommitMessage is the commit message to use when
-                  merging the pull request.
+                description: Commit contains configuration for how we will merge/squash/etc
+                  the pull request.
                 properties:
                   message:
                     type: string
