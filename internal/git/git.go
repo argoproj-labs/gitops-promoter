@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -580,7 +581,7 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 	}
 
 	args := []string{"rev-list", "--first-parent"}
-	args = append(args, "--max-count="+fmt.Sprintf("%d", maxCount))
+	args = append(args, "--max-count="+strconv.Itoa(maxCount))
 	args = append(args, branch)
 
 	stdout, stderr, err := g.runCmd(ctx, gitPath, args...)
