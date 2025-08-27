@@ -173,7 +173,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 
 	options := forgejo.MergePullRequestOption{
 		Style:   forgejo.MergeStyleMerge, // TODO: make the merge style configurable
-		Message: prObj.Spec.PromoteCommitMessage,
+		Message: prObj.Spec.Commit.Message,
 	}
 
 	start := time.Now()

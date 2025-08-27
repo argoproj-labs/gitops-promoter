@@ -198,8 +198,8 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		Squash:                   gitlab.Ptr(false),
 	}
 	// Gitlab throws a 422 if you send it an empty commit message. So leave it as nil unless we have a message.
-	if prObj.Spec.PromoteCommitMessage != "" {
-		options.MergeCommitMessage = gitlab.Ptr(prObj.Spec.PromoteCommitMessage)
+	if prObj.Spec.Commit.Message != "" {
+		options.MergeCommitMessage = gitlab.Ptr(prObj.Spec.Commit.Message)
 	}
 
 	start := time.Now()

@@ -158,7 +158,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		return fmt.Errorf("failed to fetch all: %w", err)
 	}
 
-	err = pr.runGitCmd(gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.PromoteCommitMessage)
+	err = pr.runGitCmd(gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
 	if err != nil {
 		return fmt.Errorf("failed to merge branch: %w", err)
 	}

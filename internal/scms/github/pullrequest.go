@@ -168,7 +168,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		gitRepo.Spec.GitHub.Owner,
 		gitRepo.Spec.GitHub.Name,
 		prNumber,
-		pullRequest.Spec.PromoteCommitMessage,
+		pullRequest.Spec.Commit.Message,
 		&github.PullRequestOptions{
 			MergeMethod:        "merge",
 			DontDefaultIfBlank: false,

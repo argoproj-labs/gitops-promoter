@@ -697,13 +697,13 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 				},
 			},
 			Spec: promoterv1alpha1.PullRequestSpec{
-				RepositoryReference:  ctp.Spec.RepositoryReference,
-				Title:                title,
-				TargetBranch:         ctp.Spec.ActiveBranch,
-				SourceBranch:         ctp.Spec.ProposedBranch,
-				Description:          description,
-				PromoteCommitMessage: fmt.Sprintf("%s\n\n%s", title, description),
-				State:                "open",
+				RepositoryReference: ctp.Spec.RepositoryReference,
+				Title:               title,
+				TargetBranch:        ctp.Spec.ActiveBranch,
+				SourceBranch:        ctp.Spec.ProposedBranch,
+				Description:         description,
+				Commit:              promoterv1alpha1.CommitConfiguration{Message: fmt.Sprintf("%s\n\n%s", title, description)},
+				State:               "open",
 			},
 		}
 		err = r.Create(ctx, &pr)
@@ -721,7 +721,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	commitTrailers[constants.TrailerPullRequestTargetBranch] = pr.Spec.TargetBranch
 	commitTrailers[constants.TrailerPullRequestCreationTime] = pr.Status.PRCreationTime.Format(time.RFC3339)
 	commitTrailers[constants.TrailerPullRequestUrl] = pr.Status.Url
-	pr.Spec.PromoteCommitMessage = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
+	pr.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 	for _, status := range ctp.Status.Active.CommitStatuses {
 		commitTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Phase", status.Key)] = status.Phase
@@ -750,7 +750,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prUpdated.Spec.TargetBranch = ctp.Spec.ActiveBranch
 		prUpdated.Spec.SourceBranch = ctp.Spec.ProposedBranch
 		prUpdated.Spec.Description = description
-		prUpdated.Spec.PromoteCommitMessage = commitMessage
+		prUpdated.Spec.Commit.Message = commitMessage
 		logger.V(4).Info("Updating pull request", "pullRequestName", prUpdated.Namespace+"/"+prUpdated.Name, "pullRequestSpec", prUpdated.Spec, "pullRequestStatus", prUpdated.Status)
 		return r.Update(ctx, &prUpdated)
 	})
