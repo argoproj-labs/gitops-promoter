@@ -61,6 +61,9 @@ type ChangeTransferPolicySpec struct {
 type ChangeRequestPolicyCommitStatusPhase struct {
 	// Key staging hydrated branch
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength:=1
+	// +kubebuilder:validation:MaxLength:=63
+	// +kubebuilder:validation:Pattern:=([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
 	Key string `json:"key"`
 
 	// Phase what phase is the status in

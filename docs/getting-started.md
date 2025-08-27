@@ -244,6 +244,15 @@ spec:
     name: <git-repository-ref-name> # The name of the GitRepository resource
 ```
 
+!!! important
+
+    Each `branch` configured here is the branch that GitOps Promoter will merge into. Your [hydrator](index.md#prerequisites)
+    configuration must hydrate to these branch names, but **suffixed with `-next`**. This convention is hard-coded in
+    GitOps Promoter.
+
+    For an example of how to configure the Argo CD Source Hydrator, see the [Argo CD tutorial](tutorial-argocd-apps.md#deploy-an-application-for-3-environments).
+    (Note the difference between the `syncSource` and the `hydrateTo` fields.)
+
 !!! note 
 
     Notice that the branches are prefixed with `environment/`. This is a convention that we recommend you follow.
@@ -252,3 +261,27 @@ spec:
 
     The `autoMerge` field is optional and defaults to `true`. We set it to `false` here because we do not have any
     CommitStatus checks configured. With these all set to `false` we will have to manually merge the PRs.
+
+## Launching the UI
+
+GitOps Promoter comes with a web UI that you can use to visualize the state of your PromotionStrategy resources.
+
+To launch the UI, first download the gitops-promoter CLI from the [releases page](https://github.com/argoproj-labs/gitops-promoter/releases).
+
+Make the file executable and add it to your PATH.
+
+Then run the following command:
+
+```bash
+gitops-promoter dashboard
+```
+
+The UI will be available at `http://localhost:8080`.
+
+To use a different port, you can use the `--port` flag.
+
+By default, the UI uses your current kubeconfig context. If you want to use a different context, you can use the `--kubecontext` flag.
+
+```bash
+gitops-promoter dashboard --port <your-port> --kubecontext <your-kube-context>
+```
