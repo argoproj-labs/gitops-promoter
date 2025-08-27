@@ -362,7 +362,7 @@ func removeKnownTrailers(input string) string {
 	for _, line := range lines {
 		shouldKeep := true
 		for _, rm := range toRemove {
-			if strings.Contains(line, rm) {
+			if strings.HasPrefix(line, rm) {
 				shouldKeep = false
 				break
 			}
