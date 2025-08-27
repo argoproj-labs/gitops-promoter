@@ -370,25 +370,19 @@ func (g *EnvironmentOperations) PromoteEnvironmentWithMerge(ctx context.Context,
 	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
 
 	start = time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "pull", "--progress", "--no-edit", "origin", environmentNextBranch)
+	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+environmentNextBranch, "-m", "This is a no-op commit merging from "+environmentNextBranch+" into "+environmentBranch+"\n\nNo-Op: true\n")
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
-		logger.Error(err, "could not git pull", "gitError", stderr)
+		logger.Error(err, "could not git merge", "gitError", stderr)
 		return err
 	}
-	logger.V(4).Info("Pulled branch", "branch", environmentNextBranch)
-
-	_, stderr, err = g.runCmd(ctx, gitPath, "commit", "--amend", "-m", "This is a no-op commit merging from "+environmentNextBranch+" into "+environmentBranch+"\n\nNo-Op: true\n")
-	if err != nil {
-		logger.Error(err, "could not git commit amend", "gitError", stderr)
-		return fmt.Errorf("could not git commit amend: %w", err)
-	}
+	logger.V(4).Info("Merged branch", "branch", environmentNextBranch)
 
 	start = time.Now()
 	_, stderr, err = g.runCmd(ctx, gitPath, "push", "--progress", "origin", environmentBranch)
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPush, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
-		logger.Error(err, "could not git pull", "gitError", stderr)
+		logger.Error(err, "could not git push", "gitError", stderr)
 		return err
 	}
 	logger.Info("Pushed branch", "branch", environmentBranch)
