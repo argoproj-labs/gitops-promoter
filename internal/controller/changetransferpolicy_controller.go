@@ -758,7 +758,6 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	commitTrailers[constants.TrailerPullRequestTargetBranch] = pr.Spec.TargetBranch
 	commitTrailers[constants.TrailerPullRequestCreationTime] = pr.Status.PRCreationTime.Format(time.RFC3339)
 	commitTrailers[constants.TrailerPullRequestUrl] = pr.Status.Url
-	pr.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 	for _, status := range ctp.Status.Active.CommitStatuses {
 		commitTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Phase", status.Key)] = status.Phase
@@ -772,7 +771,6 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	commitTrailers[constants.TrailerShaHydratedProposed] = ctp.Status.Proposed.Hydrated.Sha
 	commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
 	commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
-	commitMessage := fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 	// Pull Request already exists, update it.
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -787,7 +785,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prUpdated.Spec.TargetBranch = ctp.Spec.ActiveBranch
 		prUpdated.Spec.SourceBranch = ctp.Spec.ProposedBranch
 		prUpdated.Spec.Description = description
-		prUpdated.Spec.Commit.Message = commitMessage
+		prUpdated.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 		logger.V(4).Info("Updating pull request", "pullRequestName", prUpdated.Namespace+"/"+prUpdated.Name, "pullRequestSpec", prUpdated.Spec, "pullRequestStatus", prUpdated.Status)
 		return r.Update(ctx, &prUpdated)
 	})
