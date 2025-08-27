@@ -164,104 +164,142 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 }
 
 // calculateHistory this function calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
+// calculateHistory calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
 func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
 	logger := log.FromContext(ctx)
 
-	history := make([]promoterv1alpha1.History, 0)
 	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ActiveBranch, "5")
 	if err != nil {
 		return fmt.Errorf("failed to get rev-list commit history for branch %q: %w", ctp.Spec.ActiveBranch, err)
 	}
 	logger.V(4).Info("Rev-list history for active branch", "shaList", shaListActive)
 
+	history := make([]promoterv1alpha1.History, 0, len(shaListActive))
 	for _, sha := range shaListActive {
-		h := promoterv1alpha1.History{
-			Proposed:    promoterv1alpha1.CommitBranchStateHistoryProposed{},
-			Active:      promoterv1alpha1.CommitBranchState{},
-			PullRequest: &promoterv1alpha1.PullRequestCommonStatus{},
-		}
-
-		activeTrailers, err := gitOperations.GetTrailers(ctx, sha)
+		historyEntry, shouldInclude, err := r.buildHistoryEntry(ctx, sha, gitOperations)
 		if err != nil {
-			// Best effort at getting the trailers if we cannot, we just don't generate history this sha
-			logger.Error(err, "failed to get trailers for active SHA", "sha", sha)
+			logger.Error(err, "failed to build history entry", "sha", sha)
 			continue
 		}
 
-		// If it is a no-op commit we don't do anything this should move to the hydrator in the future
-		if activeTrailers[constants.TrailerNoOp] == "true" {
-			continue
+		if shouldInclude {
+			history = append(history, historyEntry)
 		}
-
-		if activeHydrated, err := gitOperations.GetShaMetadataFromGit(ctx, sha); err != nil {
-			logger.Error(err, "failed to get hydrated commit metadata for proposed SHA", "activeSha", sha)
-		} else {
-			h.Active.Hydrated = activeHydrated
-			h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
-		}
-		if activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha); err != nil {
-			logger.Error(err, "failed to get dry commit metadata for proposed SHA", "activeSha", sha)
-		} else {
-			h.Active.Dry = activeDry
-		}
-
-		proposedHydratedSha := activeTrailers[constants.TrailerShaHydratedProposed]
-		if proposedHydratedSha == "" {
-			logger.V(4).Info("No Sha-Hydrated-Proposed trailer found for active SHA", "activeSha", sha)
-		} else {
-			if meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha); err != nil {
-				logger.Error(err, "failed to get hydrated commit metadata for proposed SHA", "proposedSha", proposedHydratedSha)
-			} else {
-				h.Proposed.Hydrated = meta
-			}
-		}
-
-		if pullRequestID, ok := activeTrailers[constants.TrailerPullRequestID]; ok && pullRequestID != "" {
-			h.PullRequest.ID = pullRequestID
-		} else {
-			logger.V(4).Info("No PullRequest-ID found in trailers for active SHA", "sha", sha)
-		}
-
-		if pullRequestUrl, ok := activeTrailers[constants.TrailerPullRequestUrl]; ok && pullRequestUrl != "" {
-			h.PullRequest.Url = pullRequestUrl
-		} else {
-			logger.V(4).Info("No PullRequest-Url found in trailers for active SHA", "sha", sha)
-		}
-
-		if timeStr, ok := activeTrailers[constants.TrailerPullRequestCreationTime]; ok && timeStr != "" {
-			creationTime, err := time.Parse(time.RFC3339, timeStr)
-			if err != nil {
-				logger.Error(err, "failed to parse PullRequest-CreationTime", "time", timeStr)
-			} else {
-				h.PullRequest.PRCreationTime = metav1.NewTime(creationTime)
-			}
-		} else {
-			logger.V(4).Info("No PullRequest-CreationTime found in trailers for active SHA", "sha", sha)
-		}
-
-		activeKeys, proposedKeys := getCommitStatusKeysFromTrailers(ctx, activeTrailers)
-
-		for _, key := range activeKeys {
-			h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-				Key:   key,
-				Phase: activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Phase", key)],
-				Url:   activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Url", key)],
-			})
-		}
-
-		for _, key := range proposedKeys {
-			h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-				Key:   key,
-				Phase: activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Phase", key)],
-				Url:   activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Url", key)],
-			})
-		}
-
-		history = append(history, h)
 	}
 
 	ctp.Status.History = history
 	return nil
+}
+
+// buildHistoryEntry creates a single history entry for the given SHA
+func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, sha string, gitOperations *git.EnvironmentOperations) (promoterv1alpha1.History, bool, error) {
+	activeTrailers, err := gitOperations.GetTrailers(ctx, sha)
+	if err != nil {
+		return promoterv1alpha1.History{}, false, fmt.Errorf("failed to get trailers for SHA %q: %w", sha, err)
+	}
+
+	// Skip no-op commits
+	if activeTrailers[constants.TrailerNoOp] == "true" {
+		return promoterv1alpha1.History{}, false, nil
+	}
+
+	historyEntry := promoterv1alpha1.History{
+		Proposed:    promoterv1alpha1.CommitBranchStateHistoryProposed{},
+		Active:      promoterv1alpha1.CommitBranchState{},
+		PullRequest: &promoterv1alpha1.PullRequestCommonStatus{},
+	}
+
+	r.populateActiveMetadata(ctx, &historyEntry, sha, gitOperations)
+	r.populateProposedMetadata(ctx, &historyEntry, activeTrailers, gitOperations)
+	r.populatePullRequestMetadata(ctx, &historyEntry, activeTrailers)
+	r.populateCommitStatuses(ctx, &historyEntry, activeTrailers)
+
+	return historyEntry, true, nil
+}
+
+// populateActiveMetadata populates the active metadata for a history entry
+func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Context, h *promoterv1alpha1.History, sha string, gitOperations *git.EnvironmentOperations) {
+	logger := log.FromContext(ctx)
+
+	if activeHydrated, err := gitOperations.GetShaMetadataFromGit(ctx, sha); err != nil {
+		logger.Error(err, "failed to get hydrated commit metadata for active SHA", "activeSha", sha)
+	} else {
+		h.Active.Hydrated = activeHydrated
+		h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
+	}
+
+	if activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha); err != nil {
+		logger.Error(err, "failed to get dry commit metadata for active SHA", "activeSha", sha)
+	} else {
+		h.Active.Dry = activeDry
+	}
+}
+
+// populateProposedMetadata populates the proposed metadata for a history entry
+func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string, gitOperations *git.EnvironmentOperations) {
+	logger := log.FromContext(ctx)
+
+	proposedHydratedSha := activeTrailers[constants.TrailerShaHydratedProposed]
+	if proposedHydratedSha == "" {
+		logger.V(4).Info("No Sha-Hydrated-Proposed trailer found")
+		return
+	}
+
+	if meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha); err != nil {
+		logger.Error(err, "failed to get hydrated commit metadata for proposed SHA", "proposedSha", proposedHydratedSha)
+	} else {
+		h.Proposed.Hydrated = meta
+	}
+}
+
+// populatePullRequestMetadata populates the pull request metadata for a history entry
+func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string) {
+	logger := log.FromContext(ctx)
+
+	if pullRequestID := activeTrailers[constants.TrailerPullRequestID]; pullRequestID != "" {
+		h.PullRequest.ID = pullRequestID
+	} else {
+		logger.V(4).Info("No PullRequest-ID found in trailers")
+	}
+
+	if pullRequestUrl := activeTrailers[constants.TrailerPullRequestUrl]; pullRequestUrl != "" {
+		h.PullRequest.Url = pullRequestUrl
+	} else {
+		logger.V(4).Info("No PullRequest-Url found in trailers")
+	}
+
+	if timeStr := activeTrailers[constants.TrailerPullRequestCreationTime]; timeStr != "" {
+		if creationTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
+			logger.Error(err, "failed to parse PullRequest-CreationTime", "time", timeStr)
+		} else {
+			h.PullRequest.PRCreationTime = metav1.NewTime(creationTime)
+		}
+	} else {
+		logger.V(4).Info("No PullRequest-CreationTime found in trailers")
+	}
+}
+
+// populateCommitStatuses populates the commit statuses for a history entry
+func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string) {
+	activeKeys, proposedKeys := getCommitStatusKeysFromTrailers(ctx, activeTrailers)
+
+	h.Active.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(activeKeys))
+	for _, key := range activeKeys {
+		h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+			Key:   key,
+			Phase: activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Phase", key)],
+			Url:   activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusActivePrefix+"%s-Url", key)],
+		})
+	}
+
+	h.Proposed.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(proposedKeys))
+	for _, key := range proposedKeys {
+		h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+			Key:   key,
+			Phase: activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Phase", key)],
+			Url:   activeTrailers[fmt.Sprintf(constants.TrailerCommitStatusProposedPrefix+"%s-Url", key)],
+		})
+	}
 }
 
 // getCommitStatusKeysFromTrailers extracts the commit status keys from the trailers in the given context.
