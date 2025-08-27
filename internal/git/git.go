@@ -571,7 +571,7 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 }
 
 // GetRevListFirstParent retrieves the first parent commit SHAs for the given branch using git rev-list.
-func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount string) ([]string, error) {
+func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount int32) ([]string, error) {
 	logger := log.FromContext(ctx)
 
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -580,9 +580,7 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 	}
 
 	args := []string{"rev-list", "--first-parent"}
-	if maxCount != "" {
-		args = append(args, "--max-count="+maxCount)
-	}
+	args = append(args, "--max-count="+string(maxCount))
 	args = append(args, branch)
 
 	stdout, stderr, err := g.runCmd(ctx, gitPath, args...)
@@ -635,11 +633,9 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	trailers := make(map[string]string, len(lines))
 	for _, line := range lines {
 		if strings.Contains(line, ":") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				key := strings.TrimSpace(parts[0])
-				value := strings.TrimSpace(parts[1])
-				trailers[key] = value
+			key, value, found := strings.Cut(line, ":")
+			if found {
+				trailers[strings.TrimSpace(key)] = strings.TrimSpace(value)
 			} else {
 				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
 			}
