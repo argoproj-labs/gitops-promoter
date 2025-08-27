@@ -311,7 +311,7 @@ func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string]st
 	// -what-am-i-doing. This would return a bad key because it would contain -what-am-i.
 	extractKeys := func(prefix string) []string {
 		keys := []string{}
-		for key, _ := range trailers {
+		for key := range trailers {
 			if !strings.HasPrefix(key, prefix) {
 				continue
 			}
