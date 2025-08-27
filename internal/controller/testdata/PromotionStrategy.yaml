@@ -73,7 +73,7 @@ status:
         proposed:
         # same as top level proposed but without dry field because in the context of history proposed.dry becomes active when promoted.
         pullRequest:
-          # The pullRequest field contains information about the pull request that was created that was merged to create this history item.
+          # The pullRequest field contains information about the pull request that was merged to create this history item.
           id: '848'
           prCreationTime: '2025-08-04T19:50:15Z'
           url: https://github.com/org/repo/pull/848
