@@ -208,8 +208,14 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 		PullRequest: &promoterv1alpha1.PullRequestCommonStatus{},
 	}
 
-	r.populateActiveMetadata(ctx, &historyEntry, sha, gitOperations)
-	r.populateProposedMetadata(ctx, &historyEntry, activeTrailers, gitOperations)
+	err = r.populateActiveMetadata(ctx, &historyEntry, sha, gitOperations)
+	if err != nil {
+		return promoterv1alpha1.History{}, false, fmt.Errorf("failed to populate active metadata for SHA %q: %w", sha, err)
+	}
+	err = r.populateProposedMetadata(ctx, &historyEntry, activeTrailers, gitOperations)
+	if err != nil {
+		return promoterv1alpha1.History{}, false, fmt.Errorf("failed to populate proposed metadata for SHA %q: %w", sha, err)
+	}
 	r.populatePullRequestMetadata(ctx, &historyEntry, activeTrailers)
 	r.populateCommitStatuses(ctx, &historyEntry, activeTrailers)
 
@@ -217,38 +223,39 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 }
 
 // populateActiveMetadata populates the active metadata for a history entry
-func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Context, h *promoterv1alpha1.History, sha string, gitOperations *git.EnvironmentOperations) {
-	logger := log.FromContext(ctx)
-
-	if activeHydrated, err := gitOperations.GetShaMetadataFromGit(ctx, sha); err != nil {
-		logger.Error(err, "failed to get hydrated commit metadata for active SHA", "activeSha", sha)
-	} else {
-		h.Active.Hydrated = activeHydrated
-		h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
+func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Context, h *promoterv1alpha1.History, sha string, gitOperations *git.EnvironmentOperations) error {
+	activeHydrated, err := gitOperations.GetShaMetadataFromGit(ctx, sha)
+	if err != nil {
+		return fmt.Errorf("failed to get active hydrated commit metadata from git: %w", err)
 	}
+	h.Active.Hydrated = activeHydrated
+	h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
 
-	if activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha); err != nil {
-		logger.Error(err, "failed to get dry commit metadata for active SHA", "activeSha", sha)
-	} else {
-		h.Active.Dry = activeDry
+	activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha)
+	if err != nil {
+		return fmt.Errorf("failed to get active dry commit metadata from file: %w", err)
 	}
+	h.Active.Dry = activeDry
+	return nil
 }
 
 // populateProposedMetadata populates the proposed metadata for a history entry
-func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string, gitOperations *git.EnvironmentOperations) {
+func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string, gitOperations *git.EnvironmentOperations) error {
 	logger := log.FromContext(ctx)
 
 	proposedHydratedSha := activeTrailers[constants.TrailerShaHydratedProposed]
 	if proposedHydratedSha == "" {
 		logger.V(4).Info("No Sha-Hydrated-Proposed trailer found")
-		return
+		return nil
 	}
 
-	if meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha); err != nil {
-		logger.Error(err, "failed to get hydrated commit metadata for proposed SHA", "proposedSha", proposedHydratedSha)
-	} else {
-		h.Proposed.Hydrated = meta
+	meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha)
+	if err != nil {
+		return fmt.Errorf("failed to get proposed hydrated commit metadata from git: %w", err)
 	}
+	h.Proposed.Hydrated = meta
+
+	return nil
 }
 
 // populatePullRequestMetadata populates the pull request metadata for a history entry
