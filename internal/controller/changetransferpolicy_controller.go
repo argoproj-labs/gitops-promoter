@@ -230,7 +230,7 @@ func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Cont
 
 	activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha)
 	if err != nil {
-		logger.Error(err, "failed to get active historic metadata from file", "sha", sha)
+		logger.Info("failed to get active historic metadata from file", "sha", sha)
 	}
 	h.Active.Dry = activeDry
 }
@@ -241,12 +241,13 @@ func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Co
 
 	proposedHydratedSha := activeTrailers[constants.TrailerShaHydratedProposed]
 	if proposedHydratedSha == "" {
-		logger.Info("No + " + constants.TrailerShaHydratedProposed + " trailer found")
+		logger.Info("No " + constants.TrailerShaHydratedProposed + " trailer found")
+		return
 	}
 
 	meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha)
 	if err != nil {
-		logger.Error(err, "failed to get proposed historic metadata from git", "sha", proposedHydratedSha)
+		logger.Info("failed to get proposed historic metadata from git", "sha", proposedHydratedSha)
 	}
 	h.Proposed.Hydrated = meta
 }
@@ -374,11 +375,7 @@ func removeKnownTrailers(input string) string {
 
 	result := strings.Join(filtered, "\n")
 	result = strings.TrimSpace(result)
-
-	if result == "" {
-		return ""
-	}
-	return result + "\n"
+	return result
 }
 
 // SetupWithManager sets up the controller with the Manager.

@@ -229,8 +229,6 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 
 // GetShaMetadataFromGit retrieves commit metadata by running git commands for a given SHA.
 func (g *EnvironmentOperations) GetShaMetadataFromGit(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
-	// logger := log.FromContext(ctx)
-
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
 	if gitPath == "" {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
