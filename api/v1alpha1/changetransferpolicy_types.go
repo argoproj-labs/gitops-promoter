@@ -158,7 +158,8 @@ type History struct {
 type CommitBranchStateHistoryProposed struct {
 	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
-	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
+	// CommitStatuses is a list of commit statuses that were being monitored for this branch.
+	// This contains the state frozen at the moment the PR was merged.
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 
