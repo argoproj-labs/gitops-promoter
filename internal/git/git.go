@@ -369,14 +369,6 @@ func (g *EnvironmentOperations) PromoteEnvironmentWithMerge(ctx context.Context,
 	}
 	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
 
-	// Don't think this is needed
-	// _, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "pull", "--progress")
-	// if err != nil {
-	// 	logger.Error(err, "could not git pull", "gitError", stderr)
-	// 	return err
-	// }
-	// logger.V(4).Info("Pulled branch", "branch", environmentBranch)
-
 	start = time.Now()
 	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+environmentNextBranch, "-m", "This is a no-op commit merging from "+environmentNextBranch+" into "+environmentBranch+"\n\n"+constants.TrailerNoOp+": true\n")
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
