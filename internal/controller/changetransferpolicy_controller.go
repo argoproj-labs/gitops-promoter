@@ -289,7 +289,7 @@ func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Cont
 
 	h.Active.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(activeKeys))
 	for _, key := range activeKeys {
-		url := activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-url"]
+		url := activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-url"]
 		if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			log.FromContext(ctx).Error(errors.New("invalid URL"), "active commit status URL does not start with http:// or https://", "url", url, "key", key)
 			url = ""
