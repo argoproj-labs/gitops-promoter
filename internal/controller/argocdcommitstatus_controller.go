@@ -29,7 +29,6 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/tools/record"
 
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
@@ -57,6 +56,7 @@ import (
 
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -461,7 +461,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 				if err != nil {
 					logger.Error(err, "failed to parse label selector")
 				}
-				if err == nil && selector.Matches(fields.Set(application.GetLabels())) {
+				if err == nil && selector.Matches(labels.Set(application.GetLabels())) {
 					logger.Info("ArgoCD application caused ArgoCDCommitStatus to reconcile",
 						"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName(),
 						"argocdcommitstatus", argoCDCommitStatus.Namespace+"/"+argoCDCommitStatus.Name)
