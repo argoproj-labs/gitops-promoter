@@ -143,7 +143,7 @@ type ChangeTransferPolicyStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
-// History defines the history of promoted changes done by the ChangeTransferPolicy.
+// History describes a particular change that was promoted by the ChangeTransferPolicy.
 type History struct {
 	// Proposed is the state of the proposed branch.
 	Proposed CommitBranchStateHistoryProposed `json:"proposed,omitempty"`
