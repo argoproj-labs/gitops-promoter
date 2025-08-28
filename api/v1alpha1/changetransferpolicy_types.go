@@ -147,7 +147,7 @@ type ChangeTransferPolicyStatus struct {
 type History struct {
 	// Proposed is the state of the proposed branch at the time the PR was merged.
 	Proposed CommitBranchStateHistoryProposed `json:"proposed,omitempty"`
-	// Active is the state of the active branch.
+	// Active is the state of the active branch at the time the PR was merged.
 	Active CommitBranchState `json:"active,omitempty"`
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
