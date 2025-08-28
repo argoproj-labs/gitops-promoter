@@ -135,10 +135,8 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to merge pull requests: %w", err)
 	}
 
-	err = r.calculateHistory(ctx, &ctp, gitOperations)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to calculate history: %w", err)
-	}
+	// calculateHistory is done at a best effort so we do not return any errors here, we just log them instead.
+	r.calculateHistory(ctx, &ctp, gitOperations)
 
 	err = r.Status().Update(ctx, &ctp)
 	if err != nil {
@@ -166,12 +164,13 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 // calculateHistory calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
 // This function is best effort and will log errors but continue processing if it encounters issues with individual commits. This is because history is stored in git
 // in order to get out of a bad state requires re-writing git history or pushing a bunch of no-op commits greater than the max history limit.
-func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
+func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) {
 	logger := log.FromContext(ctx)
 
 	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ActiveBranch, 5)
 	if err != nil {
-		return fmt.Errorf("failed to get rev-list commit history for branch %q: %w", ctp.Spec.ActiveBranch, err)
+		logger.Error(err, "failed to get rev-list commit history for active branch", "branch", ctp.Spec.ActiveBranch)
+		return
 	}
 	logger.V(4).Info("Rev-list history for active branch", "shaList", shaListActive)
 
@@ -189,7 +188,6 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 	}
 
 	ctp.Status.History = history
-	return nil
 }
 
 // buildHistoryEntry creates a single history entry for the given SHA
