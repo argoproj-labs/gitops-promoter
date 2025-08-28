@@ -332,7 +332,7 @@ func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string]st
 			}
 			csKey := strings.Join(parts[:len(parts)-1], "-")
 			// Append if it does not exist in keys
-			if slices.Index(keys, csKey) == -1 {
+			if !slices.Contains(keys, csKey) {
 				keys = append(keys, csKey)
 			}
 		}
