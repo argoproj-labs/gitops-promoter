@@ -89,6 +89,7 @@ archives:
   - id: extension
     name_template: "{{ .ProjectName }}-argocd-extension"
     format: tar.gz
+    meta: true
     files:
       - ui/extension/dist/extension-promoter.js
 
