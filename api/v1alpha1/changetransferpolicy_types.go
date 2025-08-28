@@ -128,7 +128,11 @@ type ChangeTransferPolicyStatus struct {
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
 
-	// History defines the history of promoted changes done by the ChangeTransferPolicy.
+	// History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
+	// it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
+	// The history length is hard-coded to be at most 5 entries. This may change in the future.
+	// History is constructed on a best-effort basis and should be used for informational purposes only.
+	// History is in reverse chronological order (newest is first).
 	History []History `json:"history,omitempty"`
 
 	// Conditions Represents the observations of the current state.
