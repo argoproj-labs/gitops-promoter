@@ -428,11 +428,12 @@ spec:
                       description: History defines the history of promoted changes
                         done by the PromotionStrategy for each environment.
                       items:
-                        description: History defines the history of promoted changes
-                          done by the ChangeTransferPolicy.
+                        description: History describes a particular change that was
+                          promoted by the ChangeTransferPolicy.
                         properties:
                           active:
-                            description: Active is the state of the active branch.
+                            description: Active is the state of the active branch
+                              at the time the PR was merged.
                             properties:
                               commitStatuses:
                                 description: CommitStatuses is a list of commit statuses
@@ -615,11 +616,13 @@ spec:
                                 type: object
                             type: object
                           proposed:
-                            description: Proposed is the state of the proposed branch.
+                            description: Proposed is the state of the proposed branch
+                              at the time the PR was merged.
                             properties:
                               commitStatuses:
-                                description: CommitStatuses is a list of commit statuses
-                                  that are being monitored for this branch.
+                                description: |-
+                                  CommitStatuses is a list of commit statuses that were being monitored for this branch.
+                                  This contains the state frozen at the moment the PR was merged.
                                 items:
                                   description: ChangeRequestPolicyCommitStatusPhase
                                     defines the phase of a commit status in a ChangeTransferPolicy.

@@ -51,6 +51,8 @@ spec:
                   the pull request.
                 properties:
                   message:
+                    description: Message is the commit message that will be written
+                      for the commit that's made when merging the PR.
                     type: string
                 required:
                 - message

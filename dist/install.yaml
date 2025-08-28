@@ -606,14 +606,19 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               history:
-                description: History defines the history of promoted changes done
-                  by the ChangeTransferPolicy.
+                description: |-
+                  History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
+                  it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
+                  The history length is hard-coded to be at most 5 entries. This may change in the future.
+                  History is constructed on a best-effort basis and should be used for informational purposes only.
+                  History is in reverse chronological order (newest is first).
                 items:
-                  description: History defines the history of promoted changes done
+                  description: History describes a particular change that was promoted
                     by the ChangeTransferPolicy.
                   properties:
                     active:
-                      description: Active is the state of the active branch.
+                      description: Active is the state of the active branch at the
+                        time the PR was merged.
                       properties:
                         commitStatuses:
                           description: CommitStatuses is a list of commit statuses
@@ -782,11 +787,13 @@ spec:
                           type: object
                       type: object
                     proposed:
-                      description: Proposed is the state of the proposed branch.
+                      description: Proposed is the state of the proposed branch at
+                        the time the PR was merged.
                       properties:
                         commitStatuses:
-                          description: CommitStatuses is a list of commit statuses
-                            that are being monitored for this branch.
+                          description: |-
+                            CommitStatuses is a list of commit statuses that were being monitored for this branch.
+                            This contains the state frozen at the moment the PR was merged.
                           items:
                             description: ChangeRequestPolicyCommitStatusPhase defines
                               the phase of a commit status in a ChangeTransferPolicy.
@@ -2060,11 +2067,12 @@ spec:
                       description: History defines the history of promoted changes
                         done by the PromotionStrategy for each environment.
                       items:
-                        description: History defines the history of promoted changes
-                          done by the ChangeTransferPolicy.
+                        description: History describes a particular change that was
+                          promoted by the ChangeTransferPolicy.
                         properties:
                           active:
-                            description: Active is the state of the active branch.
+                            description: Active is the state of the active branch
+                              at the time the PR was merged.
                             properties:
                               commitStatuses:
                                 description: CommitStatuses is a list of commit statuses
@@ -2247,11 +2255,13 @@ spec:
                                 type: object
                             type: object
                           proposed:
-                            description: Proposed is the state of the proposed branch.
+                            description: Proposed is the state of the proposed branch
+                              at the time the PR was merged.
                             properties:
                               commitStatuses:
-                                description: CommitStatuses is a list of commit statuses
-                                  that are being monitored for this branch.
+                                description: |-
+                                  CommitStatuses is a list of commit statuses that were being monitored for this branch.
+                                  This contains the state frozen at the moment the PR was merged.
                                 items:
                                   description: ChangeRequestPolicyCommitStatusPhase
                                     defines the phase of a commit status in a ChangeTransferPolicy.
@@ -2664,6 +2674,8 @@ spec:
                   the pull request.
                 properties:
                   message:
+                    description: Message is the commit message that will be written
+                      for the commit that's made when merging the PR.
                     type: string
                 required:
                 - message
