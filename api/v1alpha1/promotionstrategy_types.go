@@ -145,7 +145,7 @@ type EnvironmentStatus struct {
 	LastHealthyDryShas []HealthyDryShas `json:"lastHealthyDryShas"`
 
 	// History defines the history of promoted changes done by the PromotionStrategy for each environment.
-	// You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were 
+	// You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were
 	// manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future.
 	// History is constructed on a best-effort basis and should be used for informational purposes only.
 	// History is in reverse chronological order (newest is first).
