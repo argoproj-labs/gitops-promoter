@@ -1,6 +1,5 @@
 @use '../../styles/colors' as *;
 
-// Layout breakpoints and dimensions
 $breakpoint-horizontal: 1500px;
 $card-max-width: 1000px;
 $card-min-width-horizontal: 700px;
@@ -9,12 +8,10 @@ $card-gap-vertical: 100px;
 $card-gap-horizontal: 10px;
 $card-padding: 24px;
 
-// Extension-specific overrides
 $extension-card-width: 400px;
 $extension-card-gap: 30px;
 $extension-wrapper-gap: 20px;
 
-// Mixin for vertical layout (normal view)
 @mixin vertical-layout {
   .env-cards-container {
     display: flex;
@@ -49,7 +46,6 @@ $extension-wrapper-gap: 20px;
     display: flex;
     flex-direction: column;
     
-    // When proposed cards disappear, make the card shorter
     &.single-commit-group {
       min-height: 250px;
       height: auto;
@@ -60,7 +56,7 @@ $extension-wrapper-gap: 20px;
   .env-card.single-commit-group {
     min-height: 300px;
     height: auto;
-    max-height: 350px;
+    max-height: 400px;
   }
   
   .commit-group.proposed {
@@ -68,7 +64,6 @@ $extension-wrapper-gap: 20px;
   }
 }
 
-// Mixin for horizontal layout styles
 @mixin horizontal-layout {
   .env-cards-container {
     flex-direction: column;
@@ -88,7 +83,7 @@ $extension-wrapper-gap: 20px;
   }
   
   .env-card-column {
-    width: 100%;
+    width: 90%;
     max-width: 100%;
     margin-bottom: $card-gap-horizontal;
   }
@@ -103,8 +98,6 @@ $extension-wrapper-gap: 20px;
     box-sizing: border-box;
     min-height: auto;
     
-    // When proposed cards disappear, center the active content and shorten
-    &:has(.commit-group:only-child),
     &.single-commit-group {
       grid-template-columns: 1fr;
       max-width: 70%; 
@@ -115,12 +108,7 @@ $extension-wrapper-gap: 20px;
     }
   }
   
-  // Force height override for single-commit-group in horizontal layout
-  .env-card.single-commit-group {
-    min-height: 300px;
-    height: auto;
-    max-height: 350px;
-  }
+
   
   .env-card__title {
     grid-column: 1 / -1;
@@ -143,7 +131,7 @@ $extension-wrapper-gap: 20px;
     margin-right: -$card-padding;
     margin-bottom: -$card-padding;
     padding: 12px;
-    padding-top: 60px;
+    padding-top: 65px;
     border-radius: 8px 0 0 8px;
     border-left: 3px solid $argo-running;
     border-top: 0;
@@ -152,106 +140,4 @@ $extension-wrapper-gap: 20px;
   }
 }
 
-// Mixin for extension-specific overrides
-@mixin extension-overrides {
-  .env-cards-container {
-    gap: $extension-card-gap;
-  }
-  
-  .env-cards-wrapper {
-    gap: $extension-wrapper-gap;
-  }
-  
-  .env-card-column {
-    max-width: $extension-card-width;
-    width: $extension-card-width;
-  }
-  
-  .env-card {
-    width: $extension-card-width;
-  }
-
-  .commit-info {
-    padding: 40px 0;
-  }
-
-  .commit-group-header {
-    margin-top: 10px;
-    margin-bottom: 5px;
-  }
-  
-  // Extension-specific horizontal layout overrides
-  @media (max-width: $breakpoint-horizontal) {
-    .env-cards-wrapper {
-      flex-direction: column;
-      align-items: center;
-      padding: 0 5px;
-      max-width: 100vw;
-      max-width: $card-max-width;
-      box-sizing: border-box;
-      gap: $card-gap-horizontal;
-      
-      .env-card-column {
-        width: 100%;
-        max-width: 100%;
-        margin-bottom: $card-gap-horizontal;
-      }
-      
-      .env-card {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        grid-template-rows: auto 1fr;
-        width: 100%;
-        max-width: 100%;
-        min-width: $card-min-width-horizontal;
-        box-sizing: border-box;
-        min-height: auto;
-        
-        &:has(.commit-group:only-child),
-        &.single-commit-group {
-          grid-template-columns: 1fr;
-          max-width: 70%;
-          margin: 0 auto;
-          min-width: $card-min-width-single;
-          min-height: 250px;
-          height: auto;
-        }
-      }
-      
-      .env-card.single-commit-group {
-        min-height: 300px;
-        height: auto;
-        max-height: 350px;
-      }
-      
-      .env-card__title {
-        grid-column: 1 / -1;
-        grid-row: 1;
-        margin-bottom: 20px;
-      }
-      
-      .commit-group:not(.proposed) {
-        grid-column: 1;
-        grid-row: 2;
-        min-width: 0;
-        padding-right: 16px;
-      }
-      
-      .commit-group.proposed {
-        grid-column: 2;
-        grid-row: 1 / -1;
-        margin: 0;
-        margin-top: -$card-padding;
-        margin-right: -$card-padding;
-        margin-bottom: -$card-padding;
-        padding: 12px;
-        padding-top: 60px;
-        border-radius: 8px 0 0 8px;
-        border-left: 3px solid $argo-running;
-        border-top: 0;
-        background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
-        min-width: 0;
-      }
-    }
-  }
-} 
+ 

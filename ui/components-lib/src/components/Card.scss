@@ -1,10 +1,8 @@
 @use '../styles/colors' as *;
 @use './Card/layouts';
 
-// Apply vertical layout by default
 @include layouts.vertical-layout;
 
-// Main card
 .env-card {
   background: white;
   padding: 24px;
@@ -18,21 +16,14 @@
   display: flex;
   flex-direction: column;
   
-  // When proposed cards disappear, make the card shorter
   &.single-commit-group {
     min-height: 250px;
     height: auto;
   }
 }
 
-// Force height override for single-commit-group - very specific rule
-.env-card.single-commit-group {
-  min-height: 300px;
-  height: auto;
-  max-height: 350px;
-}
 
-// Card title
+
 .env-card__title {
   display: flex;
   align-items: center;
@@ -48,341 +39,71 @@
   margin-right: 12px;
 }
 
-// Commit groups
-.commits-section {
-  position: relative;
-  margin-top: -10px;
-  margin-bottom: 10px;
-  padding-bottom: 16px;
-}
-
-.commit-group {
-  &.proposed {
-    border-top: 3px solid $argo-running;
-    margin: 10px -24px -24px -24px;
-    background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
-    border-radius: 8px;
-    padding: 24px 24px 0 24px;
-  }
-}
-
-.commit-group-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: -15px;
-}
-
-.commit-group-title {
-  font-size: 16px;
+.env-card__env-name {
+  font-weight: 600;
+  font-size: 18px;
   color: $argo-color-gray-7;
-  letter-spacing: 0.3px;
-  padding-left: 10px;
-  gap: 12px;
-  margin-left: -8px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
 }
 
-.pr-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: $argo-running;
-  background: rgba(13, 173, 234, 0.08);
-  padding: 4px 8px;
-  border-radius: 12px;
-  border: 1px solid rgba(13, 173, 234, 0.2);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-decoration: none;
-  
-  &:hover {
-    background: rgba(13, 173, 234, 0.15);
-    border-color: rgba(13, 173, 234, 0.4);
-    transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(13, 173, 234, 0.2);
-  }
-  
-  .pr-icon {
-    font-size: 14px;
-    color: $argo-running;
-  }
-}
-
-// Commit info
-.commit-info {
-  margin-bottom: 12px;
-  padding: 16px 0;
-  min-width: 180px;
-  height: 50px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  position: relative;
-  
-  .commit-sha {
-    font-size: 13px;
-  }
-  
-  .commit-subject {
-    font-size: 13px;
-  }
-  
-  .commit-meta {
-    font-size: 11px;
-  }
-}
-
-.commit-content {
-  margin-left: 50px;
-}
-
-.commit-icon-wrapper {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  width: 40px;
-}
-
-.commit-icon {
-  font-size: 35px;
-  color: $argo-color-gray-7;
-  flex-shrink: 0;
-  margin: 0;
-}
-
-.commit-code {
-  margin-left: 50px;
-  margin-top: -30px;
-  position: relative;
-  
-  &::before {
-    content: '';
-    position: absolute;
-    left: -30px;
-    top: 50%;
-    width: 25px;
-    height: 2px;
-    background-color: $argo-color-gray-7;
-  }
-  
-  &::after {
-    content: '';
-    position: absolute;
-    left: -30px;
-    top: 8px;
-    width: 2px;
-    height: 43%;
-    background-color: $argo-color-gray-7;
-  }
-}
-
-.commit-info.commit-code .commit-content .commit-header .commit-subject {
-  max-width: 350px;
-  width: 350px;
-  flex: 1.2;
-}
-
-.commit-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.commit-meta {
-  font-size: 12px;
-  color: $argo-color-gray-5;
-  min-height: 16px;
-}
-
-.commit-author {
-  font-weight: 500;
+.history-indicator {
+  font-size: 9px;
   color: $argo-color-gray-6;
-}
-
-.commit-date {
-  margin-left: 4px;
-  color: $argo-color-gray-6;
-}
-
-.commit-sha {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
-  font-size: 12px;
-  font-weight: 500;
-  color: $argo-color-gray-7;
-  background-color: #f5f5f5;
-  padding: 2px 6px;
-  border-radius: 3px;
-  border: 1px solid #e0e0e0;
-  letter-spacing: 0.5px;
-}
-
-.commit-sha-link {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
-  font-size: 12px;
-  font-weight: 500;
-  color: $argo-color-gray-7;
-  background-color: #f5f5f5;
-  padding: 2px 6px;
-  border-radius: 3px;
-  border: 1px solid #e0e0e0;
-  letter-spacing: 0.5px;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  
-  &:hover {
-    text-decoration: underline;
-    background-color: #e8f4fd;
-    border-color: #007bff;
-    color: #007bff;
-  }
-  
-  &:focus {
-    outline: 2px solid #007bff;
-    outline-offset: 1px;
-  }
-}
-
-.commit-subject {
-  font-family: 'Heebo', sans-serif;
-  font-size: 15px;
   font-weight: 400;
-  color: $argo-color-gray-7;
-  margin-left: 12px;
-  flex: 0.9;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 280px;
+  opacity: 0.8;
 }
 
-// Health summary
-.health-summary {
-  margin-top: -30px;
-  margin-bottom: 25px;
-}
 
-.single-commit-group .health-summary {
-  margin-top: -20px;
-}
-
-.health-header {
+.history-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  color: $argo-color-gray-5;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  cursor: pointer;
-  font-size: 13px;
-  font-family: 'Heebo', sans-serif;
-  color: $argo-color-gray-7;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
-  user-select: none;
-  position: relative;
-  z-index: 1;
+  justify-content: center;
+  font-size: 14px;
   
   &:hover {
-    color: $argo-color-gray-6;
-    background: rgba(108, 117, 125, 0.05);
-    border-color: rgba(108, 117, 125, 0.2);
+    color: $argo-color-gray-7;
+    background: rgba(108, 117, 125, 0.08);
   }
   
   &:active {
-    background: rgba(108, 117, 125, 0.1);
+    background: rgba(108, 117, 125, 0.15);
   }
   
-  svg {
-    width: 14px;
-    height: 14px;
+  &.active {
+    color: $argo-running;
+    background: rgba(13, 173, 234, 0.1);
+    
+    &:hover {
+      background: rgba(13, 173, 234, 0.15);
+    }
   }
 }
 
-.health-count {
-  font-weight: 500;
-  flex: 1;
-}
-
-.health-toggle {
-  font-size: 14px;
-  color: $argo-color-gray-6;
-  transition: transform 0.2s ease;
+.history-controls {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  
-  svg {
-    width: 16px;
-    height: 16px;
-  }
+  min-width: 32px;
+  min-height: 32px;
 }
 
-.health-details {
-  margin-top: 8px;
-  padding-left: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  border-left: 2px solid $argo-color-gray-4;
-  padding-left: 12px;
-}
 
-.health-check-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 0;
-  font-size: 12px;
-  font-family: 'Heebo', sans-serif;
-  
-  svg {
-    width: 12px;
-    height: 12px;
-  }
-}
 
-.health-check-name {
-  color: $argo-color-gray-7;
-  font-weight: 400;
-  flex: 1;
-}
-
-.health-check-link {
-  color: $argo-color-gray-6;
-  text-decoration: none;
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: rgba(108, 117, 125, 0.08);
-  transition: all 0.2s ease;
-  
-  &:hover {
-    background: rgba(108, 117, 125, 0.15);
-    text-decoration: underline;
-  }
-}
-
-// Media queries
 @media (max-width: 1600px) {
   @include layouts.horizontal-layout;
 }
 
-// Auto-switch to horizontal layout when more than 3 environments
 .env-cards-wrapper:has(.env-card-column:nth-child(n+4)) {
   @include layouts.horizontal-layout;
 }
 
-// Manual horizontal layout class (for when :has() doesn't work)
 .env-cards-wrapper.horizontal-layout {
   @include layouts.horizontal-layout;
 }

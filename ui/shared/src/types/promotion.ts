@@ -29,6 +29,19 @@ export interface PullRequest {
   url?: string;
 }
 
+export interface History {
+  active: {
+    dry?: Commit;
+    hydrated?: Commit;
+    commitStatuses?: CommitStatus[];
+  };
+  proposed: {
+    hydrated?: Commit;
+    commitStatuses?: CommitStatus[];
+  };
+  pullRequest?: PullRequest;
+}
+
 export interface Environment {
   branch: string;
   active: {
@@ -42,6 +55,7 @@ export interface Environment {
     commitStatuses?: CommitStatus[];
   };
   pullRequest?: PullRequest;
+  history?: History[];
 }
 
 export interface PromotionStrategy {
@@ -84,25 +98,27 @@ export interface Check {
 export interface EnrichedEnvDetails {
   // Environment info
   branch: string;
-  phase: string;
   promotionStatus: string;
   
   // Active commits
-  drySha: string;
-  dryCommitAuthor: string;
-  dryCommitSubject: string;
-  dryCommitMessage: string;
-  dryCommitDate: string;
-  dryCommitUrl: string;
+  activeSha: string;
+  activeCommitAuthor: string;
+  activeCommitSubject: string;
+  activeCommitMessage: string;
+  activeCommitDate: string;
+  activeCommitUrl: string;
   activeChecks: Check[];
   activeChecksSummary: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  activeStatus: 'success' | 'failure' | 'pending' | 'unknown';
+  activePrUrl: string | null;
+  activePrNumber: number | null;
   
-  referenceSha: string;
-  referenceCommitAuthor: string;
-  referenceCommitSubject: string;
-  referenceCommitDate: string;
-  referenceCommitUrl: string;
-  referenceCommitBody: string;
+  activeReferenceSha: string;
+  activeReferenceCommitAuthor: string;
+  activeReferenceCommitSubject: string;
+  activeReferenceCommitDate: string;
+  activeReferenceCommitUrl: string;
+  activeReferenceCommitBody: string;
   
   // Proposed commits
   proposedSha: string;
@@ -115,6 +131,7 @@ export interface EnrichedEnvDetails {
   proposedDryCommitUrl: string;
   proposedChecks: Check[];
   proposedChecksSummary: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  proposedStatus: 'success' | 'failure' | 'pending' | 'unknown';
 
   proposedReferenceSha: string;
   proposedReferenceCommitAuthor: string;

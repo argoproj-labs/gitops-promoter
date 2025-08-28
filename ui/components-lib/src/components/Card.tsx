@@ -1,40 +1,71 @@
-import { FaServer } from 'react-icons/fa';
+import { FaServer, FaHistory } from 'react-icons/fa';
 import { StatusType } from './StatusIcon';
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import CommitInfo from './CommitInfo';
+import HistoryNavigation from './HistoryNavigation';
+import { enrichFromEnvironments } from '@shared/utils/PSData';
+import type { Environment } from '@shared/types/promotion';
 import './Card.scss';
 
 export interface CardProps {
-  environments: any[];
+  environments: Environment[];
 }
 
 const Card: React.FC<CardProps> = ({ environments }) => {
-  // Add CSS class for horizontal layout when 4+ environments
   const isHorizontalLayout = environments.length >= 4;
+  
+  const [historyMode, setHistoryMode] = useState<{ [branch: string]: number }>({});
+  const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
+  
+  const selectHistoryEntry = (branch: string, index: number) => {
+    setHistoryMode(prev => ({ ...prev, [branch]: index }));
+  };
+  
+  
+  const getHistoryIndex = (branch: string) => {
+    return historyMode[branch] || 0;
+  };
+  
+
+  const isInHistoryMode = (branch: string) => {
+    return (historyMode[branch] || 0) > 0;
+  };
+  
+  // Get enriched environments with current history index
+  const enrichedEnvs = useMemo(() => {
+    return environments.map(env => {
+      const historyIndex = getHistoryIndex(env.branch);
+      return enrichFromEnvironments([env], historyIndex)[0];
+    });
+  }, [environments, historyMode]);
+  
   
   return (
     <div className="env-cards-container">
       <div className={`env-cards-wrapper ${isHorizontalLayout ? 'horizontal-layout' : ''}`}>
-        {environments.map((env: any, envIdx: number) => {
+        {enrichedEnvs.map((env: any) => {
           const branch = env.branch;
-          const phase = env.phase;
           const proposedStatus = env.promotionStatus;
+          const inHistoryMode = isInHistoryMode(branch);
+          const isNavigationVisible = hoveredIcon === branch;
+          const environment = environments.find(e => e.branch === branch);
+          const history = environment?.history || [];
 
-          // Active commits (currently deployed)
+          // Active/Proposed deployment and code commits
           const activeDeploymentCommit = {
-            sha: env.drySha,
-            author: env.dryCommitAuthor,
-            subject: env.dryCommitSubject,
-            body: env.dryCommitMessage,
-            date: env.dryCommitDate
+            sha: env.activeSha,
+            author: env.activeCommitAuthor,
+            subject: env.activeCommitSubject,
+            body: env.activeCommitMessage,
+            date: env.activeCommitDate
           };
 
           const activeCodeCommit = {
-            sha: env.referenceSha,
-            author: env.referenceCommitAuthor,
-            subject: env.referenceCommitSubject,
-            body: env.referenceCommitBody || '',
-            date: env.referenceCommitDate
+            sha: env.activeReferenceSha,
+            author: env.activeReferenceCommitAuthor,
+            subject: env.activeReferenceCommitSubject,
+            body: env.activeReferenceCommitBody || '',
+            date: env.activeReferenceCommitDate
           };
 
           const proposedDeploymentCommit = {
@@ -55,10 +86,36 @@ const Card: React.FC<CardProps> = ({ environments }) => {
 
           return (
             <div key={env.branch} className="env-card-column">
-              <div className={`env-card ${(proposedStatus === 'promoted' || proposedStatus === 'success') ? 'single-commit-group' : ''}`}>
-                <div className="env-card__title" style={{ display: 'flex', alignItems: 'center' }}>
-                  <FaServer className="env-card__icon" />
-                  <span className="env-card__env-name">{branch}</span>
+              <div className={`env-card ${!inHistoryMode && proposedStatus && ['pending', 'failure'].includes(proposedStatus) ? '' : 'single-commit-group'}`}>
+                <div className="env-card__title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <FaServer className="env-card__icon" />
+                    <span className="env-card__env-name">
+                      {branch}
+                      {inHistoryMode && <span className="history-indicator"> (History)</span>}
+                    </span>
+                  </div>
+                  
+                  <div 
+                    className="history-controls"
+                    onMouseLeave={() => setHoveredIcon(null)}
+                  >
+                    {isNavigationVisible && history.length > 0 ? (
+                      <HistoryNavigation
+                        history={history}
+                        currentIndex={getHistoryIndex(branch)}
+                        onHistorySelect={(index) => selectHistoryEntry(branch, index)}
+                      />
+                    ) : (
+                      <button 
+                        className={`history-toggle ${inHistoryMode ? 'active' : ''}`}
+                        onMouseEnter={() => setHoveredIcon(branch)}
+                        title={inHistoryMode ? 'View history' : 'View history'}
+                      >
+                        <FaHistory />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Active Commits Section */}
@@ -67,31 +124,29 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                   deploymentCommit={activeDeploymentCommit}
                   codeCommit={activeCodeCommit}
                   isActive={true}
-                  status={phase as StatusType}
-                  deploymentCommitUrl={env.dryCommitUrl}
-                  codeCommitUrl={env.referenceCommitUrl}
-                  activeChecks={env.activeChecks}
-                  proposedChecks={env.proposedChecks}
-                  activeChecksSummary={env.activeChecksSummary}
-                  proposedChecksSummary={env.proposedChecksSummary}
+                  status={env.activeStatus as StatusType}
+                  deploymentCommitUrl={env.activeCommitUrl}
+                  codeCommitUrl={env.activeReferenceCommitUrl}
+                  checks={env.activeChecks}
+                  healthSummary={env.activeChecksSummary}
+                  prUrl={env.activePrUrl}
+                  prNumber={env.activePrNumber?.toString()}
                 />
 
 
-                {/* Proposed Commits Section - Only show if not promoted/success */}
-                {proposedStatus !== 'promoted' && proposedStatus !== 'success' && (
+                {/* Proposed Commits Section - Only show in current view */}
+                {!inHistoryMode && proposedStatus !== 'promoted' && proposedStatus !== 'success' && (
                   <CommitInfo
                     title="Proposed"
                     deploymentCommit={proposedDeploymentCommit}
                     codeCommit={proposedCodeCommit}
                     isActive={false}
-                    status={proposedStatus as StatusType}
+                    status={env.proposedStatus as StatusType}
                     className="proposed"
                     deploymentCommitUrl={env.proposedDryCommitUrl}
                     codeCommitUrl={env.proposedReferenceCommitUrl}
-                    activeChecks={env.activeChecks}
-                    proposedChecks={env.proposedChecks}
-                    activeChecksSummary={env.activeChecksSummary}
-                    proposedChecksSummary={env.proposedChecksSummary}
+                    checks={env.proposedChecks}
+                    healthSummary={env.proposedChecksSummary}
                     prUrl={env.prUrl}
                     prNumber={env.prNumber?.toString()}
                   />
