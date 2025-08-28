@@ -38,7 +38,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
@@ -118,6 +117,8 @@ var _ = BeforeSuite(func() {
 		panic("could not make temp dir for repo server")
 	}
 	gitServerPort, gitServer = startGitServer(gitStoragePath)
+	logf.Log.Info("Git server started on port", "port", gitServerPort)
+	logf.Log.Info("Git storage path", "path", gitStoragePath)
 
 	By("bootstrapping test environments")
 	// Create a local test environment to test the single cluster functionality
@@ -358,7 +359,6 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 	sha, err := runGitCmd(gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
-	// "environment/development-next", "environment/staging-next", "environment/production-next"
 	for _, environment := range []string{"environment/development", "environment/staging", "environment/production"} {
 		_, err = runGitCmd(gitPath, "checkout", "--orphan", environment)
 		Expect(err).NotTo(HaveOccurred())
@@ -422,7 +422,7 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 
 	_, err = runGitCmd(gitPath, "add", "hydrator.metadata")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "commit", "-m", "init commit")
+	_, err = runGitCmd(gitPath, "commit", "-m", "init commit dry side n/a dry sha")
 	Expect(err).NotTo(HaveOccurred())
 
 	defaultBranch, err := runGitCmd(gitPath, "rev-parse", "--abbrev-ref", "HEAD")
@@ -441,16 +441,15 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 
 	_, err = runGitCmd(gitPath, "add", "hydrator.metadata")
 	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(gitPath, "commit", "-m", "second commit with dry sha")
+	_, err = runGitCmd(gitPath, "commit", "-m", "second commit with real dry sha")
 	Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(gitPath, "push")
 	Expect(err).NotTo(HaveOccurred())
 
-	// "environment/development-next", "environment/staging-next", "environment/production-next"
-	for _, environment := range []string{"environment/development", "environment/staging", "environment/production"} {
+	for _, environment := range []string{"environment/development-next", "environment/staging-next", "environment/production-next"} {
 		_, err = runGitCmd(gitPath, "checkout", "--orphan", environment)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "commit", "--allow-empty", "-m", "initial commit")
+		_, err = runGitCmd(gitPath, "commit", "--allow-empty", "-m", "initial empty commit for "+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
@@ -458,16 +457,16 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 		// Sleep one seconds to differentiate the commits to prevent same hash
 		time.Sleep(1 * time.Second)
 
-		_, err = runGitCmd(gitPath, "checkout", "-b", environment+"-next")
+		activeB, _ := strings.CutSuffix(environment, "-next")
+		_, err = runGitCmd(gitPath, "checkout", "-b", activeB)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "commit", "--allow-empty", "-m", "initial commit next")
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment+"-next")
+		_, err = runGitCmd(gitPath, "push", "-u", "origin", activeB)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Sleep one seconds to differentiate the commits to prevent same hash
 		time.Sleep(1 * time.Second)
 	}
+	GinkgoLogr.Info("Git repository initialized", "path", gitPath)
 }
 
 func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
@@ -552,7 +551,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 				},
 			},
 		}
-		m, err := json.Marshal(metadata)
+		m, err := json.MarshalIndent(metadata, "", "\t")
 		Expect(err).NotTo(HaveOccurred())
 
 		f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
@@ -575,6 +574,93 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 		Expect(err).NotTo(HaveOccurred())
 		if hydratedCommitMessage == "" {
 			_, err = runGitCmd(gitPath, "commit", "-m", "added pending commit from dry sha, "+sha+" from environment "+strings.TrimRight(environment, "-next"))
+		} else {
+			_, err = runGitCmd(gitPath, "commit", "-m", hydratedCommitMessage)
+		}
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "push", "-u", "origin", environment)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Sleep one seconds to differentiate the commits to prevent same hash
+		time.Sleep(1 * time.Second)
+	}
+
+	return sha, shortSha
+}
+
+func makeChangeAndHydrateRepoNoOp(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
+	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
+
+	for _, environment := range []string{"environment/development", "environment/staging", "environment/production", "environment/development-next", "environment/staging-next", "environment/production-next"} {
+		_, err := runGitCmd(gitPath, "checkout", "-B", environment, "origin/"+environment)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "pull")
+		Expect(err).NotTo(HaveOccurred())
+	}
+
+	defaultBranch, err := runGitCmd(gitPath, "rev-parse", "--abbrev-ref", "origin/HEAD")
+	Expect(err).NotTo(HaveOccurred())
+	defaultBranch, _ = strings.CutPrefix(strings.TrimSpace(defaultBranch), "origin/")
+
+	_, err = runGitCmd(gitPath, "checkout", defaultBranch)
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(gitPath, "pull")
+	Expect(err).NotTo(HaveOccurred())
+
+	// Make a no-op commit (empty commit)
+	if dryCommitMessage == "" {
+		dryCommitMessage = "no-op commit"
+	}
+	_, err = runGitCmd(gitPath, "commit", "--allow-empty", "-m", dryCommitMessage)
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(gitPath, "push", "-u", "origin", defaultBranch)
+	Expect(err).NotTo(HaveOccurred())
+
+	sha, err := runGitCmd(gitPath, "rev-parse", defaultBranch)
+	Expect(err).NotTo(HaveOccurred())
+	sha = strings.TrimSpace(sha)
+	shortSha, err := runGitCmd(gitPath, "rev-parse", "--short=7", defaultBranch)
+	Expect(err).NotTo(HaveOccurred())
+	shortSha = strings.TrimSpace(shortSha)
+
+	for _, environment := range []string{"environment/development-next", "environment/staging-next", "environment/production-next"} {
+		_, err = runGitCmd(gitPath, "checkout", "-B", environment, "origin/"+environment)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(gitPath, "pull")
+		Expect(err).NotTo(HaveOccurred())
+
+		var subject string
+		var body string
+		parts := strings.SplitN(dryCommitMessage, "\n\n", 2)
+		subject = parts[0]
+		if len(parts) > 1 {
+			body = parts[1]
+		}
+
+		metadata := git.HydratorMetadata{
+			RepoURL: repoURL,
+			DrySha:  sha,
+			Author:  "testuser <testmail@test.com>",
+			Date:    metav1.Now(),
+			Subject: subject,
+			Body:    body,
+		}
+		m, err := json.MarshalIndent(metadata, "", "\t")
+		Expect(err).NotTo(HaveOccurred())
+
+		f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
+		Expect(err).NotTo(HaveOccurred())
+		_, err = f.Write(m)
+		Expect(err).NotTo(HaveOccurred())
+		err = f.Close()
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(gitPath, "add", "hydrator.metadata")
+		Expect(err).NotTo(HaveOccurred())
+
+		if hydratedCommitMessage == "" {
+			_, err = runGitCmd(gitPath, "commit", "-m", "added no-op commit from dry sha, "+sha+" from environment "+strings.TrimRight(environment, "-next"))
 		} else {
 			_, err = runGitCmd(gitPath, "commit", "-m", hydratedCommitMessage)
 		}
@@ -629,17 +715,13 @@ func randomString(length int) string {
 
 func simulateWebhook(ctx context.Context, k8sClient client.Client, ctp *promoterv1alpha1.ChangeTransferPolicy) {
 	Eventually(func(g Gomega) {
-		err := k8sClient.Get(ctx, types.NamespacedName{
-			Name:      ctp.Name,
-			Namespace: ctp.Namespace,
-		}, ctp)
-		g.Expect(err).To(Succeed())
+		orig := ctp.DeepCopy()
 		if ctp.Annotations == nil {
-			ctp.Annotations = map[string]string{}
+			ctp.Annotations = make(map[string]string)
 		}
 		ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = metav1.Now().Format(time.RFC3339)
-		err = k8sClient.Update(ctx, ctp)
-		g.Expect(err).To(Succeed())
+		err := k8sClient.Patch(ctx, ctp, client.MergeFrom(orig))
+		Expect(err).To(Succeed())
 	}, constants.EventuallyTimeout).Should(Succeed())
 }
 

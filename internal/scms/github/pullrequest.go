@@ -150,7 +150,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // Merge merges an existing pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
 	prNumber, err := strconv.Atoi(pullRequest.Status.ID)
@@ -168,7 +168,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 		gitRepo.Spec.GitHub.Owner,
 		gitRepo.Spec.GitHub.Name,
 		prNumber,
-		commitMessage,
+		pullRequest.Spec.Commit.Message,
 		&github.PullRequestOptions{
 			MergeMethod:        "merge",
 			DontDefaultIfBlank: false,

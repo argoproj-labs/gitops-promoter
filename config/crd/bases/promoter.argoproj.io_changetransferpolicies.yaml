@@ -336,6 +336,314 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              history:
+                description: |-
+                  History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
+                  it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
+                  The history length is hard-coded to be at most 5 entries. This may change in the future.
+                  History is constructed on a best-effort basis and should be used for informational purposes only.
+                  History is in reverse chronological order (newest is first).
+                items:
+                  description: History describes a particular change that was promoted
+                    by the ChangeTransferPolicy.
+                  properties:
+                    active:
+                      description: Active is the state of the active branch at the
+                        time the PR was merged.
+                      properties:
+                        commitStatuses:
+                          description: CommitStatuses is a list of commit statuses
+                            that are being monitored for this branch.
+                          items:
+                            description: ChangeRequestPolicyCommitStatusPhase defines
+                              the phase of a commit status in a ChangeTransferPolicy.
+                            properties:
+                              key:
+                                description: Key staging hydrated branch
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
+                                type: string
+                              phase:
+                                description: Phase what phase is the status in
+                                enum:
+                                - pending
+                                - success
+                                - failure
+                                type: string
+                              url:
+                                description: Url is the URL of the commit status
+                                type: string
+                            required:
+                            - key
+                            - phase
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - key
+                          x-kubernetes-list-type: map
+                        dry:
+                          description: Dry is the dry state of the branch, which is
+                            the commit that is being proposed.
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
+                              type: string
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        type: string
+                                      sha:
+                                        description: Sha is the commit hash.
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              type: string
+                            sha:
+                              description: Sha is the SHA of the commit in the branch
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
+                              type: string
+                          type: object
+                        hydrated:
+                          description: Hydrated is the hydrated state of the branch,
+                            which is the commit that is currently being worked on.
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
+                              type: string
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        type: string
+                                      sha:
+                                        description: Sha is the commit hash.
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              type: string
+                            sha:
+                              description: Sha is the SHA of the commit in the branch
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
+                              type: string
+                          type: object
+                      type: object
+                    proposed:
+                      description: Proposed is the state of the proposed branch at
+                        the time the PR was merged.
+                      properties:
+                        commitStatuses:
+                          description: |-
+                            CommitStatuses is a list of commit statuses that were being monitored for this branch.
+                            This contains the state frozen at the moment the PR was merged.
+                          items:
+                            description: ChangeRequestPolicyCommitStatusPhase defines
+                              the phase of a commit status in a ChangeTransferPolicy.
+                            properties:
+                              key:
+                                description: Key staging hydrated branch
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
+                                type: string
+                              phase:
+                                description: Phase what phase is the status in
+                                enum:
+                                - pending
+                                - success
+                                - failure
+                                type: string
+                              url:
+                                description: Url is the URL of the commit status
+                                type: string
+                            required:
+                            - key
+                            - phase
+                            type: object
+                          type: array
+                        hydrated:
+                          description: Hydrated is the hydrated state of the branch,
+                            which is the commit that is currently being worked on.
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
+                              type: string
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        type: string
+                                      sha:
+                                        description: Sha is the commit hash.
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              type: string
+                            sha:
+                              description: Sha is the SHA of the commit in the branch
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
+                              type: string
+                          type: object
+                      type: object
+                    pullRequest:
+                      description: PullRequest is the state of the pull request that
+                        was created for this ChangeTransferPolicy.
+                      properties:
+                        id:
+                          description: ID is the unique identifier of the pull request,
+                            set by the SCM.
+                          type: string
+                        prCreationTime:
+                          description: PRCreationTime is the time when the pull request
+                            was created.
+                          format: date-time
+                          type: string
+                        state:
+                          description: State is the state of the pull request.
+                          enum:
+                          - closed
+                          - merged
+                          - open
+                          type: string
+                        url:
+                          description: Url is the URL of the pull request.
+                          type: string
+                      type: object
+                  type: object
+                type: array
               proposed:
                 description: Proposed is the state of the proposed branch.
                 properties:

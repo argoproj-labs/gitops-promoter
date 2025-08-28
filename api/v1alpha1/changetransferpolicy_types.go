@@ -125,9 +125,15 @@ type ChangeTransferPolicyStatus struct {
 	Proposed CommitBranchState `json:"proposed,omitempty"`
 	// Active is the state of the active branch.
 	Active CommitBranchState `json:"active,omitempty"`
-
 	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
 	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
+
+	// History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
+	// it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
+	// The history length is hard-coded to be at most 5 entries. This may change in the future.
+	// History is constructed on a best-effort basis and should be used for informational purposes only.
+	// History is in reverse chronological order (newest is first).
+	History []History `json:"history,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
@@ -135,6 +141,26 @@ type ChangeTransferPolicyStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// History describes a particular change that was promoted by the ChangeTransferPolicy.
+type History struct {
+	// Proposed is the state of the proposed branch at the time the PR was merged.
+	Proposed CommitBranchStateHistoryProposed `json:"proposed,omitempty"`
+	// Active is the state of the active branch at the time the PR was merged.
+	Active CommitBranchState `json:"active,omitempty"`
+	// PullRequest is the state of the pull request that was created for this ChangeTransferPolicy.
+	PullRequest *PullRequestCommonStatus `json:"pullRequest,omitempty"`
+}
+
+// CommitBranchStateHistoryProposed is identical to CommitBranchState minus the Dry state. In the context of History, the Dry state is not relevant as
+// the proposed dry side at merge becomes the Active.
+type CommitBranchStateHistoryProposed struct {
+	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
+	Hydrated CommitShaState `json:"hydrated,omitempty"`
+	// CommitStatuses is a list of commit statuses that were being monitored for this branch.
+	// This contains the state frozen at the moment the PR was merged.
+	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 
 // PullRequestCommonStatus defines the common status fields for a pull request.

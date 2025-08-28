@@ -107,13 +107,15 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	ctpFound = true
 
+	orig := ctp.DeepCopy()
+
 	if ctp.Annotations == nil {
 		ctp.Annotations = make(map[string]string)
 	}
 	ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339)
 
 	startUpdate := time.Now()
-	err = wr.k8sClient.Update(r.Context(), ctp)
+	err = wr.k8sClient.Patch(r.Context(), ctp, client.MergeFrom(orig))
 	updateDuration = time.Since(startUpdate)
 	if err != nil {
 		logger.Error(err, fmt.Sprintf("failed to update ChangeTransferPolicy annotations '%s/%s' from webhook", ctp.Namespace, ctp.Name))
