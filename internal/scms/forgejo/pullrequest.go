@@ -150,7 +150,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj promoterv1alpha1.PullReq
 }
 
 // Merge merges a pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj promoterv1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
 	prID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
@@ -173,7 +173,7 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj pr
 
 	options := forgejo.MergePullRequestOption{
 		Style:   forgejo.MergeStyleMerge, // TODO: make the merge style configurable
-		Message: commitMessage,
+		Message: prObj.Spec.Commit.Message,
 	}
 
 	start := time.Now()

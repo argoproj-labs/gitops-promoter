@@ -1,5 +1,5 @@
 import React from 'react';
-import { enrichPromotionStrategy, PromotionStrategy } from '../shared/src/utils/PSData';
+import { PromotionStrategy } from '../shared/src/utils/PSData';
 import Card from '../components-lib/src/components/Card';
 import './index.scss';
 
@@ -15,11 +15,14 @@ interface ExtensionProps {
 }
 
 const ResourceExtension: React.FC<ExtensionProps> = ({ resource }) => {
-  const enrichedEnvs = enrichPromotionStrategy(resource);
+
+
+  //Pass raw data to Card component
+  const environments = resource.status?.environments || [];
 
   return (
     <div className="extension-container">
-      <Card environments={enrichedEnvs} />
+      <Card environments={environments} />
     </div>
   );
 };

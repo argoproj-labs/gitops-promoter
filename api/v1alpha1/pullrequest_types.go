@@ -44,11 +44,19 @@ type PullRequestSpec struct {
 	SourceBranch string `json:"sourceBranch"`
 	// Description is the description body of the pull/merge request
 	Description string `json:"description,omitempty"`
+	// Commit contains configuration for how we will merge/squash/etc the pull request.
+	Commit CommitConfiguration `json:"commit,omitempty"`
 	// State of the merge request closed/merged/open
 	// +kubebuilder:default:=open
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=closed;merged;open
 	State PullRequestState `json:"state"`
+}
+
+// CommitConfiguration defines the commit configuration for how we will merge/squash/etc the pull request.
+type CommitConfiguration struct {
+	// Message is the commit message that will be written for the commit that's made when merging the PR.
+	Message string `json:"message"`
 }
 
 // PullRequestStatus defines the observed state of PullRequest

@@ -1,0 +1,93 @@
+@use '../styles/colors' as *;
+
+.history-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: white;
+  border: 1px solid $argo-color-gray-4;
+  border-radius: 4px;
+  padding: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 10;
+  min-width: 24px;
+  align-items: center;
+}
+
+.history-item {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+  position: relative;
+  
+  &:hover {
+    transform: scale(1.2);
+    
+    &::after {
+      content: attr(title);
+      position: absolute;
+      right: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 10px;
+      white-space: nowrap;
+      z-index: 20;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      pointer-events: none;
+    }
+    
+    &::before {
+      content: '';
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: 4px solid transparent;
+      border-left-color: rgba(0, 0, 0, 0.9);
+      z-index: 20;
+      pointer-events: none;
+    }
+  }
+  
+  &.active .history-item-inner {
+    background: white;
+    border: 2px solid $argo-running;
+    box-shadow: 0 0 8px rgba(13, 173, 234, 0.4);
+  }
+}
+
+.history-item-inner {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: $argo-color-gray-4;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  
+  &.success { background: $argo-success; }
+  &.failure { background: $argo-failed; }
+  &.pending { background: $argo-running; }
+  &.unknown { background: $argo-color-gray-4; }
+}
+
+.history-position {
+  font-size: 9px;
+  color: $argo-color-gray-5;
+  margin-top: 2px;
+  text-align: center;
+}

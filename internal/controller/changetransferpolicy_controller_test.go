@@ -177,8 +177,8 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
 				g.Expect(err).To(Succeed())
 
-				sha, err := runGitCmd(gitPath, "rev-parse", changeTransferPolicy.Spec.ActiveBranch)
-				Expect(err).NotTo(HaveOccurred())
+				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
+				g.Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
 				commitStatus.Spec.Sha = sha

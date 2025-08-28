@@ -2,9 +2,10 @@ import { GoArchive } from "react-icons/go";
 import { BsBraces } from 'react-icons/bs';
 import { GoGitPullRequest } from 'react-icons/go';
 import { StatusIcon, StatusType } from './StatusIcon';
-import React from 'react';
+import React, { useState } from 'react';
 import TimeAgo from './TimeAgo';
 import HealthSummary from './HealthSummary';
+import './CommitInfo.scss';
 
 export interface CommitInfoProps {
   title?: string;
@@ -15,10 +16,8 @@ export interface CommitInfoProps {
   className?: string;
   deploymentCommitUrl?: string;
   codeCommitUrl?: string;
-  activeChecks?: any[];
-  proposedChecks?: any[];
-  activeChecksSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
-  proposedChecksSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  checks?: any[];
+  healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
   prUrl?: string;
   prNumber?: string;
 }
@@ -33,12 +32,10 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
   className = '', 
   deploymentCommitUrl, 
   codeCommitUrl, 
-  activeChecks, 
-  proposedChecks, 
-  activeChecksSummary,
-  proposedChecksSummary,
+  checks,
+  healthSummary,
   prUrl, 
-  prNumber 
+  prNumber
 }) => {
   const getIcon = (iconType: 'file' | 'code') => {
     if (iconType === 'code') return <BsBraces className="commit-icon" />;
@@ -68,32 +65,34 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     return <span className="commit-sha">{sha}</span>;
   };
 
-  // Create full commit message for tooltip
-  const getFullCommitMessage = (commit: any) => {
+  // Create tooltip on subject and body
+  const getTooltipContent = (commit: any) => {
     const subject = commit.subject || '';
     const body = commit.body || '';
     
-    // If we have both subject and body, show them separately
     if (subject && body) {
-      return `${subject}\n\n${body}`;
+      return (
+        <div className="github-tooltip">
+          <div className="tooltip-subject">{subject}</div>
+          <div className="tooltip-body">{body}</div>
+        </div>
+      );
     }
     
-    // If we only have body, show just the body
     if (body) {
-      return body;
+      return <div className="github-tooltip">{body}</div>;
     }
     
-    // If we only have subject, show just the subject
     if (subject) {
-      return subject;
+      return <div className="github-tooltip">{subject}</div>;
     }
     
-    // Fallback
-    return 'N/A';
+    return '';
   };
 
   const renderCommit = (commit: any, type: 'deployment' | 'code', commitUrl?: string) => {
     const iconType = type === 'deployment' ? 'file' : 'code';
+    const [showTooltip, setShowTooltip] = useState(false);
     
     if (commit && (commit.sha || commit.subject || commit.author)) {
       return (
@@ -103,9 +102,15 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               {renderSha(commit, commitUrl)}
               <span 
                 className="commit-subject" 
-                title={getFullCommitMessage(commit)}
+                onMouseEnter={() => setShowTooltip(true)}
+                onMouseLeave={() => setShowTooltip(false)}
               >
                 {commit.subject || 'N/A'}
+                {showTooltip && (
+                  <div className="tooltip-container">
+                    {getTooltipContent(commit)}
+                  </div>
+                )}
               </span>
             </div>
             <div className="commit-meta">
@@ -142,7 +147,6 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     }
   };
 
-  // If no title, render just the commits without group structure
   if (!title) {
     return (
       <div className="commits-section">
@@ -164,8 +168,8 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               href={prUrl} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="pr-indicator"
-              title={`View PR #${prNumber}`}
+              className={`pr-indicator ${isActive ? 'pr-merged' : ''}`}
+              title={`View PR #${prNumber}${isActive ? ' (Merged)' : ''}`}
             >
               <GoGitPullRequest className="pr-icon" />
               PR #{prNumber}
@@ -178,21 +182,13 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         {renderCommit(codeCommit, 'code', codeCommitUrl)}
       </div>
       
-      {/* Display checks */}
-      {title === "Active" && activeChecksSummary?.shouldDisplay && activeChecks && (
+      {/* Display checks for this section */}
+      {healthSummary?.shouldDisplay && checks && (
         <HealthSummary 
-          checks={activeChecks} 
-          title="Active Checks" 
+          checks={checks} 
+          title={`${title || 'Section'} Checks`} 
           status={status} 
-          healthSummary={activeChecksSummary}
-        />
-      )}
-      {title === "Proposed" && proposedChecksSummary?.shouldDisplay && proposedChecks && (
-        <HealthSummary 
-          checks={proposedChecks} 
-          title="Proposed Checks" 
-          status={status} 
-          healthSummary={proposedChecksSummary}
+          healthSummary={healthSummary}
         />
       )}
     </div>

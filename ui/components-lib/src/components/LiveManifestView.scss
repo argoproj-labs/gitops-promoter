@@ -1,0 +1,85 @@
+@import '../styles/_colors.scss';
+
+.strategy-json-editor {
+  margin: 20px;
+  height: 100%;
+  background: white;
+  border-radius: 8px;
+  display: flex;
+  overflow: auto;
+}
+
+.strategy-json-editor-content {
+  display: flex;
+  flex: 1;
+  padding: 20px;
+  min-width: 0;
+}
+
+.line-numbers {
+  color: #237893;
+  border-right: 1px solid #e0e0e0;
+  padding-right: 10px;
+  text-align: right;
+  min-width: 50px;
+  font-family: Menlo, Monaco, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  flex-shrink: 0;
+}
+
+.line-number {
+  height: 18px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.collapse-icon {
+  cursor: pointer;
+  font-size: 20px;
+  margin-left: 4px;
+  color: $argo-color-gray-6;
+  opacity: 0;
+}
+
+.line-numbers:hover .collapse-icon {
+  opacity: 1;
+}
+
+.yaml-content {
+  flex: 1;
+  padding-left: 10px;
+  font-family: Menlo, Monaco, monospace;
+  font-size: 12px;
+  line-height: 18px;
+  overflow-x: auto;
+  white-space: pre;
+  min-width: 0;
+}
+
+.yaml-line {
+  height: 18px;
+}
+
+.yaml-indent {
+  color: #666;
+}
+
+.yaml-key {
+  color: #008080;
+}
+
+.yaml-value {
+  color: #0451a5;
+}
+
+.strategy-json-editor-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  font-size: 16px;
+  color: #333;
+} 

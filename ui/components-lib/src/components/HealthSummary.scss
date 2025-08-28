@@ -1,0 +1,102 @@
+@use '../styles/colors' as *;
+
+.health-summary {
+  margin-top: -30px;
+  margin-bottom: 25px;
+}
+
+.single-commit-group .health-summary {
+  margin-top: -20px;
+}
+
+.health-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'Heebo', sans-serif;
+  color: $argo-color-gray-7;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  user-select: none;
+  
+  &:hover {
+    color: $argo-color-gray-6;
+    background: rgba(108, 117, 125, 0.05);
+    border-color: rgba(108, 117, 125, 0.2);
+  }
+  
+  &:active {
+    background: rgba(108, 117, 125, 0.1);
+  }
+  
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.health-count {
+  flex: 1;
+}
+
+.health-toggle {
+  font-size: 14px;
+  color: $argo-color-gray-6;
+  transition: transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.health-details {
+  margin-top: 8px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 2px solid $argo-color-gray-4;
+  padding-left: 12px;
+}
+
+.health-check-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 12px;
+  font-family: 'Heebo', sans-serif;
+  
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+.health-check-name {
+  color: $argo-color-gray-7;
+  flex: 1;
+}
+
+.health-check-link {
+  color: $argo-color-gray-6;
+  text-decoration: none;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(108, 117, 125, 0.08);
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: rgba(108, 117, 125, 0.15);
+    text-decoration: underline;
+  }
+}

@@ -91,3 +91,6 @@ arrive.
 "Hydration" could be any transformation you can imagine. For Kubernetes manifests, it could be the output of 
 `helm template` or `kustomize build`. For JavaScript, it could be the output of a minifier. For JPG images, it could be
 the output of a compression tool. Or it could just be a simple copy of the source file(s).
+
+The [Argo CD Source Hydrator](https://argo-cd.readthedocs.io/en/stable/user-guide/source-hydrator/) feature implements 
+this contract.

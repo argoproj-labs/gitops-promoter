@@ -24,6 +24,9 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	if commitStatus.Spec.Sha == "" {
 		return nil, errors.New("sha is required")
 	}
+	if commitStatus.Spec.Phase == "" {
+		return nil, errors.New("phase is required")
+	}
 	commitStatus.Status.Phase = commitStatus.Spec.Phase
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
 	return commitStatus, nil

@@ -176,7 +176,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 }
 
 // Merge merges an existing pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
 	mrIID, err := strconv.Atoi(prObj.Status.ID)
@@ -198,8 +198,8 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, prObj v1
 		Squash:                   gitlab.Ptr(false),
 	}
 	// Gitlab throws a 422 if you send it an empty commit message. So leave it as nil unless we have a message.
-	if commitMessage != "" {
-		options.MergeCommitMessage = gitlab.Ptr(commitMessage)
+	if prObj.Spec.Commit.Message != "" {
+		options.MergeCommitMessage = gitlab.Ptr(prObj.Spec.Commit.Message)
 	}
 
 	start := time.Now()

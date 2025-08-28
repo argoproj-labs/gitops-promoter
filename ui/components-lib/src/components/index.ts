@@ -1,9 +1,12 @@
 // Main components
 export { default as Card } from './Card';
 export { default as CommitInfo } from './CommitInfo';
-export { StatusIcon, statusLabel } from './StatusIcon';
-
-// Utility components
+export { default as HeaderBar } from './HeaderBar';
+export { default as HealthSummary } from './HealthSummary';
+export { default as HistoryNavigation } from './HistoryNavigation';
+export { LiveManifestView } from './LiveManifestView';
+export { default as Modal } from './Modal';
+export { StatusIcon } from './StatusIcon';
 export { default as TimeAgo } from './TimeAgo';
 
 // Types

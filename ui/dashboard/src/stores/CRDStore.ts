@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { enrichPromotionStrategy } from '@shared/utils/PSData';
+import { enrichFromCRD } from '@shared/utils/PSData';
 import type { PromotionStrategy } from '@shared/utils/PSData';
 
 interface CRDItem extends PromotionStrategy {
@@ -56,7 +56,7 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
             eventSource.addEventListener(eventName, async (evt: MessageEvent) => {
                 try {
                     const updated = JSON.parse(evt.data);
-                    const enriched = await enrichPromotionStrategy(updated);
+                    const enriched = enrichFromCRD(updated);
                     set((state) => {
                         const idx = state.items.findIndex(
                             (item: T) =>

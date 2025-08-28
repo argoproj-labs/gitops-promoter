@@ -21,6 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -133,6 +135,9 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to merge pull requests: %w", err)
 	}
 
+	// calculateHistory is done at a best effort so we do not return any errors here, we just log them instead.
+	r.calculateHistory(ctx, &ctp, gitOperations)
+
 	err = r.Status().Update(ctx, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
@@ -153,6 +158,236 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	return ctrl.Result{
 		RequeueAfter: requeueDuration,
 	}, nil
+}
+
+// calculateHistory this function calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
+// calculateHistory calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
+// This function is best effort and will log errors but continue processing if it encounters issues with individual commits. This is because history is stored in git
+// in order to get out of a bad state requires re-writing git history or pushing a bunch of no-op commits greater than the max history limit.
+func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) {
+	logger := log.FromContext(ctx)
+
+	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ActiveBranch, 5)
+	if err != nil {
+		logger.Error(err, "failed to get rev-list commit history for active branch", "branch", ctp.Spec.ActiveBranch)
+		return
+	}
+	logger.V(4).Info("Rev-list history for active branch", "shaList", shaListActive)
+
+	history := make([]promoterv1alpha1.History, 0, len(shaListActive))
+	for _, sha := range shaListActive {
+		historyEntry, shouldInclude, err := r.buildHistoryEntry(ctx, sha, gitOperations)
+		if err != nil {
+			logger.Error(err, "failed to build history entry", "sha", sha)
+			continue
+		}
+
+		if shouldInclude {
+			history = append(history, historyEntry)
+		}
+	}
+
+	ctp.Status.History = history
+}
+
+// buildHistoryEntry creates a single history entry for the given SHA
+func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, sha string, gitOperations *git.EnvironmentOperations) (promoterv1alpha1.History, bool, error) {
+	activeTrailers, err := gitOperations.GetTrailers(ctx, sha)
+	if err != nil {
+		return promoterv1alpha1.History{}, false, fmt.Errorf("failed to get trailers for SHA %q: %w", sha, err)
+	}
+
+	// Skip no-op commits
+	if activeTrailers[constants.TrailerNoOp] == "true" {
+		return promoterv1alpha1.History{}, false, nil
+	}
+
+	historyEntry := promoterv1alpha1.History{
+		Proposed:    promoterv1alpha1.CommitBranchStateHistoryProposed{},
+		Active:      promoterv1alpha1.CommitBranchState{},
+		PullRequest: &promoterv1alpha1.PullRequestCommonStatus{},
+	}
+
+	r.populateActiveMetadata(ctx, &historyEntry, sha, gitOperations)
+	r.populateProposedMetadata(ctx, &historyEntry, activeTrailers, gitOperations)
+	r.populatePullRequestMetadata(ctx, &historyEntry, activeTrailers)
+	r.populateCommitStatuses(ctx, &historyEntry, activeTrailers)
+
+	return historyEntry, true, nil
+}
+
+// populateActiveMetadata populates the active metadata for a history entry
+func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Context, h *promoterv1alpha1.History, sha string, gitOperations *git.EnvironmentOperations) {
+	logger := log.FromContext(ctx)
+	activeHydrated, err := gitOperations.GetShaMetadataFromGit(ctx, sha)
+	if err != nil {
+		logger.V(4).Info("failed to get active historic metadata from git", "sha", sha, "error", err)
+	}
+	h.Active.Hydrated = activeHydrated
+	h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
+
+	activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha)
+	if err != nil {
+		logger.V(4).Info("failed to get active historic metadata from file", "sha", sha, "error", err)
+	}
+	h.Active.Dry = activeDry
+}
+
+// populateProposedMetadata populates the proposed metadata for a history entry
+func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string, gitOperations *git.EnvironmentOperations) {
+	logger := log.FromContext(ctx)
+
+	proposedHydratedSha := activeTrailers[constants.TrailerShaHydratedProposed]
+	if proposedHydratedSha == "" {
+		logger.V(4).Info("No " + constants.TrailerShaHydratedProposed + " trailer found")
+		return
+	}
+
+	meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha)
+	if err != nil {
+		logger.V(4).Info("failed to get proposed historic metadata from git", "sha", proposedHydratedSha, "error", err)
+	}
+	h.Proposed.Hydrated = meta
+}
+
+// populatePullRequestMetadata populates the pull request metadata for a history entry
+func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string) {
+	logger := log.FromContext(ctx)
+
+	if pullRequestID := activeTrailers[constants.TrailerPullRequestID]; pullRequestID != "" {
+		h.PullRequest.ID = pullRequestID
+	} else {
+		logger.V(4).Info("No " + constants.TrailerPullRequestID + " found in trailers")
+	}
+
+	if pullRequestUrl := activeTrailers[constants.TrailerPullRequestUrl]; pullRequestUrl != "" {
+		if !strings.HasPrefix(pullRequestUrl, "http://") && !strings.HasPrefix(pullRequestUrl, "https://") {
+			logger.Error(errors.New("invalid URL"), "pull request URL does not start with http:// or https://", "url", pullRequestUrl)
+		} else {
+			h.PullRequest.Url = pullRequestUrl
+		}
+	} else {
+		logger.V(4).Info("No " + constants.TrailerPullRequestUrl + " found in trailers")
+	}
+
+	if timeStr := activeTrailers[constants.TrailerPullRequestCreationTime]; timeStr != "" {
+		if creationTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
+			logger.Error(err, "failed to parse "+constants.TrailerPullRequestCreationTime, "time", timeStr)
+		} else {
+			h.PullRequest.PRCreationTime = metav1.NewTime(creationTime)
+		}
+	} else {
+		logger.V(4).Info("No " + constants.TrailerPullRequestCreationTime + " found in trailers")
+	}
+}
+
+// populateCommitStatuses populates the commit statuses for a history entry
+func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string) {
+	activeKeys, proposedKeys := getCommitStatusKeysFromTrailers(ctx, activeTrailers)
+
+	h.Active.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(activeKeys))
+	for _, key := range activeKeys {
+		url := activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-url"]
+		if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			log.FromContext(ctx).Error(errors.New("invalid URL"), "active commit status URL does not start with http:// or https://", "url", url, "key", key)
+			url = ""
+		}
+		h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+			Key:   key,
+			Phase: activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-phase"],
+			Url:   url,
+		})
+	}
+
+	h.Proposed.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(proposedKeys))
+	for _, key := range proposedKeys {
+		url := activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-url"]
+		if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			log.FromContext(ctx).Error(errors.New("invalid URL"), "proposed commit status URL does not start with http:// or https://", "url", url, "key", key)
+			url = ""
+		}
+		h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+			Key:   key,
+			Phase: activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-phase"],
+			Url:   url,
+		})
+	}
+}
+
+// getCommitStatusKeysFromTrailers extracts the commit status keys from the trailers in the given context.
+func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string]string) (activeKeys []string, proposedKeys []string) {
+	logger := log.FromContext(ctx)
+
+	// This function extracts commit status keys from trailers with the given prefix.
+	// It looks for keys that start with the prefix, trims the prefix, splits by "-", and joins all but the last part to form the commit status key.
+	// This is under the assumption that the last part is always "-phase" or "-url" today and that it does not go over multiple "-" aka the ending can not be
+	// -what-am-i-doing. This would return a bad key because it would contain -what-am-i.
+	extractKeys := func(prefix string) []string {
+		keys := []string{}
+		for key := range trailers {
+			if !strings.HasPrefix(key, prefix) {
+				continue
+			}
+			key = strings.TrimPrefix(key, prefix)
+			if key == "" {
+				logger.V(4).Info("Skipping empty trailer key", "key", key)
+				continue
+			}
+			parts := strings.Split(key, "-")
+			if len(parts) < 2 {
+				logger.V(4).Info("Skipping trailer with unexpected format", "key", key)
+				continue
+			}
+			csKey := strings.Join(parts[:len(parts)-1], "-")
+			// Append if it does not exist in keys
+			if !slices.Contains(keys, csKey) {
+				keys = append(keys, csKey)
+			}
+		}
+		return keys
+	}
+
+	activeKeys = extractKeys(constants.TrailerCommitStatusActivePrefix)
+	proposedKeys = extractKeys(constants.TrailerCommitStatusProposedPrefix)
+
+	return activeKeys, proposedKeys
+}
+
+func removeKnownTrailers(input string) string {
+	toRemove := []string{
+		constants.TrailerPullRequestID,
+		constants.TrailerPullRequestSourceBranch,
+		constants.TrailerPullRequestTargetBranch,
+		constants.TrailerPullRequestCreationTime,
+		constants.TrailerPullRequestUrl,
+		constants.TrailerCommitStatusActivePrefix,
+		constants.TrailerCommitStatusProposedPrefix,
+		constants.TrailerShaHydratedActive,
+		constants.TrailerShaHydratedProposed,
+		constants.TrailerShaDryActive,
+		constants.TrailerShaDryProposed,
+		constants.TrailerNoOp,
+	}
+
+	lines := strings.Split(input, "\n")
+	filtered := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		shouldKeep := true
+		for _, rm := range toRemove {
+			if strings.HasPrefix(line, rm) {
+				shouldKeep = false
+				break
+			}
+		}
+		if shouldKeep {
+			filtered = append(filtered, line)
+		}
+	}
+
+	result := strings.Join(filtered, "\n")
+	result = strings.TrimSpace(result)
+	return result
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -295,7 +530,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 		return fmt.Errorf("failed to get commit active metadata for hydrated SHA %q: %w", activeHydratedSha, err)
 	}
 	ctp.Status.Active.Hydrated = activeCommitMetadata
-
+	ctp.Status.Active.Hydrated.Body = removeKnownTrailers(ctp.Status.Active.Hydrated.Body)
 	proposedCommitMetadata, err = gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha)
 	if err != nil {
 		return fmt.Errorf("failed to get commit proposed metadata for hydrated SHA %q: %w", proposedHydratedSha, err)
@@ -511,6 +746,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 				TargetBranch:        ctp.Spec.ActiveBranch,
 				SourceBranch:        ctp.Spec.ProposedBranch,
 				Description:         description,
+				Commit:              promoterv1alpha1.CommitConfiguration{Message: fmt.Sprintf("%s\n\n%s", title, description)},
 				State:               "open",
 			},
 		}
@@ -519,9 +755,29 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			return fmt.Errorf("failed to create PR from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 		}
 		r.Recorder.Event(ctp, "Normal", constants.PullRequestCreatedReason, fmt.Sprintf(constants.PullRequestCreatedMessage, pr.Name))
-		logger.V(4).Info("Created pull request")
+		logger.V(4).Info("Created pull request", "pullRequest", pr)
 		return nil
 	}
+
+	commitTrailers := trailers{}
+	commitTrailers[constants.TrailerPullRequestID] = pr.Status.ID
+	commitTrailers[constants.TrailerPullRequestSourceBranch] = pr.Spec.SourceBranch
+	commitTrailers[constants.TrailerPullRequestTargetBranch] = pr.Spec.TargetBranch
+	commitTrailers[constants.TrailerPullRequestCreationTime] = pr.Status.PRCreationTime.Format(time.RFC3339)
+	commitTrailers[constants.TrailerPullRequestUrl] = pr.Status.Url
+
+	for _, status := range ctp.Status.Active.CommitStatuses {
+		commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-phase"] = status.Phase
+		commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-url"] = status.Url
+	}
+	for _, status := range ctp.Status.Proposed.CommitStatuses {
+		commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-phase"] = status.Phase
+		commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-url"] = status.Url
+	}
+	commitTrailers[constants.TrailerShaHydratedActive] = ctp.Status.Active.Hydrated.Sha
+	commitTrailers[constants.TrailerShaHydratedProposed] = ctp.Status.Proposed.Hydrated.Sha
+	commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
+	commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
 
 	// Pull Request already exists, update it.
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -536,13 +792,14 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prUpdated.Spec.TargetBranch = ctp.Spec.ActiveBranch
 		prUpdated.Spec.SourceBranch = ctp.Spec.ProposedBranch
 		prUpdated.Spec.Description = description
+		prUpdated.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
+		logger.V(4).Info("Updating pull request", "pullRequestName", prUpdated.Namespace+"/"+prUpdated.Name, "pullRequestSpec", prUpdated.Spec, "pullRequestStatus", prUpdated.Status)
 		return r.Update(ctx, &prUpdated)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to update PR %q: %w", pr.Name, err)
 	}
-	// r.Recorder.Event(ctp, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
-	logger.V(4).Info("Updated pull request resource")
+
 	return nil
 }
 

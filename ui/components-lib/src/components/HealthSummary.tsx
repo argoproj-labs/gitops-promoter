@@ -1,6 +1,7 @@
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState } from 'react';
+import './HealthSummary.scss';
 
 export interface HealthSummaryProps {
   checks: any[];
