@@ -327,7 +327,9 @@ spec:
                     by their key.
                   properties:
                     key:
-                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                       type: string
                   required:
                   - key
@@ -359,7 +361,9 @@ spec:
                     by their key.
                   properties:
                     key:
-                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                       type: string
                   required:
                   - key
@@ -389,6 +393,9 @@ spec:
                       properties:
                         key:
                           description: Key staging hydrated branch
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                           type: string
                         phase:
                           description: Phase what phase is the status in
@@ -599,14 +606,19 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               history:
-                description: History defines the history of promoted changes done
-                  by the ChangeTransferPolicy.
+                description: |-
+                  History defines the history of promoted changes done by the ChangeTransferPolicy. You can think of
+                  it as a list of PRs merged by GitOps Promoter. It will not include changes that were manually merged.
+                  The history length is hard-coded to be at most 5 entries. This may change in the future.
+                  History is constructed on a best-effort basis and should be used for informational purposes only.
+                  History is in reverse chronological order (newest is first).
                 items:
-                  description: History defines the history of promoted changes done
+                  description: History describes a particular change that was promoted
                     by the ChangeTransferPolicy.
                   properties:
                     active:
-                      description: Active is the state of the active branch.
+                      description: Active is the state of the active branch at the
+                        time the PR was merged.
                       properties:
                         commitStatuses:
                           description: CommitStatuses is a list of commit statuses
@@ -617,6 +629,9 @@ spec:
                             properties:
                               key:
                                 description: Key staging hydrated branch
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                                 type: string
                               phase:
                                 description: Phase what phase is the status in
@@ -772,17 +787,22 @@ spec:
                           type: object
                       type: object
                     proposed:
-                      description: Proposed is the state of the proposed branch.
+                      description: Proposed is the state of the proposed branch at
+                        the time the PR was merged.
                       properties:
                         commitStatuses:
-                          description: CommitStatuses is a list of commit statuses
-                            that are being monitored for this branch.
+                          description: |-
+                            CommitStatuses is a list of commit statuses that were being monitored for this branch.
+                            This contains the state frozen at the moment the PR was merged.
                           items:
                             description: ChangeRequestPolicyCommitStatusPhase defines
                               the phase of a commit status in a ChangeTransferPolicy.
                             properties:
                               key:
                                 description: Key staging hydrated branch
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                                 type: string
                               phase:
                                 description: Phase what phase is the status in
@@ -905,6 +925,9 @@ spec:
                       properties:
                         key:
                           description: Key staging hydrated branch
+                          maxLength: 63
+                          minLength: 1
+                          pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                           type: string
                         phase:
                           description: Phase what phase is the status in
@@ -1674,7 +1697,9 @@ spec:
                     by their key.
                   properties:
                     key:
-                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                       type: string
                   required:
                   - key
@@ -1702,7 +1727,9 @@ spec:
                           statuses by their key.
                         properties:
                           key:
-                            pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                             type: string
                         required:
                         - key
@@ -1734,7 +1761,9 @@ spec:
                           statuses by their key.
                         properties:
                           key:
-                            pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                            maxLength: 63
+                            minLength: 1
+                            pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                             type: string
                         required:
                         - key
@@ -1774,7 +1803,9 @@ spec:
                     by their key.
                   properties:
                     key:
-                      pattern: (([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                       type: string
                   required:
                   - key
@@ -1871,6 +1902,9 @@ spec:
                             properties:
                               key:
                                 description: Key staging hydrated branch
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                                 type: string
                               phase:
                                 description: Phase what phase is the status in
@@ -2030,14 +2064,19 @@ spec:
                         environment.
                       type: string
                     history:
-                      description: History defines the history of promoted changes
-                        done by the PromotionStrategy for this environment.
+                      description: |-
+                        History defines the history of promoted changes done by the PromotionStrategy for each environment.
+                        You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were
+                        manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future.
+                        History is constructed on a best-effort basis and should be used for informational purposes only.
+                        History is in reverse chronological order (newest is first).
                       items:
-                        description: History defines the history of promoted changes
-                          done by the ChangeTransferPolicy.
+                        description: History describes a particular change that was
+                          promoted by the ChangeTransferPolicy.
                         properties:
                           active:
-                            description: Active is the state of the active branch.
+                            description: Active is the state of the active branch
+                              at the time the PR was merged.
                             properties:
                               commitStatuses:
                                 description: CommitStatuses is a list of commit statuses
@@ -2048,6 +2087,9 @@ spec:
                                   properties:
                                     key:
                                       description: Key staging hydrated branch
+                                      maxLength: 63
+                                      minLength: 1
+                                      pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                                       type: string
                                     phase:
                                       description: Phase what phase is the status
@@ -2217,17 +2259,22 @@ spec:
                                 type: object
                             type: object
                           proposed:
-                            description: Proposed is the state of the proposed branch.
+                            description: Proposed is the state of the proposed branch
+                              at the time the PR was merged.
                             properties:
                               commitStatuses:
-                                description: CommitStatuses is a list of commit statuses
-                                  that are being monitored for this branch.
+                                description: |-
+                                  CommitStatuses is a list of commit statuses that were being monitored for this branch.
+                                  This contains the state frozen at the moment the PR was merged.
                                 items:
                                   description: ChangeRequestPolicyCommitStatusPhase
                                     defines the phase of a commit status in a ChangeTransferPolicy.
                                   properties:
                                     key:
                                       description: Key staging hydrated branch
+                                      maxLength: 63
+                                      minLength: 1
+                                      pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                                       type: string
                                     phase:
                                       description: Phase what phase is the status
@@ -2380,6 +2427,9 @@ spec:
                             properties:
                               key:
                                 description: Key staging hydrated branch
+                                maxLength: 63
+                                minLength: 1
+                                pattern: ([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
                                 type: string
                               phase:
                                 description: Phase what phase is the status in
@@ -2623,6 +2673,17 @@ spec:
           spec:
             description: PullRequestSpec defines the desired state of PullRequest
             properties:
+              commit:
+                description: Commit contains configuration for how we will merge/squash/etc
+                  the pull request.
+                properties:
+                  message:
+                    description: Message is the commit message that will be written
+                      for the commit that's made when merging the PR.
+                    type: string
+                required:
+                - message
+                type: object
               description:
                 description: Description is the description body of the pull/merge
                   request
@@ -2637,10 +2698,6 @@ spec:
                 required:
                 - name
                 type: object
-              mergeCommitMessage:
-                description: MergeCommitMessage is the commit message to use when
-                  merging the pull request.
-                type: string
               sourceBranch:
                 description: SourceBranch is the base the git reference that we are
                   merging into Head ---> Base

@@ -106,7 +106,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // Merge merges an existing pull request with the specified commit message.
-func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequest v1alpha1.PullRequest) error {
+func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
 	if pullRequest.Status.ID == "" {
@@ -153,14 +153,14 @@ func (pr *PullRequest) Merge(ctx context.Context, commitMessage string, pullRequ
 		return err
 	}
 
-	err = pr.runGitCmd(gitPath, "pull", "--no-edit", "origin", pullRequest.Spec.SourceBranch)
+	err = pr.runGitCmd(gitPath, "fetch", "--all")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch all: %w", err)
 	}
 
-	err = pr.runGitCmd(gitPath, "commit", "--amend", "-m", commitMessage)
+	err = pr.runGitCmd(gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
 	if err != nil {
-		return fmt.Errorf("failed to amend commit: %w", err)
+		return fmt.Errorf("failed to merge branch: %w", err)
 	}
 
 	err = pr.runGitCmd(gitPath, "push")

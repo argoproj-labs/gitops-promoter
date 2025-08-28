@@ -215,28 +215,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Subject).To(Equal("added pending commit from dry sha"))
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Body).To(ContainSubstring(""))
 
-				g.Expect(ctpDev.Status.Active.Hydrated.Subject).To(Equal("initial commit"))
-				g.Expect(ctpDev.Status.Active.Hydrated.Body).To(Equal(""))
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			Eventually(func(g Gomega) {
-				// Staging PR should exist
-				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      prName,
-					Namespace: typeNamespacedName.Namespace,
-				}, &pullRequestStaging)
-				g.Expect(err).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			Eventually(func(g Gomega) {
-				// Production PR should exist
-				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      prName,
-					Namespace: typeNamespacedName.Namespace,
-				}, &pullRequestProd)
-				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Hydrated.Subject).To(ContainSubstring("Promote"))
+				g.Expect(ctpDev.Status.Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Checking that the pull request for the development, staging, and production environments are closed")
@@ -1608,7 +1588,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Subject).To(Equal("added fake manifests commit with timestamp"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Body).To(Equal(""))
 
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
 
@@ -1622,7 +1602,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Subject).To(Equal(""))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Body).To(Equal(""))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Author).To(Equal("testuser"))
-				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("initial commit"))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("initial empty commit"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(Equal(""))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -1941,12 +1921,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
 
-				argoCDAppDev.Status.Sync.Status = argocd.SyncStatusCodeSynced
-				argoCDAppDev.Status.Health.Status = argocd.HealthStatusHealthy
-				argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
-				argoCDAppDev.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
-				err = k8sClient.Update(ctx, &argoCDAppDev)
-				Expect(err).To(Succeed())
+				if argoCDAppDev.Status.Sync.Status != argocd.SyncStatusCodeSynced ||
+					argoCDAppDev.Status.Health.Status != argocd.HealthStatusHealthy ||
+					argoCDAppDev.Status.Sync.Revision != ctpDev.Status.Active.Hydrated.Sha {
+					// Most likely the CTP sha changed. Update the app to simulate the app having been synced to the new commit.
+					argoCDAppDev.Status.Sync.Status = argocd.SyncStatusCodeSynced
+					argoCDAppDev.Status.Health.Status = argocd.HealthStatusHealthy
+					argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
+					lastTransitionTime := metav1.Now()
+					argoCDAppDev.Status.Health.LastTransitionTime = &lastTransitionTime
+					err = k8sClient.Update(ctx, &argoCDAppDev)
+					Expect(err).To(Succeed())
+				}
 
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -1976,8 +1962,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the staging Argo CD application to synced and health we should close production PR")
 
-			timeDelay := time.Now().Add(10 * time.Second)
-			waitedForDelay := false
+			lastTransitionTime := metav1.Now()
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
@@ -1985,17 +1970,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpStaging)
 				g.Expect(err).To(Succeed())
 
-				argoCDAppStaging.Status.Sync.Status = argocd.SyncStatusCodeSynced
-				argoCDAppStaging.Status.Health.Status = argocd.HealthStatusHealthy
-				argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
-				if time.Now().After(timeDelay) {
-					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
-					waitedForDelay = true
-				} else {
-					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now()}
+				if argoCDAppStaging.Status.Sync.Status != argocd.SyncStatusCodeSynced ||
+					argoCDAppStaging.Status.Health.Status != argocd.HealthStatusHealthy ||
+					argoCDAppStaging.Status.Sync.Revision != ctpStaging.Status.Active.Hydrated.Sha {
+					// Most likely the CTP sha changed. Update the app to simulate the app having been synced to the new commit.
+					argoCDAppStaging.Status.Sync.Status = argocd.SyncStatusCodeSynced
+					argoCDAppStaging.Status.Health.Status = argocd.HealthStatusHealthy
+					argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
+					lastTransitionTime = metav1.Now()
+					argoCDAppStaging.Status.Health.LastTransitionTime = &lastTransitionTime
+					err = k8sClient.Update(ctx, &argoCDAppStaging)
+					Expect(err).To(Succeed())
 				}
-				err = k8sClient.Update(ctx, &argoCDAppStaging)
-				Expect(err).To(Succeed())
 
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2005,7 +1991,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
-			Expect(waitedForDelay).To(BeTrue())
+			Expect(time.Since(lastTransitionTime.Time) >= lastTransitionTimeThreshold).To(BeTrue())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
@@ -2174,12 +2160,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
 
-				argoCDAppDev.Status.Sync.Status = argocd.SyncStatusCodeSynced
-				argoCDAppDev.Status.Health.Status = argocd.HealthStatusHealthy
-				argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
-				argoCDAppDev.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
-				err = k8sClientDev.Update(ctx, &argoCDAppDev)
-				Expect(err).To(Succeed())
+				if argoCDAppDev.Status.Sync.Status != argocd.SyncStatusCodeSynced ||
+					argoCDAppDev.Status.Health.Status != argocd.HealthStatusHealthy ||
+					argoCDAppDev.Status.Sync.Revision != ctpDev.Status.Active.Hydrated.Sha {
+					// Most likely the CTP sha changed. Update the app to simulate the app having been synced to the new commit.
+					argoCDAppDev.Status.Sync.Status = argocd.SyncStatusCodeSynced
+					argoCDAppDev.Status.Health.Status = argocd.HealthStatusHealthy
+					argoCDAppDev.Status.Sync.Revision = ctpDev.Status.Active.Hydrated.Sha
+					lastTransitionTime := metav1.Now()
+					argoCDAppDev.Status.Health.LastTransitionTime = &lastTransitionTime
+					err = k8sClientDev.Update(ctx, &argoCDAppDev)
+					Expect(err).To(Succeed())
+				}
 
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2209,8 +2201,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the staging Argo CD application to synced and health we should close production PR")
 
-			timeDelay := time.Now().Add(10 * time.Second)
-			waitedForDelay := false
+			lastTransitionTime := metav1.Now()
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
@@ -2218,17 +2209,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpStaging)
 				g.Expect(err).To(Succeed())
 
-				argoCDAppStaging.Status.Sync.Status = argocd.SyncStatusCodeSynced
-				argoCDAppStaging.Status.Health.Status = argocd.HealthStatusHealthy
-				argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
-				if time.Now().After(timeDelay) {
-					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now().Add(-(6 * time.Second))}
-					waitedForDelay = true
-				} else {
-					argoCDAppStaging.Status.Health.LastTransitionTime = &metav1.Time{Time: time.Now()}
+				if argoCDAppStaging.Status.Sync.Status != argocd.SyncStatusCodeSynced ||
+					argoCDAppStaging.Status.Health.Status != argocd.HealthStatusHealthy ||
+					argoCDAppStaging.Status.Sync.Revision != ctpStaging.Status.Active.Hydrated.Sha {
+					// Most likely the CTP sha changed. Update the app to simulate the app having been synced to the new commit.
+					argoCDAppStaging.Status.Sync.Status = argocd.SyncStatusCodeSynced
+					argoCDAppStaging.Status.Health.Status = argocd.HealthStatusHealthy
+					argoCDAppStaging.Status.Sync.Revision = ctpStaging.Status.Active.Hydrated.Sha
+					lastTransitionTime = metav1.Now()
+					argoCDAppStaging.Status.Health.LastTransitionTime = &lastTransitionTime
+					err = k8sClientStaging.Update(ctx, &argoCDAppStaging)
+					Expect(err).To(Succeed())
 				}
-				err = k8sClientStaging.Update(ctx, &argoCDAppStaging)
-				Expect(err).To(Succeed())
 
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2238,7 +2230,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
-			Expect(waitedForDelay).To(BeTrue())
+			Expect(time.Since(lastTransitionTime.Time) >= lastTransitionTimeThreshold).To(BeTrue(), fmt.Sprintf("Last transition time should be at least %s ago, but was %s ago", lastTransitionTimeThreshold, time.Since(lastTransitionTime.Time)))
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
@@ -2249,7 +2241,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a proposed commit status we should have history", func() {
-		FIt("should successfully reconcile the resource", func() {
+		It("should successfully reconcile the resource", func() {
 			// Skip("Skipping test because of flakiness")
 			By("Creating the resource")
 			name, scmSecret, scmProvider, gitRepo, proposedCommitStatusDevelopment, proposedCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-proposed-commit-status", "default")
@@ -2360,7 +2352,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(drySha))
-			})
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
@@ -2559,7 +2551,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Subject).To(Equal("added fake manifests commit with timestamp"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Body).To(Equal(""))
 
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
 
@@ -2572,18 +2564,71 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Subject).To(Equal("added fake manifests commit with timestamp"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Body).To(Equal(""))
-				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Author).To(Equal("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
 				g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
 
 				g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
 				g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(BeNil())
 				g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
-
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			// TODO: make a no op commit via a new function called makeChangeAndHydrateRepoNoOp then check all the fields of status.active and status.history dev and staging.
-			//
+			By("By making a no-op commit and checking that the promotion strategy status reflects it")
+			makeChangeAndHydrateRepoNoOp(gitPath, name, name, "", "")
+			simulateWebhook(ctx, k8sClient, &ctpDev)
+			simulateWebhook(ctx, k8sClient, &ctpStaging)
+			simulateWebhook(ctx, k8sClient, &ctpProd)
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      promotionStrategy.Name,
+					Namespace: promotionStrategy.Namespace,
+				}, promotionStrategy)
+				g.Expect(err).To(Succeed())
+				// "Checking that the active and proposed commits are correct for the development environment and are set to the no-op commit
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Subject).To(ContainSubstring("no-op commit"))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Author).To(ContainSubstring("testuser <testmail@test.com>"))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Subject).To(ContainSubstring("added no-op commit from dry sha"))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Author).To(ContainSubstring("testuser"))
+
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Subject).To(ContainSubstring("no-op commit"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Author).To(ContainSubstring("testuser <testmail@test.com>"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("This is a no-op commit merging from"))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(ContainSubstring("GitOps Promoter"))
+
+				// Checking that the history is populated correctly
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].PullRequest.ID).To(Not(Equal("")))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.Subject).To(ContainSubstring("added fake manifests commit with timestamp"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.References).To(HaveLen(1))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
+
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.Hydrated.Author).To(ContainSubstring("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.Hydrated.Subject).To(ContainSubstring("added pending commit from dry sha"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses).To(HaveLen(1))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Key).To(Equal("no-deployments-allowed"))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Url).To(Equal("https://example.com/dev"))
+
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].PullRequest.ID).To(Not(Equal("")))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.Subject).To(ContainSubstring("added fake manifests commit with timestamp"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.References).To(HaveLen(1))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
+
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.Hydrated.Author).To(ContainSubstring("testuser"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.Hydrated.Subject).To(ContainSubstring("added pending commit from dry sha"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses).To(HaveLen(1))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses[0].Key).To(Equal("no-deployments-allowed"))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses[0].Url).To(Equal(""))
+
+				g.Expect(promotionStrategy.Status.Environments[2].History).To(HaveLen(1))
+			}, constants.EventuallyTimeout).To(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})

@@ -263,7 +263,7 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	if err := provider.Merge(ctx, pr.Spec.MergeCommitMessage, *pr); err != nil {
+	if err := provider.Merge(ctx, *pr); err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestMerged

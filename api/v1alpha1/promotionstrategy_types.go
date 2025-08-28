@@ -102,7 +102,9 @@ func (e *Environment) GetAutoMerge() bool {
 // CommitStatusSelector is used to select commit statuses by their key.
 type CommitStatusSelector struct {
 	// +required
-	// +kubebuilder:validation:Pattern:=(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])?
+	// +kubebuilder:validation:MinLength:=1
+	// +kubebuilder:validation:MaxLength:=63
+	// +kubebuilder:validation:Pattern:=([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]
 	Key string `json:"key"`
 }
 
@@ -142,7 +144,11 @@ type EnvironmentStatus struct {
 	// +kubebuilder:validation:Optional
 	LastHealthyDryShas []HealthyDryShas `json:"lastHealthyDryShas"`
 
-	// History defines the history of promoted changes done by the PromotionStrategy for this environment.
+	// History defines the history of promoted changes done by the PromotionStrategy for each environment.
+	// You can think of it as a list of PRs merged by GitOps Promoter. It will not include changes that were
+	// manually merged. The history length is hard-coded to be at most 5 entries. This may change in the future.
+	// History is constructed on a best-effort basis and should be used for informational purposes only.
+	// History is in reverse chronological order (newest is first).
 	History []History `json:"history,omitempty"`
 }
 

@@ -17,9 +17,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/relvacode/iso8601"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -227,8 +229,6 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 
 // GetShaMetadataFromGit retrieves commit metadata by running git commands for a given SHA.
 func (g *EnvironmentOperations) GetShaMetadataFromGit(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
-	// logger := log.FromContext(ctx)
-
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
 	if gitPath == "" {
 		return v1alpha1.CommitShaState{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
@@ -369,26 +369,28 @@ func (g *EnvironmentOperations) PromoteEnvironmentWithMerge(ctx context.Context,
 	}
 	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
 
+	// Don't think this is needed
+	// _, stderr, err = g.runCmd(ctx, gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.repoRef)+g.pathContext), "pull", "--progress")
+	// if err != nil {
+	// 	logger.Error(err, "could not git pull", "gitError", stderr)
+	// 	return err
+	// }
+	// logger.V(4).Info("Pulled branch", "branch", environmentBranch)
+
 	start = time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "pull", "--progress", "--no-edit", "origin", environmentNextBranch)
+	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+environmentNextBranch, "-m", "This is a no-op commit merging from "+environmentNextBranch+" into "+environmentBranch+"\n\n"+constants.TrailerNoOp+": true\n")
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
-		logger.Error(err, "could not git pull", "gitError", stderr)
+		logger.Error(err, "could not git merge", "gitError", stderr)
 		return err
 	}
-	logger.V(4).Info("Pulled branch", "branch", environmentNextBranch)
-
-	_, stderr, err = g.runCmd(ctx, gitPath, "commit", "--amend", "-m", "This is a no-op commit merging from "+environmentNextBranch+" into "+environmentBranch+"\n\nNo-Op: true\n")
-	if err != nil {
-		logger.Error(err, "could not git commit amend", "gitError", stderr)
-		return fmt.Errorf("could not git commit amend: %w", err)
-	}
+	logger.V(4).Info("Merged branch", "branch", environmentNextBranch)
 
 	start = time.Now()
 	_, stderr, err = g.runCmd(ctx, gitPath, "push", "--progress", "origin", environmentBranch)
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPush, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
-		logger.Error(err, "could not git pull", "gitError", stderr)
+		logger.Error(err, "could not git push", "gitError", stderr)
 		return err
 	}
 	logger.Info("Pushed branch", "branch", environmentBranch)
@@ -577,7 +579,7 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 }
 
 // GetRevListFirstParent retrieves the first parent commit SHAs for the given branch using git rev-list.
-func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount string) ([]string, error) {
+func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branch string, maxCount int) ([]string, error) {
 	logger := log.FromContext(ctx)
 
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -586,9 +588,7 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 	}
 
 	args := []string{"rev-list", "--first-parent"}
-	if maxCount != "" {
-		args = append(args, "--max-count="+maxCount)
-	}
+	args = append(args, "--max-count="+strconv.Itoa(maxCount))
 	args = append(args, branch)
 
 	stdout, stderr, err := g.runCmd(ctx, gitPath, args...)
@@ -641,11 +641,9 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	trailers := make(map[string]string, len(lines))
 	for _, line := range lines {
 		if strings.Contains(line, ":") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				key := strings.TrimSpace(parts[0])
-				value := strings.TrimSpace(parts[1])
-				trailers[key] = value
+			key, value, found := strings.Cut(line, ":")
+			if found {
+				trailers[strings.TrimSpace(key)] = strings.TrimSpace(value)
 			} else {
 				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
 			}

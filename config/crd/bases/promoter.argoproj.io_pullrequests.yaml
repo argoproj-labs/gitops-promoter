@@ -46,6 +46,17 @@ spec:
           spec:
             description: PullRequestSpec defines the desired state of PullRequest
             properties:
+              commit:
+                description: Commit contains configuration for how we will merge/squash/etc
+                  the pull request.
+                properties:
+                  message:
+                    description: Message is the commit message that will be written
+                      for the commit that's made when merging the PR.
+                    type: string
+                required:
+                - message
+                type: object
               description:
                 description: Description is the description body of the pull/merge
                   request
@@ -60,10 +71,6 @@ spec:
                 required:
                 - name
                 type: object
-              mergeCommitMessage:
-                description: MergeCommitMessage is the commit message to use when
-                  merging the pull request.
-                type: string
               sourceBranch:
                 description: SourceBranch is the base the git reference that we are
                   merging into Head ---> Base
