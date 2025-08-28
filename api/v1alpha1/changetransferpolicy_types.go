@@ -145,7 +145,7 @@ type ChangeTransferPolicyStatus struct {
 
 // History describes a particular change that was promoted by the ChangeTransferPolicy.
 type History struct {
-	// Proposed is the state of the proposed branch.
+	// Proposed is the state of the proposed branch at the time the PR was merged.
 	Proposed CommitBranchStateHistoryProposed `json:"proposed,omitempty"`
 	// Active is the state of the active branch.
 	Active CommitBranchState `json:"active,omitempty"`
