@@ -223,14 +223,14 @@ func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Cont
 	logger := log.FromContext(ctx)
 	activeHydrated, err := gitOperations.GetShaMetadataFromGit(ctx, sha)
 	if err != nil {
-		logger.Error(err, "failed to get active historic metadata from git", "sha", sha)
+		logger.V(4).Info("failed to get active historic metadata from git", "sha", sha, "error", err)
 	}
 	h.Active.Hydrated = activeHydrated
 	h.Active.Hydrated.Body = removeKnownTrailers(h.Active.Hydrated.Body)
 
 	activeDry, err := gitOperations.GetShaMetadataFromFile(ctx, sha)
 	if err != nil {
-		logger.Info("failed to get active historic metadata from file", "sha", sha)
+		logger.V(4).Info("failed to get active historic metadata from file", "sha", sha, "error", err)
 	}
 	h.Active.Dry = activeDry
 }
@@ -241,13 +241,13 @@ func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Co
 
 	proposedHydratedSha := activeTrailers[constants.TrailerShaHydratedProposed]
 	if proposedHydratedSha == "" {
-		logger.Info("No " + constants.TrailerShaHydratedProposed + " trailer found")
+		logger.V(4).Info("No " + constants.TrailerShaHydratedProposed + " trailer found")
 		return
 	}
 
 	meta, err := gitOperations.GetShaMetadataFromGit(ctx, proposedHydratedSha)
 	if err != nil {
-		logger.Info("failed to get proposed historic metadata from git", "sha", proposedHydratedSha)
+		logger.V(4).Info("failed to get proposed historic metadata from git", "sha", proposedHydratedSha, "error", err)
 	}
 	h.Proposed.Hydrated = meta
 }
@@ -259,7 +259,7 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 	if pullRequestID := activeTrailers[constants.TrailerPullRequestID]; pullRequestID != "" {
 		h.PullRequest.ID = pullRequestID
 	} else {
-		logger.Info("No " + constants.TrailerPullRequestID + " found in trailers")
+		logger.V(4).Info("No " + constants.TrailerPullRequestID + " found in trailers")
 	}
 
 	if pullRequestUrl := activeTrailers[constants.TrailerPullRequestUrl]; pullRequestUrl != "" {
@@ -269,7 +269,7 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 			h.PullRequest.Url = pullRequestUrl
 		}
 	} else {
-		logger.Info("No " + constants.TrailerPullRequestUrl + " found in trailers")
+		logger.V(4).Info("No " + constants.TrailerPullRequestUrl + " found in trailers")
 	}
 
 	if timeStr := activeTrailers[constants.TrailerPullRequestCreationTime]; timeStr != "" {
@@ -279,7 +279,7 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 			h.PullRequest.PRCreationTime = metav1.NewTime(creationTime)
 		}
 	} else {
-		logger.Info("No " + constants.TrailerPullRequestCreationTime + " found in trailers")
+		logger.V(4).Info("No " + constants.TrailerPullRequestCreationTime + " found in trailers")
 	}
 }
 
@@ -289,19 +289,29 @@ func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Cont
 
 	h.Active.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(activeKeys))
 	for _, key := range activeKeys {
+		url := activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-url"]
+		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			log.FromContext(ctx).Error(errors.New("invalid URL"), "active commit status URL does not start with http:// or https://", "url", url, "key", key)
+			url = ""
+		}
 		h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:   key,
 			Phase: activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-phase"],
-			Url:   activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-url"],
+			Url:   url,
 		})
 	}
 
 	h.Proposed.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(proposedKeys))
 	for _, key := range proposedKeys {
+		url := activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-url"]
+		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			log.FromContext(ctx).Error(errors.New("invalid URL"), "proposed commit status URL does not start with http:// or https://", "url", url, "key", key)
+			url = ""
+		}
 		h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:   key,
 			Phase: activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-phase"],
-			Url:   activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-url"],
+			Url:   url,
 		})
 	}
 }
@@ -322,12 +332,12 @@ func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string]st
 			}
 			key = strings.TrimPrefix(key, prefix)
 			if key == "" {
-				logger.Info("Skipping empty trailer key", "key", key)
+				logger.V(4).Info("Skipping empty trailer key", "key", key)
 				continue
 			}
 			parts := strings.Split(key, "-")
 			if len(parts) < 2 {
-				logger.Info("Skipping trailer with unexpected format", "key", key)
+				logger.V(4).Info("Skipping trailer with unexpected format", "key", key)
 				continue
 			}
 			csKey := strings.Join(parts[:len(parts)-1], "-")
