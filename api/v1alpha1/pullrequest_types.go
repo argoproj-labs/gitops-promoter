@@ -55,6 +55,7 @@ type PullRequestSpec struct {
 
 // CommitConfiguration defines the commit configuration for how we will merge/squash/etc the pull request.
 type CommitConfiguration struct {
+	// Message is the commit message that will be written for the commit that's made when merging the PR.
 	Message string `json:"message"`
 }
 
