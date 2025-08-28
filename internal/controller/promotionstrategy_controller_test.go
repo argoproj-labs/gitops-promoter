@@ -2241,7 +2241,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a proposed commit status we should have history", func() {
-		FIt("should successfully reconcile the resource", func() {
+		It("should successfully reconcile the resource", func() {
 			// Skip("Skipping test because of flakiness")
 			By("Creating the resource")
 			name, scmSecret, scmProvider, gitRepo, proposedCommitStatusDevelopment, proposedCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-proposed-commit-status", "default")
