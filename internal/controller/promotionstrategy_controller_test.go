@@ -2610,6 +2610,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses).To(HaveLen(1))
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Key).To(Equal("no-deployments-allowed"))
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Url).To(Equal("https://example.com/dev"))
 
 				g.Expect(promotionStrategy.Status.Environments[1].History[0].PullRequest.ID).To(Not(Equal("")))
 				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
@@ -2624,6 +2625,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses).To(HaveLen(1))
 				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses[0].Key).To(Equal("no-deployments-allowed"))
 				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses[0].Url).To(Equal("https://example.com/dev"))
 
 				g.Expect(promotionStrategy.Status.Environments[2].History).To(HaveLen(1))
 			}, constants.EventuallyTimeout).To(Succeed())
