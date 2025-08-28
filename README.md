@@ -4,6 +4,8 @@
 
 GitOps Promoter facilitates environment promotion for config managed via GitOps.
 
+![Video of the GitOps Promoter UI as a change is promoted through three environments](https://github.com/user-attachments/assets/5860cc7a-56e6-4003-b1fc-b33e4d69d411)
+
 ## Key Features
 
 * Drift-free promotion process
