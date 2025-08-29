@@ -6,6 +6,7 @@
   top: 20px;
   left: 50px;
   z-index: 1000;
+  pointer-events: auto; // Fix for tooltip flashing - allows tooltip to receive mouse events
 }
 
 .github-tooltip {
@@ -84,30 +85,30 @@
   cursor: pointer;
   transition: all 0.2s ease;
   text-decoration: none;
-  
+
   &:hover {
     background: rgba(13, 173, 234, 0.15);
     border-color: rgba(13, 173, 234, 0.4);
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(13, 173, 234, 0.2);
   }
-  
+
   .pr-icon {
     font-size: 14px;
     color: $argo-running;
   }
-  
+
   &.pr-merged {
     color: $argo-merged;
     background: rgba(111, 66, 193, 0.08);
     border: 1px solid rgba(111, 66, 193, 0.2);
-    
+
     &:hover {
       background: rgba(111, 66, 193, 0.15);
       border-color: rgba(111, 66, 193, 0.4);
       box-shadow: 0 2px 4px rgba(111, 66, 193, 0.2);
     }
-    
+
     .pr-icon {
       color: $argo-merged;
     }
@@ -123,8 +124,6 @@
   flex-direction: column;
   justify-content: center;
   position: relative;
-  
-
 }
 
 .commit-content {
@@ -154,7 +153,7 @@
   margin-left: 50px;
   margin-top: -30px;
   position: relative;
-  
+
   &::before {
     content: '';
     position: absolute;
@@ -164,7 +163,7 @@
     height: 2px;
     background-color: $argo-color-gray-7;
   }
-  
+
   &::after {
     content: '';
     position: absolute;
@@ -175,8 +174,6 @@
     background-color: $argo-color-gray-7;
   }
 }
-
-
 
 .commit-header {
   display: flex;
@@ -220,14 +217,14 @@
   border: 1px solid #e0e0e0;
   text-decoration: none;
   transition: all 0.2s ease;
-  
+
   &:hover {
     text-decoration: underline;
     background-color: #e8f4fd;
     border-color: #007bff;
     color: #007bff;
   }
-  
+
   &:focus {
     outline: 2px solid #007bff;
     outline-offset: 1px;
