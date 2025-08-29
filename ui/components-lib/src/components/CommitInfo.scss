@@ -3,9 +3,9 @@
 // Tooltip
 .tooltip-container {
   position: absolute;
-  top: 100%;
+  top: 20px;
+  left: 50px;
   z-index: 1000;
-  margin-top: -20px;
 }
 
 .github-tooltip {
@@ -13,12 +13,25 @@
   color: white;
   padding: 6px 8px;
   font-size: 12px;
-  max-width: 250px;
+  min-width: 120px;
+  max-width: 400px;
+  width: max-content;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  word-wrap: break-word;
+  word-break: break-word;
+  white-space: pre-wrap;
+  line-height: 1.4;
 }
 
 .tooltip-subject {
   font-weight: 600;
   margin-bottom: 4px;
+  white-space: pre-wrap;
+}
+
+.tooltip-body {
+  white-space: pre-wrap;
 }
 
 .commits-section {
@@ -231,4 +244,5 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 280px;
+  position: relative;
 }
