@@ -6,7 +6,7 @@ import './LiveManifestView.scss';
 
 // Import ace editor modes and themes
 import 'ace-builds/src-noconflict/mode-yaml';
-import 'ace-builds/src-noconflict/theme-github';
+import 'ace-builds/src-noconflict/theme-textmate';
 import 'ace-builds/src-noconflict/ext-language_tools';
 
 interface LiveManifestViewProps {
@@ -37,7 +37,7 @@ export const LiveManifestView: React.FC<LiveManifestViewProps> = ({ strategy }) 
       <div className="strategy-json-editor-content">
         <AceEditor
           mode="yaml"
-          theme="github"
+          theme="textmate"
           value={yamlString}
           readOnly={true}
           showPrintMargin={false}
@@ -59,7 +59,7 @@ export const LiveManifestView: React.FC<LiveManifestViewProps> = ({ strategy }) 
             showFoldWidgets: true,
             fadeFoldWidgets: false,
             behavioursEnabled: false,
-            displayIndentGuides: true
+            displayIndentGuides: false
           }}
           editorProps={{
             $blockScrolling: Infinity

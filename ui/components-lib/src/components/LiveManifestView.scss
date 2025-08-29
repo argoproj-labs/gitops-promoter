@@ -25,10 +25,9 @@
   border: 1px solid $argo-color-gray-4;
 }
 
-// Override Ace Editor styles to match site theme
+// Only essential Ace Editor overrides for site integration
 .strategy-json-editor-content .ace_editor {
   font-family: 'Menlo', 'Monaco', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace !important;
-  background-color: white !important;
   border: none !important;
 }
 
@@ -58,44 +57,7 @@
   padding-left: 16px !important;
 }
 
-// YAML syntax highlighting to match site colors
-.strategy-json-editor-content .ace_keyword {
-  color: $argo-color-gray-7 !important;
-  font-weight: 600 !important;
-}
-
-.strategy-json-editor-content .ace_string {
-  color: $argo-running !important;
-}
-
-.strategy-json-editor-content .ace_variable {
-  color: $argo-color-gray-7 !important;
-  font-weight: 500 !important;
-}
-
-.strategy-json-editor-content .ace_constant.ace_numeric {
-  color: $argo-running !important;
-  font-weight: 500 !important;
-}
-
-.strategy-json-editor-content .ace_constant.ace_language {
-  color: $argo-merged !important;
-  font-weight: 600 !important;
-}
-
-.strategy-json-editor-content .ace_support.ace_function {
-  color: $argo-color-gray-7 !important;
-}
-
-.strategy-json-editor-content .ace_comment {
-  color: $argo-color-gray-5 !important;
-  font-style: italic !important;
-}
-
-.strategy-json-editor-content .ace_indent-guide {
-  background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAACCAYAAACZgbYnAAAAEklEQVQImWNgYGBgYHB3d/8PAAOIAdULw8qMAAAAAElFTkSuQmCC") right repeat-y !important;
-}
-
+// Custom scrollbars to match site design
 .strategy-json-editor-content .ace_scrollbar {
   scrollbar-width: thin;
   scrollbar-color: $argo-color-gray-5 $argo-color-gray-1;
