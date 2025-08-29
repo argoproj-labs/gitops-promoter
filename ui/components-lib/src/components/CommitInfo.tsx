@@ -106,11 +106,6 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
                 onMouseLeave={() => setShowTooltip(false)}
               >
                 {commit.subject || 'N/A'}
-                {showTooltip && (
-                  <div className="tooltip-container">
-                    {getTooltipContent(commit)}
-                  </div>
-                )}
               </span>
             </div>
             <div className="commit-meta">
@@ -125,6 +120,11 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
           <div className="commit-icon-wrapper">
             {getIcon(iconType)}
           </div>
+          {showTooltip && (
+            <div className="tooltip-container">
+              {getTooltipContent(commit)}
+            </div>
+          )}
         </div>
       );
     } else {
@@ -195,4 +195,4 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
   );
 };
 
-export default CommitInfo; 
+export default CommitInfo;
