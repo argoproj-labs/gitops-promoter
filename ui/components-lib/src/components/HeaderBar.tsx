@@ -1,26 +1,55 @@
 import React from 'react';
+import './HeaderBar.scss';
 
-interface Props {
+interface HeaderBarProps {
   name: string;
   link?: string;
+  className?: string;
+  level?: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
-const HeaderBar: React.FC<Props> = ({ name, link }) => {
+const HeaderBar: React.FC<HeaderBarProps> = ({
+  name,
+  link,
+  className = '',
+  level = 2
+}) => {
+  const HeaderTag = `h${level}` as keyof JSX.IntrinsicElements;
+
+  const headerClasses = [
+    'header-bar',
+    link ? 'header-bar--clickable' : '',
+    className
+  ].filter(Boolean).join(' ');
+
   const content = (
-    <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{name}</h2>
+    <HeaderTag className="header-bar__title">
+      {name}
+    </HeaderTag>
   );
 
+  const containerClasses = [
+    'header-bar__container',
+    link ? 'header-bar__container--linked' : ''
+  ].filter(Boolean).join(' ');
+
   return (
-    <div style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px 0', backgroundColor: 'white', cursor: link ? 'pointer' : 'default' }}>
-      {link ? (
-        <a href={link} style={{ textDecoration: 'none', color: 'inherit', width: '100%', display: 'flex', justifyContent: 'center' }}>
-          {content}
-        </a>
-      ) : (
-        content
-      )}
-    </div>
+    <header className={headerClasses}>
+      <div className={containerClasses}>
+        {link ? (
+          <a
+            href={link}
+            className="header-bar__link"
+            aria-label={`Navigate to ${name}`}
+          >
+            {content}
+          </a>
+        ) : (
+          content
+        )}
+      </div>
+    </header>
   );
 };
 
-export default HeaderBar; 
+export default HeaderBar;

@@ -18,7 +18,10 @@ export const LiveManifestView: React.FC<LiveManifestViewProps> = ({ strategy }) 
 
   useEffect(() => {
     if (strategy) {
-      const formatted = yaml.dump(strategy, {
+      // Remove client-side enriched field before displaying the manifest
+      const { enriched, ...cleanStrategy } = strategy as any;
+
+      const formatted = yaml.dump(cleanStrategy, {
         indent: 2,
         lineWidth: -1,
         quotingType: '"',

@@ -1,0 +1,57 @@
+// HeaderBar component styles following BEM methodology
+.header-bar {
+  width: 100%;
+  background-color: var(--color-surface-primary, #ffffff);
+  border-bottom: 1px solid var(--color-border-subtle, #e1e5e9);
+}
+
+.header-bar__container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem 0;
+  transition: background-color 0.2s ease;
+}
+
+.header-bar__container--linked {
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--color-surface-hover, #f6f8fa);
+  }
+}
+
+.header-bar__link {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  text-decoration: none;
+  color: inherit;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--color-primary, #0969da);
+  }
+
+  &:focus {
+    outline: 2px solid var(--color-focus, #0969da);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+.header-bar__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text-primary, #24292f);
+  line-height: 1.5;
+}
+
+.header-bar--clickable {
+  &:hover {
+    .header-bar__title {
+      color: var(--color-primary, #0969da);
+    }
+  }
+}
