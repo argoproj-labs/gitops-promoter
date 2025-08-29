@@ -1,78 +1,128 @@
 @import '../styles/_colors.scss';
 
 .strategy-json-editor {
-  margin: 20px;
-  height: 100%;
   background: white;
+  padding: 24px;
+  flex-direction: column;
   border-radius: 8px;
+  box-sizing: border-box;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  border: 1px solid $argo-color-gray-4;
+  margin: 2rem 2.5rem;
+  height: calc(100vh - 140px);
   display: flex;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .strategy-json-editor-content {
   display: flex;
   flex: 1;
-  padding: 20px;
+  padding: 0;
   min-width: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  height: 100%;
+  border: 1px solid $argo-color-gray-4;
 }
 
-.line-numbers {
-  color: #237893;
-  border-right: 1px solid #e0e0e0;
-  padding-right: 10px;
-  text-align: right;
-  min-width: 50px;
-  font-family: Menlo, Monaco, monospace;
-  font-size: 12px;
-  line-height: 18px;
-  flex-shrink: 0;
+// Override Ace Editor styles to match site theme
+.strategy-json-editor-content .ace_editor {
+  font-family: 'Menlo', 'Monaco', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace !important;
+  background-color: white !important;
+  border: none !important;
 }
 
-.line-number {
-  height: 18px;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.strategy-json-editor-content .ace_gutter {
+  background-color: $argo-color-gray-1 !important;
+  border-right: 1px solid $argo-color-gray-4 !important;
+  color: $argo-running !important;
 }
 
-.collapse-icon {
-  cursor: pointer;
-  font-size: 20px;
-  margin-left: 4px;
-  color: $argo-color-gray-6;
-  opacity: 0;
+.strategy-json-editor-content .ace_gutter-cell {
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+  color: $argo-running !important;
+  font-weight: 500 !important;
 }
 
-.line-numbers:hover .collapse-icon {
-  opacity: 1;
+.strategy-json-editor-content .ace_fold-widget {
+  color: $argo-color-gray-6 !important;
+  transition: color 0.2s ease !important;
 }
 
-.yaml-content {
-  flex: 1;
-  padding-left: 10px;
-  font-family: Menlo, Monaco, monospace;
-  font-size: 12px;
-  line-height: 18px;
-  overflow-x: auto;
-  white-space: pre;
-  min-width: 0;
+.strategy-json-editor-content .ace_fold-widget:hover {
+  color: $argo-running !important;
 }
 
-.yaml-line {
-  height: 18px;
+.strategy-json-editor-content .ace_content {
+  padding-left: 16px !important;
 }
 
-.yaml-indent {
-  color: #666;
+// YAML syntax highlighting to match site colors
+.strategy-json-editor-content .ace_keyword {
+  color: $argo-color-gray-7 !important;
+  font-weight: 600 !important;
 }
 
-.yaml-key {
-  color: #008080;
+.strategy-json-editor-content .ace_string {
+  color: $argo-running !important;
 }
 
-.yaml-value {
-  color: #0451a5;
+.strategy-json-editor-content .ace_variable {
+  color: $argo-color-gray-7 !important;
+  font-weight: 500 !important;
+}
+
+.strategy-json-editor-content .ace_constant.ace_numeric {
+  color: $argo-running !important;
+  font-weight: 500 !important;
+}
+
+.strategy-json-editor-content .ace_constant.ace_language {
+  color: $argo-merged !important;
+  font-weight: 600 !important;
+}
+
+.strategy-json-editor-content .ace_support.ace_function {
+  color: $argo-color-gray-7 !important;
+}
+
+.strategy-json-editor-content .ace_comment {
+  color: $argo-color-gray-5 !important;
+  font-style: italic !important;
+}
+
+.strategy-json-editor-content .ace_indent-guide {
+  background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAACCAYAAACZgbYnAAAAEklEQVQImWNgYGBgYHB3d/8PAAOIAdULw8qMAAAAAElFTkSuQmCC") right repeat-y !important;
+}
+
+.strategy-json-editor-content .ace_scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: $argo-color-gray-5 $argo-color-gray-1;
+}
+
+.strategy-json-editor-content .ace_scrollbar::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.strategy-json-editor-content .ace_scrollbar::-webkit-scrollbar-track {
+  background: $argo-color-gray-1;
+  border-radius: 6px;
+}
+
+.strategy-json-editor-content .ace_scrollbar::-webkit-scrollbar-thumb {
+  background-color: $argo-color-gray-5;
+  border-radius: 6px;
+  border: 2px solid $argo-color-gray-1;
+}
+
+.strategy-json-editor-content .ace_scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: $argo-color-gray-6;
+}
+
+.strategy-json-editor-content .ace_scrollbar::-webkit-scrollbar-corner {
+  background: $argo-color-gray-1;
 }
 
 .strategy-json-editor-empty {
@@ -81,5 +131,7 @@
   justify-content: center;
   height: 200px;
   font-size: 16px;
-  color: #333;
-} 
+  color: $argo-color-gray-6;
+  font-family: 'Heebo', sans-serif;
+  font-weight: 500;
+}
