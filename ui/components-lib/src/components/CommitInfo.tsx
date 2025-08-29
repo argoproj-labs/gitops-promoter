@@ -2,7 +2,7 @@ import { GoArchive } from "react-icons/go";
 import { BsBraces } from 'react-icons/bs';
 import { GoGitPullRequest } from 'react-icons/go';
 import { StatusIcon, StatusType } from './StatusIcon';
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import TimeAgo from './TimeAgo';
 import HealthSummary from './HealthSummary';
 import './CommitInfo.scss';
@@ -37,6 +37,11 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
   prUrl, 
   prNumber
 }) => {
+  const [showDeploymentTooltip, setShowDeploymentTooltip] = useState(false);
+  const [showCodeTooltip, setShowCodeTooltip] = useState(false);
+  const deploymentTimeoutRef = useRef<number | null>(null);
+  const codeTimeoutRef = useRef<number | null>(null);
+
   const getIcon = (iconType: 'file' | 'code') => {
     if (iconType === 'code') return <BsBraces className="commit-icon" />;
     return <GoArchive className="commit-icon" />;
@@ -90,10 +95,29 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     return '';
   };
 
+  const handleMouseEnter = useCallback((type: 'deployment' | 'code') => {
+    const timeoutRef = type === 'deployment' ? deploymentTimeoutRef : codeTimeoutRef;
+    const setShowTooltip = type === 'deployment' ? setShowDeploymentTooltip : setShowCodeTooltip;
+
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    setShowTooltip(true);
+  }, []);
+
+  const handleMouseLeave = useCallback((type: 'deployment' | 'code') => {
+    const timeoutRef = type === 'deployment' ? deploymentTimeoutRef : codeTimeoutRef;
+    const setShowTooltip = type === 'deployment' ? setShowDeploymentTooltip : setShowCodeTooltip;
+
+    timeoutRef.current = setTimeout(() => {
+      setShowTooltip(false);
+    }, 100); // Small delay to prevent flickering
+  }, []);
+
   const renderCommit = (commit: any, type: 'deployment' | 'code', commitUrl?: string) => {
     const iconType = type === 'deployment' ? 'file' : 'code';
-    const [showTooltip, setShowTooltip] = useState(false);
-    
+    const showTooltip = type === 'deployment' ? showDeploymentTooltip : showCodeTooltip;
+
     if (commit && (commit.sha || commit.subject || commit.author)) {
       return (
         <div className={`commit-info ${getStatusClass(type)}`}>
@@ -102,8 +126,8 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               {renderSha(commit, commitUrl)}
               <span 
                 className="commit-subject" 
-                onMouseEnter={() => setShowTooltip(true)}
-                onMouseLeave={() => setShowTooltip(false)}
+                onMouseEnter={() => handleMouseEnter(type)}
+                onMouseLeave={() => handleMouseLeave(type)}
               >
                 {commit.subject || 'N/A'}
               </span>
@@ -121,7 +145,11 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
             {getIcon(iconType)}
           </div>
           {showTooltip && (
-            <div className="tooltip-container">
+            <div
+              className="tooltip-container"
+              onMouseEnter={() => handleMouseEnter(type)}
+              onMouseLeave={() => handleMouseLeave(type)}
+            >
               {getTooltipContent(commit)}
             </div>
           )}
