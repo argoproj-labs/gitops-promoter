@@ -15,7 +15,7 @@ GitHub, GitHub Enterprise, GitLab and Forgejo (including Codeberg) as the SCM pr
 To install GitOps Promoter, you can use the following command:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.11.0/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.11.1/install.yaml
 ```
 
 ## GitHub App Configuration
@@ -285,3 +285,5 @@ By default, the UI uses your current kubeconfig context. If you want to use a di
 ```bash
 gitops-promoter dashboard --port <your-port> --kubecontext <your-kube-context>
 ```
+
+![Video of the GitOps Promoter UI as a change is promoted through three environments](https://github.com/user-attachments/assets/5860cc7a-56e6-4003-b1fc-b33e4d69d411)
