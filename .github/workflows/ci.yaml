@@ -69,7 +69,7 @@ jobs:
           path: cover.out
       - name: Upload code coverage information to codecov.io
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v5.5.0
+        uses: codecov/codecov-action@v5.5.1
         with:
           files: cover.out
           fail_ci_if_error: false
