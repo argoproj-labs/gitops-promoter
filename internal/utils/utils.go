@@ -243,6 +243,7 @@ func AreCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPol
 type StatusConditionUpdater interface {
 	client.Object
 	GetConditions() *[]metav1.Condition
+	SetConditions(conditions []metav1.Condition)
 }
 
 // HandleReconciliationResult handles reconciliation results for any object with status conditions.
@@ -267,10 +268,26 @@ func HandleReconciliationResult(
 	if conditions == nil {
 		conditions = &[]metav1.Condition{}
 	}
+	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
+	if readyCondition == nil {
+		// If the condition hasn't already been set, assume success.
+		readyCondition = &metav1.Condition{
+			Type:               string(promoterConditions.Ready),
+			Status:             metav1.ConditionTrue,
+			Reason:             string(promoterConditions.ReconciliationSuccess),
+			Message:            "Reconciliation successful",
+			ObservedGeneration: obj.GetGeneration(),
+			LastTransitionTime: metav1.NewTime(time.Now()),
+		}
+	}
 
 	if *err == nil {
-		recorder.Eventf(obj, "Normal", "ReconcileSuccess", "Reconciliation successful")
-		if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess), "Reconciliation succeeded"); updateErr != nil {
+		eventType := "Normal"
+		if readyCondition.Status == metav1.ConditionFalse {
+			eventType = "Warning"
+		}
+		recorder.Eventf(obj, eventType, readyCondition.Reason, readyCondition.Message)
+		if updateErr := updateReadyCondition(ctx, obj, client, conditions, readyCondition.Status, readyCondition.Reason, readyCondition.Message); updateErr != nil {
 			*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
 		}
 		return
@@ -300,4 +317,49 @@ func updateReadyCondition(ctx context.Context, obj StatusConditionUpdater, clien
 		}
 	}
 	return nil
+}
+
+// InheritNotReadyConditionFromObjects sets the Ready condition of the parent to False if any of the child objects are not ready.
+// This will override any existing Ready condition on the parent.
+func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent StatusConditionUpdater, notReadyReason promoterConditions.CommonReason, objs []T) {
+	parentConditions := parent.GetConditions()
+	if parentConditions == nil {
+		// Must be non-nil or SetStatusCondition will do nothing.
+		parentConditions = &[]metav1.Condition{}
+		parent.SetConditions(*parentConditions)
+	}
+
+	condition := metav1.Condition{
+		Type:               string(promoterConditions.Ready),
+		Status:             metav1.ConditionFalse,
+		Reason:             string(notReadyReason),
+		ObservedGeneration: parent.GetGeneration(),
+		LastTransitionTime: metav1.NewTime(time.Now()),
+	}
+
+	for _, obj := range objs {
+		objConditions := obj.GetConditions()
+		if objConditions == nil {
+			condition.Message = fmt.Sprintf("%T %q conditions are not found", obj, obj.GetName())
+			meta.SetStatusCondition(parent.GetConditions(), condition)
+			return
+		}
+
+		objReady := meta.FindStatusCondition(*objConditions, string(promoterConditions.Ready))
+		if objReady == nil {
+			condition.Message = fmt.Sprintf("%T %q Ready condition is not found", obj, obj.GetName())
+			meta.SetStatusCondition(parent.GetConditions(), condition)
+			return
+		}
+		if objReady.ObservedGeneration != obj.GetGeneration() {
+			condition.Message = fmt.Sprintf("%T %q Ready condition is not up to date", obj, obj.GetName())
+			meta.SetStatusCondition(parent.GetConditions(), condition)
+			return
+		}
+		if objReady.Status != metav1.ConditionTrue {
+			condition.Message = fmt.Sprintf("%T %q is not Ready because %q: %s", obj, obj.GetName(), objReady.Reason, objReady.Message)
+			meta.SetStatusCondition(parent.GetConditions(), condition)
+			return
+		}
+	}
 }
