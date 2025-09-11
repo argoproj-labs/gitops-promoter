@@ -246,7 +246,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	}
 }
 
-func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) error {
+func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) error {
 	logger := log.FromContext(ctx)
 
 	// TODO: do we like this name proposed-<name>?
@@ -272,6 +272,11 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		return fmt.Errorf("failed to marshal previous environment commit statuses: %w", err)
 	}
 
+	description := previousEnvironmentBranch + " - synced and healthy"
+	if phase == promoterv1alpha1.CommitPhasePending && pendingReason != "" {
+		description = pendingReason
+	}
+
 	commitStatus := &promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: proposedCSObjectKey.Name,
@@ -288,7 +293,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 			RepositoryReference: ctp.Spec.RepositoryReference,
 			Sha:                 ctp.Status.Proposed.Hydrated.Sha,
 			Name:                previousEnvironmentBranch + " - synced and healthy",
-			Description:         previousEnvironmentBranch + " - synced and healthy",
+			Description:         description,
 			Phase:               phase,
 			Url:                 url,
 		},
@@ -355,23 +360,11 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		previousEnvironmentStatus := ps.Status.Environments[i-1]
 		currentEnvironmentStatus := ps.Status.Environments[i]
 
-		// The previous environment's active commit statuses must be passing.
-		previousEnvironmentPassing := utils.AreCommitStatusesPassing(previousEnvironmentStatus.Active.CommitStatuses)
+		pendingReason := getPreviousEnvironmentPendingReason(previousEnvironmentStatus, currentEnvironmentStatus, ctp.Status.Proposed.Dry.Sha)
 
-		// The previous environment's dry sha must match the current environment's proposed dry sha. Gotta be trying to
-		// promote the same thing we're looking at in the previous environment.
-		previousEnvironmentDryShaMatches := previousEnvironmentStatus.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha
-
-		// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
-		// time. Basically, we can't move back in time.
-		previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: previousEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
-			previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
-
-		activeChecksPassed := previousEnvironmentPassing && previousEnvironmentDryShaMatches && previousEnvironmentDryShaEqualOrNewer
-
-		commitStatusPhase := promoterv1alpha1.CommitPhasePending
-		if activeChecksPassed {
-			commitStatusPhase = promoterv1alpha1.CommitPhaseSuccess
+		commitStatusPhase := promoterv1alpha1.CommitPhaseSuccess
+		if pendingReason != "" {
+			commitStatusPhase = promoterv1alpha1.CommitPhasePending
 		}
 
 		logger.V(4).Info("Setting previous environment CommitStatus phase",
@@ -381,18 +374,44 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			"proposedHydratedSha", ctp.Status.Proposed.Hydrated.Sha,
 			"previousEnvironmentActiveDrySha", previousEnvironmentStatus.Active.Dry.Sha,
 			"previousEnvironmentActiveHydratedSha", previousEnvironmentStatus.Active.Hydrated.Sha,
-			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch,
-			"previousEnvironmentPassing", previousEnvironmentPassing,
-			"previousEnvironmentDryShaMatches", previousEnvironmentDryShaMatches,
-			"previousEnvironmentDryShaEqualOrNewer", previousEnvironmentDryShaEqualOrNewer)
+			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch)
 
 		// Since there is at least one configured active check, and since this is not the first environment,
 		// we should not create a commit status for the previous environment.
-		err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
+		err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
 		if err != nil {
 			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", ctp.Spec.ActiveBranch, err)
 		}
 	}
 
 	return nil
+}
+
+// getPreviousEnvironmentPendingReason returns a non-empty string if the previous environment is not ready.
+func getPreviousEnvironmentPendingReason(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus, proposedDrySha string) string {
+	if previousEnvironmentStatus.Active.Dry.Sha != proposedDrySha {
+		return "Waiting for previous environment's active commit to match proposed commit"
+	}
+
+	// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
+	// time. Basically, we can't move back in time.
+	previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: previousEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
+		previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
+
+	if !previousEnvironmentDryShaEqualOrNewer {
+		// This should basically never happen.
+		return "Previous environment's commit is older than current environment's commit"
+	}
+
+	previousEnvironmentPassing := utils.AreCommitStatusesPassing(previousEnvironmentStatus.Active.CommitStatuses)
+
+	if !previousEnvironmentPassing {
+		if len(previousEnvironmentStatus.Active.CommitStatuses) == 0 {
+			return fmt.Sprintf("Waiting for previous environment's %q commit status to be successful", previousEnvironmentStatus.Active.CommitStatuses[0].Key)
+		}
+
+		return "Waiting for previous environment's commit statuses to be successful"
+	}
+
+	return ""
 }
