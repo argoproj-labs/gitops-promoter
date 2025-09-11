@@ -321,7 +321,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		return fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
 	}
 
-	if updatedCS.Spec.Phase != phase || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha || !reflect.DeepEqual(statusMap, updatedYamlStatusMap) {
+	if updatedCS.Spec.Phase != phase || updatedCS.Spec.Description != description || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha || !reflect.DeepEqual(statusMap, updatedYamlStatusMap) {
 		updatedCS.Spec.Phase = phase
 		updatedCS.Spec.Sha = ctp.Status.Proposed.Hydrated.Sha
 		updatedCS.Spec.Description = commitStatus.Spec.Description
