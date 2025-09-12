@@ -321,7 +321,9 @@ func updateReadyCondition(ctx context.Context, obj StatusConditionUpdater, clien
 
 // InheritNotReadyConditionFromObjects sets the Ready condition of the parent to False if any of the child objects are not ready.
 // This will override any existing Ready condition on the parent.
-func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent StatusConditionUpdater, notReadyReason promoterConditions.CommonReason, objs []T) {
+//
+// All child objects must be non-nil.
+func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent StatusConditionUpdater, notReadyReason promoterConditions.CommonReason, childObjs ...T) {
 	parentConditions := parent.GetConditions()
 	if parentConditions == nil {
 		// Must be non-nil or SetStatusCondition will do nothing.
@@ -337,27 +339,27 @@ func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent Status
 		LastTransitionTime: metav1.NewTime(time.Now()),
 	}
 
-	for _, obj := range objs {
-		objConditions := obj.GetConditions()
-		if objConditions == nil {
-			condition.Message = fmt.Sprintf("%T %q conditions are not found", obj, obj.GetName())
+	for _, childObj := range childObjs {
+		childObjConditions := childObj.GetConditions()
+		if childObjConditions == nil {
+			condition.Message = fmt.Sprintf("%T %q conditions are not found", childObj, childObj.GetName())
 			meta.SetStatusCondition(parent.GetConditions(), condition)
 			return
 		}
 
-		objReady := meta.FindStatusCondition(*objConditions, string(promoterConditions.Ready))
-		if objReady == nil {
-			condition.Message = fmt.Sprintf("%T %q Ready condition is not found", obj, obj.GetName())
+		childObjReady := meta.FindStatusCondition(*childObjConditions, string(promoterConditions.Ready))
+		if childObjReady == nil {
+			condition.Message = fmt.Sprintf("%T %q Ready condition is not found", childObj, childObj.GetName())
 			meta.SetStatusCondition(parent.GetConditions(), condition)
 			return
 		}
-		if objReady.ObservedGeneration != obj.GetGeneration() {
-			condition.Message = fmt.Sprintf("%T %q Ready condition is not up to date", obj, obj.GetName())
+		if childObjReady.ObservedGeneration != childObj.GetGeneration() {
+			condition.Message = fmt.Sprintf("%T %q Ready condition is not up to date", childObj, childObj.GetName())
 			meta.SetStatusCondition(parent.GetConditions(), condition)
 			return
 		}
-		if objReady.Status != metav1.ConditionTrue {
-			condition.Message = fmt.Sprintf("%T %q is not Ready because %q: %s", obj, obj.GetName(), objReady.Reason, objReady.Message)
+		if childObjReady.Status != metav1.ConditionTrue {
+			condition.Message = fmt.Sprintf("%T %q is not Ready because %q: %s", childObj, childObj.GetName(), childObjReady.Reason, childObjReady.Message)
 			meta.SetStatusCondition(parent.GetConditions(), condition)
 			return
 		}

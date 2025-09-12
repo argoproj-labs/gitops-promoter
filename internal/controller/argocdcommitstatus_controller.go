@@ -47,6 +47,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	mcbuilder "sigs.k8s.io/multicluster-runtime/pkg/builder"
 	mchandler "sigs.k8s.io/multicluster-runtime/pkg/handler"
@@ -192,6 +193,8 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	maxTimeUntilThreshold := time.Duration(0)
+	commitStatuses := make([]*promoterv1alpha1.CommitStatus, len(groupedArgoCDApps))
+	var i int
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
 		resolvedSha, ok := resolvedShas[targetBranch]
 		if !ok {
@@ -200,11 +203,15 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		resolvedPhase, desc := r.calculateAggregatedPhaseAndDescription(appsInEnvironment, resolvedSha)
 		resolvedPhase, maxTimeUntilThreshold = getRequeueTimeAndPhase(appsInEnvironment, resolvedPhase, maxTimeUntilThreshold)
 
-		err = r.updateAggregatedCommitStatus(ctx, &promotionStrategy, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
+		cs, err := r.updateAggregatedCommitStatus(ctx, &promotionStrategy, argoCDCommitStatus, targetBranch, resolvedSha, resolvedPhase, desc)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+		commitStatuses[i] = cs
+		i++
 	}
+
+	utils.InheritNotReadyConditionFromObjects(&argoCDCommitStatus, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
 	err = r.localClient.Status().Update(ctx, &argoCDCommitStatus)
 	if err != nil {
@@ -505,7 +512,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager)
 	return nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) error {
+func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
 	commitStatusName := targetBranch + "/health"
@@ -542,18 +549,18 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 
 		renderedURL, err := utils.RenderStringTemplate(argoCDCommitStatus.Spec.URL.Template, data, argoCDCommitStatus.Spec.URL.Options...)
 		if err != nil {
-			return fmt.Errorf("failed to render URL template: %w", err)
+			return nil, fmt.Errorf("failed to render URL template: %w", err)
 		}
 
 		// Parse the URL to check that it's valid
 		parsedURL, err := url.Parse(renderedURL)
 		if err != nil {
-			return fmt.Errorf("failed to parse URL: %w", err)
+			return nil, fmt.Errorf("failed to parse URL: %w", err)
 		}
 
 		// Check that the URL scheme is http or https
 		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-			return fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
+			return nil, fmt.Errorf("URL scheme is not http or https: %s", parsedURL.Scheme)
 		}
 
 		// Set the URL in the CommitStatus
@@ -565,29 +572,29 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	err := r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("failed to get CommitStatus object: %w", err)
+			return nil, fmt.Errorf("failed to get CommitStatus object: %w", err)
 		}
 		// Create
 		err = r.localClient.Create(ctx, &desiredCommitStatus)
-		logger.Info("Created ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
+		logger.Info("Created CommitStatus", "name", desiredCommitStatus.Name, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
 		if err != nil {
-			return fmt.Errorf("failed to create CommitStatus object: %w", err)
+			return nil, fmt.Errorf("failed to create CommitStatus object: %w", err)
 		}
 	}
 
 	if currentCommitStatus.Spec == desiredCommitStatus.Spec {
-		logger.V(4).Info("ArgoCDCommitStatus is already in sync", "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
-		return nil
+		logger.V(4).Info("CommitStatus is already in sync", "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
+		return &currentCommitStatus, nil
 	}
 
 	currentCommitStatus.Spec = desiredCommitStatus.Spec
 	err = r.localClient.Update(ctx, &currentCommitStatus)
-	logger.Info("Updated ArgoCDCommitStatus", "name", desiredCommitStatus.Name, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
+	logger.Info("Updated CommitStatus", "name", desiredCommitStatus.Name, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
 	if err != nil {
-		return fmt.Errorf("failed to update CommitStatus object: %w", err)
+		return nil, fmt.Errorf("failed to update CommitStatus object: %w", err)
 	}
 
-	return nil
+	return &currentCommitStatus, nil
 }
 
 func (r *ArgoCDCommitStatusReconciler) getPromotionStrategy(ctx context.Context, namespace string, promotionStrategyRef promoterv1alpha1.ObjectReference) (*promoterv1alpha1.PromotionStrategy, error) {

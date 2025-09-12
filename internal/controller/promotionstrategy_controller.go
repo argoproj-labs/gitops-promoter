@@ -32,8 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -246,10 +246,10 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 		}
 	}
 
-	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.ChangeTransferPolicyNotReady, ctps)
+	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.ChangeTransferPolicyNotReady, ctps...)
 }
 
-func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (error, *promoterv1alpha1.CommitStatus) {
+func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
 	// TODO: do we like this name proposed-<name>?
@@ -272,7 +272,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	}
 	yamlStatusMap, err := yaml.Marshal(statusMap)
 	if err != nil {
-		return fmt.Errorf("failed to marshal previous environment commit statuses: %w", err), nil
+		return nil, fmt.Errorf("failed to marshal previous environment commit statuses: %w", err)
 	}
 
 	commitStatus := &promoterv1alpha1.CommitStatus{
@@ -302,21 +302,21 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		if k8serrors.IsNotFound(err) {
 			err = r.Create(ctx, commitStatus)
 			if err != nil {
-				return fmt.Errorf("failed to create previous environments CommitStatus: %w", err), nil
+				return nil, fmt.Errorf("failed to create previous environments CommitStatus: %w", err)
 			}
-			return nil, commitStatus
+			return commitStatus, nil
 		}
-		return fmt.Errorf("failed to get previous environments CommitStatus: %w", err), nil
+		return nil, fmt.Errorf("failed to get previous environments CommitStatus: %w", err)
 	}
 
 	updatedYamlStatusMap := make(map[string]string)
 	previousEnvAnnotations, ok := updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]
 	if !ok {
-		return errors.New("previous environments CommitStatus does not have a previous environment commit statuses annotation"), nil
+		return nil, errors.New("previous environments CommitStatus does not have a previous environment commit statuses annotation")
 	}
 	err = yaml.Unmarshal([]byte(previousEnvAnnotations), &updatedYamlStatusMap)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err), nil
+		return nil, fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
 	}
 
 	if updatedCS.Spec.Phase != phase || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha || !reflect.DeepEqual(statusMap, updatedYamlStatusMap) {
@@ -329,12 +329,12 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 
 		err = r.Update(ctx, updatedCS)
 		if err != nil {
-			return fmt.Errorf("failed to update previous environments CommitStatus: %w", err), nil
+			return nil, fmt.Errorf("failed to update previous environments CommitStatus: %w", err)
 		}
 		logger.Info("Updated previous environment CommitStatus", "commitStatusName", updatedCS.Name, "phase", updatedCS.Spec.Phase, "sha", updatedCS.Spec.Sha)
 	}
 
-	return nil, updatedCS
+	return updatedCS, nil
 }
 
 // updatePreviousEnvironmentCommitStatus checks if any environment is ready to be merged and if so, merges the pull request. It does this by looking at any active and proposed commit statuses.
@@ -392,14 +392,14 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 		// Since there is at least one configured active check, and since this is not the first environment,
 		// we should not create a commit status for the previous environment.
-		err, cs := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
+		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
 		if err != nil {
 			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", ctp.Spec.ActiveBranch, err)
 		}
 		commitStatuses[i] = cs
 	}
 
-	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.PreviousEnvironmentCommitStatusNotReady, commitStatuses)
+	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.PreviousEnvironmentCommitStatusNotReady, commitStatuses...)
 
 	return nil
 }

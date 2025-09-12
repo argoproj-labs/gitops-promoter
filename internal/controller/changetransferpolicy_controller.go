@@ -51,6 +51,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 )
 
 // ChangeTransferPolicyReconciler reconciles a ChangeTransferPolicy object
@@ -125,14 +126,22 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to git merge for conflict resolution: %w", err)
 	}
 
-	directPushWasPerformed, err := r.mergeOrPullRequestPromote(ctx, gitOperations, &ctp)
+	directPushWasPerformed, pr, err := r.mergeOrPullRequestPromote(ctx, gitOperations, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set promotion state: %w", err)
 	}
 
-	err = r.mergePullRequests(ctx, &ctp)
+	if pr != nil {
+		utils.InheritNotReadyConditionFromObjects(&ctp, promoterConditions.PullRequestNotReady, pr)
+	}
+
+	pr, err = r.mergePullRequests(ctx, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to merge pull requests: %w", err)
+	}
+
+	if pr != nil {
+		utils.InheritNotReadyConditionFromObjects(&ctp, promoterConditions.PullRequestNotReady, pr)
 	}
 
 	// calculateHistory is done at a best effort so we do not return any errors here, we just log them instead.
@@ -650,43 +659,44 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 
 // mergeOrPullRequestPromote checks if there's anything to promote and, if there is, it does the promotion. It returns
 // a boolean indicating whether a merge was done via a merge commit/push (as opposed to a pull request).
-func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.Context, gitOperations *git.EnvironmentOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) (bool, error) {
+func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.Context, gitOperations *git.EnvironmentOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) (bool, *promoterv1alpha1.PullRequest, error) {
 	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
 		// There's nothing to promote.
-		return false, nil
+		return false, nil, nil
 	}
 
 	prRequired, err := gitOperations.IsPullRequestRequired(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	if err != nil {
-		return false, fmt.Errorf("failed to check whether a PR is required from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+		return false, nil, fmt.Errorf("failed to check whether a PR is required from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 	}
 
+	var pr *promoterv1alpha1.PullRequest
 	if prRequired {
-		err = r.creatOrUpdatePullRequest(ctx, ctp)
+		pr, err = r.creatOrUpdatePullRequest(ctx, ctp)
 		if err != nil {
-			return false, fmt.Errorf("failed to create/update PR: %w", err)
+			return false, nil, fmt.Errorf("failed to create/update PR: %w", err)
 		}
-		return false, nil
+		return false, pr, nil
 	}
 
 	err = gitOperations.PromoteEnvironmentWithMerge(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch)
 	if err != nil {
-		return false, fmt.Errorf("failed to merge: %w", err)
+		return false, pr, fmt.Errorf("failed to merge: %w", err)
 	}
-	return true, nil
+	return true, pr, nil
 }
 
-func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
 		// If the proposed dry sha is the same as the active dry sha, no need to create a pull request
-		return nil
+		return nil, nil
 	}
 
 	logger.V(4).Info("Proposed dry sha, does not match active", "proposedDrySha", ctp.Status.Proposed.Dry.Sha, "activeDrySha", ctp.Status.Active.Dry.Sha)
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Spec.RepositoryReference.Name})
 	if err != nil {
-		return fmt.Errorf("failed to get GitRepository %q: %w", ctp.Spec.RepositoryReference.Name, err)
+		return nil, fmt.Errorf("failed to get GitRepository %q: %w", ctp.Spec.RepositoryReference.Name, err)
 	}
 
 	var prName string
@@ -705,12 +715,12 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 
 	controllerConfiguration, err := r.SettingsMgr.GetControllerConfiguration(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get global promotion configuration: %w", err)
+		return nil, fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
 
 	title, description, err := TemplatePullRequest(&controllerConfiguration.Spec.PullRequest, map[string]any{"ChangeTransferPolicy": ctp})
 	if err != nil {
-		return fmt.Errorf("failed to template pull request: %w", err)
+		return nil, fmt.Errorf("failed to template pull request: %w", err)
 	}
 
 	var pr promoterv1alpha1.PullRequest
@@ -720,7 +730,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	}, &pr)
 	if err != nil {
 		if !k8s_errors.IsNotFound(err) {
-			return fmt.Errorf("failed to get PR %q: %w", prName, err)
+			return nil, fmt.Errorf("failed to get PR %q: %w", prName, err)
 		}
 
 		// TODO: move some of the below code into a utility function. It's a bit verbose for being nested this deeply.
@@ -752,11 +762,11 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		}
 		err = r.Create(ctx, &pr)
 		if err != nil {
-			return fmt.Errorf("failed to create PR from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+			return nil, fmt.Errorf("failed to create PR from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 		}
 		r.Recorder.Event(ctp, "Normal", constants.PullRequestCreatedReason, fmt.Sprintf(constants.PullRequestCreatedMessage, pr.Name))
 		logger.V(4).Info("Created pull request", "pullRequest", pr)
-		return nil
+		return &pr, nil
 	}
 
 	commitTrailers := trailers{}
@@ -797,25 +807,25 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		return r.Update(ctx, &prUpdated)
 	})
 	if err != nil {
-		return fmt.Errorf("failed to update PR %q: %w", pr.Name, err)
+		return nil, fmt.Errorf("failed to update PR %q: %w", pr.Name, err)
 	}
 
-	return nil
+	return &pr, nil
 }
 
 // mergePullRequests tries to merge the pull request if all the checks have passed and the environment is set to auto merge.
-func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 
 	for i, status := range ctp.Status.Proposed.CommitStatuses {
 		if status.Phase != string(promoterv1alpha1.CommitPhaseSuccess) {
 			logger.V(4).Info("Proposed commit status is not success", "key", ctp.Spec.ProposedCommitStatuses[i].Key, "sha", ctp.Status.Proposed.Hydrated.Sha, "phase", status.Phase)
-			return nil
+			return nil, nil
 		}
 	}
 
 	if !*ctp.Spec.AutoMerge {
-		return nil
+		return nil, nil
 	}
 
 	prl := promoterv1alpha1.PullRequestList{}
@@ -828,15 +838,15 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		}),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %s and Environment %s: %w", ctp.Name, ctp.Spec.ActiveBranch, err)
+		return nil, fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %s and Environment %s: %w", ctp.Name, ctp.Spec.ActiveBranch, err)
 	}
 
 	if len(prl.Items) > 1 {
-		return fmt.Errorf("more than one PullRequest found for ChangeTransferPolicy %s and Environment %s", ctp.Name, ctp.Spec.ActiveBranch)
+		return nil, fmt.Errorf("more than one PullRequest found for ChangeTransferPolicy %s and Environment %s", ctp.Name, ctp.Spec.ActiveBranch)
 	}
 
 	if len(prl.Items) != 1 {
-		return nil
+		return nil, nil
 	}
 
 	// We found 1 pull request process it.
@@ -859,11 +869,11 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 			return r.Update(ctx, &pr)
 		})
 		if err != nil {
-			return fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
+			return &pullRequest, fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
 		}
 		r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
 		logger.Info("Merged pull request")
-		return nil
+		return &pullRequest, nil
 	}
 
 	if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
@@ -871,7 +881,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		logger.Info("Pull request can not be merged, probably due to SCM", "pr", pullRequest.Name)
 	}
 
-	return nil
+	return &pullRequest, nil
 }
 
 // gitMergeStrategyOurs tests if there is a conflict between the active and proposed branches. If there is, we
