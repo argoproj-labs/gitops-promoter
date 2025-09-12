@@ -193,8 +193,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	maxTimeUntilThreshold := time.Duration(0)
-	commitStatuses := make([]*promoterv1alpha1.CommitStatus, len(groupedArgoCDApps))
-	var i int
+	var commitStatuses []*promoterv1alpha1.CommitStatus
 	for targetBranch, appsInEnvironment := range groupedArgoCDApps {
 		resolvedSha, ok := resolvedShas[targetBranch]
 		if !ok {
@@ -207,8 +206,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		commitStatuses[i] = cs
-		i++
+		if cs != nil {
+			commitStatuses = append(commitStatuses, cs)
+		}
 	}
 
 	utils.InheritNotReadyConditionFromObjects(&argoCDCommitStatus, promoterConditions.CommitStatusesNotReady, commitStatuses...)
