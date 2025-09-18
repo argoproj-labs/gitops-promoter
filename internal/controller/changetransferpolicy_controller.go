@@ -82,8 +82,6 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	var ctp promoterv1alpha1.ChangeTransferPolicy
 	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &err)
 
-	utils.Loopd(ctx, []utils.StatusConditionUpdater{&ctp})
-
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
 		if k8s_errors.IsNotFound(err) {
