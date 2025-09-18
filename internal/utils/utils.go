@@ -245,13 +245,6 @@ type StatusConditionUpdater interface {
 	GetConditions() *[]metav1.Condition
 }
 
-func Loopd(ctx context.Context, a []StatusConditionUpdater) {
-	for _, i := range a {
-		logger := log.FromContext(ctx)
-		logger.Info("Looping through objects", "name", i.GetName(), "kind", i.GetObjectKind().GroupVersionKind().Kind)
-	}
-}
-
 // HandleReconciliationResult handles reconciliation results for any object with status conditions.
 func HandleReconciliationResult(
 	ctx context.Context,
