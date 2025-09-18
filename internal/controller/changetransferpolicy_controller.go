@@ -169,7 +169,7 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 
 	shaListActive, err := gitOperations.GetRevListFirstParent(ctx, "origin/"+ctp.Spec.ActiveBranch, 5)
 	if err != nil {
-		logger.Error(err, "failed to get rev-list commit history for active branch", "branch", ctp.Spec.ActiveBranch)
+		logger.V(4).Info("failed to get rev-list commit history for active branch", "branch", ctp.Spec.ActiveBranch, "err", err)
 		return
 	}
 	logger.V(4).Info("Rev-list history for active branch", "shaList", shaListActive)
@@ -178,7 +178,7 @@ func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, c
 	for _, sha := range shaListActive {
 		historyEntry, shouldInclude, err := r.buildHistoryEntry(ctx, sha, gitOperations)
 		if err != nil {
-			logger.Error(err, "failed to build history entry", "sha", sha)
+			logger.V(4).Info("failed to build history entry", "sha", sha, "err", err)
 			continue
 		}
 
@@ -262,7 +262,7 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 
 	if pullRequestUrl := activeTrailers[constants.TrailerPullRequestUrl]; pullRequestUrl != "" {
 		if !strings.HasPrefix(pullRequestUrl, "http://") && !strings.HasPrefix(pullRequestUrl, "https://") {
-			logger.Error(errors.New("invalid URL"), "pull request URL does not start with http:// or https://", "url", pullRequestUrl)
+			logger.V(4).Info("pull request URL does not start with http:// or https://", "url", pullRequestUrl)
 		} else {
 			h.PullRequest.Url = pullRequestUrl
 		}
@@ -272,7 +272,7 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 
 	if timeStr := activeTrailers[constants.TrailerPullRequestCreationTime]; timeStr != "" {
 		if creationTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
-			logger.Error(err, "failed to parse "+constants.TrailerPullRequestCreationTime, "time", timeStr)
+			logger.V(4).Info("failed to parse "+constants.TrailerPullRequestCreationTime, "time", timeStr, "err", err)
 		} else {
 			h.PullRequest.PRCreationTime = metav1.NewTime(creationTime)
 		}
