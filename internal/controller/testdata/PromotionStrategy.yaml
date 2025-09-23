@@ -27,7 +27,7 @@ status:
     - type: Ready
       lastTransitionTime: 2023-10-01T00:00:00Z
       message: Reconciliation succeeded
-      reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
+      reason: ReconciliationSuccess # ReconciliationSuccess, ReconciliationError, ChangeTransferPolicyNotReady, or PreviousEnvironmentCommitStatusNotReady
       status: "True" # "True," "False," or "Unknown"
       # observedGeneration is the generation of the resource that was last reconciled. This is used to track if the
       # resource has changed since the last reconciliation.

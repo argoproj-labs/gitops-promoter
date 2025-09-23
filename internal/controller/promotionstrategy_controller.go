@@ -344,7 +344,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 	// Go through each environment and copy any commit statuses from the previous environment if the previous environment's running dry commit is the same as the
 	// currently processing environments proposed dry sha.
 	// We then look at the status of the current environment and if all checks have passed and the environment is set to auto merge, we merge the pull request.
-	var commitStatuses []*promoterv1alpha1.CommitStatus
+	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(ctps))
 	for i, ctp := range ctps {
 		if i == 0 {
 			// Skip, there's no previous environment.
