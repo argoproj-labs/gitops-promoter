@@ -270,7 +270,7 @@ func HandleReconciliationResult(
 	}
 	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
 	if readyCondition == nil {
-		// If the condition hasn't already been set, assume success.
+		// If the condition hasn't already been set by the caller, assume success.
 		readyCondition = &metav1.Condition{
 			Type:               string(promoterConditions.Ready),
 			Status:             metav1.ConditionTrue,

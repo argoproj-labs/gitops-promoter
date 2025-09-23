@@ -206,9 +206,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		if cs != nil {
-			commitStatuses = append(commitStatuses, cs)
-		}
+		commitStatuses = append(commitStatuses, cs)
 	}
 
 	utils.InheritNotReadyConditionFromObjects(&argoCDCommitStatus, promoterConditions.CommitStatusesNotReady, commitStatuses...)
@@ -512,6 +510,8 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager)
 	return nil
 }
 
+// updateAggregatedCommitStatus creates or updates a CommitStatus object for the given target branch and sha.
+// If err is nil, the returned CommitStatus is guaranteed to be non-nil.
 func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.Context, promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus, targetBranch string, sha string, phase promoterv1alpha1.CommitStatusPhase, desc string) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
