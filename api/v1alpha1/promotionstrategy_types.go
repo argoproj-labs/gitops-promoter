@@ -128,11 +128,6 @@ func (ps *PromotionStrategy) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
 }
 
-// SetConditions sets the conditions of the PromotionStrategy.
-func (ps *PromotionStrategy) SetConditions(conditions []metav1.Condition) {
-	ps.Status.Conditions = conditions
-}
-
 // EnvironmentStatus defines the observed state of an environment in a PromotionStrategy.
 type EnvironmentStatus struct {
 	// Branch is the name of the active branch for the environment.

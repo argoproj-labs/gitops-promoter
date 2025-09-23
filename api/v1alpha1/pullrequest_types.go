@@ -87,11 +87,6 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
 }
 
-// SetConditions sets the conditions of the PullRequest.
-func (ps *PullRequest) SetConditions(conditions []metav1.Condition) {
-	ps.Status.Conditions = conditions
-}
-
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 

@@ -79,11 +79,6 @@ func (cs *CommitStatus) GetConditions() *[]metav1.Condition {
 	return &cs.Status.Conditions
 }
 
-// SetConditions sets the conditions of the CommitStatus
-func (cs *CommitStatus) SetConditions(conditions []metav1.Condition) {
-	cs.Status.Conditions = conditions
-}
-
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 

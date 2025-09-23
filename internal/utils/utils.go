@@ -243,7 +243,6 @@ func AreCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestPol
 type StatusConditionUpdater interface {
 	client.Object
 	GetConditions() *[]metav1.Condition
-	SetConditions(conditions []metav1.Condition)
 }
 
 // HandleReconciliationResult handles reconciliation results for any object with status conditions.
@@ -327,8 +326,7 @@ func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent Status
 	parentConditions := parent.GetConditions()
 	if parentConditions == nil {
 		// Must be non-nil or SetStatusCondition will do nothing.
-		parentConditions = &[]metav1.Condition{}
-		parent.SetConditions(*parentConditions)
+		*parentConditions = []metav1.Condition{}
 	}
 
 	condition := metav1.Condition{
@@ -341,25 +339,26 @@ func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent Status
 
 	for _, childObj := range childObjs {
 		childObjConditions := childObj.GetConditions()
+		childObjKind := childObj.GetObjectKind().GroupVersionKind().Kind
 		if childObjConditions == nil {
-			condition.Message = fmt.Sprintf("%T %q conditions are not found", childObj, childObj.GetName())
+			condition.Message = fmt.Sprintf("%s %q conditions are not found", childObjKind, childObj.GetName())
 			meta.SetStatusCondition(parent.GetConditions(), condition)
 			return
 		}
 
 		childObjReady := meta.FindStatusCondition(*childObjConditions, string(promoterConditions.Ready))
 		if childObjReady == nil {
-			condition.Message = fmt.Sprintf("%T %q Ready condition is not found", childObj, childObj.GetName())
+			condition.Message = fmt.Sprintf("%s %q Ready condition is missing", childObjKind, childObj.GetName())
 			meta.SetStatusCondition(parent.GetConditions(), condition)
 			return
 		}
 		if childObjReady.ObservedGeneration != childObj.GetGeneration() {
-			condition.Message = fmt.Sprintf("%T %q Ready condition is not up to date", childObj, childObj.GetName())
+			condition.Message = fmt.Sprintf("%s %q Ready condition is not up to date", childObjKind, childObj.GetName())
 			meta.SetStatusCondition(parent.GetConditions(), condition)
 			return
 		}
 		if childObjReady.Status != metav1.ConditionTrue {
-			condition.Message = fmt.Sprintf("%T %q is not Ready because %q: %s", childObj, childObj.GetName(), childObjReady.Reason, childObjReady.Message)
+			condition.Message = fmt.Sprintf("%s %q is not Ready because %q: %s", childObjKind, childObj.GetName(), childObjReady.Reason, childObjReady.Message)
 			meta.SetStatusCondition(parent.GetConditions(), condition)
 			return
 		}

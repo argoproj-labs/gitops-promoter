@@ -105,11 +105,6 @@ func (cs *ArgoCDCommitStatus) GetConditions() *[]metav1.Condition {
 	return &cs.Status.Conditions
 }
 
-// SetConditions sets the conditions of the ArgoCDCommitStatus.
-func (cs *ArgoCDCommitStatus) SetConditions(conditions []metav1.Condition) {
-	cs.Status.Conditions = conditions
-}
-
 // ApplicationsSelected represents the Argo CD applications that are selected by the commit status.
 type ApplicationsSelected struct {
 	// Namespace is the namespace of the Argo CD application.
