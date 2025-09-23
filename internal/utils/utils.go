@@ -323,11 +323,10 @@ func updateReadyCondition(ctx context.Context, obj StatusConditionUpdater, clien
 //
 // All child objects must be non-nil.
 func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent StatusConditionUpdater, notReadyReason promoterConditions.CommonReason, childObjs ...T) {
-	parentConditions := parent.GetConditions()
-	if parentConditions == nil {
-		// Must be non-nil or SetStatusCondition will do nothing.
-		*parentConditions = []metav1.Condition{}
-	}
+	// This function does not nil-check the result of GetConditions() for either the parent or child objects. This is
+	// because all our CRDs have non-nilable status.conditions fields. The return value of GetConditions() is a pointer
+	// only to facilitate mutations on the referenced slice.
+	// If we ever make status.conditions nilable, we will need to add nil checks here.
 
 	condition := metav1.Condition{
 		Type:               string(promoterConditions.Ready),
@@ -339,12 +338,8 @@ func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent Status
 
 	for _, childObj := range childObjs {
 		childObjConditions := childObj.GetConditions()
+
 		childObjKind := childObj.GetObjectKind().GroupVersionKind().Kind
-		if childObjConditions == nil {
-			condition.Message = fmt.Sprintf("%s %q conditions are not found", childObjKind, childObj.GetName())
-			meta.SetStatusCondition(parent.GetConditions(), condition)
-			return
-		}
 
 		childObjReady := meta.FindStatusCondition(*childObjConditions, string(promoterConditions.Ready))
 		if childObjReady == nil {
