@@ -37,6 +37,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -93,6 +94,9 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		logger.Error(err, "failed to get ChangeTransferPolicy")
 		return ctrl.Result{}, fmt.Errorf("failed to get ChangeTransferPolicy: %w", err)
 	}
+
+	// Remove any existing Ready condition. We want to start fresh.
+	meta.RemoveStatusCondition(ctp.GetConditions(), string(promoterConditions.Ready))
 
 	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ctp.Spec.RepositoryReference, &ctp)
 	if err != nil {

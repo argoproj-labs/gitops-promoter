@@ -27,8 +27,17 @@ All resources may produce the following events:
 | Normal     | ResolvedConflict    | A git merge conflict was resolved for a ChangeTransferPolicy.                                                    |
 | Normal     | PullRequestCreated  | A pull request was created for a ChangeTransferPolicy.                                                           |
 | Normal     | PullRequestMerged   | A pull request was merged for a ChangeTransferPolicy.                                                            |
+| Normal     | PullRequestUpdated  | A pull request was updated for a ChangeTransferPolicy.                                                           |
 | Warning    | TooManyMatchingSha  | There is more than one CommitStatus for a given key and SHA. There must only be one CommitStatus per key/sha.    |
 | Warning    | PullRequestNotReady | One or more of the [PullRequest](../crd-specs.md#pullrequest) managed by this ChangeTransferPolicy is not Ready. |
+
+## CommitStatus
+
+[CommitStatuses](../crd-specs.md#commitstatus) may produce the following events:
+
+| Event Type | Event Reason    | Description                                       |
+|------------|-----------------|---------------------------------------------------|
+| Normal     | CommitStatusSet | The CommitStatus was successfully set in the SCM. |
 
 ## PromotionStrategy
 

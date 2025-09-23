@@ -263,10 +263,7 @@ func HandleReconciliationResult(
 		return
 	}
 
-	conditions := obj.GetConditions()
-	if conditions == nil {
-		conditions = &[]metav1.Condition{}
-	}
+	conditions := obj.GetConditions() // GetConditions() is guaranteed to be non-nil for our CRDs.
 	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
 	if readyCondition == nil {
 		// If the condition hasn't already been set by the caller, assume success.
@@ -293,7 +290,7 @@ func HandleReconciliationResult(
 	}
 
 	if !k8serrors.IsConflict(*err) {
-		recorder.Eventf(obj, "Warning", "ReconcileError", "Reconciliation failed: %v", *err)
+		recorder.Eventf(obj, "Warning", string(promoterConditions.ReconciliationError), "Reconciliation failed: %v", *err)
 	}
 	if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionFalse, string(promoterConditions.ReconciliationError), fmt.Sprintf("Reconciliation failed: %s", *err)); updateErr != nil {
 		//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
@@ -337,11 +334,9 @@ func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent Status
 	}
 
 	for _, childObj := range childObjs {
-		childObjConditions := childObj.GetConditions()
-
 		childObjKind := childObj.GetObjectKind().GroupVersionKind().Kind
+		childObjReady := meta.FindStatusCondition(*childObj.GetConditions(), string(promoterConditions.Ready))
 
-		childObjReady := meta.FindStatusCondition(*childObjConditions, string(promoterConditions.Ready))
 		if childObjReady == nil {
 			condition.Message = fmt.Sprintf("%s %q Ready condition is missing", childObjKind, childObj.GetName())
 			meta.SetStatusCondition(parent.GetConditions(), condition)
