@@ -73,30 +73,46 @@ func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error)
 }
 
 // GetClientFromInstallationId creates a new GitHub client with the specified installation ID.
-func getClientFromInstallationId(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, id int64) (*github.Client, *ghinstallation.Transport, error) {
+func getInstallationClient(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, id int64) (*github.Client, *ghinstallation.Transport, error) {
 	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.GetSpec().GitHub.AppID, id, secret.Data[githubAppPrivateKeySecretKey])
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create GitHub installation transport: %w", err)
 	}
 
+	enterprise, baseUrl, uploadUrl := getUrls(scmProvider.GetSpec().GitHub.Domain)
+
 	var client *github.Client
-	if scmProvider.GetSpec().GitHub.Domain == "" {
+	if !enterprise {
 		client = github.NewClient(&http.Client{Transport: itr})
-	} else {
-		baseURL := fmt.Sprintf("https://%s/api/v3", scmProvider.GetSpec().GitHub.Domain)
-		itr.BaseURL = baseURL
-		uploadsURL := fmt.Sprintf("https://%s/api/uploads", scmProvider.GetSpec().GitHub.Domain)
-		client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseURL, uploadsURL)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
-		}
+		return client, itr, nil
 	}
 
+	itr.BaseURL = baseUrl
+	client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseUrl, uploadUrl)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
+	}
 	return client, itr, nil
 }
 
+func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {
+	if domain == "" {
+		return false, "", ""
+	}
+	baseUrl = fmt.Sprintf("https://%s/api/v3", domain)
+	uploadUrl = fmt.Sprintf("https://%s/api/uploads", domain)
+	return true, baseUrl, uploadUrl
+}
+
 // installationIds caches installation IDs for organizations to avoid redundant API calls.
-var installationIds sync.Map
+var installationIds map[orgAppId]int64 = make(map[orgAppId]int64)
+
+type orgAppId struct {
+	org string
+	id  int64
+}
+
+var m sync.RWMutex
 
 // GetClient retrieves a GitHub client for the specified organization using the provided SCM provider and secret.
 func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, org string) (*github.Client, *ghinstallation.Transport, error) {
@@ -105,22 +121,30 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		return nil, nil, fmt.Errorf("failed to create GitHub installation transport: %w", err)
 	}
 
+	enterprise, baseUrl, uploadUrl := getUrls(scmProvider.GetSpec().GitHub.Domain)
+
 	var client *github.Client
-	if scmProvider.GetSpec().GitHub.Domain == "" {
+	if !enterprise {
 		client = github.NewClient(&http.Client{Transport: itr})
 	} else {
-		baseURL := fmt.Sprintf("https://%s/api/v3", scmProvider.GetSpec().GitHub.Domain)
-		itr.BaseURL = baseURL
-		uploadsURL := fmt.Sprintf("https://%s/api/uploads", scmProvider.GetSpec().GitHub.Domain)
-		client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseURL, uploadsURL)
+		itr.BaseURL = baseUrl
+		client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseUrl, uploadUrl)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
 		}
 	}
 
-	if id, found := installationIds.Load(org); found {
-		return getClientFromInstallationId(scmProvider, secret, id.(int64))
+	// If an installation ID is already provided, use it directly.
+	if scmProvider.GetSpec().GitHub.InstallationID != 0 {
+		return getInstallationClient(scmProvider, secret, scmProvider.GetSpec().GitHub.InstallationID)
 	}
+
+	m.RLock()
+	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
+		m.RUnlock()
+		return getInstallationClient(scmProvider, secret, id)
+	}
+	m.RUnlock()
 
 	var allInstallations []*github.Installation
 	opts := &github.ListOptions{PerPage: 100}
@@ -139,15 +163,18 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		opts.Page = resp.NextPage
 	}
 
+	// Cache the installation IDs, we take out a lock for the entire loop to avoid locking/unlocking repeatedly. We also include the single
+	// read within the write lock.
+	m.Lock()
 	for _, installation := range allInstallations {
 		if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
-			installationIds.Store(*installation.Account.Login, *installation.ID)
+			installationIds[orgAppId{org: *installation.Account.Login, id: scmProvider.GetSpec().GitHub.AppID}] = *installation.ID
 		}
 	}
 
-	if id, found := installationIds.Load(org); found {
-		return getClientFromInstallationId(scmProvider, secret, id.(int64))
+	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
+		return getInstallationClient(scmProvider, secret, id)
 	}
-
+	m.Unlock()
 	return nil, nil, fmt.Errorf("installation not found for org: %s", org)
 }

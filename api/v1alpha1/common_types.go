@@ -14,8 +14,9 @@ type GitHub struct {
 	// +kubebuilder:validation:Required
 	AppID int64 `json:"appID"`
 	// InstallationID is the GitHub App Installation ID.
-	// +kubebuilder:validation:Required
-	InstallationID int64 `json:"installationID"`
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=0
+	InstallationID int64 `json:"installationID,omitempty"`
 }
 
 // GitLab is a GitLab SCM provider configuration. It is used to configure the GitLab settings.
