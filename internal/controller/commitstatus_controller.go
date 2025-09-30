@@ -137,10 +137,15 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		return nil, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", commitStatus.Spec.RepositoryReference.Name, err)
 	}
 
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: commitStatus.Namespace, Name: commitStatus.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository for repo %q: %w", commitStatus.Spec.RepositoryReference.Name, err)
+	}
+
 	switch {
 	case scmProvider.GetSpec().GitHub != nil:
 		var p *github.CommitStatus
-		p, err = github.NewGithubCommitStatusProvider(r.Client, scmProvider, *secret)
+		p, err = github.NewGithubCommitStatusProvider(ctx, r.Client, scmProvider, *secret, gitRepo.Spec.GitHub.Owner)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get GitHub provider for domain %q with secret %q: %w", scmProvider.GetSpec().GitHub.Domain, secret.Name, err)
 		}

@@ -64,9 +64,9 @@ func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error)
 	return "git", nil
 }
 
-// GetClient creates a new GitHub client using the provided SCM provider and secret.
-func GetClient(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret) (*github.Client, error) {
-	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.GetSpec().GitHub.AppID, scmProvider.GetSpec().GitHub.InstallationID, secret.Data[githubAppPrivateKeySecretKey])
+// GetClientFromInstallationId creates a new GitHub client with the specified installation ID.
+func getClientFromInstallationId(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, id int64) (*github.Client, error) {
+	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.GetSpec().GitHub.AppID, id, secret.Data[githubAppPrivateKeySecretKey])
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GitHub installation transport: %w", err)
 	}
@@ -85,4 +85,65 @@ func GetClient(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret) (*gith
 	}
 
 	return client, nil
+}
+
+// installationIds caches installation IDs for organizations to avoid redundant API calls.
+var installationIds map[string]int64
+
+// GetClient retrieves a GitHub client for the specified organization using the provided SCM provider and secret.
+func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, org string) (*github.Client, error) {
+	itr, err := ghinstallation.NewAppsTransport(http.DefaultTransport, scmProvider.GetSpec().GitHub.AppID, secret.Data[githubAppPrivateKeySecretKey])
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GitHub installation transport: %w", err)
+	}
+
+	var client *github.Client
+	if scmProvider.GetSpec().GitHub.Domain == "" {
+		client = github.NewClient(&http.Client{Transport: itr})
+	} else {
+		baseURL := fmt.Sprintf("https://%s/api/v3", scmProvider.GetSpec().GitHub.Domain)
+		itr.BaseURL = baseURL
+		uploadsURL := fmt.Sprintf("https://%s/api/uploads", scmProvider.GetSpec().GitHub.Domain)
+		client, err = github.NewClient(&http.Client{Transport: itr}).WithEnterpriseURLs(baseURL, uploadsURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create GitHub enterprise client: %w", err)
+		}
+	}
+
+	if installationIds == nil {
+		installationIds = make(map[string]int64)
+	}
+
+	if id, found := installationIds[org]; found {
+		return getClientFromInstallationId(scmProvider, secret, id)
+	}
+
+	var allInstallations []*github.Installation
+	opts := &github.ListOptions{PerPage: 100}
+
+	for {
+		installations, resp, err := client.Apps.ListInstallations(ctx, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list installations: %w", err)
+		}
+
+		allInstallations = append(allInstallations, installations...)
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	for _, installation := range allInstallations {
+		if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
+			installationIds[*installation.Account.Login] = *installation.ID
+		}
+	}
+
+	if id, found := installationIds[org]; found {
+		return getClientFromInstallationId(scmProvider, secret, id)
+	}
+
+	return nil, fmt.Errorf("installation not found for org: %s", org)
 }
