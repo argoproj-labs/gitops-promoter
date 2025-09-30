@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/bradleyfalzon/ghinstallation/v2"
@@ -95,7 +96,7 @@ func getClientFromInstallationId(scmProvider v1alpha1.GenericScmProvider, secret
 }
 
 // installationIds caches installation IDs for organizations to avoid redundant API calls.
-var installationIds map[string]int64
+var installationIds sync.Map
 
 // GetClient retrieves a GitHub client for the specified organization using the provided SCM provider and secret.
 func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, org string) (*github.Client, *ghinstallation.Transport, error) {
@@ -117,12 +118,8 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		}
 	}
 
-	if installationIds == nil {
-		installationIds = make(map[string]int64)
-	}
-
-	if id, found := installationIds[org]; found {
-		return getClientFromInstallationId(scmProvider, secret, id)
+	if id, found := installationIds.Load(org); found {
+		return getClientFromInstallationId(scmProvider, secret, id.(int64))
 	}
 
 	var allInstallations []*github.Installation
@@ -144,12 +141,12 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 
 	for _, installation := range allInstallations {
 		if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
-			installationIds[*installation.Account.Login] = *installation.ID
+			installationIds.Store(*installation.Account.Login, *installation.ID)
 		}
 	}
 
-	if id, found := installationIds[org]; found {
-		return getClientFromInstallationId(scmProvider, secret, id)
+	if id, found := installationIds.Load(org); found {
+		return getClientFromInstallationId(scmProvider, secret, id.(int64))
 	}
 
 	return nil, nil, fmt.Errorf("installation not found for org: %s", org)
