@@ -105,7 +105,7 @@ func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {
 }
 
 // installationIds caches installation IDs for organizations to avoid redundant API calls.
-var installationIds map[orgAppId]int64 = make(map[orgAppId]int64)
+var installationIds = make(map[orgAppId]int64)
 
 type orgAppId struct {
 	org string
