@@ -107,12 +107,14 @@ func getUrls(domain string) (enterprise bool, baseUrl, uploadUrl string) {
 // installationIds caches installation IDs for organizations to avoid redundant API calls.
 var installationIds = make(map[orgAppId]int64)
 
+// orgAppId is a composite key of organization and app ID for caching installation IDs.
 type orgAppId struct {
 	org string
 	id  int64
 }
 
-var m sync.RWMutex
+// appInstallationIdCacheMutex protects access to the installationIds map.
+var appInstallationIdCacheMutex sync.RWMutex
 
 // GetClient retrieves a GitHub client for the specified organization using the provided SCM provider and secret.
 // We return a client for API calls and a transport that gets used for git operations via GitAuthenticationProvider.
@@ -140,12 +142,12 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		return getInstallationClient(scmProvider, secret, scmProvider.GetSpec().GitHub.InstallationID)
 	}
 
-	m.RLock()
+	appInstallationIdCacheMutex.RLock()
 	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
-		m.RUnlock()
+		appInstallationIdCacheMutex.RUnlock()
 		return getInstallationClient(scmProvider, secret, id)
 	}
-	m.RUnlock()
+	appInstallationIdCacheMutex.RUnlock()
 
 	var allInstallations []*github.Installation
 	opts := &github.ListOptions{PerPage: 100}
@@ -166,7 +168,7 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 
 	// Cache the installation IDs, we take out a lock for the entire loop to avoid locking/unlocking repeatedly. We also include the single
 	// read within the write lock.
-	m.Lock()
+	appInstallationIdCacheMutex.Lock()
 	for _, installation := range allInstallations {
 		if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
 			installationIds[orgAppId{org: *installation.Account.Login, id: scmProvider.GetSpec().GitHub.AppID}] = *installation.ID
@@ -176,6 +178,6 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
 		return getInstallationClient(scmProvider, secret, id)
 	}
-	m.Unlock()
+	appInstallationIdCacheMutex.Unlock()
 	return nil, nil, fmt.Errorf("installation not found for org: %s", org)
 }
