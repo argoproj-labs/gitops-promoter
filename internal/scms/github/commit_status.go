@@ -27,7 +27,7 @@ var _ scms.CommitStatusProvider = &CommitStatus{}
 
 // NewGithubCommitStatusProvider creates a new instance of CommitStatus for GitHub.
 func NewGithubCommitStatusProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string) (*CommitStatus, error) {
-	client, err := GetClient(ctx, scmProvider, secret, org)
+	client, _, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {
 		return nil, err
 	}

@@ -21,16 +21,15 @@ import (
 
 // PullRequest implements the scms.PullRequestProvider interface for GitHub.
 type PullRequest struct {
-	client     *github.Client
-	clientFunc func() *github.Client
-	k8sClient  client.Client
+	client    *github.Client
+	k8sClient client.Client
 }
 
 var _ scms.PullRequestProvider = &PullRequest{}
 
 // NewGithubPullRequestProvider creates a new instance of PullRequest for GitHub.
 func NewGithubPullRequestProvider(ctx context.Context, k8sClient client.Client, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, org string) (*PullRequest, error) {
-	client, err := GetClient(ctx, scmProvider, secret, org)
+	client, _, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {
 		return nil, err
 	}
