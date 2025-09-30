@@ -78,10 +78,10 @@ spec:
                   installationID:
                     description: InstallationID is the GitHub App Installation ID.
                     format: int64
+                    minimum: 0
                     type: integer
                 required:
                 - appID
-                - installationID
                 type: object
               gitlab:
                 description: GitLab required configuration for GitLab as the SCM provider

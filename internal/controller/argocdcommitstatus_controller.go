@@ -614,7 +614,7 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 	if err != nil {
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get ScmProvider and secret for PromotionStrategy %q: %w", ps.Name, err)
 	}
-
+	r.
 	switch {
 	case scmProvider.GetSpec().Fake != nil:
 		logger.V(4).Info("Creating fake git authentication provider")

@@ -115,6 +115,7 @@ type orgAppId struct {
 var m sync.RWMutex
 
 // GetClient retrieves a GitHub client for the specified organization using the provided SCM provider and secret.
+// We return a client for API calls and a transport that gets used for git operations via GitAuthenticationProvider.
 func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, org string) (*github.Client, *ghinstallation.Transport, error) {
 	itr, err := ghinstallation.NewAppsTransport(http.DefaultTransport, scmProvider.GetSpec().GitHub.AppID, secret.Data[githubAppPrivateKeySecretKey])
 	if err != nil {
