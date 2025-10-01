@@ -76,7 +76,10 @@ spec:
                         the field blank
                       rule: self != "github.com"
                   installationID:
-                    description: InstallationID is the GitHub App Installation ID.
+                    description: |-
+                      InstallationID is the GitHub App Installation ID. If you want to use this ScmProvider for multiple
+                      GitHub orgs, do not specify this field. The installation ID will be inferred from the repo owner
+                      when needed.
                     format: int64
                     minimum: 0
                     type: integer
