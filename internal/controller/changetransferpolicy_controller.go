@@ -504,6 +504,8 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	return nil
 }
 
+// NewTooManyMatchingShaError creates a new TooManyMatchingShaError. This error indicates that there are too many
+// commit status resources matching the given SHA and key.
 func NewTooManyMatchingShaError(commitStatusKey string, commitStatuses []promoterv1alpha1.CommitStatus) error {
 	return &TooManyMatchingShaError{
 		commitStatusKey: commitStatusKey,
