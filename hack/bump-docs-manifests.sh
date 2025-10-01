@@ -23,6 +23,7 @@ sed_replace() {
 # Replace all occurrences of vX.Y.Z with the new version (vNEW_VERSION)
 sed_replace "s/v[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/v$NEW_VERSION/g" docs/getting-started.md
 sed_replace "s/v[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/v$NEW_VERSION/g" docs/tutorial-argocd-apps.md
+sed_replace "s/download\/v[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/download\/v$NEW_VERSION/g" docs/argocd-integrations.md
 
 echo "Bumped manifest versions to v$NEW_VERSION in docs."
 
