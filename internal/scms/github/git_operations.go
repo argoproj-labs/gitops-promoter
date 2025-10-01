@@ -52,7 +52,7 @@ func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepository v1alpha1.Gi
 func (gh GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
 	token, err := gh.transport.Token(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to get GitHub token for ScmProvider %q: %w", gh.scmProvider.GetName(), err)
+		return "", fmt.Errorf("failed to get GitHub token for provider %q: %w", gh.scmProvider.GetName(), err)
 	}
 	return token, nil
 }
