@@ -637,10 +637,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 	//}
 	targetCommitBranchState.CommitStatuses = commitStatusesState
 
-	if tooManyMatchingShaError != nil {
-		return tooManyMatchingShaError
-	}
-	return nil
+	return tooManyMatchingShaError
 }
 
 func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
