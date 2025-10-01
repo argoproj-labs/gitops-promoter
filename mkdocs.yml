@@ -40,6 +40,7 @@ nav:
   - FAQs: faqs.md
   - Tutorials:
       - Argo CD Apps: tutorial-argocd-apps.md
+  - Argo CD Integrations: argocd-integrations.md
 plugins:
   - redirects:
       redirect_maps:

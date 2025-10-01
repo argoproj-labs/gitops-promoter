@@ -19,6 +19,11 @@ To complete this tutorial, you will need the following:
 * [A GitHub Account](https://github.com/)
 * [Git](https://git-scm.com/)
 
+!!! note
+
+    GitOps Promoter provides several opt-in Argo CD integrations that improve the user experience. Check out the 
+    [Argo CD Integrations](./argocd-integrations.md) page for more information.
+
 ## Set up the test cluster
 
 ### Create the cluster
