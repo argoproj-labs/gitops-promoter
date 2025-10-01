@@ -152,9 +152,14 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	var allInstallations []*github.Installation
 	opts := &github.ListOptions{PerPage: 100}
 
+	// Cache the installation IDs, we take out a lock for the entire loop to avoid locking/unlocking repeatedly. We also include the single
+	// read within the write lock.
+	// This lock should also help with the fact that on restart we won't slam the GitHub API with multiple requests to list installations.
+	appInstallationIdCacheMutex.Lock()
 	for {
 		installations, resp, err := client.Apps.ListInstallations(ctx, opts)
 		if err != nil {
+			appInstallationIdCacheMutex.Unlock()
 			return nil, nil, fmt.Errorf("failed to list installations: %w", err)
 		}
 
@@ -166,10 +171,6 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		opts.Page = resp.NextPage
 	}
 
-	// Cache the installation IDs, we take out a lock for the entire loop to avoid locking/unlocking repeatedly. We also include the single
-	// read within the write lock.
-	// This lock should also help with the fact that on restart we won't slam the GitHub API with multiple requests to list installations.
-	appInstallationIdCacheMutex.Lock()
 	for _, installation := range allInstallations {
 		if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
 			installationIds[orgAppId{org: *installation.Account.Login, id: scmProvider.GetSpec().GitHub.AppID}] = *installation.ID

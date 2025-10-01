@@ -194,6 +194,9 @@ func RecordGitOperation(gitRepo *v1alpha1.GitRepository, operation GitOperation,
 	gitOperationsDurationSeconds.With(labels).Observe(duration.Seconds())
 }
 
+//RecordSCMProviderCall
+//RecordSCMRepoCall
+
 // RecordSCMCall records both the increment and observation for SCM API calls, and optionally observes rate limit metrics.
 func RecordSCMCall(gitRepo *v1alpha1.GitRepository, api SCMAPI, operation SCMOperation, responseCode int, duration time.Duration, rateLimit *RateLimit) {
 	labels := prometheus.Labels{
