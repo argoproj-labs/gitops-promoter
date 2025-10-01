@@ -498,8 +498,11 @@ func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory strin
 	}
 
 	if err = cmd.Wait(); err != nil {
-		// exitErr := err.(*exec.ExitError)
-		return stdoutBuf.String(), stderrBuf.String(), err
+		stdErr := stderrBuf.String()
+		if stdErr != "" {
+			return stdoutBuf.String(), stdErr, fmt.Errorf("%w: %s", err, stdErr)
+		}
+		return stdoutBuf.String(), stdErr, err
 	}
 
 	return stdoutBuf.String(), stderrBuf.String(), nil
