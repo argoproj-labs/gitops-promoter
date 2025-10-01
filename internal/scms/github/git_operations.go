@@ -168,6 +168,7 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 
 	// Cache the installation IDs, we take out a lock for the entire loop to avoid locking/unlocking repeatedly. We also include the single
 	// read within the write lock.
+	// This lock should also help with the fact that on restart we won't slam the GitHub API with multiple requests to list installations.
 	appInstallationIdCacheMutex.Lock()
 	for _, installation := range allInstallations {
 		if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
