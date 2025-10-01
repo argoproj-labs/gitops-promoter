@@ -504,12 +504,35 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	return nil
 }
 
+func NewTooManyMatchingShaError(commitStatusKey string, commitStatuses []promoterv1alpha1.CommitStatus) error {
+	return &TooManyMatchingShaError{
+		commitStatusKey: commitStatusKey,
+		commitStatuses:  commitStatuses,
+	}
+}
+
 // TooManyMatchingShaError is an error type that indicates that there are too many matching SHAs for a commit status.
-type TooManyMatchingShaError struct{}
+type TooManyMatchingShaError struct {
+	commitStatusKey string
+	commitStatuses  []promoterv1alpha1.CommitStatus
+}
 
 // Error implements the error interface for TooManyMatchingShaError.
 func (e *TooManyMatchingShaError) Error() string {
-	return "there are to many matching SHAs for the commit status"
+	// Construct a message that includes the namespace/name of each commit status as well as the SHA for that CS.
+	// If there are more than two, finish the message with "and X more..."
+	msg := "there are to many matching SHAs for the '" + e.commitStatusKey + "' commit status: "
+	for i, cs := range e.commitStatuses {
+		if i > 0 {
+			msg += ", "
+		}
+		if i >= 2 {
+			msg += fmt.Sprintf("and %d more...", len(e.commitStatuses)-i)
+			break
+		}
+		msg += fmt.Sprintf("%s/%s (%s)", cs.Namespace, cs.Name, cs.Spec.Sha)
+	}
+	return msg
 }
 
 func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, activeHydratedSha, proposedHydratedSha string) error {
@@ -546,7 +569,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 	logger := log.FromContext(ctx)
 
 	commitStatusesState := []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
-	var tooManyMatchingShas bool
+	var tooManyMatchingShaError error
 	for _, status := range commitStatuses {
 		var csList promoterv1alpha1.CommitStatusList
 		// Find all the replicasets that match the commit status configured name and the sha of the hydrated commit
@@ -578,7 +601,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 				Key:   status.Key,
 				Phase: string(promoterv1alpha1.CommitPhasePending),
 			})
-			tooManyMatchingShas = true
+			tooManyMatchingShaError = NewTooManyMatchingShaError(status.Key, csList.Items)
 			phase = promoterv1alpha1.CommitPhasePending
 		} else if len(csList.Items) == 0 {
 			// TODO: decided how to bubble up errors
@@ -595,7 +618,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			"sha", targetCommitBranchState.Hydrated.Sha,
 			"phase", phase,
 			"found", found,
-			"toManyMatchingSha", tooManyMatchingShas,
+			"toManyMatchingSha", tooManyMatchingShaError != nil,
 			"foundCount", len(csList.Items))
 	}
 
@@ -612,8 +635,8 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 	//}
 	targetCommitBranchState.CommitStatuses = commitStatusesState
 
-	if tooManyMatchingShas {
-		return &TooManyMatchingShaError{}
+	if tooManyMatchingShaError != nil {
+		return tooManyMatchingShaError
 	}
 	return nil
 }
