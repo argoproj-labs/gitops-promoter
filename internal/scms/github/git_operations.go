@@ -176,6 +176,8 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		}
 		opts.Page = resp.NextPage
 	}
+	// We are logging this metric vs using prometheus because this is a provider specific metric that, and we want to try and keep prometheus metrics
+	// generic.
 	logger.Info("github list installations time", "duration", time.Since(startTime), "count", len(allInstallations))
 
 	for _, installation := range allInstallations {
