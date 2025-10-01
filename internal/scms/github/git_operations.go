@@ -176,6 +176,7 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	}
 
 	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
+		appInstallationIdCacheMutex.Unlock()
 		return getInstallationClient(scmProvider, secret, id)
 	}
 	appInstallationIdCacheMutex.Unlock()
