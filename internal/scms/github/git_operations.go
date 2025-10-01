@@ -72,7 +72,8 @@ func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error)
 	return "git", nil
 }
 
-// GetClientFromInstallationId creates a new GitHub client with the specified installation ID.
+// getInstallationClient creates a new GitHub client with the specified installation ID.
+// It also returns a ghinstallation.Transport, which can be used for git requests.
 func getInstallationClient(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, id int64) (*github.Client, *ghinstallation.Transport, error) {
 	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.GetSpec().GitHub.AppID, id, secret.Data[githubAppPrivateKeySecretKey])
 	if err != nil {

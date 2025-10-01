@@ -13,7 +13,7 @@ spec:
   github:
     domain: github.example.com # Optional, leave empty for default github.com
     appID: 1234
-    installationID: 1234
+    installationID: 1234 # Optional, will query ListInstallations if not provided
 
   gitlab:
     domain: gitlab.com # Optional
