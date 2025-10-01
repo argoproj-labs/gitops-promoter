@@ -519,7 +519,7 @@ type TooManyMatchingShaError struct {
 
 // Error implements the error interface for TooManyMatchingShaError.
 func (e *TooManyMatchingShaError) Error() string {
-	// Construct a message that includes the namespace/name of each commit status as well as the SHA for that CS.
+	// Construct a message that includes the namespace/name of each commit status.
 	// If there are more than two, finish the message with "and X more..."
 	msg := "there are to many matching SHAs for the '" + e.commitStatusKey + "' commit status: "
 	for i, cs := range e.commitStatuses {
@@ -530,7 +530,7 @@ func (e *TooManyMatchingShaError) Error() string {
 			msg += fmt.Sprintf("and %d more...", len(e.commitStatuses)-i)
 			break
 		}
-		msg += fmt.Sprintf("%s/%s (%s)", cs.Namespace, cs.Name, cs.Spec.Sha)
+		msg += fmt.Sprintf("%s/%s", cs.Namespace, cs.Name)
 	}
 	return msg
 }
