@@ -25,7 +25,6 @@ const (
 // GitAuthenticationProvider provides methods to authenticate with GitHub using a GitHub App.
 type GitAuthenticationProvider struct {
 	scmProvider v1alpha1.GenericScmProvider
-	secret      *v1.Secret
 	transport   *ghinstallation.Transport
 }
 
@@ -47,7 +46,6 @@ func NewGithubGitAuthenticationProvider(ctx context.Context, k8sClient client.Cl
 
 	return GitAuthenticationProvider{
 		scmProvider: scmProvider,
-		secret:      secret,
 		transport:   itr,
 	}
 }
@@ -64,7 +62,7 @@ func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepository v1alpha1.Gi
 func (gh GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
 	token, err := gh.transport.Token(ctx)
 	if err != nil {
-		return "", fmt.Errorf("failed to get token: %w", err)
+		return "", fmt.Errorf("failed to get GitHub token for provider %q: %w", gh.scmProvider.GetName(), err)
 	}
 	return token, nil
 }
