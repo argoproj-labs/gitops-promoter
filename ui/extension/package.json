@@ -6,6 +6,7 @@
   "scripts": {
     "build": "webpack --config webpack.config.mjs",
     "dev": "webpack --config webpack.config.mjs --watch",
+    "dev-local": "webpack --config webpack.config.mjs --watch --output-path /tmp/extensions",
     "type-check": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
@@ -31,7 +32,7 @@
   },
   "dependencies": {
     "@types/js-yaml": "^4.0.9",
-    "axios": "^1.10.0",
+    "axios": "^1.12.0",
     "js-yaml": "^4.1.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",

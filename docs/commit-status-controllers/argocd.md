@@ -6,11 +6,15 @@ Applications based on a common label on the Application resources managed by a p
 PromotionStrategy.
 
 !!! important
-    Currently this controller only works with Argo CD Applications that are configured to use the hydrator.
+    Currently this controller only works with Argo CD Applications that are configured to use the [Source Hydrator](https://argo-cd.readthedocs.io/en/stable/user-guide/source-hydrator/).
 
 !!! important
     Currently the repo URL configured in the PromotionStrategy must be exactly the same as the repo URL configured in the Argo CD Application.
 
+!!! note
+
+    GitOps Promoter provides several opt-in Argo CD integrations that improve the user experience. Check out the 
+    [Argo CD Integrations](./argocd-integrations.md) page for more information.
 
 ## Example Configurations
 

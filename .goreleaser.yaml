@@ -92,6 +92,8 @@ archives:
     meta: true
     files:
       - ui/extension/dist/extension-promoter.js
+    # Wrap in top-level resources directory to be compatible with the extension installer: https://github.com/argoproj-labs/argocd-extension-installer/blob/4684a5d2fb8b94269ee22556794aad229485f48d/README.md#L25
+    wrap_in_directory: 'resources'
 
 release:
   prerelease: auto

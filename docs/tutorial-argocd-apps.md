@@ -19,6 +19,11 @@ To complete this tutorial, you will need the following:
 * [A GitHub Account](https://github.com/)
 * [Git](https://git-scm.com/)
 
+!!! note
+
+    GitOps Promoter provides several opt-in Argo CD integrations that improve the user experience. Check out the 
+    [Argo CD Integrations](./argocd-integrations.md) page for more information.
+
 ## Set up the test cluster
 
 ### Create the cluster
@@ -63,7 +68,7 @@ Connect with this password for the `admin` user.
 > See [Getting Started](./getting-started.md)
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.11.2/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.12.0/install.yaml
 ```
 
 !!! note

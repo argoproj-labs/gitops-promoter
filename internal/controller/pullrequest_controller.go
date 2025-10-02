@@ -31,8 +31,11 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
@@ -76,6 +79,9 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest: %w", err)
 	}
+
+	// Remove any existing Ready condition. We want to start fresh.
+	meta.RemoveStatusCondition(pr.GetConditions(), string(promoterConditions.Ready))
 
 	provider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
@@ -185,9 +191,14 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
 	}
 
+	gitRepository, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
 	switch {
 	case scmProvider.GetSpec().GitHub != nil:
-		return github.NewGithubPullRequestProvider(r.Client, scmProvider, *secret) //nolint:wrapcheck
+		return github.NewGithubPullRequestProvider(ctx, r.Client, scmProvider, *secret, gitRepository.Spec.GitHub.Owner) //nolint:wrapcheck
 	case scmProvider.GetSpec().GitLab != nil:
 		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck
 	case scmProvider.GetSpec().Forgejo != nil:
@@ -258,7 +269,7 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 	if err := provider.Update(ctx, pr.Spec.Title, pr.Spec.Description, pr); err != nil {
 		return fmt.Errorf("failed to update pull request: %w", err)
 	}
-	r.Recorder.Event(&pr, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
+	r.Recorder.Event(&pr, "Normal", constants.PullRequestUpdatedReason, fmt.Sprintf("Pull Request %s updated", pr.Name))
 	return nil
 }
 
