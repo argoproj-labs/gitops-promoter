@@ -75,6 +75,10 @@ func (gh GitAuthenticationProvider) GetUser(ctx context.Context) (string, error)
 // getInstallationClient creates a new GitHub client with the specified installation ID.
 // It also returns a ghinstallation.Transport, which can be used for git requests.
 func getInstallationClient(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, id int64) (*github.Client, *ghinstallation.Transport, error) {
+	if id <= 0 {
+		return nil, nil, fmt.Errorf("installation ID is required")
+	}
+
 	itr, err := ghinstallation.New(http.DefaultTransport, scmProvider.GetSpec().GitHub.AppID, id, secret.Data[githubAppPrivateKeySecretKey])
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create GitHub installation transport: %w", err)
@@ -142,12 +146,14 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 
 	// If an installation ID is already provided, use it directly.
 	if scmProvider.GetSpec().GitHub.InstallationID != 0 {
+		logger.V(4).Info("using provided installation ID", "org", org, "id", scmProvider.GetSpec().GitHub.InstallationID)
 		return getInstallationClient(scmProvider, secret, scmProvider.GetSpec().GitHub.InstallationID)
 	}
 
 	appInstallationIdCacheMutex.RLock()
 	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
 		appInstallationIdCacheMutex.RUnlock()
+		logger.V(4).Info("found cached installation ID", "org", org, "id", id)
 		return getInstallationClient(scmProvider, secret, id)
 	}
 	appInstallationIdCacheMutex.RUnlock()
@@ -181,11 +187,13 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	for _, installation := range allInstallations {
 		if installation.Account != nil && installation.Account.Login != nil && installation.ID != nil {
 			installationIds[orgAppId{org: *installation.Account.Login, id: scmProvider.GetSpec().GitHub.AppID}] = *installation.ID
+			logger.V(4).Info("cached installation ID", "org", *installation.Account.Login, "id", *installation.ID)
 		}
 	}
 
 	if id, found := installationIds[orgAppId{org: org, id: scmProvider.GetSpec().GitHub.AppID}]; found {
 		appInstallationIdCacheMutex.Unlock()
+		logger.V(4).Info("found cached installation ID after listing installations", "org", org, "id", id)
 		return getInstallationClient(scmProvider, secret, id)
 	}
 	appInstallationIdCacheMutex.Unlock()
