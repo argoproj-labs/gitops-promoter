@@ -101,7 +101,7 @@ $extension-wrapper-gap: 20px;
     &.single-commit-group {
       grid-template-columns: 1fr;
       max-width: 70%; 
-      margin: 0 auto; 
+      margin: 0; 
       min-width: $card-min-width-single; 
       min-height: 250px;
       height: auto;
