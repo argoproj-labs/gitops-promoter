@@ -360,10 +360,10 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		previousEnvironmentStatus := ps.Status.Environments[i-1]
 		currentEnvironmentStatus := ps.Status.Environments[i]
 
-		pendingReason := getPreviousEnvironmentPendingReason(previousEnvironmentStatus, currentEnvironmentStatus, ctp.Status.Proposed.Dry.Sha)
+		isPending, pendingReason := isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus, ctp.Status.Proposed.Dry.Sha)
 
 		commitStatusPhase := promoterv1alpha1.CommitPhaseSuccess
-		if pendingReason != "" {
+		if isPending {
 			commitStatusPhase = promoterv1alpha1.CommitPhasePending
 		}
 
@@ -387,10 +387,10 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 	return nil
 }
 
-// getPreviousEnvironmentPendingReason returns a non-empty string if the previous environment is not ready.
-func getPreviousEnvironmentPendingReason(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus, proposedDrySha string) string {
+// isPreviousEnvironmentPending returns a non-empty string if the previous environment is not ready.
+func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus, proposedDrySha string) (isPending bool, reason string) {
 	if previousEnvironmentStatus.Active.Dry.Sha != proposedDrySha {
-		return "Waiting for previous environment's active commit to match proposed commit"
+		return true, "Waiting for previous environment's active commit to match proposed commit"
 	}
 
 	// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
@@ -400,18 +400,18 @@ func getPreviousEnvironmentPendingReason(previousEnvironmentStatus, currentEnvir
 
 	if !previousEnvironmentDryShaEqualOrNewer {
 		// This should basically never happen.
-		return "Previous environment's commit is older than current environment's commit"
+		return true, "Previous environment's commit is older than current environment's commit"
 	}
 
 	previousEnvironmentPassing := utils.AreCommitStatusesPassing(previousEnvironmentStatus.Active.CommitStatuses)
 
 	if !previousEnvironmentPassing {
 		if len(previousEnvironmentStatus.Active.CommitStatuses) == 0 {
-			return fmt.Sprintf("Waiting for previous environment's %q commit status to be successful", previousEnvironmentStatus.Active.CommitStatuses[0].Key)
+			return true, fmt.Sprintf("Waiting for previous environment's %q commit status to be successful", previousEnvironmentStatus.Active.CommitStatuses[0].Key)
 		}
 
-		return "Waiting for previous environment's commit statuses to be successful"
+		return true, "Waiting for previous environment's commit statuses to be successful"
 	}
 
-	return ""
+	return false, ""
 }
