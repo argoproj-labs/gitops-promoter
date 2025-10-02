@@ -486,7 +486,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 				}
 			}
 
-			logger.V(4).Info("No ArgoCDCommitStatus found for ArgoCD application",
+			logger.V(6).Info("No ArgoCDCommitStatus found for ArgoCD application",
 				"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName())
 			return nil
 		})
