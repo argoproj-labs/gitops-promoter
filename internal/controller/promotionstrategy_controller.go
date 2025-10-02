@@ -395,7 +395,7 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 
 	// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
 	// time. Basically, we can't move back in time.
-	previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: previousEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
+	previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
 		previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
 
 	if !previousEnvironmentDryShaEqualOrNewer {
@@ -406,7 +406,7 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 	previousEnvironmentPassing := utils.AreCommitStatusesPassing(previousEnvironmentStatus.Active.CommitStatuses)
 
 	if !previousEnvironmentPassing {
-		if len(previousEnvironmentStatus.Active.CommitStatuses) == 0 {
+		if len(previousEnvironmentStatus.Active.CommitStatuses) == 1 {
 			return true, fmt.Sprintf("Waiting for previous environment's %q commit status to be successful", previousEnvironmentStatus.Active.CommitStatuses[0].Key)
 		}
 
