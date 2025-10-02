@@ -28,8 +28,8 @@ type PullRequest struct {
 var _ scms.PullRequestProvider = &PullRequest{}
 
 // NewGithubPullRequestProvider creates a new instance of PullRequest for GitHub.
-func NewGithubPullRequestProvider(k8sClient client.Client, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret) (*PullRequest, error) {
-	client, err := GetClient(scmProvider, secret)
+func NewGithubPullRequestProvider(ctx context.Context, k8sClient client.Client, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, org string) (*PullRequest, error) {
+	client, _, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {
 		return nil, err
 	}

@@ -486,7 +486,7 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 				}
 			}
 
-			logger.V(4).Info("No ArgoCDCommitStatus found for ArgoCD application",
+			logger.V(6).Info("No ArgoCDCommitStatus found for ArgoCD application",
 				"app-namespace", argoCDApplication.GetNamespace(), "application", argoCDApplication.GetName())
 			return nil
 		})
@@ -634,7 +634,7 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
 	case scmProvider.GetSpec().GitHub != nil:
 		logger.V(4).Info("Creating GitHub git authentication provider")
-		return github.NewGithubGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
+		return github.NewGithubGitAuthenticationProvider(ctx, r.localClient, scmProvider, secret, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: ps.Spec.RepositoryReference.Name}), ps.Spec.RepositoryReference, nil
 	case scmProvider.GetSpec().GitLab != nil:
 		logger.V(4).Info("Creating GitLab git authentication provider")
 		gitlabClient, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
