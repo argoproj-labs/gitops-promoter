@@ -6,6 +6,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -74,6 +75,16 @@ func (m *Manager) GetPullRequestRequeueDuration(ctx context.Context) (time.Durat
 	}
 
 	return controllerConfiguration.Spec.PullRequestRequeueDuration.Duration, nil
+}
+
+// GetWebhookMaxPayloadSize returns the maximum allowed webhook payload size.
+func (m *Manager) GetWebhookMaxPayloadSize(ctx context.Context) (resource.Quantity, error) {
+	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
+	if err != nil {
+		return resource.Quantity{}, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	return controllerConfiguration.Spec.Webhook.MaxPayloadSize, nil
 }
 
 // GetControllerNamespace returns the namespace where the controller is running.
