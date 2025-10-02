@@ -263,21 +263,34 @@ func HandleReconciliationResult(
 		return
 	}
 
-	conditions := obj.GetConditions()
-	if conditions == nil {
-		conditions = &[]metav1.Condition{}
+	conditions := obj.GetConditions() // GetConditions() is guaranteed to be non-nil for our CRDs.
+	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
+	if readyCondition == nil {
+		// If the condition hasn't already been set by the caller, assume success.
+		readyCondition = &metav1.Condition{
+			Type:               string(promoterConditions.Ready),
+			Status:             metav1.ConditionTrue,
+			Reason:             string(promoterConditions.ReconciliationSuccess),
+			Message:            "Reconciliation successful",
+			ObservedGeneration: obj.GetGeneration(),
+			LastTransitionTime: metav1.NewTime(time.Now()),
+		}
 	}
 
 	if *err == nil {
-		recorder.Eventf(obj, "Normal", "ReconcileSuccess", "Reconciliation successful")
-		if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionTrue, string(promoterConditions.ReconciliationSuccess), "Reconciliation succeeded"); updateErr != nil {
+		eventType := "Normal"
+		if readyCondition.Status == metav1.ConditionFalse {
+			eventType = "Warning"
+		}
+		recorder.Eventf(obj, eventType, readyCondition.Reason, readyCondition.Message)
+		if updateErr := updateReadyCondition(ctx, obj, client, conditions, readyCondition.Status, readyCondition.Reason, readyCondition.Message); updateErr != nil {
 			*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
 		}
 		return
 	}
 
 	if !k8serrors.IsConflict(*err) {
-		recorder.Eventf(obj, "Warning", "ReconcileError", "Reconciliation failed: %v", *err)
+		recorder.Eventf(obj, "Warning", string(promoterConditions.ReconciliationError), "Reconciliation failed: %v", *err)
 	}
 	if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionFalse, string(promoterConditions.ReconciliationError), fmt.Sprintf("Reconciliation failed: %s", *err)); updateErr != nil {
 		//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
@@ -300,4 +313,44 @@ func updateReadyCondition(ctx context.Context, obj StatusConditionUpdater, clien
 		}
 	}
 	return nil
+}
+
+// InheritNotReadyConditionFromObjects sets the Ready condition of the parent to False if any of the child objects are not ready.
+// This will override any existing Ready condition on the parent.
+//
+// All child objects must be non-nil.
+func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent StatusConditionUpdater, notReadyReason promoterConditions.CommonReason, childObjs ...T) {
+	// This function does not nil-check the result of GetConditions() for either the parent or child objects. This is
+	// because all our CRDs have non-nilable status.conditions fields. The return value of GetConditions() is a pointer
+	// only to facilitate mutations on the referenced slice.
+	// If we ever make status.conditions nilable, we will need to add nil checks here.
+
+	condition := metav1.Condition{
+		Type:               string(promoterConditions.Ready),
+		Status:             metav1.ConditionFalse,
+		Reason:             string(notReadyReason),
+		ObservedGeneration: parent.GetGeneration(),
+		LastTransitionTime: metav1.NewTime(time.Now()),
+	}
+
+	for _, childObj := range childObjs {
+		childObjKind := childObj.GetObjectKind().GroupVersionKind().Kind
+		childObjReady := meta.FindStatusCondition(*childObj.GetConditions(), string(promoterConditions.Ready))
+
+		if childObjReady == nil {
+			condition.Message = fmt.Sprintf("%s %q Ready condition is missing", childObjKind, childObj.GetName())
+			meta.SetStatusCondition(parent.GetConditions(), condition)
+			return
+		}
+		if childObjReady.ObservedGeneration != childObj.GetGeneration() {
+			condition.Message = fmt.Sprintf("%s %q Ready condition is not up to date", childObjKind, childObj.GetName())
+			meta.SetStatusCondition(parent.GetConditions(), condition)
+			return
+		}
+		if childObjReady.Status != metav1.ConditionTrue {
+			condition.Message = fmt.Sprintf("%s %q is not Ready because %q: %s", childObjKind, childObj.GetName(), childObjReady.Reason, childObjReady.Message)
+			meta.SetStatusCondition(parent.GetConditions(), condition)
+			return
+		}
+	}
 }

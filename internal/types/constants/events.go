@@ -24,4 +24,10 @@ const (
 	PullRequestMergedReason = "PullRequestMerged"
 	// PullRequestMergedMessage is the message for a merged pull request.
 	PullRequestMergedMessage = "Pull Request %s merged"
+
+	// PullRequestUpdatedReason indicates that a pull request has been updated.
+	PullRequestUpdatedReason = "PullRequestUpdated"
+
+	// CommitStatusSetReason indicates that a commit status has been set.
+	CommitStatusSetReason = "CommitStatusSet"
 )
