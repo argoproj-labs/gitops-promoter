@@ -251,7 +251,7 @@ spec:
     name: github-app-promoter
   github:
     appID: ${GITHUB_APP_ID}
-    installationID: ${GITHUB_APP_INSTALLATION_ID}
+    installationID: ${GITHUB_APP_INSTALLATION_ID} # Optional, will query ListInstallations if not provided
 EOF
 ```
 
