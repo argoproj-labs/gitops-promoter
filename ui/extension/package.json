@@ -6,6 +6,7 @@
   "scripts": {
     "build": "webpack --config webpack.config.mjs",
     "dev": "webpack --config webpack.config.mjs --watch",
+    "dev-local": "webpack --config webpack.config.mjs --watch --output-path /tmp/extensions",
     "type-check": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
     "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
