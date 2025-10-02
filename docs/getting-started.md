@@ -104,7 +104,7 @@ spec:
     name: <your-secret-name> # The secret that contains the GitHub App configuration
   github:
     appID: <your-app-id>
-    installationID: <your-installation-id>
+    installationID: <your-installation-id> # Optional, will query ListInstallations if not provided
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: GitRepository
