@@ -1064,7 +1064,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
-				g.Expect(sha).To(Not(Equal("")))
+				g.Expect(sha).To(Not(BeEmpty()))
 				activeCommitStatusDevelopment.Spec.Sha = sha
 				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
@@ -1490,7 +1490,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
-				g.Expect(sha).To(Not(Equal("")))
+				g.Expect(sha).To(Not(BeEmpty()))
 				proposedCommitStatusDevelopment.Spec.Sha = sha
 				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
@@ -1721,7 +1721,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
-				g.Expect(sha).To(Not(Equal("")))
+				g.Expect(sha).To(Not(BeEmpty()))
 				proposedCommitStatusDevelopment.Spec.Sha = sha
 				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
@@ -2376,7 +2376,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
-				g.Expect(sha).To(Not(Equal("")))
+				g.Expect(sha).To(Not(BeEmpty()))
 				proposedCommitStatusDevelopment.Spec.Sha = sha
 				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
@@ -2455,7 +2455,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpStaging.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
-				g.Expect(sha).To(Not(Equal("")))
+				g.Expect(sha).To(Not(BeEmpty()))
 				proposedCommitStatusStaging.Spec.Sha = sha
 				proposedCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 				err = k8sClient.Update(ctx, proposedCommitStatusStaging)
@@ -2597,7 +2597,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(ContainSubstring("GitOps Promoter"))
 
 				// Checking that the history is populated correctly
-				g.Expect(promotionStrategy.Status.Environments[0].History[0].PullRequest.ID).To(Not(Equal("")))
+				g.Expect(promotionStrategy.Status.Environments[0].History[0].PullRequest.ID).To(Not(BeEmpty()))
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.Subject).To(ContainSubstring("added fake manifests commit with timestamp"))
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.References).To(HaveLen(1))
@@ -2612,7 +2612,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Url).To(Equal("https://example.com/dev"))
 
-				g.Expect(promotionStrategy.Status.Environments[1].History[0].PullRequest.ID).To(Not(Equal("")))
+				g.Expect(promotionStrategy.Status.Environments[1].History[0].PullRequest.ID).To(Not(BeEmpty()))
 				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
 				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.Subject).To(ContainSubstring("added fake manifests commit with timestamp"))
 				g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.References).To(HaveLen(1))
