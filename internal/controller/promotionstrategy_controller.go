@@ -387,7 +387,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 	return nil
 }
 
-// isPreviousEnvironmentPending returns a non-empty string if the previous environment is not ready.
+// isPreviousEnvironmentPending returns whether the previous environment is pending and a reason string if it is pending.
 func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus, proposedDrySha string) (isPending bool, reason string) {
 	if previousEnvironmentStatus.Active.Dry.Sha != proposedDrySha {
 		return true, "Waiting for previous environment's active commit to match proposed commit"
