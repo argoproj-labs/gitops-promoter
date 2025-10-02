@@ -39,6 +39,7 @@
   
   // Override for horizontal layout when 4+ environments
   .env-cards-wrapper.horizontal-layout {
+    flex-direction: column;
     gap: 8px;
     justify-content: flex-start;
     align-items: flex-start;
@@ -93,7 +94,7 @@
         &.single-commit-group {
           grid-template-columns: 1fr;
           max-width: 70%;
-          margin: 0 auto;
+          margin: 0;
           min-width: 500px;
           min-height: 250px;
           height: auto;
