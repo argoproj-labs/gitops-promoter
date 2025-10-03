@@ -807,9 +807,14 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	if err != nil {
 		return nil, fmt.Errorf("failed to create or update PR %q: %w", prName, err)
 	}
-	if res == controllerutil.OperationResultCreated {
+	switch res {
+	case controllerutil.OperationResultCreated:
 		r.Recorder.Event(ctp, "Normal", constants.PullRequestCreatedReason, fmt.Sprintf(constants.PullRequestCreatedMessage, pr.Name))
 		logger.V(4).Info("Created pull request", "pullRequest", pr)
+	case controllerutil.OperationResultNone:
+		logger.V(4).Info("Pull request already exists and is up to date", "pullRequest", pr)
+	case controllerutil.OperationResultUpdated:
+		logger.V(4).Info("Updated pull request", "pullRequest", pr)
 	}
 
 	return &pr, nil
