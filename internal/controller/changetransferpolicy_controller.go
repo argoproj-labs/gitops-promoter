@@ -776,31 +776,31 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		if pr.CreationTimestamp.IsZero() {
 			// New PR
 			pr.Spec.State = promoterv1alpha1.PullRequestOpen
+			return nil
 		}
-		if !pr.CreationTimestamp.IsZero() {
-			// Update existing PR
-			commitTrailers := trailers{}
-			commitTrailers[constants.TrailerPullRequestID] = pr.Status.ID
-			commitTrailers[constants.TrailerPullRequestSourceBranch] = pr.Spec.SourceBranch
-			commitTrailers[constants.TrailerPullRequestTargetBranch] = pr.Spec.TargetBranch
-			commitTrailers[constants.TrailerPullRequestCreationTime] = pr.Status.PRCreationTime.Format(time.RFC3339)
-			commitTrailers[constants.TrailerPullRequestUrl] = pr.Status.Url
 
-			for _, status := range ctp.Status.Active.CommitStatuses {
-				commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-phase"] = status.Phase
-				commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-url"] = status.Url
-			}
-			for _, status := range ctp.Status.Proposed.CommitStatuses {
-				commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-phase"] = status.Phase
-				commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-url"] = status.Url
-			}
-			commitTrailers[constants.TrailerShaHydratedActive] = ctp.Status.Active.Hydrated.Sha
-			commitTrailers[constants.TrailerShaHydratedProposed] = ctp.Status.Proposed.Hydrated.Sha
-			commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
-			commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
+		// Update existing PR
+		commitTrailers := trailers{}
+		commitTrailers[constants.TrailerPullRequestID] = pr.Status.ID
+		commitTrailers[constants.TrailerPullRequestSourceBranch] = pr.Spec.SourceBranch
+		commitTrailers[constants.TrailerPullRequestTargetBranch] = pr.Spec.TargetBranch
+		commitTrailers[constants.TrailerPullRequestCreationTime] = pr.Status.PRCreationTime.Format(time.RFC3339)
+		commitTrailers[constants.TrailerPullRequestUrl] = pr.Status.Url
 
-			pr.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
+		for _, status := range ctp.Status.Active.CommitStatuses {
+			commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-phase"] = status.Phase
+			commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-url"] = status.Url
 		}
+		for _, status := range ctp.Status.Proposed.CommitStatuses {
+			commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-phase"] = status.Phase
+			commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-url"] = status.Url
+		}
+		commitTrailers[constants.TrailerShaHydratedActive] = ctp.Status.Active.Hydrated.Sha
+		commitTrailers[constants.TrailerShaHydratedProposed] = ctp.Status.Proposed.Hydrated.Sha
+		commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
+		commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
+
+		pr.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 
 		return nil
 	})
