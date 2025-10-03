@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -749,91 +750,72 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		return nil, fmt.Errorf("failed to template pull request: %w", err)
 	}
 
-	var pr promoterv1alpha1.PullRequest
-	err = r.Get(ctx, client.ObjectKey{
-		Namespace: ctp.Namespace,
-		Name:      prName,
-	}, &pr)
-	if err != nil {
-		if !k8s_errors.IsNotFound(err) {
-			return nil, fmt.Errorf("failed to get PR %q: %w", prName, err)
-		}
+	//var pr promoterv1alpha1.PullRequest
+	//err = r.Get(ctx, client.ObjectKey{
+	//	Namespace: ctp.Namespace,
+	//	Name:      prName,
+	//}, &pr)
 
-		// TODO: move some of the below code into a utility function. It's a bit verbose for being nested this deeply.
-		// The code below sets the ownership for the PullRequest Object
+	pr := promoterv1alpha1.PullRequest{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: ctp.Namespace,
+			Name:      prName,
+		},
+	}
+	res, err := controllerutil.CreateOrUpdate(ctx, r.Client, &pr, func() error {
 		kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
 		gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 		controllerRef := metav1.NewControllerRef(ctp, gvk)
 
-		pr = promoterv1alpha1.PullRequest{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            prName,
-				Namespace:       ctp.Namespace,
-				OwnerReferences: []metav1.OwnerReference{*controllerRef},
-				Labels: map[string]string{
-					promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-					promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-					promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-				},
-			},
-			Spec: promoterv1alpha1.PullRequestSpec{
-				RepositoryReference: ctp.Spec.RepositoryReference,
-				Title:               title,
-				TargetBranch:        ctp.Spec.ActiveBranch,
-				SourceBranch:        ctp.Spec.ProposedBranch,
-				Description:         description,
-				Commit:              promoterv1alpha1.CommitConfiguration{Message: fmt.Sprintf("%s\n\n%s", title, description)},
-				State:               "open",
-			},
+		pr.ObjectMeta.OwnerReferences = []metav1.OwnerReference{*controllerRef}
+		pr.ObjectMeta.Labels = map[string]string{
+			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
 		}
-		err = r.Create(ctx, &pr)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create PR from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+		pr.Spec.RepositoryReference = ctp.Spec.RepositoryReference
+		pr.Spec.Title = title
+		pr.Spec.TargetBranch = ctp.Spec.ActiveBranch
+		pr.Spec.SourceBranch = ctp.Spec.ProposedBranch
+		pr.Spec.Description = description
+		pr.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s", title, description)
+		if pr.ObjectMeta.CreationTimestamp.IsZero() {
+			// New PR
+			pr.Spec.State = promoterv1alpha1.PullRequestOpen
 		}
-		r.Recorder.Event(ctp, "Normal", constants.PullRequestCreatedReason, fmt.Sprintf(constants.PullRequestCreatedMessage, pr.Name))
-		logger.V(4).Info("Created pull request", "pullRequest", pr)
-		return &pr, nil
-	}
+		if !pr.ObjectMeta.CreationTimestamp.IsZero() {
+			// Update existing PR
+			commitTrailers := trailers{}
+			commitTrailers[constants.TrailerPullRequestID] = pr.Status.ID
+			commitTrailers[constants.TrailerPullRequestSourceBranch] = pr.Spec.SourceBranch
+			commitTrailers[constants.TrailerPullRequestTargetBranch] = pr.Spec.TargetBranch
+			commitTrailers[constants.TrailerPullRequestCreationTime] = pr.Status.PRCreationTime.Format(time.RFC3339)
+			commitTrailers[constants.TrailerPullRequestUrl] = pr.Status.Url
 
-	commitTrailers := trailers{}
-	commitTrailers[constants.TrailerPullRequestID] = pr.Status.ID
-	commitTrailers[constants.TrailerPullRequestSourceBranch] = pr.Spec.SourceBranch
-	commitTrailers[constants.TrailerPullRequestTargetBranch] = pr.Spec.TargetBranch
-	commitTrailers[constants.TrailerPullRequestCreationTime] = pr.Status.PRCreationTime.Format(time.RFC3339)
-	commitTrailers[constants.TrailerPullRequestUrl] = pr.Status.Url
+			for _, status := range ctp.Status.Active.CommitStatuses {
+				commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-phase"] = status.Phase
+				commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-url"] = status.Url
+			}
+			for _, status := range ctp.Status.Proposed.CommitStatuses {
+				commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-phase"] = status.Phase
+				commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-url"] = status.Url
+			}
+			commitTrailers[constants.TrailerShaHydratedActive] = ctp.Status.Active.Hydrated.Sha
+			commitTrailers[constants.TrailerShaHydratedProposed] = ctp.Status.Proposed.Hydrated.Sha
+			commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
+			commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
 
-	for _, status := range ctp.Status.Active.CommitStatuses {
-		commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-phase"] = status.Phase
-		commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-url"] = status.Url
-	}
-	for _, status := range ctp.Status.Proposed.CommitStatuses {
-		commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-phase"] = status.Phase
-		commitTrailers[constants.TrailerCommitStatusProposedPrefix+status.Key+"-url"] = status.Url
-	}
-	commitTrailers[constants.TrailerShaHydratedActive] = ctp.Status.Active.Hydrated.Sha
-	commitTrailers[constants.TrailerShaHydratedProposed] = ctp.Status.Proposed.Hydrated.Sha
-	commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
-	commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
-
-	// Pull Request already exists, update it.
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		prUpdated := promoterv1alpha1.PullRequest{}
-		// TODO: consider skipping this Get on the first attempt, the object we already got might be up to date.
-		err = r.Get(ctx, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Name}, &prUpdated)
-		if err != nil {
-			return fmt.Errorf("failed to get PR %q: %w", pr.Name, err)
+			pr.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
 		}
-		prUpdated.Spec.RepositoryReference = ctp.Spec.RepositoryReference
-		prUpdated.Spec.Title = title
-		prUpdated.Spec.TargetBranch = ctp.Spec.ActiveBranch
-		prUpdated.Spec.SourceBranch = ctp.Spec.ProposedBranch
-		prUpdated.Spec.Description = description
-		prUpdated.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
-		logger.V(4).Info("Updating pull request", "pullRequestName", prUpdated.Namespace+"/"+prUpdated.Name, "pullRequestSpec", prUpdated.Spec, "pullRequestStatus", prUpdated.Status)
-		return r.Update(ctx, &prUpdated)
+
+		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to update PR %q: %w", pr.Name, err)
+		return nil, fmt.Errorf("failed to create or update PR %q: %w", prName, err)
+	}
+	if res == controllerutil.OperationResultCreated {
+		r.Recorder.Event(ctp, "Normal", constants.PullRequestCreatedReason, fmt.Sprintf(constants.PullRequestCreatedMessage, pr.Name))
+		logger.V(4).Info("Created pull request", "pullRequest", pr)
 	}
 
 	return &pr, nil
