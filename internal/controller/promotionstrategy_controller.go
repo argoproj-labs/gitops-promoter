@@ -292,7 +292,6 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 	}
 
 	res, err := controllerutil.CreateOrUpdate(ctx, r.Client, commitStatus, func() error {
-
 		commitStatus.Labels = map[string]string{
 			promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 		}
@@ -312,16 +311,6 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		return nil, fmt.Errorf("failed to create or update previous environments CommitStatus: %w", err)
 	}
 	logger.V(4).Info("CreateOrUpdate previous environment CommitStatus result", "result", res)
-
-	//updatedYamlStatusMap := make(map[string]string)
-	//previousEnvAnnotations, ok := commitStatus.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]
-	//if !ok {
-	//	return nil, errors.New("previous environments CommitStatus does not have a previous environment commit statuses annotation")
-	//}
-	//err = yaml.Unmarshal([]byte(previousEnvAnnotations), &updatedYamlStatusMap)
-	//if err != nil {
-	//	return nil, fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
-	//}
 
 	return commitStatus, nil
 }
