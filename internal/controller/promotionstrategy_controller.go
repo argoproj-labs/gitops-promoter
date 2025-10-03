@@ -172,7 +172,8 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 
 		ctp.Spec.ProposedCommitStatuses = make([]promoterv1alpha1.CommitStatusSelector, 0, len(environment.ProposedCommitStatuses)+len(ps.Spec.ProposedCommitStatuses))
 		ctp.Spec.ProposedCommitStatuses = append(ctp.Spec.ProposedCommitStatuses, environment.ProposedCommitStatuses...)
-		ctp.Spec.ProposedCommitStatuses = append(ctp.Spec.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)ctp.Spec.AutoMerge = environment.AutoMerge
+		ctp.Spec.ProposedCommitStatuses = append(ctp.Spec.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)
+		ctp.Spec.AutoMerge = environment.AutoMerge
 
 		environmentIndex, _ := utils.GetEnvironmentByBranch(*ps, environment.Branch)
 		previousEnvironmentIndex := environmentIndex - 1
