@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -26,6 +25,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -286,64 +286,44 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 
 	commitStatus := &promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: proposedCSObjectKey.Name,
-			Labels: map[string]string{
-				promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-			},
-			Annotations: map[string]string{
-				promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation: string(yamlStatusMap),
-			},
-			Namespace:       proposedCSObjectKey.Namespace,
-			OwnerReferences: []metav1.OwnerReference{*controllerRef},
-		},
-		Spec: promoterv1alpha1.CommitStatusSpec{
-			RepositoryReference: ctp.Spec.RepositoryReference,
-			Sha:                 ctp.Status.Proposed.Hydrated.Sha,
-			Name:                previousEnvironmentBranch + " - synced and healthy",
-			Description:         description,
-			Phase:               phase,
-			Url:                 url,
+			Name:      proposedCSObjectKey.Name,
+			Namespace: proposedCSObjectKey.Namespace,
 		},
 	}
-	updatedCS := &promoterv1alpha1.CommitStatus{}
-	err = r.Get(ctx, proposedCSObjectKey, updatedCS)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			err = r.Create(ctx, commitStatus)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create previous environments CommitStatus: %w", err)
-			}
-			return commitStatus, nil
+
+	res, err := controllerutil.CreateOrUpdate(ctx, r.Client, commitStatus, func() error {
+
+		commitStatus.Labels = map[string]string{
+			promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
 		}
-		return nil, fmt.Errorf("failed to get previous environments CommitStatus: %w", err)
-	}
-
-	updatedYamlStatusMap := make(map[string]string)
-	previousEnvAnnotations, ok := updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]
-	if !ok {
-		return nil, errors.New("previous environments CommitStatus does not have a previous environment commit statuses annotation")
-	}
-	err = yaml.Unmarshal([]byte(previousEnvAnnotations), &updatedYamlStatusMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
-	}
-
-	if updatedCS.Spec.Phase != phase || updatedCS.Spec.Description != description || updatedCS.Spec.Sha != ctp.Status.Proposed.Hydrated.Sha || !reflect.DeepEqual(statusMap, updatedYamlStatusMap) {
-		updatedCS.Spec.Phase = phase
-		updatedCS.Spec.Sha = ctp.Status.Proposed.Hydrated.Sha
-		updatedCS.Spec.Description = commitStatus.Spec.Description
-		updatedCS.Spec.Name = commitStatus.Spec.Name
-		updatedCS.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation] = commitStatus.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]
-		updatedCS.Spec.Url = commitStatus.Spec.Url
-
-		err = r.Update(ctx, updatedCS)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update previous environments CommitStatus: %w", err)
+		commitStatus.Annotations = map[string]string{
+			promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation: string(yamlStatusMap),
 		}
-		logger.Info("Updated previous environment CommitStatus", "commitStatusName", updatedCS.Name, "phase", updatedCS.Spec.Phase, "sha", updatedCS.Spec.Sha)
+		commitStatus.OwnerReferences = []metav1.OwnerReference{*controllerRef}
+		commitStatus.Spec.RepositoryReference = ctp.Spec.RepositoryReference
+		commitStatus.Spec.Sha = ctp.Status.Proposed.Hydrated.Sha
+		commitStatus.Spec.Name = previousEnvironmentBranch + " - synced and healthy"
+		commitStatus.Spec.Description = description
+		commitStatus.Spec.Phase = phase
+		commitStatus.Spec.Url = url
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create or update previous environments CommitStatus: %w", err)
 	}
+	logger.V(4).Info("CreateOrUpdate previous environment CommitStatus result", "result", res)
 
-	return updatedCS, nil
+	//updatedYamlStatusMap := make(map[string]string)
+	//previousEnvAnnotations, ok := commitStatus.Annotations[promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation]
+	//if !ok {
+	//	return nil, errors.New("previous environments CommitStatus does not have a previous environment commit statuses annotation")
+	//}
+	//err = yaml.Unmarshal([]byte(previousEnvAnnotations), &updatedYamlStatusMap)
+	//if err != nil {
+	//	return nil, fmt.Errorf("failed to unmarshal previous environments CommitStatus: %w", err)
+	//}
+
+	return commitStatus, nil
 }
 
 // updatePreviousEnvironmentCommitStatus checks if any environment is ready to be merged and if so, merges the pull request. It does this by looking at any active and proposed commit statuses.
