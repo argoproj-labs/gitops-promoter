@@ -126,7 +126,7 @@ var _ = Describe("InheritNotReadyConditionFromObjects", func() {
 		utils.InheritNotReadyConditionFromObjects(parent, conditions.CommitStatusesNotReady, childObjs...)
 
 		readyCondition := meta.FindStatusCondition(*parent.GetConditions(), string(conditions.Ready))
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(readyCondition.Status).To(Equal(metav1.ConditionUnknown))
 		Expect(readyCondition.Message).To(Equal(`CommitStatus "child2" Ready condition is missing`))
 	})
 
@@ -145,7 +145,7 @@ var _ = Describe("InheritNotReadyConditionFromObjects", func() {
 		utils.InheritNotReadyConditionFromObjects(parent, conditions.CommitStatusesNotReady, childObjs...)
 
 		readyCondition := meta.FindStatusCondition(*parent.GetConditions(), string(conditions.Ready))
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(readyCondition.Status).To(Equal(metav1.ConditionUnknown))
 		Expect(readyCondition.Message).To(Equal(`CommitStatus "child2" Ready condition is not up to date`))
 	})
 

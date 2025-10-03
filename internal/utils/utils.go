@@ -334,12 +334,13 @@ func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent Status
 	}
 
 	// We always take the first non-ready condition we find. So sort the child objects by name to get more consistent
-	// results.
-	slices.SortFunc(childObjs, func(a, b T) int {
+	// results. We sort a copy of the slice to avoid mutating the caller's slice.
+	sortedChildObjs := slices.Clone(childObjs)
+	slices.SortFunc(sortedChildObjs, func(a, b T) int {
 		return strings.Compare(a.GetName(), b.GetName())
 	})
 
-	for _, childObj := range childObjs {
+	for _, childObj := range sortedChildObjs {
 		childObjKind := childObj.GetObjectKind().GroupVersionKind().Kind
 		childObjReady := meta.FindStatusCondition(*childObj.GetConditions(), string(promoterConditions.Ready))
 
