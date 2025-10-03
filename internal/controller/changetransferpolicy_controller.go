@@ -761,8 +761,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 		controllerRef := metav1.NewControllerRef(ctp, gvk)
 
-		pr.ObjectMeta.OwnerReferences = []metav1.OwnerReference{*controllerRef}
-		pr.ObjectMeta.Labels = map[string]string{
+		pr.OwnerReferences = []metav1.OwnerReference{*controllerRef}
+		pr.Labels = map[string]string{
 			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
 			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
 			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
@@ -773,11 +773,11 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		pr.Spec.SourceBranch = ctp.Spec.ProposedBranch
 		pr.Spec.Description = description
 		pr.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s", title, description)
-		if pr.ObjectMeta.CreationTimestamp.IsZero() {
+		if pr.CreationTimestamp.IsZero() {
 			// New PR
 			pr.Spec.State = promoterv1alpha1.PullRequestOpen
 		}
-		if !pr.ObjectMeta.CreationTimestamp.IsZero() {
+		if !pr.CreationTimestamp.IsZero() {
 			// Update existing PR
 			commitTrailers := trailers{}
 			commitTrailers[constants.TrailerPullRequestID] = pr.Status.ID
