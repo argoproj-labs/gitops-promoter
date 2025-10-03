@@ -70,7 +70,7 @@ var _ = Describe("InheritNotReadyConditionFromObjects", func() {
 			TypeMeta:   metav1.TypeMeta{Kind: "CommitStatus"},
 			ObjectMeta: metav1.ObjectMeta{Name: "child2", Generation: 1},
 		}
-		childObjs = []*promoterv1alpha1.CommitStatus{child1, child2}
+		childObjs = []*promoterv1alpha1.CommitStatus{child2, child1} // Intentionally out of order to test sorting
 	})
 
 	It("should not modify parent Ready condition if all children are Ready", func() {
@@ -147,5 +147,28 @@ var _ = Describe("InheritNotReadyConditionFromObjects", func() {
 		readyCondition := meta.FindStatusCondition(*parent.GetConditions(), string(conditions.Ready))
 		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
 		Expect(readyCondition.Message).To(Equal(`CommitStatus "child2" Ready condition is not up to date`))
+	})
+
+	It("should always take the first not ready condition, ordered alphabetically by child name", func() {
+		meta.SetStatusCondition(child1.GetConditions(), metav1.Condition{
+			Type:               string(conditions.Ready),
+			Status:             metav1.ConditionFalse,
+			Reason:             "NotReady1",
+			Message:            "Child1 is not ready",
+			ObservedGeneration: 1,
+		})
+		meta.SetStatusCondition(child2.GetConditions(), metav1.Condition{
+			Type:               string(conditions.Ready),
+			Status:             metav1.ConditionFalse,
+			Reason:             "NotReady2",
+			Message:            "Child2 is not ready",
+			ObservedGeneration: 1,
+		})
+
+		utils.InheritNotReadyConditionFromObjects(parent, conditions.CommitStatusesNotReady, childObjs...)
+
+		readyCondition := meta.FindStatusCondition(*parent.GetConditions(), string(conditions.Ready))
+		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+		Expect(readyCondition.Message).To(Equal(`CommitStatus "child1" is not Ready because "NotReady1": Child1 is not ready`))
 	})
 })
