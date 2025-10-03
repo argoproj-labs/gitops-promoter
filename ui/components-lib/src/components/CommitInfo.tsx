@@ -6,19 +6,20 @@ import React, { useState, useRef, useCallback } from 'react';
 import TimeAgo from './TimeAgo';
 import HealthSummary from './HealthSummary';
 import './CommitInfo.scss';
+import {ReferenceCommit} from "@shared/types/promotion";
 
 export interface CommitInfoProps {
   title?: string;
   deploymentCommit: any;
-  codeCommit: any;
+  codeCommit: ReferenceCommit | null;
   isActive?: boolean;
   status?: StatusType;
   className?: string;
   deploymentCommitUrl?: string;
-  codeCommitUrl?: string;
+  codeCommitUrl: string | null;
   checks?: any[];
   healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
-  prUrl?: string;
+  prUrl: string | null;
   prNumber?: string;
 }
 
@@ -54,7 +55,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
 
   const renderSha = (commit: any, commitUrl?: string) => {
     const sha = commit.sha?.substring(0, 8) || 'N/A';
-    if (commitUrl && commit.sha && commit.sha !== '-' && commitUrl !== '-') {
+    if (commitUrl && commit.sha) {
       return (
         <a 
           href={commitUrl} 
@@ -134,7 +135,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
             </div>
             <div className="commit-meta">
               <span className="commit-author">by {commit.author || 'N/A'}</span>
-              {commit.date && commit.date !== '-' && (
+              {commit.date && (
                 <span className="commit-date">
                   authored <span title={commit.date}><TimeAgo date={commit.date} /></span>
                 </span>
@@ -179,7 +180,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     return (
       <div className="commits-section">
         {renderCommit(deploymentCommit, 'deployment', deploymentCommitUrl)}
-        {renderCommit(codeCommit, 'code', codeCommitUrl)}
+        {codeCommit && renderCommit(codeCommit, 'code', codeCommitUrl || '')}
       </div>
     );
   }
@@ -207,7 +208,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
       </div>
       <div className="commits-section">
         {renderCommit(deploymentCommit, 'deployment', deploymentCommitUrl)}
-        {renderCommit(codeCommit, 'code', codeCommitUrl)}
+        {codeCommit && renderCommit(codeCommit, 'code', codeCommitUrl || '')}
       </div>
       
       {/* Display checks for this section */}

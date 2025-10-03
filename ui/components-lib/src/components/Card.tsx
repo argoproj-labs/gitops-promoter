@@ -3,7 +3,7 @@ import { StatusType } from './StatusIcon';
 import React, { useState, useMemo } from 'react';
 import CommitInfo from './CommitInfo';
 import HistoryNavigation from './HistoryNavigation';
-import { enrichFromEnvironments } from '@shared/utils/PSData';
+import {EnrichedEnvDetails, enrichFromEnvironments} from '@shared/utils/PSData';
 import type { Environment } from '@shared/types/promotion';
 import './Card.scss';
 
@@ -43,7 +43,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
   return (
     <div className="env-cards-container">
       <div className={`env-cards-wrapper ${isHorizontalLayout ? 'horizontal-layout' : ''}`}>
-        {enrichedEnvs.map((env: any) => {
+        {enrichedEnvs.map((env: EnrichedEnvDetails) => {
           const branch = env.branch;
           const proposedStatus = env.promotionStatus;
           const inHistoryMode = isInHistoryMode(branch);
@@ -60,28 +60,12 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             date: env.activeCommitDate
           };
 
-          const activeCodeCommit = {
-            sha: env.activeReferenceSha,
-            author: env.activeReferenceCommitAuthor,
-            subject: env.activeReferenceCommitSubject,
-            body: env.activeReferenceCommitBody || '',
-            date: env.activeReferenceCommitDate
-          };
-
           const proposedDeploymentCommit = {
             sha: env.proposedSha,
             author: env.proposedDryCommitAuthor,
             subject: env.proposedDryCommitSubject,
             body: env.proposedDryCommitBody,
             date: env.proposedDryCommitDate
-          };
-
-          const proposedCodeCommit = {
-            sha: env.proposedReferenceSha,
-            author: env.proposedReferenceCommitAuthor,
-            subject: env.proposedReferenceCommitSubject,
-            body: env.proposedReferenceCommitBody || '',
-            date: env.proposedReferenceCommitDate
           };
 
           return (
@@ -122,7 +106,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                 <CommitInfo
                   title="Active"
                   deploymentCommit={activeDeploymentCommit}
-                  codeCommit={activeCodeCommit}
+                  codeCommit={env.activeReferenceCommit}
                   isActive={true}
                   status={env.activeStatus as StatusType}
                   deploymentCommitUrl={env.activeCommitUrl}
@@ -139,7 +123,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                   <CommitInfo
                     title="Proposed"
                     deploymentCommit={proposedDeploymentCommit}
-                    codeCommit={proposedCodeCommit}
+                    codeCommit={env.proposedReferenceCommit}
                     isActive={false}
                     status={env.proposedStatus as StatusType}
                     className="proposed"
