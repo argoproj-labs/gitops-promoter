@@ -750,12 +750,6 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		return nil, fmt.Errorf("failed to template pull request: %w", err)
 	}
 
-	//var pr promoterv1alpha1.PullRequest
-	//err = r.Get(ctx, client.ObjectKey{
-	//	Namespace: ctp.Namespace,
-	//	Name:      prName,
-	//}, &pr)
-
 	pr := promoterv1alpha1.PullRequest{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: ctp.Namespace,
