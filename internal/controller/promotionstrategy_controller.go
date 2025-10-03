@@ -166,10 +166,15 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		ctp.Spec.RepositoryReference = ps.Spec.RepositoryReference
 		ctp.Spec.ProposedBranch = fmt.Sprintf("%s-%s", environment.Branch, "next")
 		ctp.Spec.ActiveBranch = environment.Branch
+
 		ctp.Spec.ActiveCommitStatuses = make([]promoterv1alpha1.CommitStatusSelector, 0, len(environment.ActiveCommitStatuses)+len(ps.Spec.ActiveCommitStatuses))
+		ctp.Spec.ActiveCommitStatuses = append(ctp.Spec.ActiveCommitStatuses, environment.ActiveCommitStatuses...)
+		ctp.Spec.ActiveCommitStatuses = append(ctp.Spec.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)
+
 		ctp.Spec.ProposedCommitStatuses = make([]promoterv1alpha1.CommitStatusSelector, 0, len(environment.ProposedCommitStatuses)+len(ps.Spec.ProposedCommitStatuses))
-		ctp.Spec.ActiveCommitStatuses = append(environment.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)       //nolint:gocritic
-		ctp.Spec.ProposedCommitStatuses = append(environment.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...) //nolint:gocritic
+		ctp.Spec.ProposedCommitStatuses = append(ctp.Spec.ProposedCommitStatuses, environment.ProposedCommitStatuses...)
+		ctp.Spec.ProposedCommitStatuses = append(ctp.Spec.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)
+
 		ctp.Spec.AutoMerge = environment.AutoMerge
 
 		environmentIndex, _ := utils.GetEnvironmentByBranch(*ps, environment.Branch)
