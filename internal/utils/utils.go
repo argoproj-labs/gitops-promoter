@@ -327,13 +327,20 @@ func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent Status
 
 	condition := metav1.Condition{
 		Type:               string(promoterConditions.Ready),
-		Status:             metav1.ConditionFalse,
+		Status:             metav1.ConditionUnknown,
 		Reason:             string(notReadyReason),
 		ObservedGeneration: parent.GetGeneration(),
 		LastTransitionTime: metav1.NewTime(time.Now()),
 	}
 
-	for _, childObj := range childObjs {
+	// We always take the first non-ready condition we find. So sort the child objects by name to get more consistent
+	// results. We sort a copy of the slice to avoid mutating the caller's slice.
+	sortedChildObjs := slices.Clone(childObjs)
+	slices.SortFunc(sortedChildObjs, func(a, b T) int {
+		return strings.Compare(a.GetName(), b.GetName())
+	})
+
+	for _, childObj := range sortedChildObjs {
 		childObjKind := childObj.GetObjectKind().GroupVersionKind().Kind
 		childObjReady := meta.FindStatusCondition(*childObj.GetConditions(), string(promoterConditions.Ready))
 
@@ -349,6 +356,7 @@ func InheritNotReadyConditionFromObjects[T StatusConditionUpdater](parent Status
 		}
 		if childObjReady.Status != metav1.ConditionTrue {
 			condition.Message = fmt.Sprintf("%s %q is not Ready because %q: %s", childObjKind, childObj.GetName(), childObjReady.Reason, childObjReady.Message)
+			condition.Status = childObjReady.Status // Could be False or Unknown, inherit the child's status.
 			meta.SetStatusCondition(parent.GetConditions(), condition)
 			return
 		}
