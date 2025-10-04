@@ -29,15 +29,15 @@ type GitAuthenticationProvider struct {
 }
 
 // NewGithubGitAuthenticationProvider creates a new instance of GitAuthenticationProvider for GitHub using the provided SCM provider and secret.
-func NewGithubGitAuthenticationProvider(ctx context.Context, k8sClient client.Client, scmProvider v1alpha1.GenericScmProvider, secret *v1.Secret, repoRef client.ObjectKey) GitAuthenticationProvider {
+func NewGithubGitAuthenticationProvider(ctx context.Context, k8sClient client.Client, scmProvider v1alpha1.GenericScmProvider, secret *v1.Secret, repoRef client.ObjectKey) (GitAuthenticationProvider, error) {
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: repoRef.Namespace, Name: repoRef.Name})
 	if err != nil {
-		panic(fmt.Errorf("failed to get GitRepository: %w", err))
+		return GitAuthenticationProvider{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	_, itr, err := GetClient(ctx, scmProvider, *secret, gitRepo.Spec.GitHub.Owner)
 	if err != nil {
-		panic(fmt.Errorf("failed to create GitHub client: %w", err))
+		return GitAuthenticationProvider{}, fmt.Errorf("failed to create GitHub client: %w", err)
 	}
 
 	if scmProvider.GetSpec().GitHub != nil && scmProvider.GetSpec().GitHub.Domain != "" {
@@ -47,7 +47,7 @@ func NewGithubGitAuthenticationProvider(ctx context.Context, k8sClient client.Cl
 	return GitAuthenticationProvider{
 		scmProvider: scmProvider,
 		transport:   itr,
-	}
+	}, nil
 }
 
 // GetGitHttpsRepoUrl constructs the HTTPS URL for a GitHub repository based on the provided GitRepository object.
