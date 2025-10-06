@@ -315,16 +315,16 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.ChangeTransferPolicyNotReady, ctps...)
 }
 
-func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
+func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
 	// TODO: do we like this name proposed-<name>?
 	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
 	proposedCSObjectKey := client.ObjectKey{Namespace: ctp.Namespace, Name: csName}
 
-	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
+	kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-	controllerRef := metav1.NewControllerRef(ctp, gvk)
+	controllerRef := metav1.NewControllerRef(ps, gvk)
 
 	// If there is only one commit status, use the URL from that commit status.
 	var url string
@@ -431,7 +431,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 		// Since there is at least one configured active check, and since this is not the first environment,
 		// we should not create a commit status for the previous environment.
-		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
+		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ps, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
 		if err != nil {
 			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", ctp.Spec.ActiveBranch, err)
 		}
