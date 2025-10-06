@@ -451,7 +451,11 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
 	case scmProvider.GetSpec().GitHub != nil:
 		logger.V(4).Info("Creating GitHub git authentication provider")
-		return github.NewGithubGitAuthenticationProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: namespace, Name: repoRef.Name})
+		p, err := github.NewGithubGitAuthenticationProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: namespace, Name: repoRef.Name})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create GitHub Auth Provider: %w", err)
+		}
+		return p, nil
 	case scmProvider.GetSpec().GitLab != nil:
 		logger.V(4).Info("Creating GitLab git authentication provider")
 		provider, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
