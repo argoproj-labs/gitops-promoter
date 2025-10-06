@@ -265,6 +265,11 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		description = pendingReason
 	}
 
+	// Check if the proposed hydrated SHA is available before creating/updating the CommitStatus
+	if ctp.Status.Proposed.Hydrated.Sha == "" {
+		return nil, fmt.Errorf("cannot create CommitStatus: proposed hydrated SHA is empty for ChangeTransferPolicy %s", ctp.Name)
+	}
+
 	commitStatus := &promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      proposedCSObjectKey.Name,
