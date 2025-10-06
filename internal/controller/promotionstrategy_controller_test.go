@@ -1403,6 +1403,114 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
+
+		It("should return error when previous environment commit status cannot be created due to empty SHA", func() {
+			By("Creating the resource with active commit statuses")
+			name, scmSecret, scmProvider, gitRepo, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-empty-sha-test", "default")
+			setupInitialTestGitRepoOnServer(name, name)
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			// Configure active commit statuses for the promotion strategy
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{
+					Key: healthCheckCSKey,
+				},
+			}
+			activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
+			activeCommitStatusDevelopment.Labels = map[string]string{
+				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
+			}
+			activeCommitStatusStaging.Spec.Name = healthCheckCSKey
+			activeCommitStatusStaging.Labels = map[string]string{
+				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, activeCommitStatusDevelopment)).To(Succeed())
+			Expect(k8sClient.Create(ctx, activeCommitStatusStaging)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			ctpDev := promoterv1alpha1.ChangeTransferPolicy{}
+			ctpStaging := promoterv1alpha1.ChangeTransferPolicy{}
+
+			By("Waiting for ChangeTransferPolicies to be created")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+
+				// Wait until the development CTP has populated its status with SHAs
+				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Setting the staging CTP proposed hydrated SHA to empty to simulate missing git metadata")
+			// Manually update the staging CTP to have an empty proposed hydrated SHA
+			// This simulates the condition where the git repo is missing hydrator.metadata
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+
+				// Clear the proposed hydrated SHA
+				ctpStaging.Status.Proposed.Hydrated.Sha = ""
+				err = k8sClient.Status().Update(ctx, &ctpStaging)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Setting development active commit status to success to trigger previous environment check")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      activeCommitStatusDevelopment.Name,
+					Namespace: activeCommitStatusDevelopment.Namespace,
+				}, activeCommitStatusDevelopment)
+				g.Expect(err).To(Succeed())
+
+				// Get the current SHA from ctpDev to set on the commit status
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				activeCommitStatusDevelopment.Spec.Sha = ctpDev.Status.Active.Hydrated.Sha
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying that the PromotionStrategy has an error condition due to empty SHA")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				g.Expect(err).To(Succeed())
+
+				// Check for the error condition in the PromotionStrategy status
+				cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(cond).ToNot(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+				g.Expect(cond.Message).To(ContainSubstring("cannot create CommitStatus: proposed hydrated SHA is empty"))
+				g.Expect(cond.Message).To(ContainSubstring(ctpStaging.Name))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+		})
 	})
 
 	Context("When reconciling a resource with a proposed commit status", func() {
