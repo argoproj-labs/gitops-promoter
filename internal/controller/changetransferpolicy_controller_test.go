@@ -434,7 +434,7 @@ func changeTransferPolicyResources(ctx context.Context, name, namespace string) 
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
 			},
-			Sha:         "",
+			Sha:         "abcdef1234567890abcdef1234567890abcdef12",
 			Name:        "",
 			Description: "",
 			Phase:       promoterv1alpha1.CommitPhasePending,
