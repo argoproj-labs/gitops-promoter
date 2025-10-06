@@ -126,10 +126,44 @@ var _ = Describe("CommitStatus Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			commitStatus.Spec.Sha = "abcdef1234567890abcdef1234567890abcdef12"
+			commitStatus.Spec.Name = "test-commit-status"
 			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
 
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+
+		It("should reject CommitStatus with empty SHA", func() {
+			By("Attempting to create a CommitStatus with empty SHA")
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+			emptyShaCsName := resourceName + "-empty-sha"
+			emptyShaCsNamespacedName := types.NamespacedName{
+				Name:      emptyShaCsName,
+				Namespace: "default",
+			}
+
+			emptyShaCsStatus := &promoterv1alpha1.CommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      emptyShaCsNamespacedName.Name,
+					Namespace: emptyShaCsNamespacedName.Namespace,
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase: promoterv1alpha1.CommitPhasePending,
+					RepositoryReference: promoterv1alpha1.ObjectReference{
+						Name: typeNamespacedName.Name,
+					},
+					Sha:  "", // Empty SHA should be rejected
+					Name: "test-commit-status",
+				},
+			}
+
+			err := k8sClient.Create(ctx, emptyShaCsStatus)
+			Expect(err).ToNot(Succeed())
+			Expect(err.Error()).To(ContainSubstring("spec.sha"))
 		})
 	})
 })

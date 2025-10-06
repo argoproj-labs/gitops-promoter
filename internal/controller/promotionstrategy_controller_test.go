@@ -2729,7 +2729,7 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
 			},
-			Sha:         "",
+			Sha:         "abcdef1234567890abcdef1234567890abcdef12",
 			Name:        "",
 			Description: "",
 			Phase:       promoterv1alpha1.CommitPhasePending,
@@ -2747,7 +2747,7 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
 			},
-			Sha:         "",
+			Sha:         "1234567890abcdef1234567890abcdef12345678",
 			Name:        "",
 			Description: "",
 			Phase:       promoterv1alpha1.CommitPhasePending,
