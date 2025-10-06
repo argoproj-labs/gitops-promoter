@@ -265,11 +265,6 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		description = pendingReason
 	}
 
-	// Check if the proposed hydrated SHA is available before creating/updating the CommitStatus
-	if ctp.Status.Proposed.Hydrated.Sha == "" {
-		return nil, fmt.Errorf("cannot create CommitStatus: proposed hydrated SHA is empty for ChangeTransferPolicy %s", ctp.Name)
-	}
-
 	commitStatus := &promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      proposedCSObjectKey.Name,
@@ -339,8 +334,21 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			"previousEnvironmentActiveHydratedSha", previousEnvironmentStatus.Active.Hydrated.Sha,
 			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch)
 
+		// Check if the CTP has a proposed hydrated SHA before attempting to create a commit status.
+		// This can be empty if the git repo is missing hydrator.metadata or if the CTP hasn't been
+		// fully reconciled yet.
+		if ctp.Status.Proposed.Hydrated.Sha == "" {
+			logger.V(4).Info("Skipping previous environment commit status creation: proposed hydrated SHA is empty",
+				"ctp", ctp.Name,
+				"activeBranch", ctp.Spec.ActiveBranch)
+			// We skip this environment but continue processing others. The CTP controller will
+			// populate the SHA when it reconciles, and we'll create the commit status on the next
+			// PromotionStrategy reconciliation.
+			continue
+		}
+
 		// Since there is at least one configured active check, and since this is not the first environment,
-		// we should not create a commit status for the previous environment.
+		// we should create a commit status for the previous environment.
 		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
 		if err != nil {
 			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", ctp.Spec.ActiveBranch, err)
