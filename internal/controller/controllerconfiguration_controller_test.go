@@ -110,7 +110,7 @@ var _ = Describe("ControllerConfiguration Controller", func() {
 						},
 						PullRequest: promoterv1alpha1.PullRequestConfiguration{
 							Template: promoterv1alpha1.PullRequestTemplate{
-								Title:       "Promote {{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
+								Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
 								Description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}.",
 							},
 							WorkQueue: promoterv1alpha1.WorkQueue{
