@@ -175,7 +175,7 @@ type ExponentialFailure struct {
 // Exactly one of the rate limiter types or MaxOf must be specified.
 //
 // See https://pkg.go.dev/k8s.io/client-go/util/workqueue for rate limiter implementation details.
-// +kubebuilder:validation:ExactlyOneOf=fastSlow;exponentialFailure;bucket;maxOf
+// +kubebuilder:validation:AtMostOneOf=fastSlow;exponentialFailure;bucket;maxOf
 type RateLimiter struct {
 	// RateLimiterTypes can be one of: FastSlow, ExponentialFailure, or Bucket.
 	// +optional
@@ -197,7 +197,7 @@ type RateLimiter struct {
 //   - Bucket: Token bucket algorithm for controlling overall request rate
 //
 // See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
-// +kubebuilder:validation:ExactlyOneOf=fastSlow;exponentialFailure;bucket
+// +kubebuilder:validation:AtMostOneOf=fastSlow;exponentialFailure;bucket
 type RateLimiterTypes struct {
 	// FastSlow rate limiter provides fast retries initially, then switches to slow retries.
 	// Useful for quickly retrying transient errors while backing off for persistent failures.

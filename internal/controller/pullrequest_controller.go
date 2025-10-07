@@ -181,12 +181,12 @@ func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
 	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.PromotionStrategyConfiguration, ctrl.Request](ctx, r.SettingsMgr)
 	if err != nil {
-		return fmt.Errorf("failed to get PromotionStrategy rate limiter: %w", err)
+		return fmt.Errorf("failed to get pull request rate limiter: %w", err)
 	}
 
 	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
-		return fmt.Errorf("failed to get PromotionStrategy max concurrent reconciles: %w", err)
+		return fmt.Errorf("failed to get pull request max concurrent reconciles: %w", err)
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).

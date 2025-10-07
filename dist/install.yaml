@@ -1619,22 +1619,22 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
-                              - message: exactly one of the fields in [fastSlow exponentialFailure
-                                  bucket] must be set
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
                                 rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  == 1'
+                                  <= 1'
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: exactly one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] must be set
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
                           rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            == 1'
-                        - message: exactly one of the fields in [fastSlow exponentialFailure
-                            bucket] must be set
+                            <= 1'
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
                           rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            == 1'
+                            <= 1'
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -1821,22 +1821,22 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
-                              - message: exactly one of the fields in [fastSlow exponentialFailure
-                                  bucket] must be set
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
                                 rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  == 1'
+                                  <= 1'
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: exactly one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] must be set
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
                           rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            == 1'
-                        - message: exactly one of the fields in [fastSlow exponentialFailure
-                            bucket] must be set
+                            <= 1'
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
                           rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            == 1'
+                            <= 1'
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -2023,22 +2023,22 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
-                              - message: exactly one of the fields in [fastSlow exponentialFailure
-                                  bucket] must be set
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
                                 rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  == 1'
+                                  <= 1'
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: exactly one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] must be set
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
                           rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            == 1'
-                        - message: exactly one of the fields in [fastSlow exponentialFailure
-                            bucket] must be set
+                            <= 1'
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
                           rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            == 1'
+                            <= 1'
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -2225,22 +2225,22 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
-                              - message: exactly one of the fields in [fastSlow exponentialFailure
-                                  bucket] must be set
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
                                 rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  == 1'
+                                  <= 1'
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: exactly one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] must be set
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
                           rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            == 1'
-                        - message: exactly one of the fields in [fastSlow exponentialFailure
-                            bucket] must be set
+                            <= 1'
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
                           rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            == 1'
+                            <= 1'
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -2446,22 +2446,22 @@ spec:
                                   type: object
                               type: object
                               x-kubernetes-validations:
-                              - message: exactly one of the fields in [fastSlow exponentialFailure
-                                  bucket] must be set
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
                                 rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                                  == 1'
+                                  <= 1'
                             maxItems: 3
                             type: array
                         type: object
                         x-kubernetes-validations:
-                        - message: exactly one of the fields in [fastSlow exponentialFailure
-                            bucket maxOf] must be set
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
                           rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
-                            == 1'
-                        - message: exactly one of the fields in [fastSlow exponentialFailure
-                            bucket] must be set
+                            <= 1'
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
                           rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
-                            == 1'
+                            <= 1'
                       requeueDuration:
                         description: |-
                           RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
@@ -4576,28 +4576,40 @@ spec:
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:
-        fastSlow:
-          fastDelay: 1s
-          maxFastAttempts: 3
-          slowDelay: 5m
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
       requeueDuration: 5m
   changeTransferPolicy:
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:
-        fastSlow:
-          fastDelay: 1s
-          maxFastAttempts: 3
-          slowDelay: 5m
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
       requeueDuration: 5m
   commitStatus:
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:
-        fastSlow:
-          fastDelay: 1s
-          maxFastAttempts: 3
-          slowDelay: 5m
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
       requeueDuration: 5m
   promotionStrategy:
     workQueue:
@@ -4622,8 +4634,12 @@ spec:
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:
-        fastSlow:
-          fastDelay: 1s
-          maxFastAttempts: 3
-          slowDelay: 5m
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
       requeueDuration: 5m

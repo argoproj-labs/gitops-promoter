@@ -17,7 +17,7 @@ const (
 	ControllerConfigurationName = "promoter-controller-configuration"
 )
 
-// ControllerConfigurationType is a constraint that defines the set of controller configuration types
+// ControllerConfigurationTypes is a constraint that defines the set of controller configuration types
 // that include a WorkQueue specification. This type constraint is used with generic functions to
 // provide type-safe access to WorkQueue configurations across different controller types.
 //
@@ -27,12 +27,23 @@ const (
 //   - PullRequestConfiguration
 //   - CommitStatusConfiguration
 //   - ArgoCDCommitStatusConfiguration
-type ControllerConfigurationType interface {
+type ControllerConfigurationTypes interface {
 	promoterv1alpha1.PromotionStrategyConfiguration |
 		promoterv1alpha1.ChangeTransferPolicyConfiguration |
 		promoterv1alpha1.PullRequestConfiguration |
 		promoterv1alpha1.CommitStatusConfiguration |
 		promoterv1alpha1.ArgoCDCommitStatusConfiguration
+}
+
+// ControllerResultTypes is a constraint that defines the set of result types returned by controller
+// reconciliation methods. This type constraint is used with generic functions to provide type-safe
+// handling of different controller result types.
+//
+// The following result types satisfy this constraint:
+//   - controllerruntime.Result (used in single-cluster controllers)
+//   - multiclusterruntime.Result (used in multi-cluster controllers)
+type ControllerResultTypes interface {
+	comparable
 }
 
 // ManagerConfig holds the static configuration for the settings Manager.
@@ -111,7 +122,7 @@ func (m *Manager) GetControllerNamespace() string {
 }
 
 // GetRequeueDuration retrieves the requeue duration for a specific controller type.
-// The type parameter T must satisfy the ControllerConfigurationType constraint.
+// The type parameter T must satisfy the ControllerConfigurationTypes constraint.
 //
 // This function queries the global ControllerConfiguration and extracts the RequeueDuration
 // from the WorkQueue specification for the given controller type.
@@ -123,7 +134,7 @@ func (m *Manager) GetControllerNamespace() string {
 //   - m: Manager instance with access to the cluster client
 //
 // Returns the configured requeue duration, or an error if the configuration cannot be retrieved.
-func GetRequeueDuration[T ControllerConfigurationType](ctx context.Context, m *Manager) (time.Duration, error) {
+func GetRequeueDuration[T ControllerConfigurationTypes](ctx context.Context, m *Manager) (time.Duration, error) {
 	workQueue, err := getWorkQueueForController[T](ctx, m, false)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get work queue for controller: %w", err)
@@ -133,7 +144,7 @@ func GetRequeueDuration[T ControllerConfigurationType](ctx context.Context, m *M
 }
 
 // GetMaxConcurrentReconcilesDirect retrieves the maximum number of concurrent reconciles for a specific controller type using a non-cached read.
-// The type parameter T must satisfy the ControllerConfigurationType constraint.
+// The type parameter T must satisfy the ControllerConfigurationTypes constraint.
 //
 // This function bypasses the cache and reads directly from the API server, making it safe to call
 // during SetupWithManager before the cache has started. Use this to configure controller options
@@ -144,7 +155,7 @@ func GetRequeueDuration[T ControllerConfigurationType](ctx context.Context, m *M
 //   - m: Manager instance with access to the cluster client
 //
 // Returns the configured maximum concurrent reconciles, or an error if the configuration cannot be retrieved.
-func GetMaxConcurrentReconcilesDirect[T ControllerConfigurationType](ctx context.Context, m *Manager) (int, error) {
+func GetMaxConcurrentReconcilesDirect[T ControllerConfigurationTypes](ctx context.Context, m *Manager) (int, error) {
 	workQueue, err := getWorkQueueForController[T](ctx, m, true)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get work queue for controller: %w", err)
@@ -154,7 +165,7 @@ func GetMaxConcurrentReconcilesDirect[T ControllerConfigurationType](ctx context
 }
 
 // GetRateLimiterDirect retrieves a configured rate limiter for a specific controller type using a non-cached read.
-// The type parameter T must satisfy the ControllerConfigurationType constraint.
+// The type parameter T must satisfy the ControllerConfigurationTypes constraint.
 // The type parameter R is the request type for the rate limiter (e.g., ctrl.Request or mcreconcile.Request).
 //
 // This function bypasses the cache and reads directly from the API server, making it safe to call
@@ -170,7 +181,7 @@ func GetMaxConcurrentReconcilesDirect[T ControllerConfigurationType](ctx context
 //
 // Returns a configured TypedRateLimiter for the specified request type, or an error if the
 // configuration cannot be retrieved or the rate limiter cannot be constructed.
-func GetRateLimiterDirect[T ControllerConfigurationType, R comparable](ctx context.Context, m *Manager) (workqueue.TypedRateLimiter[R], error) {
+func GetRateLimiterDirect[T ControllerConfigurationTypes, R ControllerResultTypes](ctx context.Context, m *Manager) (workqueue.TypedRateLimiter[R], error) {
 	workQueue, err := getWorkQueueForController[T](ctx, m, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get work queue for controller: %w", err)
@@ -185,7 +196,7 @@ func GetRateLimiterDirect[T ControllerConfigurationType, R comparable](ctx conte
 }
 
 // getWorkQueueForController retrieves the WorkQueue configuration for a specific controller type.
-// The type parameter T must satisfy the ControllerConfigurationType constraint.
+// The type parameter T must satisfy the ControllerConfigurationTypes constraint.
 //
 // This is an internal helper function that uses a type switch to map the generic type parameter
 // to the corresponding WorkQueue configuration in the ControllerConfiguration spec. This approach
@@ -198,7 +209,7 @@ func GetRateLimiterDirect[T ControllerConfigurationType, R comparable](ctx conte
 //
 // Returns the WorkQueue configuration for the specified controller type, or an error if the
 // configuration cannot be retrieved or the type is unsupported.
-func getWorkQueueForController[T ControllerConfigurationType](ctx context.Context, m *Manager, direct bool) (promoterv1alpha1.WorkQueue, error) {
+func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Context, m *Manager, direct bool) (promoterv1alpha1.WorkQueue, error) {
 	var config *promoterv1alpha1.ControllerConfiguration
 	var err error
 
@@ -241,7 +252,7 @@ func getWorkQueueForController[T ControllerConfigurationType](ctx context.Contex
 // The type parameter R is the request type for the rate limiter (e.g., ctrl.Request or mcreconcile.Request).
 //
 // Returns a configured TypedRateLimiter, or an error if no valid configuration is found.
-func buildRateLimiter[R comparable](rateLimiter promoterv1alpha1.RateLimiter) (workqueue.TypedRateLimiter[R], error) {
+func buildRateLimiter[R ControllerResultTypes](rateLimiter promoterv1alpha1.RateLimiter) (workqueue.TypedRateLimiter[R], error) {
 	if rateLimiter.FastSlow != nil || rateLimiter.ExponentialFailure != nil || rateLimiter.Bucket != nil {
 		// If any of the leaf-level limiters are set, use buildRateLimiterType to handle them
 		return buildRateLimiterType[R](rateLimiter.RateLimiterTypes)
@@ -281,7 +292,7 @@ func buildRateLimiter[R comparable](rateLimiter promoterv1alpha1.RateLimiter) (w
 // See k8s.io/client-go/util/workqueue for implementation details of each limiter type.
 //
 // Returns a configured TypedRateLimiter, or an error if no valid configuration is found.
-func buildRateLimiterType[R comparable](config promoterv1alpha1.RateLimiterTypes) (workqueue.TypedRateLimiter[R], error) {
+func buildRateLimiterType[R ControllerResultTypes](config promoterv1alpha1.RateLimiterTypes) (workqueue.TypedRateLimiter[R], error) {
 	// Handle FastSlow rate limiter
 	if config.FastSlow != nil {
 		fastDelay := config.FastSlow.FastDelay.Duration

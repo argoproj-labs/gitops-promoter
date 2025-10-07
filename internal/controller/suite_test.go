@@ -162,78 +162,6 @@ var _ = BeforeSuite(func() {
 
 	k8sManager := multiClusterManager.GetLocalManager()
 
-	settingsMgr := settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
-		ControllerNamespace: "default",
-	})
-
-	err = (&CommitStatusReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("CommitStatus"),
-		SettingsMgr: settingsMgr,
-	}).SetupWithManager(ctx, k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&PromotionStrategyReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("PromotionStrategy"),
-		SettingsMgr: settingsMgr,
-	}).SetupWithManager(ctx, k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&ChangeTransferPolicyReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
-		SettingsMgr: settingsMgr,
-	}).SetupWithManager(ctx, k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&PullRequestReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("PullRequest"),
-		SettingsMgr: settingsMgr,
-	}).SetupWithManager(ctx, k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&RevertCommitReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("RevertCommit"),
-	}).SetupWithManager(ctx, k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&ScmProviderReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("ScmProvider"),
-	}).SetupWithManager(ctx, k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&GitRepositoryReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
-		// Recorder: k8sManager.GetEventRecorderFor("GitRepository"),
-	}).SetupWithManager(ctx, k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&ArgoCDCommitStatusReconciler{
-		Manager:            multiClusterManager,
-		SettingsMgr:        settingsMgr,
-		KubeConfigProvider: kubeconfigProvider,
-		Recorder:           k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
-	}).SetupWithManager(ctx, multiClusterManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	webhookReceiverPort := constants.WebhookReceiverPort + GinkgoParallelProcess()
-	whr := webhookreceiver.NewWebhookReceiver(k8sManager)
-	go func() {
-		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
-		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
-	}()
-
 	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "promoter-controller-configuration",
@@ -357,6 +285,78 @@ var _ = BeforeSuite(func() {
 		},
 	}
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
+
+	settingsMgr := settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
+		ControllerNamespace: "default",
+	})
+
+	err = (&CommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorderFor("CommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&PromotionStrategyReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorderFor("PromotionStrategy"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&ChangeTransferPolicyReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&PullRequestReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorderFor("PullRequest"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&RevertCommitReconciler{
+		Client:   k8sManager.GetClient(),
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorderFor("RevertCommit"),
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&ScmProviderReconciler{
+		Client:   k8sManager.GetClient(),
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorderFor("ScmProvider"),
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&GitRepositoryReconciler{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+		// Recorder: k8sManager.GetEventRecorderFor("GitRepository"),
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&ArgoCDCommitStatusReconciler{
+		Manager:            multiClusterManager,
+		SettingsMgr:        settingsMgr,
+		KubeConfigProvider: kubeconfigProvider,
+		Recorder:           k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
+	}).SetupWithManager(ctx, multiClusterManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	webhookReceiverPort := constants.WebhookReceiverPort + GinkgoParallelProcess()
+	whr := webhookreceiver.NewWebhookReceiver(k8sManager)
+	go func() {
+		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
+		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
+	}()
 
 	go func() {
 		defer GinkgoRecover()
