@@ -19,10 +19,10 @@ func TestIsArgoCDLocalClusterMonitoringDisabled(t *testing.T) {
 	scheme := utils.GetScheme()
 
 	tests := []struct {
-		name                         string
-		config                       *promoterv1alpha1.ControllerConfiguration
-		expectedDisabled             bool
-		expectedError                bool
+		name             string
+		config           *promoterv1alpha1.ControllerConfiguration
+		expectedDisabled bool
+		expectedError    bool
 	}{
 		{
 			name: "monitoring disabled",
