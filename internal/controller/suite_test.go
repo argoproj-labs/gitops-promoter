@@ -162,7 +162,7 @@ var _ = BeforeSuite(func() {
 
 	k8sManager := multiClusterManager.GetLocalManager()
 
-	settingsMgr := settings.NewManager(k8sManager.GetClient(), settings.ManagerConfig{
+	settingsMgr := settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
 		ControllerNamespace: "default",
 	})
 
@@ -171,7 +171,7 @@ var _ = BeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorderFor("CommitStatus"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(k8sManager)
+	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&PromotionStrategyReconciler{
@@ -179,7 +179,7 @@ var _ = BeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorderFor("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(k8sManager)
+	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ChangeTransferPolicyReconciler{
@@ -187,7 +187,7 @@ var _ = BeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(k8sManager)
+	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&PullRequestReconciler{
@@ -195,28 +195,28 @@ var _ = BeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorderFor("PullRequest"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(k8sManager)
+	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&RevertCommitReconciler{
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
 		Recorder: k8sManager.GetEventRecorderFor("RevertCommit"),
-	}).SetupWithManager(k8sManager)
+	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ScmProviderReconciler{
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
 		Recorder: k8sManager.GetEventRecorderFor("ScmProvider"),
-	}).SetupWithManager(k8sManager)
+	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&GitRepositoryReconciler{
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
 		// Recorder: k8sManager.GetEventRecorderFor("GitRepository"),
-	}).SetupWithManager(k8sManager)
+	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ArgoCDCommitStatusReconciler{
@@ -224,7 +224,7 @@ var _ = BeforeSuite(func() {
 		SettingsMgr:        settingsMgr,
 		KubeConfigProvider: kubeconfigProvider,
 		Recorder:           k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
-	}).SetupWithManager(multiClusterManager)
+	}).SetupWithManager(ctx, multiClusterManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	webhookReceiverPort := constants.WebhookReceiverPort + GinkgoParallelProcess()
@@ -240,15 +240,120 @@ var _ = BeforeSuite(func() {
 			Namespace: "default",
 		},
 		Spec: promoterv1alpha1.ControllerConfigurationSpec{
+			PromotionStrategy: promoterv1alpha1.PromotionStrategyConfiguration{
+				WorkQueue: promoterv1alpha1.WorkQueue{
+					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
+					MaxConcurrentReconciles: 10,
+					RateLimiter: promoterv1alpha1.RateLimiter{
+						MaxOf: []promoterv1alpha1.RateLimiterTypes{
+							{
+								Bucket: &promoterv1alpha1.Bucket{
+									Qps:    100,
+									Bucket: 1000,
+								},
+							},
+							{
+								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
+								},
+							},
+						},
+					},
+				},
+			},
+			ChangeTransferPolicy: promoterv1alpha1.ChangeTransferPolicyConfiguration{
+				WorkQueue: promoterv1alpha1.WorkQueue{
+					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
+					MaxConcurrentReconciles: 10,
+					RateLimiter: promoterv1alpha1.RateLimiter{
+						MaxOf: []promoterv1alpha1.RateLimiterTypes{
+							{
+								Bucket: &promoterv1alpha1.Bucket{
+									Qps:    100,
+									Bucket: 1000,
+								},
+							},
+							{
+								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
+								},
+							},
+						},
+					},
+				},
+			},
 			PullRequest: promoterv1alpha1.PullRequestConfiguration{
 				Template: promoterv1alpha1.PullRequestTemplate{
 					Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
 					Description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}.",
 				},
+				WorkQueue: promoterv1alpha1.WorkQueue{
+					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
+					MaxConcurrentReconciles: 10,
+					RateLimiter: promoterv1alpha1.RateLimiter{
+						MaxOf: []promoterv1alpha1.RateLimiterTypes{
+							{
+								Bucket: &promoterv1alpha1.Bucket{
+									Qps:    100,
+									Bucket: 1000,
+								},
+							},
+							{
+								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
+								},
+							},
+						},
+					},
+				},
 			},
-			PromotionStrategyRequeueDuration:    metav1.Duration{Duration: 5 * time.Minute},
-			ChangeTransferPolicyRequeueDuration: metav1.Duration{Duration: 5 * time.Minute},
-			ArgoCDCommitStatusRequeueDuration:   metav1.Duration{Duration: 15 * time.Second},
+			CommitStatus: promoterv1alpha1.CommitStatusConfiguration{
+				WorkQueue: promoterv1alpha1.WorkQueue{
+					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
+					MaxConcurrentReconciles: 10,
+					RateLimiter: promoterv1alpha1.RateLimiter{
+						MaxOf: []promoterv1alpha1.RateLimiterTypes{
+							{
+								Bucket: &promoterv1alpha1.Bucket{
+									Qps:    100,
+									Bucket: 1000,
+								},
+							},
+							{
+								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
+								},
+							},
+						},
+					},
+				},
+			},
+			ArgoCDCommitStatus: promoterv1alpha1.ArgoCDCommitStatusConfiguration{
+				WorkQueue: promoterv1alpha1.WorkQueue{
+					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
+					MaxConcurrentReconciles: 10,
+					RateLimiter: promoterv1alpha1.RateLimiter{
+						MaxOf: []promoterv1alpha1.RateLimiterTypes{
+							{
+								Bucket: &promoterv1alpha1.Bucket{
+									Qps:    100,
+									Bucket: 1000,
+								},
+							},
+							{
+								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())

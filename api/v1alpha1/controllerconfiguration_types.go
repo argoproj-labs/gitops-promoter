@@ -24,57 +24,269 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // ControllerConfigurationSpec defines the desired state of ControllerConfiguration.
+//
+// This spec contains the global configuration for all controllers in the promoter system.
+// Each controller has its own configuration section that specifies WorkQueue settings,
+// rate limiters, and other controller-specific parameters. All fields should be required,
+// with defaults set in manifests rather than in code.
 type ControllerConfigurationSpec struct {
-	// All fields in this struct should be required. Defaults should be set in manifests, not in code.
+	// PromotionStrategy contains the configuration for the PromotionStrategy controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	PromotionStrategy PromotionStrategyConfiguration `json:"promotionStrategy,omitempty"`
 
+	// ChangeTransferPolicy contains the configuration for the ChangeTransferPolicy controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	ChangeTransferPolicy ChangeTransferPolicyConfiguration `json:"changeTransferPolicy,omitempty"`
+
+	// PullRequest contains the configuration for the PullRequest controller,
+	// including WorkQueue settings and pull request template configuration.
 	// +required
 	PullRequest PullRequestConfiguration `json:"pullRequest,omitempty"`
 
-	// How frequently to requeue promotion strategy resources for auto reconciliation. Default: "5m".
-	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
+	// CommitStatus contains the configuration for the CommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
 	// +required
-	PromotionStrategyRequeueDuration metav1.Duration `json:"promotionStrategyRequeueDuration,omitempty"`
+	CommitStatus CommitStatusConfiguration `json:"commitStatus,omitempty"`
 
-	// How frequently to requeue proposed commit resources for auto reconciliation. Default: "5m".
-	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
+	// ArgoCDCommitStatus contains the configuration for the ArgoCDCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
 	// +required
-	ChangeTransferPolicyRequeueDuration metav1.Duration `json:"changeTransferPolicyRequeueDuration,omitempty"`
-
-	// How frequently to requeue commit status resources for auto reconciliation. Default: "15s".
-	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
-	// +required
-	ArgoCDCommitStatusRequeueDuration metav1.Duration `json:"argocdCommitStatusRequeueDuration,omitempty"`
-
-	// How frequently to requeue pull request resources for auto reconciliation. Default: "5m".
-	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
-	// +required
-	PullRequestRequeueDuration metav1.Duration `json:"pullRequestRequeueDuration,omitempty"`
+	ArgoCDCommitStatus ArgoCDCommitStatusConfiguration `json:"argocdCommitStatus,omitempty"`
 }
 
-// PullRequestConfiguration defines the configuration for pull requests.
+// PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
+//
+// This configuration controls how the PromotionStrategy controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type PromotionStrategyConfiguration struct {
+	// WorkQueue contains the work queue configuration for the PromotionStrategy controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue,omitempty"`
+}
+
+// ChangeTransferPolicyConfiguration defines the configuration for the ChangeTransferPolicy controller.
+//
+// This configuration controls how the ChangeTransferPolicy controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type ChangeTransferPolicyConfiguration struct {
+	// WorkQueue contains the work queue configuration for the ChangeTransferPolicy controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue,omitempty"`
+}
+
+// PullRequestConfiguration defines the configuration for the PullRequest controller.
+//
+// This configuration controls how the PullRequest controller processes reconciliation requests
+// and generates pull requests, including WorkQueue settings and template configuration.
 type PullRequestConfiguration struct {
-	// Template is the template used to generate pull requests.
+	// Template is the template configuration used to generate pull request titles and descriptions.
+	// Uses Go template syntax with Sprig functions available.
 	// +required
 	Template PullRequestTemplate `json:"template,omitempty"`
+
+	// WorkQueue contains the work queue configuration for the PullRequest controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue,omitempty"`
 }
 
-// PullRequestTemplate defines the template for pull requests.
+// CommitStatusConfiguration defines the configuration for the CommitStatus controller.
+//
+// This configuration controls how the CommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type CommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the CommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue,omitempty"`
+}
+
+// ArgoCDCommitStatusConfiguration defines the configuration for the ArgoCDCommitStatus controller.
+//
+// This configuration controls how the ArgoCDCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type ArgoCDCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the ArgoCDCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue,omitempty"`
+}
+
+// WorkQueue defines the work queue configuration for a controller.
+//
+// This configuration directly correlates to parameters used with Kubernetes client-go work queues.
+// It controls how frequently resources are reconciled, how many reconciliations can run concurrently,
+// and how rate limiting is applied to prevent overwhelming external systems.
+//
+// See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
+type WorkQueue struct {
+	// RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
+	// This creates a periodic reconciliation loop that ensures the desired state is maintained even
+	// without external triggers. Format follows Go's time.Duration syntax (e.g., "5m" for 5 minutes).
+	// +required
+	RequeueDuration metav1.Duration `json:"requeueDuration,omitempty"`
+
+	// MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
+	// that can run for this controller. Higher values increase throughput but consume more
+	// resources. Must be at least 1.
+	// +required
+	// +Validation:Minimum=1
+	MaxConcurrentReconciles int `json:"maxConcurrentReconciles,omitempty"`
+
+	// RateLimiter defines the rate limiting strategy for the controller's work queue.
+	// Rate limiting controls how quickly failed reconciliations are retried and helps
+	// prevent overwhelming external APIs or systems.
+	// +required
+	RateLimiter RateLimiter `json:"rateLimiter,omitempty"`
+}
+
+// ExponentialFailure defines an exponential backoff rate limiter configuration.
+//
+// This rate limiter increases the delay exponentially with each consecutive failure, starting at
+// BaseDelay and capping at MaxDelay. This is useful for backing off when operations fail repeatedly,
+// reducing load on external systems while they recover. The delay doubles with each failure until
+// reaching the maximum.
+//
+// See https://pkg.go.dev/k8s.io/client-go/util/workqueue#NewTypedItemExponentialFailureRateLimiter
+type ExponentialFailure struct {
+	// BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+	// increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+	// Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+	// +required
+	BaseDelay metav1.Duration `json:"baseDelay,omitempty"`
+
+	// MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+	// this value, all subsequent retries will use this delay.
+	// Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+	// +required
+	MaxDelay metav1.Duration `json:"maxDelay,omitempty"`
+}
+
+// RateLimiter defines the rate limiting configuration for controllers.
+//
+// This type supports both simple rate limiting strategies (FastSlow, ExponentialFailure, Bucket)
+// and composite strategies using MaxOf, which returns the maximum delay from multiple rate limiters.
+// This allows for sophisticated rate limiting behavior that combines multiple strategies.
+//
+// Exactly one of the rate limiter types or MaxOf must be specified.
+//
+// See https://pkg.go.dev/k8s.io/client-go/util/workqueue for rate limiter implementation details.
+// +kubebuilder:validation:ExactlyOneOf=fastSlow;exponentialFailure;bucket;maxOf
+type RateLimiter struct {
+	// RateLimiterTypes can be one of: FastSlow, ExponentialFailure, or Bucket.
+	// +optional
+	RateLimiterTypes `json:",inline"`
+
+	// MaxOf allows combining multiple rate limiters, where the maximum delay from all
+	// limiters is used. This enables sophisticated rate limiting that respects multiple
+	// constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
+	// +optional
+	// +kubebuilder:validation:MaxItems=3
+	MaxOf []RateLimiterTypes `json:"maxOf,omitempty"`
+}
+
+// RateLimiterTypes defines the different algorithms available for rate limiting.
+//
+// Exactly one of the three rate limiter types must be specified:
+//   - FastSlow: Quick retry for transient errors, then slower retry for persistent failures
+//   - ExponentialFailure: Standard exponential backoff for repeated failures
+//   - Bucket: Token bucket algorithm for controlling overall request rate
+//
+// See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
+// +kubebuilder:validation:ExactlyOneOf=fastSlow;exponentialFailure;bucket
+type RateLimiterTypes struct {
+	// FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+	// Useful for quickly retrying transient errors while backing off for persistent failures.
+	// +optional
+	FastSlow *FastSlow `json:"fastSlow,omitempty"`
+
+	// ExponentialFailure rate limiter increases delay exponentially with each failure.
+	// Standard approach for backing off when operations fail repeatedly.
+	// +optional
+	ExponentialFailure *ExponentialFailure `json:"exponentialFailure,omitempty"`
+
+	// Bucket rate limiter uses a token bucket algorithm to control request rate.
+	// Allows bursts while maintaining an average rate limit.
+	// +optional
+	Bucket *Bucket `json:"bucket,omitempty"`
+}
+
+// FastSlow defines a rate limiter that uses different delays based on failure count.
+//
+// This rate limiter returns FastDelay for the first MaxFastAttempts failures, then switches
+// to SlowDelay for all subsequent failures. This is useful for quickly retrying transient
+// errors while backing off for persistent failures, without the exponential growth of
+// ExponentialFailure.
+//
+// See https://pkg.go.dev/k8s.io/client-go/util/workqueue#NewTypedItemFastSlowRateLimiter
+type FastSlow struct {
+	// FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+	// Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+	// +required
+	FastDelay metav1.Duration `json:"fastDelay,omitempty"`
+
+	// SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+	// Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+	// +required
+	SlowDelay metav1.Duration `json:"slowDelay,omitempty"`
+
+	// MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+	// Must be at least 1.
+	// +required
+	// +Validation:Minimum=1
+	MaxFastAttempts int `json:"maxFastAttempts,omitempty"`
+}
+
+// Bucket defines a token bucket rate limiter configuration.
+//
+// This rate limiter uses the token bucket algorithm to control the rate of operations.
+// Tokens are added to the bucket at a rate of Qps per second, up to a maximum of Bucket tokens.
+// Each operation consumes one token. This allows for bursts of activity up to the bucket size
+// while maintaining an average rate of Qps operations per second.
+//
+// See https://pkg.go.dev/k8s.io/client-go/util/workqueue#TypedBucketRateLimiter
+type Bucket struct {
+	// Qps (queries per second) is the rate at which tokens are added to the bucket.
+	// This defines the sustained rate limit for operations. Must be non-negative.
+	// +required
+	// +Validation:Minimum=0
+	Qps int `json:"qps,omitempty"`
+
+	// Bucket is the maximum number of tokens that can be accumulated in the bucket.
+	// This defines the maximum burst size - how many operations can occur in rapid
+	// succession before rate limiting takes effect. Must be non-negative.
+	// +required
+	// +Validation:Minimum=0
+	Bucket int `json:"bucket,omitempty"`
+}
+
+// PullRequestTemplate defines the template configuration for generating pull requests.
+//
+// Templates use Go template syntax and have access to Sprig functions for flexible string
+// manipulation and formatting. The template receives context about the promotion being performed,
+// which can be used to generate informative titles and descriptions.
 type PullRequestTemplate struct {
-	// Title used to generate the title of the pull request.
-	// Uses Go template syntax and Sprig functions are available.
+	// Title is the template used to generate the title of the pull request.
+	// Uses Go template syntax with Sprig functions available for string manipulation.
 	// +required
 	Title string `json:"title,omitempty"`
-	// Description used to generate the description of the pull request.
-	// Uses Go template syntax and Sprig functions are available.
+
+	// Description is the template used to generate the body/description of the pull request.
+	// Uses Go template syntax with Sprig functions available for string manipulation.
 	// +required
 	Description string `json:"description,omitempty"`
 }
 
 // ControllerConfigurationStatus defines the observed state of ControllerConfiguration.
-type ControllerConfigurationStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-}
+//
+// Currently, this resource does not maintain any status information as it is a configuration-only
+// resource. Status fields may be added in the future to track configuration validation or
+// controller health metrics.
+type ControllerConfigurationStatus struct{}
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

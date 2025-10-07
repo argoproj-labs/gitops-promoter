@@ -61,7 +61,7 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ScmProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ScmProviderReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ScmProvider{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)
