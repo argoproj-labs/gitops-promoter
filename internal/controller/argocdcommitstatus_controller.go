@@ -85,7 +85,21 @@ type appRevisionKey struct {
 	name        string
 }
 
-// ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
+// ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object.
+// It monitors Argo CD Applications across multiple clusters and aggregates their health status
+// into CommitStatus resources.
+//
+// Local Cluster Monitoring:
+// By default, the controller monitors Applications in both the local cluster (where the controller runs)
+// and remote clusters (configured via kubeconfig secrets). This behavior can be controlled via the
+// DisableArgoCDLocalClusterMonitoring field in ControllerConfiguration:
+//   - When false (default): Applications are monitored in both local and remote clusters
+//   - When true: Applications are only monitored in remote clusters
+//
+// Setting DisableArgoCDLocalClusterMonitoring to true is useful when:
+//   - The Application CRD is not installed on the local cluster
+//   - There are no Applications running in the local cluster
+//   - You want to reduce resource usage by avoiding unnecessary watches
 type ArgoCDCommitStatusReconciler struct {
 	Manager            mcmanager.Manager
 	Recorder           record.EventRecorder
