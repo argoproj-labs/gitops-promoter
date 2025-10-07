@@ -114,6 +114,15 @@ type ArgoCDCommitStatusConfiguration struct {
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue,omitempty"`
+
+	// WatchLocalCluster controls whether the controller watches for Argo CD Application resources
+	// in the local cluster. If false, the controller will only watch Applications in remote clusters
+	// configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not
+	// installed in the local cluster, or when all Applications exist only in remote clusters.
+	// Defaults to true for backward compatibility.
+	// +optional
+	// +kubebuilder:default=true
+	WatchLocalCluster bool `json:"watchLocalCluster,omitempty"`
 }
 
 // WorkQueue defines the work queue configuration for a controller.

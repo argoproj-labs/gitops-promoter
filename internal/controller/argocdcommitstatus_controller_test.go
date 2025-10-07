@@ -19,10 +19,9 @@ package controller
 import (
 	_ "embed"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 //go:embed testdata/ArgoCDCommitStatus.yaml

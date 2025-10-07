@@ -63,6 +63,7 @@ spec:
               slowDelay: "5m"
               maxFastAttempts: 3
   argocdCommitStatus:
+    watchLocalCluster: true
     workQueue:
       maxConcurrentReconciles: 10
       requeueDuration: "5m"

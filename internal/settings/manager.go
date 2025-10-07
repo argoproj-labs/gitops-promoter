@@ -164,6 +164,27 @@ func GetMaxConcurrentReconcilesDirect[T ControllerConfigurationTypes](ctx contex
 	return workQueue.MaxConcurrentReconciles, nil
 }
 
+// GetArgoCDCommitStatusWatchLocalClusterDirect retrieves the WatchLocalCluster configuration for the ArgoCDCommitStatus controller using a non-cached read.
+//
+// This method bypasses the cache and reads directly from the API server, making it safe to call
+// during SetupWithManager before the cache has started. Use this to configure whether the controller
+// should watch for Argo CD Application resources in the local cluster.
+//
+// Parameters:
+//   - ctx: Context for the request, used for cancellation and deadlines
+//
+// Returns true if the controller should watch Applications in the local cluster, false otherwise.
+// Returns an error if the configuration cannot be retrieved.
+func (m *Manager) GetArgoCDCommitStatusWatchLocalClusterDirect(ctx context.Context) (bool, error) {
+	config, err := m.GetControllerConfigurationDirect(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	// Default to true for backward compatibility if not set
+	return config.Spec.ArgoCDCommitStatus.WatchLocalCluster, nil
+}
+
 // GetRateLimiterDirect retrieves a configured rate limiter for a specific controller type using a non-cached read.
 // The type parameter T must satisfy the ControllerConfigurationTypes constraint.
 // The type parameter R is the request type for the rate limiter (e.g., ctrl.Request or mcreconcile.Request).

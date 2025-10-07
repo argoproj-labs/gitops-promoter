@@ -261,6 +261,7 @@ var _ = BeforeSuite(func() {
 				},
 			},
 			ArgoCDCommitStatus: promoterv1alpha1.ArgoCDCommitStatusConfiguration{
+				WatchLocalCluster: true,
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
 					MaxConcurrentReconciles: 10,
