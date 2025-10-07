@@ -223,20 +223,20 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 		return promoterv1alpha1.WorkQueue{}, fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 
-	switch any(*new(T)).(type) {
-	case promoterv1alpha1.PromotionStrategyConfiguration:
-		return config.Spec.PromotionStrategy.WorkQueue, nil
-	case promoterv1alpha1.ChangeTransferPolicyConfiguration:
-		return config.Spec.ChangeTransferPolicy.WorkQueue, nil
-	case promoterv1alpha1.PullRequestConfiguration:
-		return config.Spec.PullRequest.WorkQueue, nil
-	case promoterv1alpha1.CommitStatusConfiguration:
-		return config.Spec.CommitStatus.WorkQueue, nil
-	case promoterv1alpha1.ArgoCDCommitStatusConfiguration:
-		return config.Spec.ArgoCDCommitStatus.WorkQueue, nil
-	default:
-		return promoterv1alpha1.WorkQueue{}, fmt.Errorf("unsupported configuration type: %T", *new(T))
+	var controllerConfig T
+	workQueueGetters := map[any]promoterv1alpha1.WorkQueue{
+		promoterv1alpha1.PromotionStrategyConfiguration{}:    config.Spec.PromotionStrategy.WorkQueue,
+		promoterv1alpha1.ChangeTransferPolicyConfiguration{}: config.Spec.ChangeTransferPolicy.WorkQueue,
+		promoterv1alpha1.PullRequestConfiguration{}:          config.Spec.PullRequest.WorkQueue,
+		promoterv1alpha1.CommitStatusConfiguration{}:         config.Spec.CommitStatus.WorkQueue,
+		promoterv1alpha1.ArgoCDCommitStatusConfiguration{}:   config.Spec.ArgoCDCommitStatus.WorkQueue,
 	}
+
+	if workQueue, ok := workQueueGetters[any(controllerConfig)]; ok {
+		return workQueue, nil
+	}
+
+	return promoterv1alpha1.WorkQueue{}, fmt.Errorf("unsupported configuration type: %T", controllerConfig)
 }
 
 // buildRateLimiter constructs a workqueue.TypedRateLimiter from the RateLimiter configuration.
