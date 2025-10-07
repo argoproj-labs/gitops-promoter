@@ -10,4 +10,7 @@ spec:
     template:
       title: "Promote {{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`"
       description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}."
+  # Uncomment the line below to disable monitoring of Argo CD Applications in the local cluster.
+  # This is useful if the Application CRD is not installed on the local cluster.
+  # disableArgoCDLocalClusterMonitoring: true
 
