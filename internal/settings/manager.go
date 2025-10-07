@@ -81,6 +81,16 @@ func (m *Manager) GetControllerNamespace() string {
 	return m.config.ControllerNamespace
 }
 
+// IsArgoCDLocalClusterMonitoringDisabled returns true if monitoring of Argo CD Applications in the local cluster is disabled.
+func (m *Manager) IsArgoCDLocalClusterMonitoringDisabled(ctx context.Context) (bool, error) {
+	controllerConfiguration, err := m.GetControllerConfiguration(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	return controllerConfiguration.Spec.DisableArgoCDLocalClusterMonitoring, nil
+}
+
 // NewManager creates a new settings Manager instance with the provided client and configuration.
 func NewManager(client client.Client, config ManagerConfig) *Manager {
 	return &Manager{

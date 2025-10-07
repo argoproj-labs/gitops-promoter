@@ -149,9 +149,22 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
 	apps := []ApplicationsInEnvironment{}
 
+	// Check if local cluster monitoring is disabled
+	disableLocalMonitoring := false
+	if r.SettingsMgr != nil {
+		var err error
+		disableLocalMonitoring, err = r.SettingsMgr.IsArgoCDLocalClusterMonitoringDisabled(ctx)
+		if err != nil {
+			// If we can't read the configuration, default to enabled (backward compatible)
+			disableLocalMonitoring = false
+		}
+	}
+
 	// list clusters so we can query argocd applications from all clusters
 	clusters := r.KubeConfigProvider.ListClusters()
-	clusters = append(clusters, "") // add the local cluster
+	if !disableLocalMonitoring {
+		clusters = append(clusters, "") // add the local cluster
+	}
 	for _, clusterName := range clusters {
 		logger.Info("Fetching Argo CD applications from cluster", "cluster", clusterName)
 		cluster, err := r.Manager.GetCluster(ctx, clusterName)
@@ -498,6 +511,22 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager)
 	// Set the local client for interacting with manager cluster
 	r.localClient = mcMgr.GetLocalManager().GetClient()
 
+	// Determine if local cluster monitoring is disabled
+	// Use a background context since we're in setup phase
+	ctx := context.Background()
+	disableLocalMonitoring := false
+	if r.SettingsMgr != nil {
+		var err error
+		disableLocalMonitoring, err = r.SettingsMgr.IsArgoCDLocalClusterMonitoringDisabled(ctx)
+		if err != nil {
+			// If we can't read the configuration, default to enabled (backward compatible)
+			// This can happen if the ControllerConfiguration doesn't exist yet
+			disableLocalMonitoring = false
+		}
+	}
+
+	watchLocalCluster := !disableLocalMonitoring
+
 	err := mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
@@ -505,7 +534,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager)
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
-			mcbuilder.WithEngageWithLocalCluster(true),
+			mcbuilder.WithEngageWithLocalCluster(watchLocalCluster),
 			mcbuilder.WithEngageWithProviderClusters(true),
 		).
 		Complete(r)

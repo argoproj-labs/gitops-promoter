@@ -51,6 +51,12 @@ spec:
                   How frequently to requeue proposed commit resources for auto reconciliation. Default: "5m".
                   Format is go's time.Duration, e.g. "5m" for 5 minutes.
                 type: string
+              disableArgoCDLocalClusterMonitoring:
+                description: |-
+                  DisableArgoCDLocalClusterMonitoring disables monitoring of Argo CD Applications in the local cluster.
+                  Set this to true if the Application CRD is not installed on the local cluster or if there are no
+                  Applications running in the local cluster. Default: false.
+                type: boolean
               promotionStrategyRequeueDuration:
                 description: |-
                   How frequently to requeue promotion strategy resources for auto reconciliation. Default: "5m".

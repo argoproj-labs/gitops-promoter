@@ -49,6 +49,12 @@ type ControllerConfigurationSpec struct {
 	// Format is go's time.Duration, e.g. "5m" for 5 minutes.
 	// +required
 	PullRequestRequeueDuration metav1.Duration `json:"pullRequestRequeueDuration,omitempty"`
+
+	// DisableArgoCDLocalClusterMonitoring disables monitoring of Argo CD Applications in the local cluster.
+	// Set this to true if the Application CRD is not installed on the local cluster or if there are no
+	// Applications running in the local cluster. Default: false.
+	// +optional
+	DisableArgoCDLocalClusterMonitoring bool `json:"disableArgoCDLocalClusterMonitoring,omitempty"`
 }
 
 // PullRequestConfiguration defines the configuration for pull requests.
