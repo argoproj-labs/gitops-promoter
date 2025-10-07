@@ -338,13 +338,12 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		// This can be empty if the git repo is missing hydrator.metadata or if the CTP hasn't been
 		// fully reconciled yet.
 		if ctp.Status.Proposed.Hydrated.Sha == "" {
-			logger.V(4).Info("Skipping previous environment commit status creation: proposed hydrated SHA is empty",
-				"ctp", ctp.Name,
-				"activeBranch", ctp.Spec.ActiveBranch)
-			// We skip this environment but continue processing others. The CTP controller will
-			// populate the SHA when it reconciles, and we'll create the commit status on the next
-			// PromotionStrategy reconciliation.
-			continue
+			// Check if the CTP has a Ready condition with False status to provide more context
+			readyCondition := meta.FindStatusCondition(ctp.Status.Conditions, string(promoterConditions.Ready))
+			if readyCondition != nil && readyCondition.Status == metav1.ConditionFalse {
+				return fmt.Errorf("cannot create previous environment CommitStatus: proposed hydrated SHA is empty for ChangeTransferPolicy %s (CTP Ready condition: %s - %s)", ctp.Name, readyCondition.Reason, readyCondition.Message)
+			}
+			return fmt.Errorf("cannot create previous environment CommitStatus: proposed hydrated SHA is empty for ChangeTransferPolicy %s", ctp.Name)
 		}
 
 		// Since there is at least one configured active check, and since this is not the first environment,

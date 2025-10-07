@@ -1404,7 +1404,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
 
-		It("should skip creating previous environment commit status when CTP proposed SHA is empty", func() {
+		It("should fail reconciliation when CTP proposed SHA is empty", func() {
 			By("Creating the resource with active commit statuses")
 			name, scmSecret, scmProvider, gitRepo, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-empty-sha-test", "default")
 			setupInitialTestGitRepoOnServer(name, name)
@@ -1458,22 +1458,55 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying that the controller skips creating commit status when SHA is empty")
-			// The key test here is that the controller logic has the early check to skip
-			// when SHA is empty, preventing the error from occurring deeper in the code.
-			// Since the CTP controller will reconcile and populate the SHA, we verify
-			// the system works end-to-end without errors.
+			By("Setting the staging CTP proposed hydrated SHA to empty to simulate missing git metadata")
+			// Manually update the staging CTP to have an empty proposed hydrated SHA
+			// This simulates the condition where the git repo is missing hydrator.metadata
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+
+				// Clear the proposed hydrated SHA
+				ctpStaging.Status.Proposed.Hydrated.Sha = ""
+				err = k8sClient.Status().Update(ctx, &ctpStaging)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Setting development active commit status to success to trigger previous environment check")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      activeCommitStatusDevelopment.Name,
+					Namespace: activeCommitStatusDevelopment.Namespace,
+				}, activeCommitStatusDevelopment)
+				g.Expect(err).To(Succeed())
+
+				// Get the current SHA from ctpDev to set on the commit status
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				activeCommitStatusDevelopment.Spec.Sha = ctpDev.Status.Active.Hydrated.Sha
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying that the PromotionStrategy has an error condition due to empty SHA")
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
 				g.Expect(err).To(Succeed())
 
-				// The PromotionStrategy should remain ready and functional
-				// Even if temporarily a CTP doesn't have a SHA, the controller skips it gracefully
+				// Check for the error condition in the PromotionStrategy status
 				cond := meta.FindStatusCondition(promotionStrategy.Status.Conditions, string(promoterConditions.Ready))
-				if cond != nil && cond.Status == metav1.ConditionFalse {
-					// If there's an error, it shouldn't be about empty SHA
-					g.Expect(cond.Message).ToNot(ContainSubstring("proposed hydrated SHA is empty"))
-				}
+				g.Expect(cond).ToNot(BeNil())
+				g.Expect(cond.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(cond.Reason).To(Equal(string(promoterConditions.ReconciliationError)))
+				g.Expect(cond.Message).To(ContainSubstring("cannot create previous environment CommitStatus: proposed hydrated SHA is empty"))
+				g.Expect(cond.Message).To(ContainSubstring(ctpStaging.Name))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
