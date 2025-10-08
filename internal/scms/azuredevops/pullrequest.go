@@ -2,6 +2,7 @@ package azuredevops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -62,10 +63,10 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	// Validate required fields for Azure DevOps API
 	if sourceRef == "" || targetRef == "" {
-		return "", fmt.Errorf("source and target branches are required for pull request creation")
+		return "", errors.New("source and target branches are required for pull request creation")
 	}
 	if title == "" {
-		return "", fmt.Errorf("title is required for pull request creation")
+		return "", errors.New("title is required for pull request creation")
 	}
 
 	// Create Git pull request

@@ -13,8 +13,8 @@ import (
 
 // mockTokenCredential is a mock implementation of azcore.TokenCredential for testing
 type mockTokenCredential struct {
-	token     string
 	expiresAt time.Time
+	token     string
 	err       error
 }
 
@@ -29,9 +29,11 @@ func (m *mockTokenCredential) GetToken(ctx context.Context, options policy.Token
 }
 
 func TestTokenManager_GetToken(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	t.Run("successful token retrieval", func(t *testing.T) {
+		t.Parallel()
 		mockCred := &mockTokenCredential{
 			token:     "test-token-123",
 			expiresAt: time.Now().Add(1 * time.Hour),
@@ -45,6 +47,7 @@ func TestTokenManager_GetToken(t *testing.T) {
 	})
 
 	t.Run("token caching", func(t *testing.T) {
+		t.Parallel()
 		mockCred := &mockTokenCredential{
 			token:     "cached-token",
 			expiresAt: time.Now().Add(1 * time.Hour),
@@ -68,6 +71,7 @@ func TestTokenManager_GetToken(t *testing.T) {
 	})
 
 	t.Run("token refresh when expired", func(t *testing.T) {
+		t.Parallel()
 		mockCred := &mockTokenCredential{
 			token:     "expired-token",
 			expiresAt: time.Now().Add(-1 * time.Hour), // Already expired
@@ -90,6 +94,7 @@ func TestTokenManager_GetToken(t *testing.T) {
 	})
 
 	t.Run("error handling", func(t *testing.T) {
+		t.Parallel()
 		mockCred := &mockTokenCredential{
 			err: assert.AnError,
 		}
@@ -103,7 +108,10 @@ func TestTokenManager_GetToken(t *testing.T) {
 }
 
 func TestTokenManager_IsValid(t *testing.T) {
+	t.Parallel()
+
 	t.Run("valid token", func(t *testing.T) {
+		t.Parallel()
 		mockCred := &mockTokenCredential{
 			token:     "valid-token",
 			expiresAt: time.Now().Add(1 * time.Hour),
@@ -117,6 +125,7 @@ func TestTokenManager_IsValid(t *testing.T) {
 	})
 
 	t.Run("expired token", func(t *testing.T) {
+		t.Parallel()
 		mockCred := &mockTokenCredential{
 			token:     "expired-token",
 			expiresAt: time.Now().Add(-1 * time.Hour),
@@ -130,6 +139,7 @@ func TestTokenManager_IsValid(t *testing.T) {
 	})
 
 	t.Run("no token", func(t *testing.T) {
+		t.Parallel()
 		tm := NewTokenManager(&mockTokenCredential{})
 		assert.False(t, tm.IsValid())
 	})

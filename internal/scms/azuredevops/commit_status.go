@@ -2,6 +2,7 @@ package azuredevops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -57,10 +58,10 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 
 	// Validate required fields for Azure DevOps API
 	if commitStatus.Spec.Name == "" {
-		return nil, fmt.Errorf("status name is required for commit status creation")
+		return nil, errors.New("status name is required for commit status creation")
 	}
 	if commitStatus.Spec.Sha == "" {
-		return nil, fmt.Errorf("commit SHA is required for commit status creation")
+		return nil, errors.New("commit SHA is required for commit status creation")
 	}
 
 	// Map GitOps Promoter status phase to Azure DevOps status state

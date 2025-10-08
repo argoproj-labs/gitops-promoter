@@ -13,12 +13,11 @@ import (
 // TokenManager manages Azure DevOps access tokens with automatic refresh
 type TokenManager struct {
 	credential azcore.TokenCredential
-	scope      string
-
 	// Token cache
 	mutex       sync.RWMutex
-	cachedToken string
 	expiresAt   time.Time
+	scope       string
+	cachedToken string
 }
 
 // NewTokenManager creates a new token manager for workload identity

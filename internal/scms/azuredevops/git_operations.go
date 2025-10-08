@@ -2,6 +2,7 @@ package azuredevops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -28,9 +29,9 @@ const (
 // GitAuthenticationProvider provides methods to authenticate with Azure DevOps.
 type GitAuthenticationProvider struct {
 	scmProvider v1alpha1.GenericScmProvider
-	token       string
 	// tokenManager manages workload identity tokens with automatic refresh
 	tokenManager *TokenManager
+	token        string
 	// authType indicates the authentication method being used
 	authType AuthType
 }
@@ -63,7 +64,7 @@ func NewAzdoGitAuthenticationProvider(ctx context.Context, k8sClient client.Clie
 			// Fall back to PAT if workload identity fails and PAT is available
 			token := string(secret.Data[azureDevOpsTokenSecretKey])
 			if token == "" {
-				logger.Error(fmt.Errorf("no PAT token available for fallback"), "Both workload identity and PAT authentication unavailable")
+				logger.Error(errors.New("no PAT token available for fallback"), "Both workload identity and PAT authentication unavailable")
 				// Return provider that will fail on token requests with clear error
 				return GitAuthenticationProvider{
 					scmProvider: scmProvider,
@@ -120,7 +121,7 @@ func (azdo GitAuthenticationProvider) GetToken(ctx context.Context) (string, err
 	case AuthTypeWorkloadIdentity:
 		// Get access token using workload identity token manager
 		if azdo.tokenManager == nil {
-			return "", fmt.Errorf("workload identity token manager not initialized")
+			return "", errors.New("workload identity token manager not initialized")
 		}
 
 		token, err := azdo.tokenManager.GetToken(ctx)
@@ -131,7 +132,7 @@ func (azdo GitAuthenticationProvider) GetToken(ctx context.Context) (string, err
 	case AuthTypePAT:
 		// Return the stored PAT token
 		if azdo.token == "" {
-			return "", fmt.Errorf("azure DevOps Personal Access Token is empty - please check your secret configuration")
+			return "", errors.New("azure DevOps Personal Access Token is empty - please check your secret configuration")
 		}
 		return azdo.token, nil
 	default:
@@ -152,7 +153,7 @@ func createWorkloadIdentityCredential(config *v1alpha1.AzureWorkloadIdentity) (a
 	if tenantID == "" {
 		tenantID = os.Getenv("AZURE_TENANT_ID")
 		if tenantID == "" {
-			return nil, fmt.Errorf("tenantId not specified in config and AZURE_TENANT_ID environment variable not set")
+			return nil, errors.New("tenantId not specified in config and AZURE_TENANT_ID environment variable not set")
 		}
 	}
 
@@ -161,7 +162,7 @@ func createWorkloadIdentityCredential(config *v1alpha1.AzureWorkloadIdentity) (a
 	if clientID == "" {
 		clientID = os.Getenv("AZURE_CLIENT_ID")
 		if clientID == "" {
-			return nil, fmt.Errorf("clientId not specified in config and AZURE_CLIENT_ID environment variable not set")
+			return nil, errors.New("clientId not specified in config and AZURE_CLIENT_ID environment variable not set")
 		}
 	}
 
@@ -201,58 +202,78 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	if scmProvider.GetSpec().AzureDevOps.Domain != "" {
 		organizationUrl = fmt.Sprintf("https://%s/%s", scmProvider.GetSpec().AzureDevOps.Domain, scmProvider.GetSpec().AzureDevOps.Organization)
 	} else {
-		organizationUrl = fmt.Sprintf("https://dev.azure.com/%s", scmProvider.GetSpec().AzureDevOps.Organization)
+		organizationUrl = "https://dev.azure.com/" + scmProvider.GetSpec().AzureDevOps.Organization
 	}
 
 	var connection *azuredevops.Connection
 	var authProvider GitAuthenticationProvider
+	var err error
 
 	// Check if workload identity is configured and enabled
 	if scmProvider.GetSpec().AzureDevOps.WorkloadIdentity != nil && scmProvider.GetSpec().AzureDevOps.WorkloadIdentity.Enabled {
-		// Create workload identity credential
-		credential, err := createWorkloadIdentityCredential(scmProvider.GetSpec().AzureDevOps.WorkloadIdentity)
+		connection, authProvider, err = createWorkloadIdentityConnection(ctx, scmProvider, secret, organizationUrl)
 		if err != nil {
-			// Fall back to PAT authentication
-			token := string(secret.Data[azureDevOpsTokenSecretKey])
-			if token == "" {
-				return nil, nil, fmt.Errorf("both workload identity and PAT authentication failed: workload identity error: %v, PAT token not found in secret", err)
-			}
-			connection = azuredevops.NewPatConnection(organizationUrl, token)
-			authProvider = GitAuthenticationProvider{
-				scmProvider: scmProvider,
-				token:       token,
-				authType:    AuthTypePAT,
-			}
-		} else {
-			// Get initial access token for connection
-			tokenResult, err := credential.GetToken(ctx, policy.TokenRequestOptions{
-				Scopes: []string{azureDevOpsScope},
-			})
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to get initial access token from workload identity: %w", err)
-			}
-
-			// Create connection using the access token
-			connection = azuredevops.NewPatConnection(organizationUrl, tokenResult.Token)
-			authProvider = GitAuthenticationProvider{
-				scmProvider:  scmProvider,
-				tokenManager: NewTokenManager(credential),
-				authType:     AuthTypeWorkloadIdentity,
-			}
+			return nil, nil, err
 		}
 	} else {
-		// Use PAT authentication
-		token := string(secret.Data[azureDevOpsTokenSecretKey])
-		if token == "" {
-			return nil, nil, fmt.Errorf("azure DevOps token not found in secret")
-		}
-		connection = azuredevops.NewPatConnection(organizationUrl, token)
-		authProvider = GitAuthenticationProvider{
-			scmProvider: scmProvider,
-			token:       token,
-			authType:    AuthTypePAT,
+		connection, authProvider, err = createPATConnection(scmProvider, secret, organizationUrl)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 
 	return connection, &authProvider, nil
+}
+
+// createWorkloadIdentityConnection creates an Azure DevOps connection using workload identity
+func createWorkloadIdentityConnection(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, organizationUrl string) (*azuredevops.Connection, GitAuthenticationProvider, error) {
+	// Create workload identity credential
+	credential, err := createWorkloadIdentityCredential(scmProvider.GetSpec().AzureDevOps.WorkloadIdentity)
+	if err != nil {
+		// Fall back to PAT authentication
+		token := string(secret.Data[azureDevOpsTokenSecretKey])
+		if token == "" {
+			return nil, GitAuthenticationProvider{}, fmt.Errorf("both workload identity and PAT authentication failed: workload identity error: %w, PAT token not found in secret", err)
+		}
+		connection := azuredevops.NewPatConnection(organizationUrl, token)
+		authProvider := GitAuthenticationProvider{
+			scmProvider: scmProvider,
+			token:       token,
+			authType:    AuthTypePAT,
+		}
+		return connection, authProvider, nil
+	}
+
+	// Get initial access token for connection
+	tokenResult, err := credential.GetToken(ctx, policy.TokenRequestOptions{
+		Scopes: []string{azureDevOpsScope},
+	})
+	if err != nil {
+		return nil, GitAuthenticationProvider{}, fmt.Errorf("failed to get initial access token from workload identity: %w", err)
+	}
+
+	// Create connection using the access token
+	connection := azuredevops.NewPatConnection(organizationUrl, tokenResult.Token)
+	authProvider := GitAuthenticationProvider{
+		scmProvider:  scmProvider,
+		tokenManager: NewTokenManager(credential),
+		authType:     AuthTypeWorkloadIdentity,
+	}
+	return connection, authProvider, nil
+}
+
+// createPATConnection creates an Azure DevOps connection using PAT authentication
+func createPATConnection(scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, organizationUrl string) (*azuredevops.Connection, GitAuthenticationProvider, error) {
+	// Use PAT authentication
+	token := string(secret.Data[azureDevOpsTokenSecretKey])
+	if token == "" {
+		return nil, GitAuthenticationProvider{}, errors.New("azure DevOps token not found in secret")
+	}
+	connection := azuredevops.NewPatConnection(organizationUrl, token)
+	authProvider := GitAuthenticationProvider{
+		scmProvider: scmProvider,
+		token:       token,
+		authType:    AuthTypePAT,
+	}
+	return connection, authProvider, nil
 }
