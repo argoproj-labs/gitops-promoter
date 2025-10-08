@@ -86,6 +86,9 @@ var (
 	ctx              context.Context
 	gitServerPort    string
 	scheme           = utils.GetScheme()
+	// gitServerMutex serializes access to the git server from test helper functions
+	// to prevent concurrent git operations from hanging or corrupting the repositories
+	// gitServerMutex sync.Mutex
 )
 
 func TestControllers(t *testing.T) {
@@ -193,13 +196,13 @@ var _ = BeforeSuite(func() {
 			ChangeTransferPolicy: promoterv1alpha1.ChangeTransferPolicyConfiguration{
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 1,
+					MaxConcurrentReconciles: 10,
 					RateLimiter: promoterv1alpha1.RateLimiter{
 						MaxOf: []promoterv1alpha1.RateLimiterTypes{
 							{
 								Bucket: &promoterv1alpha1.Bucket{
 									Qps:    10,
-									Bucket: 100,
+									Bucket: 1000,
 								},
 							},
 							{
@@ -370,9 +373,6 @@ var _ = BeforeSuite(func() {
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
 
-	// Give controllers time to finish in-flight reconciliations
-	time.Sleep(5 * time.Second)
-
 	cancel() // stops manager and anything else using the context
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
@@ -395,7 +395,8 @@ func (f *filterLogger) Write(p []byte) (n int, err error) {
 	if strings.Contains(string(p), "request:") {
 		return len(p), nil
 	}
-	log.Print(string(p))
+	// Write directly to stdout instead of using log.Print to avoid recursive mutex lock
+	_, _ = os.Stdout.Write(p)
 	return len(p), nil
 }
 
@@ -437,6 +438,10 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 }
 
 func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
+	// Serialize git server access to prevent concurrent operations from hanging
+	// gitServerMutex.Lock()
+	// defer gitServerMutex.Unlock()
+
 	gitPath, err := os.MkdirTemp("", "*")
 	if err != nil {
 		panic("could not make temp dir for repo server")
@@ -503,6 +508,10 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 }
 
 func setupInitialTestGitRepoOnServer(owner string, name string) {
+	// Serialize git server access to prevent concurrent operations from hanging
+	// gitServerMutex.Lock()
+	// defer gitServerMutex.Unlock()
+
 	gitPath, err := os.MkdirTemp("", "*")
 	if err != nil {
 		panic("could not make temp dir for repo server")
@@ -579,6 +588,10 @@ func setupInitialTestGitRepoOnServer(owner string, name string) {
 }
 
 func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
+	// Serialize git server access to prevent concurrent operations from hanging
+	// gitServerMutex.Lock()
+	// defer gitServerMutex.Unlock()
+
 	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
 	_, err := runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 	Expect(err).NotTo(HaveOccurred())
@@ -698,6 +711,10 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 }
 
 func makeChangeAndHydrateRepoNoOp(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
+	// Serialize git server access to prevent concurrent operations from hanging
+	// gitServerMutex.Lock()
+	// defer gitServerMutex.Unlock()
+
 	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
 
 	for _, environment := range []string{"environment/development", "environment/staging", "environment/production", "environment/development-next", "environment/staging-next", "environment/production-next"} {
