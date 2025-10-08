@@ -39,6 +39,60 @@ spec:
           spec:
             description: ScmProviderSpec defines the desired state of ScmProvider
             properties:
+              azureDevOps:
+                description: AzureDevOps required configuration for Azure DevOps as
+                  the SCM provider
+                properties:
+                  domain:
+                    description: |-
+                      Domain is the Azure DevOps domain, such as "dev.azure.com". If using the default Azure DevOps domain, leave this field
+                      empty.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Instead of setting the domain to dev.azure.com, leave
+                        the field blank
+                      rule: self != "dev.azure.com"
+                  organization:
+                    description: Organization is the Azure DevOps organization name.
+                    type: string
+                  workloadIdentity:
+                    description: |-
+                      WorkloadIdentity configures workload identity authentication for Azure DevOps.
+                      If specified and enabled=true, workload identity will be used instead of PAT authentication.
+                      Fields can be omitted to use environment variables (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_FEDERATED_TOKEN_FILE).
+                    properties:
+                      clientId:
+                        description: |-
+                          ClientID is the Azure AD application (client) ID.
+                          If not specified, the AZURE_CLIENT_ID environment variable will be used.
+                        pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                        type: string
+                      enabled:
+                        description: |-
+                          Enabled indicates whether workload identity authentication should be used.
+                          When true, workload identity will be attempted even if tenantId/clientId are not specified,
+                          using environment variables AZURE_TENANT_ID and AZURE_CLIENT_ID instead.
+                        type: boolean
+                      serviceAccountTokenPath:
+                        default: /var/run/secrets/azure/tokens/azure-identity-token
+                        description: |-
+                          ServiceAccountTokenPath is the path to the service account token file.
+                          This is typically mounted by the workload identity webhook.
+                          If not specified, the AZURE_FEDERATED_TOKEN_FILE environment variable will be used,
+                          or it will default to "/var/run/secrets/azure/tokens/azure-identity-token".
+                        type: string
+                      tenantId:
+                        description: |-
+                          TenantID is the Azure AD tenant ID.
+                          If not specified, the AZURE_TENANT_ID environment variable will be used.
+                        pattern: ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+                        type: string
+                    required:
+                    - enabled
+                    type: object
+                required:
+                - organization
+                type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider
                 properties:

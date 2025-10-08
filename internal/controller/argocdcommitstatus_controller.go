@@ -41,6 +41,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
@@ -645,6 +646,9 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 	case scmProvider.GetSpec().Forgejo != nil:
 		logger.V(4).Info("Creating Forgejo git authentication provider")
 		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
+	case scmProvider.GetSpec().AzureDevOps != nil:
+		logger.V(4).Info("Creating Azure DevOps git authentication provider")
+		return azuredevops.NewAzdoGitAuthenticationProvider(ctx, r.localClient, scmProvider, secret, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: ps.Spec.RepositoryReference.Name}), ps.Spec.RepositoryReference, nil
 	default:
 		return nil, ps.Spec.RepositoryReference, errors.New("no supported git authentication provider found")
 	}

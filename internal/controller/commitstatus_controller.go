@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -168,6 +169,13 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		p, err = forgejo.NewForgejoCommitStatusProvider(r.Client, scmProvider, *secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Forgejo provider for domain %q with secret %q: %w", scmProvider.GetSpec().Forgejo.Domain, secret.Name, err)
+		}
+		return p, nil
+	case scmProvider.GetSpec().AzureDevOps != nil:
+		var p *azuredevops.CommitStatus
+		p, err = azuredevops.NewAzdoCommitStatusProvider(ctx, r.Client, scmProvider, *secret, scmProvider.GetSpec().AzureDevOps.Organization)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Azure DevOps provider for domain %q with secret %q: %w", scmProvider.GetSpec().AzureDevOps.Domain, secret.Name, err)
 		}
 		return p, nil
 	case scmProvider.GetSpec().Fake != nil:

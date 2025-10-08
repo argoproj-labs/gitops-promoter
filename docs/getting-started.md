@@ -217,6 +217,71 @@ spec:
     name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
 ```
 
+## Azure DevOps Configuration
+
+To configure Gitops Promoter with Azure Devops, you can choose between one of two methods of authentication, PAT or WorkloadIdentity.
+In both cases, the identity used, needs the following access rights on the repository:
+- Contribute
+- Create Branch
+- Read
+
+### ScmProvider
+#### PAT
+Create an PAT in Azure Devops, that has 'Read & Write' on scope 'Code'.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  token: <your-access-token>
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  azureDevOps:
+    organization: <your-azdo-organization>
+```
+
+#### WorkloadIdentity
+WorkloadIdentity does not rely on PATs to authenticate. See [official Azure documentation](https://azure.github.io/azure-workload-identity/docs/) on how to properly configure it. Remember to annotate serviceaccount and label the deployment correctly.
+
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  azureDevOps:
+    organization: <your-azdo-organization>
+    workloadIdentity:
+      enabled: true
+```
+
+### GitRepository
+
+We also need a GitRepository referencing the ScmProvider
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  azureDevOps:
+    project: <project-name>
+    name: <repo-name>
+  scmProviderRef:
+    name: <your-scmprovider-name>
+```
+
 !!! note 
 
     The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy resources in, and it also needs to be in the same namespace of the secret it references.

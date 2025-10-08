@@ -47,6 +47,9 @@ type ScmProviderSpec struct {
 	// Forgejo required configuration for Forgejo as the SCM provider
 	Forgejo *Forgejo `json:"forgejo,omitempty"`
 
+	// AzureDevOps required configuration for Azure DevOps as the SCM provider
+	AzureDevOps *AzureDevOps `json:"azureDevOps,omitempty"`
+
 	// Fake required configuration for Fake as the SCM provider
 	Fake *Fake `json:"fake,omitempty"`
 }

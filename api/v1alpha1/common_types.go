@@ -36,6 +36,44 @@ type Forgejo struct {
 	Domain string `json:"domain"`
 }
 
+// AzureDevOps is an Azure DevOps SCM provider configuration. It is used to configure the Azure DevOps settings.
+type AzureDevOps struct {
+	// Organization is the Azure DevOps organization name.
+	// +kubebuilder:validation:Required
+	Organization string `json:"organization"`
+	// Domain is the Azure DevOps domain, such as "dev.azure.com". If using the default Azure DevOps domain, leave this field
+	// empty.
+	// +kubebuilder:validation:XValidation:rule=`self != "dev.azure.com"`, message="Instead of setting the domain to dev.azure.com, leave the field blank"
+	Domain string `json:"domain,omitempty"`
+	// WorkloadIdentity configures workload identity authentication for Azure DevOps.
+	// If specified and enabled=true, workload identity will be used instead of PAT authentication.
+	// Fields can be omitted to use environment variables (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_FEDERATED_TOKEN_FILE).
+	WorkloadIdentity *AzureWorkloadIdentity `json:"workloadIdentity,omitempty"`
+}
+
+// AzureWorkloadIdentity contains configuration for Azure workload identity authentication.
+type AzureWorkloadIdentity struct {
+	// Enabled indicates whether workload identity authentication should be used.
+	// When true, workload identity will be attempted even if tenantId/clientId are not specified,
+	// using environment variables AZURE_TENANT_ID and AZURE_CLIENT_ID instead.
+	// +kubebuilder:validation:Required
+	Enabled bool `json:"enabled"`
+	// TenantID is the Azure AD tenant ID.
+	// If not specified, the AZURE_TENANT_ID environment variable will be used.
+	// +kubebuilder:validation:Pattern=`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`
+	TenantID string `json:"tenantId,omitempty"`
+	// ClientID is the Azure AD application (client) ID.
+	// If not specified, the AZURE_CLIENT_ID environment variable will be used.
+	// +kubebuilder:validation:Pattern=`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`
+	ClientID string `json:"clientId,omitempty"`
+	// ServiceAccountTokenPath is the path to the service account token file.
+	// This is typically mounted by the workload identity webhook.
+	// If not specified, the AZURE_FEDERATED_TOKEN_FILE environment variable will be used,
+	// or it will default to "/var/run/secrets/azure/tokens/azure-identity-token".
+	// +kubebuilder:default="/var/run/secrets/azure/tokens/azure-identity-token"
+	ServiceAccountTokenPath string `json:"serviceAccountTokenPath,omitempty"`
+}
+
 // Fake is a placeholder for a fake SCM provider, used for testing purposes.
 type Fake struct {
 	// Domain is the domain of the fake SCM provider. This is used for testing purposes.
@@ -86,6 +124,16 @@ type ForgejoRepo struct {
 	// Owner is the owner of the repository.
 	// +kubebuilder:validation:Required
 	Owner string `json:"owner"`
+	// Name is the name of the repository.
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+}
+
+// AzureDevOpsRepo is a repository in Azure DevOps, identified by its project and name.
+type AzureDevOpsRepo struct {
+	// Project is the project name in Azure DevOps.
+	// +kubebuilder:validation:Required
+	Project string `json:"project"`
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`

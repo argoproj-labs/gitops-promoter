@@ -61,6 +61,7 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 	if (repositoryRef.Spec.GitHub != nil && provider.GetSpec().GitHub == nil) ||
 		(repositoryRef.Spec.GitLab != nil && provider.GetSpec().GitLab == nil) ||
 		(repositoryRef.Spec.Forgejo != nil && provider.GetSpec().Forgejo == nil) ||
+		(repositoryRef.Spec.AzureDevOps != nil && provider.GetSpec().AzureDevOps == nil) ||
 		(repositoryRef.Spec.Fake != nil && provider.GetSpec().Fake == nil) {
 		return nil, errors.New("wrong ScmProvider configured for Repository")
 	}
@@ -90,6 +91,17 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 	scmProvider, err := GetScmProviderFromGitRepository(ctx, k8sClient, gitRepo, obj)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Handle case where SecretRef is nil (e.g., when using workload identity without fallback)
+	if scmProvider.GetSpec().SecretRef == nil || scmProvider.GetSpec().SecretRef.Name == "" {
+		// Return empty secret when SecretRef is not provided or empty
+		// This is valid for authentication methods like workload identity that don't require stored secrets
+		logger.Info("No SecretRef provided for ScmProvider, using empty secret (e.g., for workload identity)")
+		emptySecret := &v1.Secret{
+			Data: make(map[string][]byte),
+		}
+		return scmProvider, emptySecret, nil
 	}
 
 	var secretNamespace string

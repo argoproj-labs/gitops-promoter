@@ -39,6 +39,20 @@ spec:
           spec:
             description: GitRepositorySpec defines the desired state of GitRepository
             properties:
+              azureDevOps:
+                description: AzureDevOpsRepo is a repository in Azure DevOps, identified
+                  by its project and name.
+                properties:
+                  name:
+                    description: Name is the name of the repository.
+                    type: string
+                  project:
+                    description: Project is the project name in Azure DevOps.
+                    type: string
+                required:
+                - name
+                - project
+                type: object
               fake:
                 description: FakeRepo is a placeholder for a repository in the fake
                   SCM provider, used for testing purposes.
