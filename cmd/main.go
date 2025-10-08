@@ -185,16 +185,18 @@ func runController(
 
 	localManager := mcMgr.GetLocalManager()
 
-	settingsMgr := settings.NewManager(localManager.GetClient(), settings.ManagerConfig{
+	settingsMgr := settings.NewManager(localManager.GetClient(), localManager.GetAPIReader(), settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
 	})
+
+	processSignalsCtx := ctrl.SetupSignalHandler()
 
 	if err = (&controller.PullRequestReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorderFor("PullRequest"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(localManager); err != nil {
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create PullRequest controller")
 	}
 	if err = (&controller.CommitStatusReconciler{
@@ -202,14 +204,14 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorderFor("CommitStatus"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(localManager); err != nil {
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create CommitStatus controller")
 	}
 	if err = (&controller.RevertCommitReconciler{
 		Client:   localManager.GetClient(),
 		Scheme:   localManager.GetScheme(),
 		Recorder: localManager.GetEventRecorderFor("RevertCommit"),
-	}).SetupWithManager(localManager); err != nil {
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create RevertCommit controller")
 	}
 
@@ -218,20 +220,20 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorderFor("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(localManager); err != nil {
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create PromotionStrategy controller")
 	}
 	if err = (&controller.ScmProviderReconciler{
 		Client:   localManager.GetClient(),
 		Scheme:   localManager.GetScheme(),
 		Recorder: localManager.GetEventRecorderFor("ScmProvider"),
-	}).SetupWithManager(localManager); err != nil {
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create ScmProvider controller")
 	}
 	if err = (&controller.GitRepositoryReconciler{
 		Client: localManager.GetClient(),
 		Scheme: localManager.GetScheme(),
-	}).SetupWithManager(localManager); err != nil {
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create GitRepository controller")
 	}
 	if err = (&controller.ChangeTransferPolicyReconciler{
@@ -239,7 +241,7 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorderFor("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(localManager); err != nil {
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create ChangeTransferPolicy controller")
 	}
 
@@ -248,19 +250,19 @@ func runController(
 		SettingsMgr:        settingsMgr,
 		KubeConfigProvider: provider,
 		Recorder:           localManager.GetEventRecorderFor("ArgoCDCommitStatus"),
-	}).SetupWithManager(mcMgr); err != nil {
+	}).SetupWithManager(processSignalsCtx, mcMgr); err != nil {
 		panic("unable to create ArgoCDCommitStatus controller")
 	}
 	if err = (&controller.ControllerConfigurationReconciler{
 		Client: localManager.GetClient(),
 		Scheme: localManager.GetScheme(),
-	}).SetupWithManager(localManager); err != nil {
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create ControllerConfiguration controller")
 	}
 	if err = (&controller.ClusterScmProviderReconciler{
 		Client: localManager.GetClient(),
 		Scheme: localManager.GetScheme(),
-	}).SetupWithManager(localManager); err != nil {
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create ClusterScmProvider controller")
 	}
 	//+kubebuilder:scaffold:builder
@@ -272,11 +274,9 @@ func runController(
 		panic("unable to set up ready check")
 	}
 
-	processSignals := ctrl.SetupSignalHandler()
-
 	whr := webhookreceiver.NewWebhookReceiver(localManager)
 
-	g, ctx := errgroup.WithContext(processSignals)
+	g, ctx := errgroup.WithContext(processSignalsCtx)
 
 	// Initialize the provider controller with the manager
 	if err := provider.SetupWithManager(ctx, mcMgr); err != nil {
@@ -293,7 +293,7 @@ func runController(
 	})
 
 	g.Go(func() error {
-		if err := ignoreCanceled(whr.Start(processSignals, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil {
+		if err := ignoreCanceled(whr.Start(processSignalsCtx, fmt.Sprintf(":%d", constants.WebhookReceiverPort))); err != nil { //nolint:lll
 			setupLog.Error(err, "unable to start webhook receiver")
 			return err
 		}

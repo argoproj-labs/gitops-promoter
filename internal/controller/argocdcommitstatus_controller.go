@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/multicluster-runtime/pkg/controller"
 
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -223,7 +224,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status: %w", err)
 	}
 
-	requeueDuration, err := r.SettingsMgr.GetArgoCDCommitStatusRequeueDuration(ctx)
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ArgoCDCommitStatusConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDCommitStatus requeue duration: %w", err)
 	}
@@ -495,16 +496,29 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager) error {
+func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcMgr mcmanager.Manager) error {
 	// Set the local client for interacting with manager cluster
 	r.localClient = mcMgr.GetLocalManager().GetClient()
 
-	err := mcbuilder.ControllerManagedBy(mcMgr).
+	// Use Direct methods to read configuration from the API server without cache during setup.
+	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.ArgoCDCommitStatusConfiguration, mcreconcile.Request](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get ArgoCDCommitStatus rate limiter: %w", err)
+	}
+
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.ArgoCDCommitStatusConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get ArgoCDCommitStatus max concurrent reconciles: %w", err)
+	}
+
+	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(true),
