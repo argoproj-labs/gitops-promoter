@@ -13,9 +13,9 @@ import (
 
 // mockTokenCredential is a mock implementation of azcore.TokenCredential for testing
 type mockTokenCredential struct {
-	expiresAt time.Time
-	token     string
-	err       error
+	expiresAt time.Time // 24 bytes
+	token     string    // 16 bytes
+	err       error     // 8 bytes (interface)
 }
 
 func (m *mockTokenCredential) GetToken(ctx context.Context, options policy.TokenRequestOptions) (azcore.AccessToken, error) {
