@@ -44,6 +44,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -163,7 +164,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	// There's nothing special about 1ns, it just has to be > 0.
 	requeueDuration := 1 * time.Nanosecond
 	if !directPushWasPerformed {
-		requeueDuration, err = r.SettingsMgr.GetChangeTransferPolicyRequeueDuration(ctx)
+		requeueDuration, err = settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
 		}
@@ -405,9 +406,9 @@ func removeKnownTrailers(input string) string {
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
 		//nolint:forcetypeassert
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Proposed.Hydrated.Sha}
@@ -416,7 +417,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 	}
 
 	// This gets used by the CommitStatus controller to find the ChangeTransferPolicy to trigger reconcile
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
 		//nolint:forcetypeassert
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Active.Hydrated.Sha}
@@ -424,7 +425,19 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		return fmt.Errorf("failed to set field index for .status.active.hydrated.sha: %w", err)
 	}
 
-	err := ctrl.NewControllerManagedBy(mgr).
+	// Use Direct methods to read configuration from the API server without cache during setup.
+	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.ChangeTransferPolicyConfiguration, ctrl.Request](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get ChangeTransferPolicy rate limiter: %w", err)
+	}
+
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get ChangeTransferPolicy max concurrent reconciles: %w", err)
+	}
+
+	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ChangeTransferPolicy{},
 			builder.WithPredicates(predicate.Or(
 				predicate.GenerationChangedPredicate{},
@@ -436,6 +449,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		// checks whether it needs to update a related ChangeTransferPolicy by setting an annotation. Avoiding .Owns
 		// here avoids duplicate reconciliations.
 		Owns(&promoterv1alpha1.PullRequest{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
