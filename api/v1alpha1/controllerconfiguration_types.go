@@ -33,27 +33,27 @@ type ControllerConfigurationSpec struct {
 	// PromotionStrategy contains the configuration for the PromotionStrategy controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
-	PromotionStrategy PromotionStrategyConfiguration `json:"promotionStrategy,omitempty"`
+	PromotionStrategy PromotionStrategyConfiguration `json:"promotionStrategy"`
 
 	// ChangeTransferPolicy contains the configuration for the ChangeTransferPolicy controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
-	ChangeTransferPolicy ChangeTransferPolicyConfiguration `json:"changeTransferPolicy,omitempty"`
+	ChangeTransferPolicy ChangeTransferPolicyConfiguration `json:"changeTransferPolicy"`
 
 	// PullRequest contains the configuration for the PullRequest controller,
 	// including WorkQueue settings and pull request template configuration.
 	// +required
-	PullRequest PullRequestConfiguration `json:"pullRequest,omitempty"`
+	PullRequest PullRequestConfiguration `json:"pullRequest"`
 
 	// CommitStatus contains the configuration for the CommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
-	CommitStatus CommitStatusConfiguration `json:"commitStatus,omitempty"`
+	CommitStatus CommitStatusConfiguration `json:"commitStatus"`
 
 	// ArgoCDCommitStatus contains the configuration for the ArgoCDCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
-	ArgoCDCommitStatus ArgoCDCommitStatusConfiguration `json:"argocdCommitStatus,omitempty"`
+	ArgoCDCommitStatus ArgoCDCommitStatusConfiguration `json:"argocdCommitStatus"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -64,7 +64,7 @@ type PromotionStrategyConfiguration struct {
 	// WorkQueue contains the work queue configuration for the PromotionStrategy controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
-	WorkQueue WorkQueue `json:"workQueue,omitempty"`
+	WorkQueue WorkQueue `json:"workQueue"`
 }
 
 // ChangeTransferPolicyConfiguration defines the configuration for the ChangeTransferPolicy controller.
@@ -75,7 +75,7 @@ type ChangeTransferPolicyConfiguration struct {
 	// WorkQueue contains the work queue configuration for the ChangeTransferPolicy controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
-	WorkQueue WorkQueue `json:"workQueue,omitempty"`
+	WorkQueue WorkQueue `json:"workQueue"`
 }
 
 // PullRequestConfiguration defines the configuration for the PullRequest controller.
@@ -86,12 +86,12 @@ type PullRequestConfiguration struct {
 	// Template is the template configuration used to generate pull request titles and descriptions.
 	// Uses Go template syntax with Sprig functions available.
 	// +required
-	Template PullRequestTemplate `json:"template,omitempty"`
+	Template PullRequestTemplate `json:"template"`
 
 	// WorkQueue contains the work queue configuration for the PullRequest controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
-	WorkQueue WorkQueue `json:"workQueue,omitempty"`
+	WorkQueue WorkQueue `json:"workQueue"`
 }
 
 // CommitStatusConfiguration defines the configuration for the CommitStatus controller.
@@ -102,7 +102,7 @@ type CommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the CommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
-	WorkQueue WorkQueue `json:"workQueue,omitempty"`
+	WorkQueue WorkQueue `json:"workQueue"`
 }
 
 // ArgoCDCommitStatusConfiguration defines the configuration for the ArgoCDCommitStatus controller.
@@ -113,7 +113,7 @@ type ArgoCDCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the ArgoCDCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
-	WorkQueue WorkQueue `json:"workQueue,omitempty"`
+	WorkQueue WorkQueue `json:"workQueue"`
 }
 
 // WorkQueue defines the work queue configuration for a controller.
@@ -128,20 +128,20 @@ type WorkQueue struct {
 	// This creates a periodic reconciliation loop that ensures the desired state is maintained even
 	// without external triggers. Format follows Go's time.Duration syntax (e.g., "5m" for 5 minutes).
 	// +required
-	RequeueDuration metav1.Duration `json:"requeueDuration,omitempty"`
+	RequeueDuration metav1.Duration `json:"requeueDuration"`
 
 	// MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
 	// that can run for this controller. Higher values increase throughput but consume more
 	// resources. Must be at least 1.
 	// +required
 	// +Validation:Minimum=1
-	MaxConcurrentReconciles int `json:"maxConcurrentReconciles,omitempty"`
+	MaxConcurrentReconciles int `json:"maxConcurrentReconciles"`
 
 	// RateLimiter defines the rate limiting strategy for the controller's work queue.
 	// Rate limiting controls how quickly failed reconciliations are retried and helps
 	// prevent overwhelming external APIs or systems.
 	// +required
-	RateLimiter RateLimiter `json:"rateLimiter,omitempty"`
+	RateLimiter RateLimiter `json:"rateLimiter"`
 }
 
 // ExponentialFailure defines an exponential backoff rate limiter configuration.
@@ -157,13 +157,13 @@ type ExponentialFailure struct {
 	// increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
 	// Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
 	// +required
-	BaseDelay metav1.Duration `json:"baseDelay,omitempty"`
+	BaseDelay metav1.Duration `json:"baseDelay"`
 
 	// MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
 	// this value, all subsequent retries will use this delay.
 	// Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
 	// +required
-	MaxDelay metav1.Duration `json:"maxDelay,omitempty"`
+	MaxDelay metav1.Duration `json:"maxDelay"`
 }
 
 // RateLimiter defines the rate limiting configuration for controllers.
@@ -227,18 +227,18 @@ type FastSlow struct {
 	// FastDelay is the delay used for the first MaxFastAttempts retry attempts.
 	// Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
 	// +required
-	FastDelay metav1.Duration `json:"fastDelay,omitempty"`
+	FastDelay metav1.Duration `json:"fastDelay"`
 
 	// SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
 	// Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
 	// +required
-	SlowDelay metav1.Duration `json:"slowDelay,omitempty"`
+	SlowDelay metav1.Duration `json:"slowDelay"`
 
 	// MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
 	// Must be at least 1.
 	// +required
 	// +Validation:Minimum=1
-	MaxFastAttempts int `json:"maxFastAttempts,omitempty"`
+	MaxFastAttempts int `json:"maxFastAttempts"`
 }
 
 // Bucket defines a token bucket rate limiter configuration.
@@ -254,14 +254,14 @@ type Bucket struct {
 	// This defines the sustained rate limit for operations. Must be non-negative.
 	// +required
 	// +Validation:Minimum=0
-	Qps int `json:"qps,omitempty"`
+	Qps int `json:"qps"`
 
 	// Bucket is the maximum number of tokens that can be accumulated in the bucket.
 	// This defines the maximum burst size - how many operations can occur in rapid
 	// succession before rate limiting takes effect. Must be non-negative.
 	// +required
 	// +Validation:Minimum=0
-	Bucket int `json:"bucket,omitempty"`
+	Bucket int `json:"bucket"`
 }
 
 // PullRequestTemplate defines the template configuration for generating pull requests.
@@ -273,12 +273,12 @@ type PullRequestTemplate struct {
 	// Title is the template used to generate the title of the pull request.
 	// Uses Go template syntax with Sprig functions available for string manipulation.
 	// +required
-	Title string `json:"title,omitempty"`
+	Title string `json:"title"`
 
 	// Description is the template used to generate the body/description of the pull request.
 	// Uses Go template syntax with Sprig functions available for string manipulation.
 	// +required
-	Description string `json:"description,omitempty"`
+	Description string `json:"description"`
 }
 
 // ControllerConfigurationStatus defines the observed state of ControllerConfiguration.
