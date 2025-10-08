@@ -171,13 +171,13 @@ var _ = BeforeSuite(func() {
 			PromotionStrategy: promoterv1alpha1.PromotionStrategyConfiguration{
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 1,
+					MaxConcurrentReconciles: 10,
 					RateLimiter: promoterv1alpha1.RateLimiter{
 						MaxOf: []promoterv1alpha1.RateLimiterTypes{
 							{
 								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    100,
-									Bucket: 1000,
+									Qps:    10,
+									Bucket: 100,
 								},
 							},
 							{
@@ -198,8 +198,8 @@ var _ = BeforeSuite(func() {
 						MaxOf: []promoterv1alpha1.RateLimiterTypes{
 							{
 								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    100,
-									Bucket: 1000,
+									Qps:    10,
+									Bucket: 100,
 								},
 							},
 							{
@@ -219,13 +219,13 @@ var _ = BeforeSuite(func() {
 				},
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 1,
+					MaxConcurrentReconciles: 10,
 					RateLimiter: promoterv1alpha1.RateLimiter{
 						MaxOf: []promoterv1alpha1.RateLimiterTypes{
 							{
 								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    100,
-									Bucket: 1000,
+									Qps:    10,
+									Bucket: 100,
 								},
 							},
 							{
@@ -241,13 +241,13 @@ var _ = BeforeSuite(func() {
 			CommitStatus: promoterv1alpha1.CommitStatusConfiguration{
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 1,
+					MaxConcurrentReconciles: 10,
 					RateLimiter: promoterv1alpha1.RateLimiter{
 						MaxOf: []promoterv1alpha1.RateLimiterTypes{
 							{
 								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    100,
-									Bucket: 1000,
+									Qps:    10,
+									Bucket: 100,
 								},
 							},
 							{
@@ -263,13 +263,13 @@ var _ = BeforeSuite(func() {
 			ArgoCDCommitStatus: promoterv1alpha1.ArgoCDCommitStatusConfiguration{
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 1,
+					MaxConcurrentReconciles: 10,
 					RateLimiter: promoterv1alpha1.RateLimiter{
 						MaxOf: []promoterv1alpha1.RateLimiterTypes{
 							{
 								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    100,
-									Bucket: 1000,
+									Qps:    10,
+									Bucket: 100,
 								},
 							},
 							{
