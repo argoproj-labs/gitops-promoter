@@ -171,7 +171,7 @@ var _ = BeforeSuite(func() {
 			PromotionStrategy: promoterv1alpha1.PromotionStrategyConfiguration{
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
+					MaxConcurrentReconciles: 1,
 					RateLimiter: promoterv1alpha1.RateLimiter{
 						MaxOf: []promoterv1alpha1.RateLimiterTypes{
 							{
@@ -193,7 +193,7 @@ var _ = BeforeSuite(func() {
 			ChangeTransferPolicy: promoterv1alpha1.ChangeTransferPolicyConfiguration{
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
+					MaxConcurrentReconciles: 1,
 					RateLimiter: promoterv1alpha1.RateLimiter{
 						MaxOf: []promoterv1alpha1.RateLimiterTypes{
 							{
@@ -219,7 +219,7 @@ var _ = BeforeSuite(func() {
 				},
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
+					MaxConcurrentReconciles: 1,
 					RateLimiter: promoterv1alpha1.RateLimiter{
 						MaxOf: []promoterv1alpha1.RateLimiterTypes{
 							{
@@ -241,7 +241,7 @@ var _ = BeforeSuite(func() {
 			CommitStatus: promoterv1alpha1.CommitStatusConfiguration{
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
+					MaxConcurrentReconciles: 1,
 					RateLimiter: promoterv1alpha1.RateLimiter{
 						MaxOf: []promoterv1alpha1.RateLimiterTypes{
 							{
@@ -263,7 +263,7 @@ var _ = BeforeSuite(func() {
 			ArgoCDCommitStatus: promoterv1alpha1.ArgoCDCommitStatusConfiguration{
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
-					MaxConcurrentReconciles: 10,
+					MaxConcurrentReconciles: 1,
 					RateLimiter: promoterv1alpha1.RateLimiter{
 						MaxOf: []promoterv1alpha1.RateLimiterTypes{
 							{
@@ -369,6 +369,10 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	By("tearing down the test environment")
+
+	// Give controllers time to finish in-flight reconciliations
+	time.Sleep(5 * time.Second)
+
 	cancel() // stops manager and anything else using the context
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
