@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/multicluster-runtime/pkg/controller"
 
@@ -63,12 +64,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	// discovery/mapper imports
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/discovery/cached/memory"
-	"k8s.io/client-go/restmapper"
 )
 
 // lastTransitionTimeThreshold is the threshold for the last transition time to consider an application healthy.
@@ -531,19 +526,18 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 	// If local applications are enabled, verify the Application CRD exists in the local cluster.
 	if enableLocalApplications {
-		// Use discovery to check whether the GVK is available
-		conf := mcMgr.GetLocalManager().GetConfig()
-		disco, err := discovery.NewDiscoveryClientForConfig(conf)
-		if err != nil {
-			return fmt.Errorf("failed to create discovery client: %w", err)
-		}
-		cached := memory.NewMemCacheClient(disco)
-		mapper := restmapper.NewDeferredDiscoveryRESTMapper(cached)
-		gvk := schema.GroupKind{Group: "argoproj.io", Kind: "Application"}
-		_, err = mapper.RESTMapping(gvk, "v1alpha1")
-		if err != nil {
-			// Return a clear error so tests and operator setup can fail-fast when CRD is missing
-			return fmt.Errorf("application CRD (argoproj.io/v1alpha1 Application) is not installed in the local cluster: %w", err)
+		// If local applications are enabled, verify the Application CRD exists in the local cluster.
+		if enableLocalApplications {
+			// Use the manager's client to check for the CRD directly
+			crd := &apiextensions.CustomResourceDefinition{}
+			err := r.localClient.Get(ctx, client.ObjectKey{Name: "applications.argoproj.io"}, crd)
+			if err != nil {
+				if k8s_errors.IsNotFound(err) {
+					// Return a clear error so tests and operator setup can fail-fast when CRD is missing
+					return fmt.Errorf("application CRD (argoproj.io/v1alpha1 Application) is not installed in the local cluster")
+				}
+				return fmt.Errorf("failed to check for Application CRD: %w", err)
+			}
 		}
 	}
 
