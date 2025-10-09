@@ -526,8 +526,8 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(controllerConfig.Spec.ArgoCDCommitStatus.WatchLocalApplications),
-			mcbuilder.WithEngageWithProviderClusters(true),
-		).Complete(r)
+			mcbuilder.WithEngageWithProviderClusters(true)).
+		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
