@@ -63,6 +63,12 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	// discovery/mapper imports
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/restmapper"
 )
 
 // lastTransitionTimeThreshold is the threshold for the last transition time to consider an application healthy.
@@ -511,18 +517,59 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		return fmt.Errorf("failed to get ArgoCDCommitStatus max concurrent reconciles: %w", err)
 	}
 
-	err = mcbuilder.ControllerManagedBy(mcMgr).
+	// Get the controller configuration to check if local Applications should be watched
+	controllerConfig, err := r.SettingsMgr.GetControllerConfigurationDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	// Determine if we should watch local Applications (default: true)
+	enableLocalApplications := true
+	if controllerConfig.Spec.ArgoCDCommitStatus.EnableLocalArgoCDApplications != nil {
+		enableLocalApplications = *controllerConfig.Spec.ArgoCDCommitStatus.EnableLocalArgoCDApplications
+	}
+
+	// If local applications are enabled, verify the Application CRD exists in the local cluster.
+	if enableLocalApplications {
+		// Use discovery to check whether the GVK is available
+		conf := mcMgr.GetLocalManager().GetConfig()
+		disco, err := discovery.NewDiscoveryClientForConfig(conf)
+		if err != nil {
+			return fmt.Errorf("failed to create discovery client: %w", err)
+		}
+		cached := memory.NewMemCacheClient(disco)
+		mapper := restmapper.NewDeferredDiscoveryRESTMapper(cached)
+		gvk := schema.GroupKind{Group: "argoproj.io", Kind: "Application"}
+		_, err = mapper.RESTMapping(gvk, "v1alpha1")
+		if err != nil {
+			// Return a clear error so tests and operator setup can fail-fast when CRD is missing
+			return fmt.Errorf("application CRD (argoproj.io/v1alpha1 Application) is not installed in the local cluster: %w", err)
+		}
+	}
+
+	builder := mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
-		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
-		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter})
+
+	// Only watch local Applications if enabled
+	if enableLocalApplications {
+		builder = builder.Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(true),
-		).
-		Complete(r)
+		)
+	} else {
+		// Watch Applications only in remote clusters
+		builder = builder.Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
+			mcbuilder.WithEngageWithLocalCluster(false),
+			mcbuilder.WithEngageWithProviderClusters(true),
+		)
+	}
+
+	err = builder.Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
