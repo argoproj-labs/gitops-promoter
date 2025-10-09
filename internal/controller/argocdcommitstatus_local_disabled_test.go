@@ -32,11 +32,10 @@ import (
 
 var _ = Describe("ArgoCDCommitStatus Local Disabled", Ordered, func() {
 	var (
-		env    *envtest.Environment
-		cancel context.CancelFunc
-		mcMgr  mcmanager.Manager
-		//k8sClient   client.Client
+		env         *envtest.Environment
+		mcMgr       mcmanager.Manager
 		settingsMgr *settings.Manager
+		cancel      context.CancelFunc
 	)
 
 	BeforeAll(func() {

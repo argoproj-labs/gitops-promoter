@@ -29,7 +29,6 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/multicluster-runtime/pkg/controller"
 
@@ -522,20 +521,6 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 	enableLocalApplications := true
 	if controllerConfig.Spec.ArgoCDCommitStatus.EnableLocalArgoCDApplications != nil {
 		enableLocalApplications = *controllerConfig.Spec.ArgoCDCommitStatus.EnableLocalArgoCDApplications
-	}
-
-	// If local applications are enabled, verify the Application CRD exists in the local cluster.
-	if enableLocalApplications {
-		// Use the manager's client to check for the CRD directly
-		crd := &apiextensions.CustomResourceDefinition{}
-		err := r.localClient.Get(ctx, client.ObjectKey{Name: "applications.argoproj.io"}, crd)
-		if err != nil {
-			if k8s_errors.IsNotFound(err) {
-				// Return a clear error so tests and operator setup can fail-fast when CRD is missing
-				return errors.New("application CRD (argoproj.io/v1alpha1 Application) is not installed in the local cluster")
-			}
-			return fmt.Errorf("failed to check for Application CRD: %w", err)
-		}
 	}
 
 	builder := mcbuilder.ControllerManagedBy(mcMgr).
