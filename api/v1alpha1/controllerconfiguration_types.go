@@ -121,7 +121,7 @@ type ArgoCDCommitStatusConfiguration struct {
 	// in the local cluster or when all Applications are deployed to remote clusters.
 	// +optional
 	// +kubebuilder:default=true
-	MonitorLocalApplications *bool `json:"monitorLocalApplications,omitempty"`
+	MonitorLocalApplications bool `json:"monitorLocalApplications"`
 }
 
 // WorkQueue defines the work queue configuration for a controller.

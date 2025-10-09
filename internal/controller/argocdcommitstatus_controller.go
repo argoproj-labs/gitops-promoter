@@ -517,35 +517,17 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		return fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 
-	// Determine if we should watch local Applications (default: true)
-	enableLocalApplications := true
-	if controllerConfig.Spec.ArgoCDCommitStatus.MonitorLocalApplications != nil {
-		enableLocalApplications = *controllerConfig.Spec.ArgoCDCommitStatus.MonitorLocalApplications
-	}
-
-	builder := mcbuilder.ControllerManagedBy(mcMgr).
+	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
-		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter})
-
-	// Only watch local Applications if enabled
-	if enableLocalApplications {
-		builder = builder.Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
-			mcbuilder.WithEngageWithLocalCluster(true),
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
+		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
+			mcbuilder.WithEngageWithLocalCluster(controllerConfig.Spec.ArgoCDCommitStatus.MonitorLocalApplications),
 			mcbuilder.WithEngageWithProviderClusters(true),
-		)
-	} else {
-		// Watch Applications only in remote clusters
-		builder = builder.Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
-			mcbuilder.WithEngageWithLocalCluster(false),
-			mcbuilder.WithEngageWithProviderClusters(true),
-		)
-	}
-
-	err = builder.Complete(r)
+		).Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
