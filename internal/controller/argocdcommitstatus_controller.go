@@ -512,6 +512,12 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		return fmt.Errorf("failed to get ArgoCDCommitStatus max concurrent reconciles: %w", err)
 	}
 
+	// Get the controller configuration to check if local Applications should be watched
+	controllerConfig, err := r.SettingsMgr.GetControllerConfigurationDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
 	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
@@ -520,9 +526,8 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
-			mcbuilder.WithEngageWithLocalCluster(true),
-			mcbuilder.WithEngageWithProviderClusters(true),
-		).
+			mcbuilder.WithEngageWithLocalCluster(controllerConfig.Spec.ArgoCDCommitStatus.WatchLocalApplications),
+			mcbuilder.WithEngageWithProviderClusters(true)).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
