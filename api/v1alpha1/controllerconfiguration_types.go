@@ -119,7 +119,7 @@ type ArgoCDCommitStatusConfiguration struct {
 	// in the local cluster. When false, the controller will only watch Applications in remote clusters
 	// configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed
 	// in the local cluster or when all Applications are deployed to remote clusters.
-	// +optional
+	// +required
 	// +kubebuilder:default=true
 	WatchLocalApplications bool `json:"watchLocalApplications"`
 }

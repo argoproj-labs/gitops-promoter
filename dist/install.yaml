@@ -1655,6 +1655,7 @@ spec:
                     - requeueDuration
                     type: object
                 required:
+                - watchLocalApplications
                 - workQueue
                 type: object
               changeTransferPolicy:
