@@ -76,8 +76,8 @@ func (in *ArgoCDCommitStatus) DeepCopyObject() runtime.Object {
 func (in *ArgoCDCommitStatusConfiguration) DeepCopyInto(out *ArgoCDCommitStatusConfiguration) {
 	*out = *in
 	in.WorkQueue.DeepCopyInto(&out.WorkQueue)
-	if in.EnableLocalArgoCDApplications != nil {
-		in, out := &in.EnableLocalArgoCDApplications, &out.EnableLocalArgoCDApplications
+	if in.MonitorLocalApplications != nil {
+		in, out := &in.MonitorLocalApplications, &out.MonitorLocalApplications
 		*out = new(bool)
 		**out = **in
 	}

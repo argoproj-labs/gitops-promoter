@@ -519,8 +519,8 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 	// Determine if we should watch local Applications (default: true)
 	enableLocalApplications := true
-	if controllerConfig.Spec.ArgoCDCommitStatus.EnableLocalArgoCDApplications != nil {
-		enableLocalApplications = *controllerConfig.Spec.ArgoCDCommitStatus.EnableLocalArgoCDApplications
+	if controllerConfig.Spec.ArgoCDCommitStatus.MonitorLocalApplications != nil {
+		enableLocalApplications = *controllerConfig.Spec.ArgoCDCommitStatus.MonitorLocalApplications
 	}
 
 	builder := mcbuilder.ControllerManagedBy(mcMgr).
