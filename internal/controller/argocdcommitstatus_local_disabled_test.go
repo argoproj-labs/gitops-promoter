@@ -32,16 +32,15 @@ import (
 
 var _ = Describe("ArgoCDCommitStatus Local Disabled", Ordered, func() {
 	var (
-		env         *envtest.Environment
-		ctx         context.Context
-		cancel      context.CancelFunc
-		mcMgr       mcmanager.Manager
-		k8sClient   client.Client
+		env    *envtest.Environment
+		cancel context.CancelFunc
+		mcMgr  mcmanager.Manager
+		//k8sClient   client.Client
 		settingsMgr *settings.Manager
 	)
 
 	BeforeAll(func() {
-		ctx, cancel = context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
 
 		// Create an envtest WITHOUT the Argo CD Application CRD to simulate missing CRD
 		env = &envtest.Environment{

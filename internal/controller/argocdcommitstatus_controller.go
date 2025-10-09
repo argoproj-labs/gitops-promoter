@@ -526,18 +526,15 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 	// If local applications are enabled, verify the Application CRD exists in the local cluster.
 	if enableLocalApplications {
-		// If local applications are enabled, verify the Application CRD exists in the local cluster.
-		if enableLocalApplications {
-			// Use the manager's client to check for the CRD directly
-			crd := &apiextensions.CustomResourceDefinition{}
-			err := r.localClient.Get(ctx, client.ObjectKey{Name: "applications.argoproj.io"}, crd)
-			if err != nil {
-				if k8s_errors.IsNotFound(err) {
-					// Return a clear error so tests and operator setup can fail-fast when CRD is missing
-					return fmt.Errorf("application CRD (argoproj.io/v1alpha1 Application) is not installed in the local cluster")
-				}
-				return fmt.Errorf("failed to check for Application CRD: %w", err)
+		// Use the manager's client to check for the CRD directly
+		crd := &apiextensions.CustomResourceDefinition{}
+		err := r.localClient.Get(ctx, client.ObjectKey{Name: "applications.argoproj.io"}, crd)
+		if err != nil {
+			if k8s_errors.IsNotFound(err) {
+				// Return a clear error so tests and operator setup can fail-fast when CRD is missing
+				return errors.New("application CRD (argoproj.io/v1alpha1 Application) is not installed in the local cluster")
 			}
+			return fmt.Errorf("failed to check for Application CRD: %w", err)
 		}
 	}
 
