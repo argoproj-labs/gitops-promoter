@@ -72,7 +72,7 @@ type Manager struct {
 	config ManagerConfig
 }
 
-// GetControllerConfiguration retrieves the global controller configuration for the promoter controller.
+// getControllerConfiguration retrieves the global controller configuration for the promoter controller.
 //
 // This function fetches the ControllerConfiguration resource from the cluster, which contains
 // the global settings for all controllers including WorkQueue configurations, rate limiters,
@@ -80,13 +80,13 @@ type Manager struct {
 //
 // Important: This method requires the manager's cache to be started. Do not call this method
 // during SetupWithManager. Instead, call it from within your Reconcile method or use
-// GetControllerConfigurationDirect for setup-time configuration.
+// getControllerConfigurationDirect for setup-time configuration.
 //
 // Parameters:
 //   - ctx: Context for the request, used for cancellation and deadlines
 //
 // Returns the ControllerConfiguration resource, or an error if it cannot be retrieved from the cluster.
-func (m *Manager) GetControllerConfiguration(ctx context.Context) (*promoterv1alpha1.ControllerConfiguration, error) {
+func (m *Manager) getControllerConfiguration(ctx context.Context) (*promoterv1alpha1.ControllerConfiguration, error) {
 	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{}
 	if err := m.client.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.ControllerNamespace}, controllerConfiguration); err != nil {
 		return nil, fmt.Errorf("failed to get global promotion configuration: %w", err)
@@ -95,19 +95,19 @@ func (m *Manager) GetControllerConfiguration(ctx context.Context) (*promoterv1al
 	return controllerConfiguration, nil
 }
 
-// GetControllerConfigurationDirect retrieves the global controller configuration directly from the API server.
+// getControllerConfigurationDirect retrieves the global controller configuration directly from the API server.
 //
 // This function bypasses the cache and reads directly from the API server, making it safe to call
 // during SetupWithManager before the cache has started. Use this method when you need to read
 // configuration during controller initialization.
 //
-// For normal reconciliation operations, prefer GetControllerConfiguration which uses the cache.
+// For normal reconciliation operations, prefer getControllerConfiguration which uses the cache.
 //
 // Parameters:
 //   - ctx: Context for the request, used for cancellation and deadlines
 //
 // Returns the ControllerConfiguration resource, or an error if it cannot be retrieved from the cluster.
-func (m *Manager) GetControllerConfigurationDirect(ctx context.Context) (*promoterv1alpha1.ControllerConfiguration, error) {
+func (m *Manager) getControllerConfigurationDirect(ctx context.Context) (*promoterv1alpha1.ControllerConfiguration, error) {
 	controllerConfiguration := &promoterv1alpha1.ControllerConfiguration{}
 	if err := m.apiReader.Get(ctx, client.ObjectKey{Name: ControllerConfigurationName, Namespace: m.config.ControllerNamespace}, controllerConfiguration); err != nil {
 		return nil, fmt.Errorf("failed to get global promotion configuration: %w", err)
@@ -119,6 +119,44 @@ func (m *Manager) GetControllerConfigurationDirect(ctx context.Context) (*promot
 // GetControllerNamespace returns the namespace where the controller is running.
 func (m *Manager) GetControllerNamespace() string {
 	return m.config.ControllerNamespace
+}
+
+// GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect retrieves the WatchLocalApplications setting from the ArgoCDCommitStatus configuration
+// using a non-cached read.
+//
+// This function bypasses the cache and reads directly from the API server, making it safe to call
+// during SetupWithManager before the cache has started. Use this to configure controller options
+// at build time based on the ControllerConfiguration resource.
+//
+// Parameters:
+//   - ctx: Context for the request, used for cancellation and deadlines
+//   - m: Manager instance with access to the cluster client
+//
+// Returns the configured WatchLocalApplications value, or an error if the configuration cannot be retrieved.
+func (m *Manager) GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(ctx context.Context) (bool, error) {
+	config, err := m.getControllerConfigurationDirect(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return config.Spec.ArgoCDCommitStatus.WatchLocalApplications, nil
+}
+
+// GetPullRequestControllersTemplate retrieves the PullRequest template configuration.
+//
+// This function fetches the ControllerConfiguration resource from the cluster and extracts
+// the PullRequest template settings. It requires the manager's cache to be started, so do not
+// call this method during SetupWithManager. Instead, call it from within your Reconcile method.
+//
+// Parameters:
+//   - ctx: Context for the request, used for cancellation and deadlines
+//
+// Returns the PullRequestTemplate configuration, or an error if it cannot be retrieved.
+func (m *Manager) GetPullRequestControllersTemplate(ctx context.Context) (promoterv1alpha1.PullRequestTemplate, error) {
+	config, err := m.getControllerConfiguration(ctx)
+	if err != nil {
+		return promoterv1alpha1.PullRequestTemplate{}, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return config.Spec.PullRequest.Template, nil
 }
 
 // GetRequeueDuration retrieves the requeue duration for a specific controller type.
@@ -214,9 +252,9 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 	var err error
 
 	if direct {
-		config, err = m.GetControllerConfigurationDirect(ctx)
+		config, err = m.getControllerConfigurationDirect(ctx)
 	} else {
-		config, err = m.GetControllerConfiguration(ctx)
+		config, err = m.getControllerConfiguration(ctx)
 	}
 
 	if err != nil {

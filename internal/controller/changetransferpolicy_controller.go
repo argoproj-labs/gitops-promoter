@@ -758,12 +758,12 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 
 	prName = utils.KubeSafeUniqueName(ctx, prName)
 
-	controllerConfiguration, err := r.SettingsMgr.GetControllerConfiguration(ctx)
+	templatePullRequestTemplate, err := r.SettingsMgr.GetPullRequestControllersTemplate(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get global promotion configuration: %w", err)
+		return nil, fmt.Errorf("failed to get pull request template from settings: %w", err)
 	}
 
-	title, description, err := TemplatePullRequest(&controllerConfiguration.Spec.PullRequest, map[string]any{"ChangeTransferPolicy": ctp})
+	title, description, err := TemplatePullRequest(templatePullRequestTemplate, map[string]any{"ChangeTransferPolicy": ctp})
 	if err != nil {
 		return nil, fmt.Errorf("failed to template pull request: %w", err)
 	}
@@ -941,13 +941,13 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 }
 
 // TemplatePullRequest renders the title and description of a pull request using the provided data map.
-func TemplatePullRequest(prc *promoterv1alpha1.PullRequestConfiguration, data map[string]any) (string, string, error) {
-	title, err := utils.RenderStringTemplate(prc.Template.Title, data)
+func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[string]any) (string, string, error) {
+	title, err := utils.RenderStringTemplate(prt.Title, data)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to render pull request title template: %w", err)
 	}
 
-	description, err := utils.RenderStringTemplate(prc.Template.Description, data)
+	description, err := utils.RenderStringTemplate(prt.Description, data)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to render pull request description template: %w", err)
 	}

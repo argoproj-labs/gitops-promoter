@@ -512,7 +512,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 	}
 
 	// Get the controller configuration to check if local Applications should be watched
-	controllerConfig, err := r.SettingsMgr.GetControllerConfigurationDirect(ctx)
+	watchLocalApplications, err := r.SettingsMgr.GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get controller configuration: %w", err)
 	}
@@ -525,7 +525,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
-			mcbuilder.WithEngageWithLocalCluster(controllerConfig.Spec.ArgoCDCommitStatus.WatchLocalApplications),
+			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
 			mcbuilder.WithEngageWithProviderClusters(true)).
 		Complete(r)
 	if err != nil {
