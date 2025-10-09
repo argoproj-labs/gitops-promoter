@@ -51,6 +51,14 @@ spec:
                   ArgoCDCommitStatus contains the configuration for the ArgoCDCommitStatus controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
+                  watchLocalApplications:
+                    default: true
+                    description: |-
+                      WatchLocalApplications controls whether the controller monitors Argo CD Applications
+                      in the local cluster. When false, the controller will only watch Applications in remote clusters
+                      configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed
+                      in the local cluster or when all Applications are deployed to remote clusters.
+                    type: boolean
                   workQueue:
                     description: |-
                       WorkQueue contains the work queue configuration for the ArgoCDCommitStatus controller.
@@ -246,6 +254,7 @@ spec:
                     - requeueDuration
                     type: object
                 required:
+                - watchLocalApplications
                 - workQueue
                 type: object
               changeTransferPolicy:
