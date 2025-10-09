@@ -115,13 +115,13 @@ type ArgoCDCommitStatusConfiguration struct {
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
 
-	// MonitorLocalApplications controls whether the controller monitors Argo CD Applications
+	// WatchLocalApplications controls whether the controller monitors Argo CD Applications
 	// in the local cluster. When false, the controller will only watch Applications in remote clusters
 	// configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed
 	// in the local cluster or when all Applications are deployed to remote clusters.
 	// +optional
 	// +kubebuilder:default=true
-	MonitorLocalApplications bool `json:"monitorLocalApplications"`
+	WatchLocalApplications bool `json:"watchLocalApplications"`
 }
 
 // WorkQueue defines the work queue configuration for a controller.
