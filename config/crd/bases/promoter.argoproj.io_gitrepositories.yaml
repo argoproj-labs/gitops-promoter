@@ -45,9 +45,13 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the repository.
+                    maxLength: 64
+                    minLength: 1
                     type: string
                   project:
                     description: Project is the project name in Azure DevOps.
+                    maxLength: 64
+                    minLength: 1
                     type: string
                 required:
                 - name

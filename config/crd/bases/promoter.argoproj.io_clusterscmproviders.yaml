@@ -55,6 +55,9 @@ spec:
                       rule: self != "dev.azure.com"
                   organization:
                     description: Organization is the Azure DevOps organization name.
+                    maxLength: 50
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
                     type: string
                   workloadIdentity:
                     description: |-
