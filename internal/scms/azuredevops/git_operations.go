@@ -53,49 +53,50 @@ func NewAzdoGitAuthenticationProvider(ctx context.Context, k8sClient client.Clie
 	logger := log.FromContext(ctx).WithName("azuredevops-auth")
 
 	// Check if workload identity is configured and enabled
-	if scmProvider.GetSpec().AzureDevOps.WorkloadIdentity != nil && scmProvider.GetSpec().AzureDevOps.WorkloadIdentity.Enabled {
-		logger.Info("Configuring Azure DevOps authentication with workload identity")
-
-		// Create workload identity credential
-		credential, err := createWorkloadIdentityCredential(scmProvider.GetSpec().AzureDevOps.WorkloadIdentity)
-		if err != nil {
-			logger.Error(err, "Failed to create workload identity credential, falling back to PAT authentication")
-
-			// Fall back to PAT if workload identity fails and PAT is available
-			token := string(secret.Data[azureDevOpsTokenSecretKey])
-			if token == "" {
-				logger.Error(errors.New("no PAT token available for fallback"), "Both workload identity and PAT authentication unavailable")
-				// Return provider that will fail on token requests with clear error
-				return GitAuthenticationProvider{
-					scmProvider: scmProvider,
-					authType:    AuthTypePAT,
-					token:       "", // Empty token will cause authentication to fail with clear error
-				}
-			}
-
-			logger.Info("Successfully configured PAT authentication as fallback")
-			return GitAuthenticationProvider{
-				scmProvider: scmProvider,
-				token:       token,
-				authType:    AuthTypePAT,
-			}
-		}
-
-		logger.Info("Successfully configured workload identity authentication")
+	workloadIdentity := scmProvider.GetSpec().AzureDevOps.WorkloadIdentity
+	if workloadIdentity == nil || !workloadIdentity.Enabled {
+		// Use PAT authentication
+		logger.Info("Configuring Azure DevOps authentication with Personal Access Token")
+		token := string(secret.Data[azureDevOpsTokenSecretKey])
 		return GitAuthenticationProvider{
-			scmProvider:  scmProvider,
-			tokenManager: NewTokenManager(credential),
-			authType:     AuthTypeWorkloadIdentity,
+			scmProvider: scmProvider,
+			token:       token,
+			authType:    AuthTypePAT,
 		}
 	}
 
-	// Use PAT authentication
-	logger.Info("Configuring Azure DevOps authentication with Personal Access Token")
-	token := string(secret.Data[azureDevOpsTokenSecretKey])
+	logger.Info("Configuring Azure DevOps authentication with workload identity")
+
+	// Create workload identity credential
+	credential, err := createWorkloadIdentityCredential(workloadIdentity)
+	if err != nil {
+		logger.Error(err, "Failed to create workload identity credential, falling back to PAT authentication")
+
+		// Fall back to PAT if workload identity fails and PAT is available
+		token := string(secret.Data[azureDevOpsTokenSecretKey])
+		if token == "" {
+			logger.Error(errors.New("no PAT token available for fallback"), "Both workload identity and PAT authentication unavailable")
+			// Return provider that will fail on token requests with clear error
+			return GitAuthenticationProvider{
+				scmProvider: scmProvider,
+				authType:    AuthTypePAT,
+				token:       "", // Empty token will cause authentication to fail with clear error
+			}
+		}
+
+		logger.Info("Successfully configured PAT authentication as fallback")
+		return GitAuthenticationProvider{
+			scmProvider: scmProvider,
+			token:       token,
+			authType:    AuthTypePAT,
+		}
+	}
+
+	logger.Info("Successfully configured workload identity authentication")
 	return GitAuthenticationProvider{
-		scmProvider: scmProvider,
-		token:       token,
-		authType:    AuthTypePAT,
+		scmProvider:  scmProvider,
+		tokenManager: NewTokenManager(credential),
+		authType:     AuthTypeWorkloadIdentity,
 	}
 }
 

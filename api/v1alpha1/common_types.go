@@ -40,6 +40,9 @@ type Forgejo struct {
 type AzureDevOps struct {
 	// Organization is the Azure DevOps organization name.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=50
+	// +kubebuilder:validation:Pattern=^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
 	Organization string `json:"organization"`
 	// Domain is the Azure DevOps domain, such as "dev.azure.com". If using the default Azure DevOps domain, leave this field
 	// empty.
@@ -133,9 +136,13 @@ type ForgejoRepo struct {
 type AzureDevOpsRepo struct {
 	// Project is the project name in Azure DevOps.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
 	Project string `json:"project"`
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
 	Name string `json:"name"`
 }
 

@@ -25,7 +25,7 @@ var _ = Describe("CommitStatus Error Handling", func() {
 			Data: map[string][]byte{"token": []byte("")},
 		}
 
-		_, err := azuredevopsscm.NewAzdoCommitStatusProvider(context.Background(), nil, &scmProvider, emptySecret, "test-org")
+		_, err := azuredevopsscm.NewAzureDevopsCommitStatusProvider(context.Background(), nil, &scmProvider, emptySecret, "test-org")
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("azure DevOps token not found in secret"))
 	})
@@ -43,7 +43,7 @@ var _ = Describe("CommitStatus Error Handling", func() {
 			Data: map[string][]byte{},
 		}
 
-		_, err := azuredevopsscm.NewAzdoCommitStatusProvider(context.Background(), nil, &scmProvider, noTokenSecret, "test-org")
+		_, err := azuredevopsscm.NewAzureDevopsCommitStatusProvider(context.Background(), nil, &scmProvider, noTokenSecret, "test-org")
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("azure DevOps token not found in secret"))
 	})

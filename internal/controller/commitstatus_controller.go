@@ -173,7 +173,7 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		return p, nil
 	case scmProvider.GetSpec().AzureDevOps != nil:
 		var p *azuredevops.CommitStatus
-		p, err = azuredevops.NewAzdoCommitStatusProvider(ctx, r.Client, scmProvider, *secret, scmProvider.GetSpec().AzureDevOps.Organization)
+		p, err = azuredevops.NewAzureDevopsCommitStatusProvider(ctx, r.Client, scmProvider, *secret, scmProvider.GetSpec().AzureDevOps.Organization)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Azure DevOps provider for domain %q with secret %q: %w", scmProvider.GetSpec().AzureDevOps.Domain, secret.Name, err)
 		}

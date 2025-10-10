@@ -27,8 +27,8 @@ type CommitStatus struct {
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
-// NewAzdoCommitStatusProvider creates a new instance of CommitStatus for Azure DevOps.
-func NewAzdoCommitStatusProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string) (*CommitStatus, error) {
+// NewAzureDevopsCommitStatusProvider creates a new instance of CommitStatus for Azure DevOps.
+func NewAzureDevopsCommitStatusProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string) (*CommitStatus, error) {
 	client, _, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {
 		return nil, err
