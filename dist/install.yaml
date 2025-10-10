@@ -900,6 +900,11 @@ spec:
                             was created.
                           format: date-time
                           type: string
+                        prMergeTime:
+                          description: PRMergeTime is the time when the pull request
+                            was merged.
+                          format: date-time
+                          type: string
                         state:
                           description: State is the state of the pull request.
                           enum:
@@ -1087,6 +1092,11 @@ spec:
                   prCreationTime:
                     description: PRCreationTime is the time when the pull request
                       was created.
+                    format: date-time
+                    type: string
+                  prMergeTime:
+                    description: PRMergeTime is the time when the pull request was
+                      merged.
                     format: date-time
                     type: string
                   state:
@@ -3387,6 +3397,11 @@ spec:
                                   request was created.
                                 format: date-time
                                 type: string
+                              prMergeTime:
+                                description: PRMergeTime is the time when the pull
+                                  request was merged.
+                                format: date-time
+                                type: string
                               state:
                                 description: State is the state of the pull request.
                                 enum:
@@ -3602,6 +3617,11 @@ spec:
                         prCreationTime:
                           description: PRCreationTime is the time when the pull request
                             was created.
+                          format: date-time
+                          type: string
+                        prMergeTime:
+                          description: PRMergeTime is the time when the pull request
+                            was merged.
                           format: date-time
                           type: string
                         state:

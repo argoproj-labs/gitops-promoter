@@ -17,9 +17,12 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os/exec"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -288,6 +291,33 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	// Use git interpret-trailers to add the Pull-request-merge-time trailer.
+	// Note: We use git interpret-trailers instead of manually parsing/formatting trailers to ensure
+	// we follow Git's exact trailer conventions and formatting rules. While git interpret-trailers
+	// doesn't provide a way to place one trailer directly after another specific trailer (the --where
+	// flag only accepts general positions like 'after', 'before', 'start', 'end' relative to ALL trailers,
+	// not a specific one), it's still the most reliable approach. The alternative would be maintaining
+	// complex custom parsing logic, which is error-prone and doesn't handle all of Git's trailer edge cases.
+	// As a result, the Pull-request-merge-time trailer will be appended at the end of the trailer block
+	// rather than directly after Pull-request-creation-time, but this is acceptable.
+	mergedTime := metav1.Now()
+	trailerValue := fmt.Sprintf("%s: %s", constants.TrailerPullRequestMergeTime, mergedTime.Format(time.RFC3339))
+
+	cmd := exec.Command("git", "interpret-trailers", "--trailer", trailerValue)
+	cmd.Stdin = strings.NewReader(pr.Spec.Commit.Message)
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to run git interpret-trailers: %w (stderr: %s)", err, stderrBuf.String())
+	}
+
+	// Update the commit message with the new trailers
+	pr.Spec.Commit.Message = strings.TrimSpace(stdoutBuf.String())
+
 	if err := provider.Merge(ctx, *pr); err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
@@ -310,6 +340,42 @@ func (t trailers) String() string {
 		result += fmt.Sprintf("%s: %s\n", k, t[k])
 	}
 	return result
+}
+
+// ParseFromCommitMessage parses trailers from a commit message using git interpret-trailers.
+// This ensures we follow Git's exact trailer parsing rules.
+func ParseFromCommitMessage(commitMessage string) (trailers, error) {
+	t := make(trailers)
+
+	// Use git interpret-trailers to parse the commit message
+	cmd := exec.Command("git", "interpret-trailers", "--only-trailers")
+	cmd.Stdin = strings.NewReader(commitMessage)
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("failed to run git interpret-trailers: %w (stderr: %s)", err, stderrBuf.String())
+	}
+
+	// Parse the output lines
+	stdout := stdoutBuf.String()
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		// Parse the trailer in the format "Key: Value"
+		if key, value, found := strings.Cut(line, ":"); found {
+			t[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		}
+	}
+
+	return t, nil
 }
 
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {

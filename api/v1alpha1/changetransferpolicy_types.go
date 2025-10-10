@@ -172,6 +172,8 @@ type PullRequestCommonStatus struct {
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
+	// PRMergeTime is the time when the pull request was merged.
+	PRMergeTime metav1.Time `json:"prMergeTime,omitempty"`
 	// Url is the URL of the pull request.
 	Url string `json:"url,omitempty"`
 }
