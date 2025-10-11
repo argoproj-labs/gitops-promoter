@@ -69,7 +69,7 @@ var _ = Describe("DetectProvider", func() {
 
 	for name, test := range tests {
 		It(name, func() {
-			req, err := http.NewRequest("POST", "/", nil)
+			req, err := http.NewRequest(http.MethodPost, "/", nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			for key, value := range test.headers {
@@ -82,9 +82,9 @@ var _ = Describe("DetectProvider", func() {
 	}
 
 	It("should detect GitHub first when multiple provider headers are present", func() {
-		req, err := http.NewRequest("POST", "/", nil)
+		req, err := http.NewRequest(http.MethodPost, "/", nil)
 		Expect(err).NotTo(HaveOccurred())
-		req.Header.Set("X-GitHub-Event", "push")
+		req.Header.Set("X-Github-Event", "push")
 		req.Header.Set("X-Gitlab-Event", "Push Hook")
 
 		result := wr.DetectProvider(req)

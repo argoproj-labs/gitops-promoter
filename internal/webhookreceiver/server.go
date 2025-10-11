@@ -78,7 +78,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 // Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, or ProviderUnknown.
 func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for GitHub webhook headers
-	if r.Header.Get("X-GitHub-Event") != "" || r.Header.Get("X-GitHub-Delivery") != "" {
+	if r.Header.Get("X-Github-Event") != "" || r.Header.Get("X-Github-Delivery") != "" {
 		return ProviderGitHub
 	}
 

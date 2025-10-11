@@ -8,6 +8,11 @@ import (
 )
 
 func TestWebhookReceiver(t *testing.T) {
+	t.Parallel()
+
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "WebhookReceiver Suite")
+
+	c, _ := GinkgoConfiguration()
+
+	RunSpecs(t, "WebhookReceiver Suite", c)
 }
