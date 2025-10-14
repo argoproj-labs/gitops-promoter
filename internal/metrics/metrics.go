@@ -167,7 +167,7 @@ var (
 
 	// DORA Metrics
 	// Labels for DORA metrics
-	doraMetricsLabels = []string{"promotion_strategy", "environment", "is_terminal"}
+	doraMetricsLabels = []string{"promotion_strategy", "namespace", "environment", "is_terminal"}
 
 	// deploymentsToProductionTotal tracks the number of deployments to production (or any environment)
 	deploymentsToProductionTotal = prometheus.NewCounterVec(
@@ -272,9 +272,10 @@ func RecordWebhookCall(ctpFound bool, responseCode int, duration time.Duration) 
 }
 
 // RecordDeployment records a deployment to an environment.
-func RecordDeployment(promotionStrategy, environment string, isTerminal bool) {
+func RecordDeployment(promotionStrategy, namespace, environment string, isTerminal bool) {
 	labels := prometheus.Labels{
 		"promotion_strategy": promotionStrategy,
+		"namespace":          namespace,
 		"environment":        environment,
 		"is_terminal":        strconv.FormatBool(isTerminal),
 	}
@@ -282,9 +283,10 @@ func RecordDeployment(promotionStrategy, environment string, isTerminal bool) {
 }
 
 // RecordLeadTime records the lead time for changes in seconds.
-func RecordLeadTime(promotionStrategy, environment string, isTerminal bool, leadTimeSeconds float64) {
+func RecordLeadTime(promotionStrategy, namespace, environment string, isTerminal bool, leadTimeSeconds float64) {
 	labels := prometheus.Labels{
 		"promotion_strategy": promotionStrategy,
+		"namespace":          namespace,
 		"environment":        environment,
 		"is_terminal":        strconv.FormatBool(isTerminal),
 	}
@@ -292,9 +294,10 @@ func RecordLeadTime(promotionStrategy, environment string, isTerminal bool, lead
 }
 
 // RecordChangeFailure records a change failure.
-func RecordChangeFailure(promotionStrategy, environment string, isTerminal bool) {
+func RecordChangeFailure(promotionStrategy, namespace, environment string, isTerminal bool) {
 	labels := prometheus.Labels{
 		"promotion_strategy": promotionStrategy,
+		"namespace":          namespace,
 		"environment":        environment,
 		"is_terminal":        strconv.FormatBool(isTerminal),
 	}
@@ -302,9 +305,10 @@ func RecordChangeFailure(promotionStrategy, environment string, isTerminal bool)
 }
 
 // RecordMeanTimeToRestore records the mean time to restore in seconds.
-func RecordMeanTimeToRestore(promotionStrategy, environment string, isTerminal bool, mttrSeconds float64) {
+func RecordMeanTimeToRestore(promotionStrategy, namespace, environment string, isTerminal bool, mttrSeconds float64) {
 	labels := prometheus.Labels{
 		"promotion_strategy": promotionStrategy,
+		"namespace":          namespace,
 		"environment":        environment,
 		"is_terminal":        strconv.FormatBool(isTerminal),
 	}

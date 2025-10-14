@@ -167,8 +167,9 @@ type EnvironmentStatus struct {
 // DoraMetricsState tracks the state needed to calculate DORA metrics for an environment.
 type DoraMetricsState struct {
 	// LeadTimeStartCommitTime is the commit time of the dry commit currently being tracked for lead time.
-	// This is set when a new dry commit starts being promoted and is not cleared until that commit
-	// successfully reaches the terminal environment or is interrupted by a newer commit.
+	// This is set when a new dry commit starts being promoted and is only cleared when that commit
+	// (or a later commit) has been promoted to and become healthy in the terminal environment.
+	// Even if a new commit arrives mid-deployment, lead time continues to be tracked from the original commit time.
 	LeadTimeStartCommitTime metav1.Time `json:"leadTimeStartCommitTime,omitempty"`
 
 	// LeadTimeStartSha is the SHA of the dry commit currently being tracked for lead time.

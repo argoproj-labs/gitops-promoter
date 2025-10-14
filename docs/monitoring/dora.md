@@ -131,7 +131,7 @@ GitOps Promoter produces Kubernetes events and structured log entries for all DO
 - `LeadTimeRecorded`: Lead time was calculated and recorded
 - `ChangeFailureRecorded`: A change failure was detected
 - `MTTRRecorded`: Mean time to restore was calculated
-- `IncompleteReleaseInterrupted`: A new commit interrupted an incomplete release
+- `PromotionInterrupted`: A new commit interrupted an incomplete release
 
 You can view these events using:
 
@@ -211,7 +211,7 @@ dora_mean_time_to_restore_seconds{is_terminal="true"} / 3600
 If lead time metrics seem incorrect:
 - Check that commit statuses eventually reach a success state
 - Verify that the `commitTime` field is populated on commits
-- Review events for "IncompleteReleaseInterrupted" to understand if releases are being interrupted
+- Review events for "PromotionInterrupted" to understand if releases are being interrupted
 
 ### Missing Failure Metrics
 

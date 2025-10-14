@@ -110,6 +110,7 @@ A counter of deployments to an environment. This metric increments every time a 
 Labels:
 
 * `promotion_strategy`: The name of the PromotionStrategy resource.
+* `namespace`: The namespace of the PromotionStrategy resource.
 * `environment`: The name of the environment (branch name).
 * `is_terminal`: Whether this is the terminal (last) environment in the promotion sequence (true, false).
 
@@ -122,6 +123,7 @@ If a change does not make it to the terminal environment and become successful b
 Labels:
 
 * `promotion_strategy`: The name of the PromotionStrategy resource.
+* `namespace`: The namespace of the PromotionStrategy resource.
 * `environment`: The name of the environment (branch name).
 * `is_terminal`: Whether this is the terminal (last) environment in the promotion sequence (true, false).
 
@@ -132,6 +134,7 @@ A counter tracking the number of failed deployments. This metric increments once
 Labels:
 
 * `promotion_strategy`: The name of the PromotionStrategy resource.
+* `namespace`: The namespace of the PromotionStrategy resource.
 * `environment`: The name of the environment (branch name).
 * `is_terminal`: Whether this is the terminal (last) environment in the promotion sequence (true, false).
 
@@ -142,5 +145,6 @@ A gauge tracking the mean time to restore in seconds. This measures the time fro
 Labels:
 
 * `promotion_strategy`: The name of the PromotionStrategy resource.
+* `namespace`: The namespace of the PromotionStrategy resource.
 * `environment`: The name of the environment (branch name).
 * `is_terminal`: Whether this is the terminal (last) environment in the promotion sequence (true, false).

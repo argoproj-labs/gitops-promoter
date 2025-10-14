@@ -17,182 +17,184 @@ limitations under the License.
 package metrics
 
 import (
-	"testing"
-
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
-func TestDoraMetrics(t *testing.T) {
-	// Create a new registry for testing to avoid conflicts
-	testRegistry := prometheus.NewRegistry()
-
-	// Create new metrics for testing
-	testDeploymentsTotal := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "test_dora_deployments_total",
-			Help: "Test deployment counter",
-		},
-		[]string{"promotion_strategy", "environment", "is_terminal"},
+var _ = Describe("DORA Metrics", func() {
+	var (
+		testRegistry         *prometheus.Registry
+		testDeploymentsTotal *prometheus.CounterVec
+		testLeadTime         *prometheus.GaugeVec
+		testChangeFailures   *prometheus.CounterVec
+		testMTTR             *prometheus.GaugeVec
 	)
 
-	testLeadTime := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "test_dora_lead_time_seconds",
-			Help: "Test lead time gauge",
-		},
-		[]string{"promotion_strategy", "environment", "is_terminal"},
-	)
+	BeforeEach(func() {
+		// Create a new registry for testing to avoid conflicts
+		testRegistry = prometheus.NewRegistry()
 
-	testChangeFailures := prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "test_dora_change_failure_rate_total",
-			Help: "Test change failure counter",
-		},
-		[]string{"promotion_strategy", "environment", "is_terminal"},
-	)
+		// Create new metrics for testing
+		testDeploymentsTotal = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "test_dora_deployments_total",
+				Help: "Test deployment counter",
+			},
+			[]string{"promotion_strategy", "namespace", "environment", "is_terminal"},
+		)
 
-	testMTTR := prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "test_dora_mean_time_to_restore_seconds",
-			Help: "Test MTTR gauge",
-		},
-		[]string{"promotion_strategy", "environment", "is_terminal"},
-	)
+		testLeadTime = prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "test_dora_lead_time_seconds",
+				Help: "Test lead time gauge",
+			},
+			[]string{"promotion_strategy", "namespace", "environment", "is_terminal"},
+		)
 
-	testRegistry.MustRegister(testDeploymentsTotal, testLeadTime, testChangeFailures, testMTTR)
+		testChangeFailures = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "test_dora_change_failure_rate_total",
+				Help: "Test change failure counter",
+			},
+			[]string{"promotion_strategy", "namespace", "environment", "is_terminal"},
+		)
 
-	t.Run("DeploymentCounter", func(t *testing.T) {
-		labels := prometheus.Labels{
-			"promotion_strategy": "test-strategy",
-			"environment":        "production",
-			"is_terminal":        "true",
-		}
+		testMTTR = prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "test_dora_mean_time_to_restore_seconds",
+				Help: "Test MTTR gauge",
+			},
+			[]string{"promotion_strategy", "namespace", "environment", "is_terminal"},
+		)
 
-		testDeploymentsTotal.With(labels).Inc()
-		testDeploymentsTotal.With(labels).Inc()
-
-		count := testutil.ToFloat64(testDeploymentsTotal.With(labels))
-		if count != 2 {
-			t.Errorf("Expected deployment count to be 2, got %f", count)
-		}
+		testRegistry.MustRegister(testDeploymentsTotal, testLeadTime, testChangeFailures, testMTTR)
 	})
 
-	t.Run("LeadTimeGauge", func(t *testing.T) {
-		labels := prometheus.Labels{
-			"promotion_strategy": "test-strategy",
-			"environment":        "production",
-			"is_terminal":        "true",
-		}
-
-		testLeadTime.With(labels).Set(120.5)
-
-		value := testutil.ToFloat64(testLeadTime.With(labels))
-		if value != 120.5 {
-			t.Errorf("Expected lead time to be 120.5, got %f", value)
-		}
-	})
-
-	t.Run("ChangeFailureCounter", func(t *testing.T) {
-		labels := prometheus.Labels{
-			"promotion_strategy": "test-strategy",
-			"environment":        "staging",
-			"is_terminal":        "false",
-		}
-
-		testChangeFailures.With(labels).Inc()
-
-		count := testutil.ToFloat64(testChangeFailures.With(labels))
-		if count != 1 {
-			t.Errorf("Expected failure count to be 1, got %f", count)
-		}
-	})
-
-	t.Run("MTTRGauge", func(t *testing.T) {
-		labels := prometheus.Labels{
-			"promotion_strategy": "test-strategy",
-			"environment":        "production",
-			"is_terminal":        "true",
-		}
-
-		testMTTR.With(labels).Set(300.0)
-
-		value := testutil.ToFloat64(testMTTR.With(labels))
-		if value != 300.0 {
-			t.Errorf("Expected MTTR to be 300.0, got %f", value)
-		}
-	})
-
-	t.Run("MultipleEnvironments", func(t *testing.T) {
-		// Test that we can track metrics for multiple environments independently
-		prodLabels := prometheus.Labels{
-			"promotion_strategy": "test-strategy",
-			"environment":        "production",
-			"is_terminal":        "true",
-		}
-		stagingLabels := prometheus.Labels{
-			"promotion_strategy": "test-strategy",
-			"environment":        "staging",
-			"is_terminal":        "false",
-		}
-
-		testDeploymentsTotal.With(prodLabels).Inc()
-		testDeploymentsTotal.With(prodLabels).Inc()
-		testDeploymentsTotal.With(stagingLabels).Inc()
-
-		prodCount := testutil.ToFloat64(testDeploymentsTotal.With(prodLabels))
-		stagingCount := testutil.ToFloat64(testDeploymentsTotal.With(stagingLabels))
-
-		if prodCount != 4 { // 2 from previous test + 2 new
-			t.Errorf("Expected production deployment count to be 4, got %f", prodCount)
-		}
-		if stagingCount != 1 {
-			t.Errorf("Expected staging deployment count to be 1, got %f", stagingCount)
-		}
-	})
-}
-
-func TestRecordFunctions(t *testing.T) {
-	// These tests verify that the record functions can be called without panicking
-	// The actual metric values are tested via the existing metrics registry
-
-	t.Run("RecordDeployment", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Errorf("RecordDeployment panicked: %v", r)
+	Context("Deployment Counter", func() {
+		It("should increment deployment counter", func() {
+			labels := prometheus.Labels{
+				"promotion_strategy": "test-strategy",
+				"namespace":          "test-namespace",
+				"environment":        "production",
+				"is_terminal":        "true",
 			}
-		}()
 
-		RecordDeployment("test-ps", "test-env", true)
+			testDeploymentsTotal.With(labels).Inc()
+			testDeploymentsTotal.With(labels).Inc()
+
+			count := testutil.ToFloat64(testDeploymentsTotal.With(labels))
+			Expect(count).To(Equal(float64(2)))
+		})
 	})
 
-	t.Run("RecordLeadTime", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Errorf("RecordLeadTime panicked: %v", r)
+	Context("Lead Time Gauge", func() {
+		It("should set lead time gauge value", func() {
+			labels := prometheus.Labels{
+				"promotion_strategy": "test-strategy",
+				"namespace":          "test-namespace",
+				"environment":        "production",
+				"is_terminal":        "true",
 			}
-		}()
 
-		RecordLeadTime("test-ps", "test-env", false, 123.45)
+			testLeadTime.With(labels).Set(120.5)
+
+			value := testutil.ToFloat64(testLeadTime.With(labels))
+			Expect(value).To(Equal(120.5))
+		})
 	})
 
-	t.Run("RecordChangeFailure", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Errorf("RecordChangeFailure panicked: %v", r)
+	Context("Change Failure Counter", func() {
+		It("should increment change failure counter", func() {
+			labels := prometheus.Labels{
+				"promotion_strategy": "test-strategy",
+				"namespace":          "test-namespace",
+				"environment":        "staging",
+				"is_terminal":        "false",
 			}
-		}()
 
-		RecordChangeFailure("test-ps", "test-env", true)
+			testChangeFailures.With(labels).Inc()
+
+			count := testutil.ToFloat64(testChangeFailures.With(labels))
+			Expect(count).To(Equal(float64(1)))
+		})
 	})
 
-	t.Run("RecordMeanTimeToRestore", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Errorf("RecordMeanTimeToRestore panicked: %v", r)
+	Context("MTTR Gauge", func() {
+		It("should set MTTR gauge value", func() {
+			labels := prometheus.Labels{
+				"promotion_strategy": "test-strategy",
+				"namespace":          "test-namespace",
+				"environment":        "production",
+				"is_terminal":        "true",
 			}
-		}()
 
-		RecordMeanTimeToRestore("test-ps", "test-env", false, 567.89)
+			testMTTR.With(labels).Set(300.0)
+
+			value := testutil.ToFloat64(testMTTR.With(labels))
+			Expect(value).To(Equal(300.0))
+		})
 	})
-}
+
+	Context("Multiple Environments", func() {
+		It("should track metrics for multiple environments independently", func() {
+			prodLabels := prometheus.Labels{
+				"promotion_strategy": "test-strategy",
+				"namespace":          "test-namespace",
+				"environment":        "production",
+				"is_terminal":        "true",
+			}
+			stagingLabels := prometheus.Labels{
+				"promotion_strategy": "test-strategy",
+				"namespace":          "test-namespace",
+				"environment":        "staging",
+				"is_terminal":        "false",
+			}
+
+			testDeploymentsTotal.With(prodLabels).Inc()
+			testDeploymentsTotal.With(prodLabels).Inc()
+			testDeploymentsTotal.With(stagingLabels).Inc()
+
+			prodCount := testutil.ToFloat64(testDeploymentsTotal.With(prodLabels))
+			stagingCount := testutil.ToFloat64(testDeploymentsTotal.With(stagingLabels))
+
+			Expect(prodCount).To(Equal(float64(2)))
+			Expect(stagingCount).To(Equal(float64(1)))
+		})
+	})
+})
+
+var _ = Describe("Record Functions", func() {
+	Context("RecordDeployment", func() {
+		It("should not panic when called", func() {
+			Expect(func() {
+				RecordDeployment("test-ps", "test-ns", "test-env", true)
+			}).ToNot(Panic())
+		})
+	})
+
+	Context("RecordLeadTime", func() {
+		It("should not panic when called", func() {
+			Expect(func() {
+				RecordLeadTime("test-ps", "test-ns", "test-env", false, 123.45)
+			}).ToNot(Panic())
+		})
+	})
+
+	Context("RecordChangeFailure", func() {
+		It("should not panic when called", func() {
+			Expect(func() {
+				RecordChangeFailure("test-ps", "test-ns", "test-env", true)
+			}).ToNot(Panic())
+		})
+	})
+
+	Context("RecordMeanTimeToRestore", func() {
+		It("should not panic when called", func() {
+			Expect(func() {
+				RecordMeanTimeToRestore("test-ps", "test-ns", "test-env", false, 567.89)
+			}).ToNot(Panic())
+		})
+	})
+})

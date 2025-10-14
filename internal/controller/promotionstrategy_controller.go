@@ -306,7 +306,7 @@ func (r *PromotionStrategyReconciler) trackLeadTimeStart(ctx context.Context, ps
 				"previousSha", envStatus.DoraMetrics.LeadTimeStartSha,
 				"newSha", envStatus.Proposed.Dry.Sha,
 			)
-			r.Recorder.Event(ps, "Normal", "IncompleteReleaseInterrupted",
+			r.Recorder.Event(ps, "Normal", "PromotionInterrupted",
 				fmt.Sprintf("Environment %s: Incomplete release %s was interrupted by new commit %s",
 					envStatus.Branch,
 					previousShortSha,
@@ -339,7 +339,7 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 			envStatus.DoraMetrics.LastDeployedSha != activeSha {
 
 			// Record deployment
-			metrics.RecordDeployment(ps.Name, envStatus.Branch, isTerminal)
+			metrics.RecordDeployment(ps.Name, ps.Namespace, envStatus.Branch, isTerminal)
 			envStatus.DoraMetrics.LastDeployedSha = activeSha
 
 			activeShortSha := activeSha
@@ -367,7 +367,7 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 		// Calculate and record lead time
 		if !envStatus.DoraMetrics.LeadTimeStartCommitTime.IsZero() {
 			leadTime := time.Since(envStatus.DoraMetrics.LeadTimeStartCommitTime.Time)
-			metrics.RecordLeadTime(ps.Name, envStatus.Branch, isTerminal, leadTime.Seconds())
+			metrics.RecordLeadTime(ps.Name, ps.Namespace, envStatus.Branch, isTerminal, leadTime.Seconds())
 
 			activeShortSha := envStatus.Active.Dry.Sha
 			if len(activeShortSha) > 7 {
@@ -402,7 +402,7 @@ func (r *PromotionStrategyReconciler) trackAndRecordFailures(ctx context.Context
 	if activeSha != "" && !utils.AreCommitStatusesPassing(envStatus.Active.CommitStatuses) {
 		// Only record failure once per commit
 		if envStatus.DoraMetrics.LastFailedCommitSha != activeSha {
-			metrics.RecordChangeFailure(ps.Name, envStatus.Branch, isTerminal)
+			metrics.RecordChangeFailure(ps.Name, ps.Namespace, envStatus.Branch, isTerminal)
 			envStatus.DoraMetrics.LastFailedCommitSha = activeSha
 
 			activeShortSha := activeSha
@@ -438,7 +438,7 @@ func (r *PromotionStrategyReconciler) trackAndRecordMTTR(ctx context.Context, ps
 
 		// Calculate and record MTTR
 		mttr := time.Since(envStatus.DoraMetrics.FailureStartTime.Time)
-		metrics.RecordMeanTimeToRestore(ps.Name, envStatus.Branch, isTerminal, mttr.Seconds())
+		metrics.RecordMeanTimeToRestore(ps.Name, ps.Namespace, envStatus.Branch, isTerminal, mttr.Seconds())
 
 		logger.Info("Recorded MTTR",
 			"promotionStrategy", ps.Name,
