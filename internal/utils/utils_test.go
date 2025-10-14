@@ -2,7 +2,7 @@ package utils_test
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -231,7 +231,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		// This function will return an error normally
 		func() {
 			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, &err)
-			err = fmt.Errorf("test error message")
+			err = errors.New("test error message")
 		}()
 
 		// The error should be preserved
