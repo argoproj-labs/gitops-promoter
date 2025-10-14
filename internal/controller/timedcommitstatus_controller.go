@@ -212,7 +212,16 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 		// Determine commit status phase based on time elapsed in current environment
 		// This status will be reported for the next environment's proposed SHA
-		phase, message := r.calculateCommitStatusPhase(currentActiveCommitTime, envConfig.Duration.Duration, elapsed, envConfig.Branch)
+		var phase promoterv1alpha1.CommitStatusPhase
+		var message string
+		// If there is a pending promotion in the lower (current) environment (proposed != active), report pending
+		// This indicates there's an open PR that hasn't been merged yet
+		if currentEnvStatus.Proposed.Dry.Sha != "" && currentEnvStatus.Proposed.Dry.Sha != currentEnvStatus.Active.Dry.Sha {
+			phase = promoterv1alpha1.CommitPhasePending
+			message = fmt.Sprintf("Waiting for pending promotion in %s environment to be merged before allowing promotion", envConfig.Branch)
+		} else {
+			phase, message = r.calculateCommitStatusPhase(currentActiveCommitTime, envConfig.Duration.Duration, elapsed, envConfig.Branch)
+		}
 
 		// Update status for this environment
 		envTimedStatus := promoterv1alpha1.EnvironmentTimedStatus{
