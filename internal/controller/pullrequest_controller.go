@@ -342,42 +342,6 @@ func (t trailers) String() string {
 	return result
 }
 
-// ParseFromCommitMessage parses trailers from a commit message using git interpret-trailers.
-// This ensures we follow Git's exact trailer parsing rules.
-func ParseFromCommitMessage(commitMessage string) (trailers, error) {
-	t := make(trailers)
-
-	// Use git interpret-trailers to parse the commit message
-	cmd := exec.Command("git", "interpret-trailers", "--only-trailers")
-	cmd.Stdin = strings.NewReader(commitMessage)
-
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to run git interpret-trailers: %w (stderr: %s)", err, stderrBuf.String())
-	}
-
-	// Parse the output lines
-	stdout := stdoutBuf.String()
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-
-		// Parse the trailer in the format "Key: Value"
-		if key, value, found := strings.Cut(line, ":"); found {
-			t[strings.TrimSpace(key)] = strings.TrimSpace(value)
-		}
-	}
-
-	return t, nil
-}
-
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
 	if pr.Status.State == promoterv1alpha1.PullRequestMerged {
 		return nil
