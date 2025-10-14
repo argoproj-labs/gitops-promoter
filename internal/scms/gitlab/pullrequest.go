@@ -196,6 +196,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		AutoMerge:                gitlab.Ptr(false),
 		ShouldRemoveSourceBranch: gitlab.Ptr(false),
 		Squash:                   gitlab.Ptr(false),
+		SHA:                      gitlab.Ptr(prObj.Spec.MergeSha),
 	}
 	// Gitlab throws a 422 if you send it an empty commit message. So leave it as nil unless we have a message.
 	if prObj.Spec.Commit.Message != "" {

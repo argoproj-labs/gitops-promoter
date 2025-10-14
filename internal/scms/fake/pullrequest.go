@@ -158,6 +158,18 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		return fmt.Errorf("failed to fetch all: %w", err)
 	}
 
+	// Verify that the source branch HEAD matches the expected merge SHA
+	if pullRequest.Spec.MergeSha != "" {
+		actualSha, err := pr.runGitCmdOutput(gitPath, "rev-parse", "origin/"+pullRequest.Spec.SourceBranch)
+		if err != nil {
+			return fmt.Errorf("failed to get SHA of source branch: %w", err)
+		}
+		actualSha = strings.TrimSpace(actualSha)
+		if actualSha != pullRequest.Spec.MergeSha {
+			return fmt.Errorf("source branch HEAD SHA %q does not match expected merge SHA %q", actualSha, pullRequest.Spec.MergeSha)
+		}
+	}
+
 	err = pr.runGitCmd(gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
 	if err != nil {
 		return fmt.Errorf("failed to merge branch: %w", err)
@@ -242,6 +254,29 @@ func (pr *PullRequest) runGitCmd(gitPath string, args ...string) error {
 	}
 
 	return nil
+}
+
+func (pr *PullRequest) runGitCmdOutput(gitPath string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	cmd.Dir = gitPath
+
+	cmd.Env = []string{
+		"GIT_TERMINAL_PROMPT=0",
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("failed to start git command: %w", err)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return "", fmt.Errorf("failed to run git command: %s", stderrBuf.String())
+	}
+
+	return stdoutBuf.String(), nil
 }
 
 // GetUrl retrieves the URL of the pull request.

@@ -791,6 +791,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		pr.Spec.SourceBranch = ctp.Spec.ProposedBranch
 		pr.Spec.Description = description
 		pr.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s", title, description)
+		pr.Spec.MergeSha = ctp.Status.Proposed.Hydrated.Sha
 		if pr.CreationTimestamp.IsZero() {
 			// New PR
 			pr.Spec.State = promoterv1alpha1.PullRequestOpen
