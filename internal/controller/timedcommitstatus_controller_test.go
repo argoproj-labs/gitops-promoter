@@ -235,7 +235,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 		})
 
 		It("should report success status when time requirement is met and no pending promotion", func() {
-			By("Waiting for initial TimedCommitStatus to reach success")
+			By("Waiting for TimedCommitStatus to transition to success phase after duration is met")
 			Eventually(func(g Gomega) {
 				var tcs promoterv1alpha1.TimedCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -246,13 +246,19 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 
 				g.Expect(tcs.Status.Environments).To(HaveLen(1))
 				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
-				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
-				// Validate status fields are populated
+				// The critical check: phase should be success because duration (1 second) has been met
+				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
+					"Phase should be success when TimeElapsed >= RequiredDuration")
+
+				// Validate the phase transition happened correctly
 				g.Expect(tcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should be populated")
 				g.Expect(tcs.Status.Environments[0].CommitTime.Time).ToNot(BeZero(), "CommitTime should be populated")
 				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(1*time.Second), "RequiredDuration should match spec")
-				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically(">=", 1*time.Second), "TimeElapsed should be >= required duration")
+
+				// Verify the duration requirement has been met
+				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically(">=", 1*time.Second),
+					"TimeElapsed must be >= RequiredDuration for success phase")
 
 				// Verify CommitStatus was created for staging with success phase
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
@@ -262,11 +268,12 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
+					"CommitStatus phase should be success when gate is met")
 				g.Expect(cs.Spec.Description).To(ContainSubstring("Time-based gate requirement met"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying status remains successful for 5 seconds")
+			By("Verifying phase remains success for 5 seconds (doesn't flip back to pending)")
 			Consistently(func(g Gomega) {
 				var tcs promoterv1alpha1.TimedCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -276,16 +283,16 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(tcs.Status.Environments).To(HaveLen(1))
-				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
-				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
-				// Validate status fields remain consistent
-				g.Expect(tcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should remain populated")
-				g.Expect(tcs.Status.Environments[0].CommitTime.Time).ToNot(BeZero(), "CommitTime should remain populated")
-				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(1*time.Second), "RequiredDuration should remain consistent")
-				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically(">=", 4*time.Second), "TimeElapsed should continue to grow")
+				// Critical: phase must stay success, not flip back to pending
+				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
+					"Phase must remain success once duration requirement is met")
 
-				// Verify CommitStatus remains in success phase
+				// Duration requirement should still be met
+				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically(">=", 1*time.Second),
+					"TimeElapsed should continue to be >= RequiredDuration")
+
+				// Verify CommitStatus phase remains success
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -293,8 +300,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
-				g.Expect(cs.Spec.Description).To(ContainSubstring("Time-based gate requirement met"))
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
+					"CommitStatus phase must remain success")
 			}, 5*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
@@ -372,7 +379,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 		})
 
 		It("should report pending status when time requirement is not met", func() {
-			By("Waiting for initial TimedCommitStatus to be created")
+			By("Waiting for initial TimedCommitStatus to be in pending phase")
 			Eventually(func(g Gomega) {
 				var tcs promoterv1alpha1.TimedCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -382,16 +389,22 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(tcs.Status.Environments).To(HaveLen(1))
 				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
-				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
+
+				// The critical check: phase should be pending because duration (24 hours) hasn't been met
+				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)),
+					"Phase should be pending when TimeElapsed < RequiredDuration")
 
 				// Validate status fields are populated
 				g.Expect(tcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should be populated")
 				g.Expect(tcs.Status.Environments[0].CommitTime.Time).ToNot(BeZero(), "CommitTime should be populated")
 				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(24*time.Hour), "RequiredDuration should match spec")
-				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically("<", 24*time.Hour), "TimeElapsed should be < required duration")
+
+				// Verify the duration requirement has NOT been met
+				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically("<", 24*time.Hour),
+					"TimeElapsed must be < RequiredDuration for pending phase")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying status remains pending for 10 seconds")
+			By("Verifying phase stays pending for 10 seconds (doesn't incorrectly switch to success)")
 			Consistently(func(g Gomega) {
 				var tcs promoterv1alpha1.TimedCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -401,16 +414,16 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(tcs.Status.Environments).To(HaveLen(1))
-				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
-				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 
-				// Validate status fields remain consistent
-				g.Expect(tcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should remain populated")
-				g.Expect(tcs.Status.Environments[0].CommitTime.Time).ToNot(BeZero(), "CommitTime should remain populated")
-				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(24*time.Hour), "RequiredDuration should remain consistent")
-				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically("<", 24*time.Hour), "TimeElapsed should still be < required duration")
+				// Critical: phase must stay pending because we haven't waited 24 hours
+				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)),
+					"Phase must remain pending while TimeElapsed < RequiredDuration")
 
-				// Verify CommitStatus was created for staging with pending phase
+				// Duration requirement should still NOT be met
+				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically("<", 24*time.Hour),
+					"TimeElapsed should still be < RequiredDuration (24 hours)")
+
+				// Verify CommitStatus phase remains pending
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -418,7 +431,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending),
+					"CommitStatus phase must remain pending while gate isn't met")
 				g.Expect(cs.Spec.Description).To(ContainSubstring("Waiting for time-based gate"))
 			}, 10*time.Second, 1*time.Second).Should(Succeed())
 		})
