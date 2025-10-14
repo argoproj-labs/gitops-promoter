@@ -78,14 +78,14 @@ spec:
               maxFastAttempts: 3
   timedCommitStatus:
     workQueue:
-        maxConcurrentReconciles: 10
-        requeueDuration: "5m"
-        rateLimiter:
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
+      rateLimiter:
         maxOf:
-            - bucket:
-                qps: 10
-                bucket: 100
-            - fastSlow:
-                fastDelay: "1s"
-                slowDelay: "5m"
-                maxFastAttempts: 3
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
