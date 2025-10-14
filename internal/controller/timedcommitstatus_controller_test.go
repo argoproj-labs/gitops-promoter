@@ -47,6 +47,12 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			var scmProvider *promoterv1alpha1.ScmProvider
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-pending", "default")
+
+			// Configure ProposedCommitStatuses to check for timed commit status
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "timed"},
+			}
+
 			setupInitialTestGitRepoOnServer(name, name)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -164,9 +170,16 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-time-met", "default")
 
 			// Only use 2 environments for this test
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "timed"},
+			}
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
-				{Branch: "environment/development"},
-				{Branch: "environment/staging"},
+				{
+					Branch: "environment/development",
+				},
+				{
+					Branch: "environment/staging",
+				},
 			}
 
 			setupInitialTestGitRepoOnServer(name, name)
@@ -256,10 +269,16 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-time-not-met", "default")
 
-			// Only use 2 environments for this test
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "timed"},
+			}
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
-				{Branch: "environment/development"},
-				{Branch: "environment/staging"},
+				{
+					Branch: "environment/development",
+				},
+				{
+					Branch: "environment/staging",
+				},
 			}
 
 			setupInitialTestGitRepoOnServer(name, name)
