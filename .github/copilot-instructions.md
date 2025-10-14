@@ -6,8 +6,8 @@ GitOps Promoter is a Kubernetes operator that facilitates environment promotion 
 
 ### Key Technologies
 - **Backend**: Go 1.24+ (Kubernetes operator using controller-runtime)
-- **Frontend**: TypeScript/React (Dashboard UI and ArgoCD extension)
-- **Infrastructure**: Kubernetes, ArgoCD integration
+- **Frontend**: TypeScript/React (Dashboard UI and Argo CD extension)
+- **Infrastructure**: Kubernetes, Argo CD integration
 - **SCM Support**: GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg)
 
 ## Architecture
@@ -18,7 +18,7 @@ The project follows a standard Kubernetes operator pattern with:
 - SCM integrations in `internal/scms/`
 - Webhook receiver for SCM events in `internal/webhookreceiver/`
 - Dashboard UI in `ui/dashboard/`
-- ArgoCD extension in `ui/extension/`
+- Argo CD extension in `ui/extension/`
 - Shared UI components in `ui/components-lib/`
 
 ## Development Setup
@@ -42,7 +42,7 @@ make lint-fix          # Run linters with auto-fix
 
 # UI development
 make build-dashboard   # Build dashboard UI
-make build-extension   # Build ArgoCD extension
+make build-extension   # Build Argo CD extension
 make lint-dashboard    # Lint dashboard
 make lint-extension    # Lint extension
 make lint-ui           # Lint all UI components
@@ -68,25 +68,7 @@ make run-dashboard     # Run dashboard locally
 - Run type-checking with `tsc --noEmit`
 - Use functional components with hooks
 
-### File Headers
-All Go files should include the Apache 2.0 license header:
-```go
-/*
-Copyright 2024.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-```
 
 ## Directory Structure
 
@@ -138,14 +120,19 @@ make test-e2e          # Run end-to-end tests
 1. **PromotionStrategy** - Defines promotion flow between environments
 2. **GitRepository** - Represents a Git repository
 3. **ScmProvider** - SCM provider configuration (GitHub, GitLab, Forgejo)
-4. **PullRequest** - Represents a promotion pull request
-5. **CommitStatus** - Commit status tracking
-6. **ArgoCDCommitStatus** - ArgoCD-specific commit status
+4. **ClusterScmProvider** - Cluster-scoped SCM provider configuration
+5. **PullRequest** - Represents a promotion pull request
+6. **CommitStatus** - Commit status tracking
+7. **ArgoCDCommitStatus** - Argo CD-specific commit status
+8. **ChangeTransferPolicy** - Controls how changes are transferred between branches
+9. **RevertCommit** - Represents a revert operation
+10. **ControllerConfiguration** - Configuration for the GitOps Promoter controller
 
 ### Resource Relationships
 - PromotionStrategy references GitRepository
-- GitRepository references ScmProvider
+- GitRepository references ScmProvider or ClusterScmProvider
 - ScmProvider references a Secret for credentials
+- ArgoCDCommitStatus references PromotionStrategy
 
 ## Common Patterns
 
@@ -178,6 +165,7 @@ Key environment variables:
 - Update `docs/getting-started.md` for setup changes
 - Update `docs/architecture.md` for architectural changes
 - Keep version numbers in sync using `hack/bump-docs-manifests.sh`
+- When adding a new documentation page, update `mkdocs.yml` to include it in the table of contents
 
 ## Best Practices
 
@@ -187,34 +175,35 @@ Key environment variables:
 4. **Logging**: Use structured logging with appropriate levels
 5. **Dependencies**: Avoid adding new dependencies unless necessary
 6. **Documentation**: Update docs when changing behavior or APIs
-7. **Backwards Compatibility**: Maintain compatibility with existing CRDs and APIs
+7. **Backwards Compatibility**: While in v1alpha1, breaking changes are allowed but should be avoided if possible
 
 ## Common Tasks
 
-### Adding a New Controller
-1. Create controller file in `internal/controller/`
-2. Add controller setup in `cmd/main.go`
-3. Create corresponding test file
-4. Update RBAC if needed
-
 ### Adding a New CRD Field
 1. Update type definition in `api/v1alpha1/`
-2. Run `make manifests` to regenerate CRDs
-3. Run `make generate` to regenerate DeepCopy methods
-4. Update controller logic
-5. Add tests
-6. Update documentation
+2. Add proper Kubernetes validation:
+   - For required strings, set a min length of at least 1
+   - Set a max length if it makes sense for the field
+   - Use regex validation for character restrictions
+   - Use metav1 types for time and duration fields instead of custom types
+   - For numbers where negative values don't make sense, enforce a minimum of zero
+3. Update example files in `internal/controller/testdata/` for both spec and status changes
+4. Run `make build-installer` to regenerate CRDs, DeepCopy methods, and install manifests
+5. Update controller logic
+6. Add tests
+7. Update documentation
 
-### Updating Dependencies
-```bash
-go get <package>@<version>
-go mod tidy
-```
+### Adding a Field to ControllerConfiguration
+1. Update type definition in `api/v1alpha1/controllerconfiguration_types.go`
+2. Set a default value in the code
+3. Explicitly add the default value to `config/config/controllerconfiguration.yaml`
+4. For this CR, defaults live in manifests and not in code whenever possible
+5. Follow the same validation and testing steps as adding a CRD field
 
 ### Building Container Images
 ```bash
 make docker-build
-make docker-push
+# Note: docker-push should only be used for releases, not automation
 ```
 
 ## Troubleshooting
