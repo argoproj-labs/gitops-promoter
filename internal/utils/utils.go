@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"regexp"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -254,6 +255,13 @@ func HandleReconciliationResult(
 	recorder record.EventRecorder,
 	err *error,
 ) {
+	// Recover from any panic and convert it to an error
+	if r := recover(); r != nil {
+		logger := log.FromContext(ctx)
+		logger.Error(nil, "recovered from panic in reconciliation", "panic", r, "trace", string(debug.Stack()))
+		*err = fmt.Errorf("panic in reconciliation: %v", r)
+	}
+
 	logger := log.FromContext(ctx)
 
 	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
