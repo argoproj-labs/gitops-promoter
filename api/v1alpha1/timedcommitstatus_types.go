@@ -35,7 +35,7 @@ type TimedCommitStatusSpec struct {
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 
 	// +required
-	Environment []EnvironmentTimeCommitStatus `json:"environment"`
+	Environments []EnvironmentTimeCommitStatus `json:"environments"`
 }
 
 // EnvironmentTimeCommitStatus defines the branch/environment and duration to wait before considering the commit status as failed.
@@ -57,6 +57,12 @@ type TimedCommitStatusStatus struct {
 	// For Kubernetes API conventions, see:
 	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
 
+	// Environments holds the status of each environment being tracked.
+	// +listType=map
+	// +listMapKey=branch
+	// +optional
+	Environments []EnvironmentTimedStatus `json:"environments,omitempty"`
+
 	// conditions represent the current state of the TimedCommitStatus resource.
 	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
 	//
@@ -70,6 +76,35 @@ type TimedCommitStatusStatus struct {
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// EnvironmentTimedStatus defines the observed timing status for a specific environment.
+type EnvironmentTimedStatus struct {
+	// Branch is the name of the branch/environment.
+	// +required
+	Branch string `json:"branch"`
+
+	// Sha is the commit SHA being tracked for this environment.
+	// +optional
+	Sha string `json:"sha,omitempty"`
+
+	// CommitTime is when the commit was deployed to the active environment.
+	// +optional
+	CommitTime metav1.Time `json:"commitTime,omitempty"`
+
+	// RequiredDuration is the duration that must elapse before promotion is allowed.
+	// +optional
+	RequiredDuration metav1.Duration `json:"requiredDuration,omitempty"`
+
+	// Phase represents the current phase of the timed gate.
+	// +kubebuilder:validation:Enum=pending;success;failure
+	// +optional
+	Phase string `json:"phase,omitempty"`
+
+	// TimeElapsed is the duration that has elapsed since the commit was deployed.
+	// This is calculated at reconciliation time.
+	// +optional
+	TimeElapsed metav1.Duration `json:"timeElapsed,omitempty"`
 }
 
 // +kubebuilder:object:root=true

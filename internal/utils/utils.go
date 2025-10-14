@@ -195,7 +195,7 @@ func KubeSafeLabel(name string) string {
 	return name
 }
 
-// GetEnvironmentByBranch returns the index and the Environment object for a given branch in the PromotionStrategy.
+// GetEnvironmentByBranch returns the index and the Environments object for a given branch in the PromotionStrategy.
 func GetEnvironmentByBranch(promotionStrategy promoterv1alpha1.PromotionStrategy, branch string) (int, *promoterv1alpha1.Environment) {
 	for i, environment := range promotionStrategy.Spec.Environments {
 		if environment.Branch == branch {

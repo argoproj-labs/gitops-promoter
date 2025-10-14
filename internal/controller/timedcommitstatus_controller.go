@@ -19,8 +19,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -55,30 +61,65 @@ type TimedCommitStatusReconciler struct {
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
-func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Reconciling TimedCommitStatus")
+	startTime := time.Now()
 
-	// How this should reconcile:
+	var tcs promoterv1alpha1.TimedCommitStatus
+	defer utils.HandleReconciliationResult(ctx, startTime, &tcs, r.Client, r.Recorder, &err)
+
 	// 1. Fetch the TimedCommitStatus instance
-	// 2. If not found, return (object must have been deleted)
-	// 3. If found, ensure that the referenced PromotionStrategy exists
-	// 4. If the PromotionStrategy does not exist, set status to error and return
+	err = r.Get(ctx, req.NamespacedName, &tcs, &client.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("TimedCommitStatus not found")
+			return ctrl.Result{}, nil
+		}
+		logger.Error(err, "failed to get TimedCommitStatus")
+		return ctrl.Result{}, fmt.Errorf("failed to get TimedCommitStatus %q: %w", req.Name, err)
+	}
 
-	// Logic to reconcile the TimedCommitStatus resource.
-	// The time commit status logic is as follows:
-	// The purpose of this controller is to gate promotions based on the durations defined in the TimedCommitStatusConfiguration
-	// resource for each environment/branch. The TimedCommitStatus resource references a PromotionStrategy, and the controller ensures that promotions
-	// only occur if the required time has passed since the last promotion.
-	// The controller will periodically check the status of the PromotionStrategy and update the TimedCommitStatus accordingly.
-	// The controller will act as an activeCommitStatus, meaning it will report the state of the current environment based on the time-based rules.
-	// It will manage a commitstatus with the sha of active hydrated commit.
-	// If the time-based rules do not allow for a promotion, it will set the commitstatus to pending with a message indicating when the next promotion is allowed.
-	// If there is an error in fetching the PromotionStrategy or any other issue, it will set the commitstatus to failure with an appropriate message.
-	// If the time-based rules allow for a promotion, it will set the commitstatus to success.
-	// The controller will not directly trigger promotions, but will provide the necessary status updates to inform other components of the system.
-	// This ensures that promotions are gated based on time, preventing premature or unintended deployments.
+	// Remove any existing Ready condition. We want to start fresh.
+	meta.RemoveStatusCondition(tcs.GetConditions(), string(promoterConditions.Ready))
 
-	return ctrl.Result{}, nil
+	// 2. Fetch the referenced PromotionStrategy
+	var ps promoterv1alpha1.PromotionStrategy
+	psKey := client.ObjectKey{
+		Namespace: tcs.Namespace,
+		Name:      tcs.Spec.PromotionStrategyRef.Name,
+	}
+	err = r.Get(ctx, psKey, &ps)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Error(err, "referenced PromotionStrategy not found", "promotionStrategy", tcs.Spec.PromotionStrategyRef.Name)
+			return ctrl.Result{}, fmt.Errorf("referenced PromotionStrategy %q not found: %w", tcs.Spec.PromotionStrategyRef.Name, err)
+		}
+		logger.Error(err, "failed to get PromotionStrategy")
+		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", tcs.Spec.PromotionStrategyRef.Name, err)
+	}
+
+	// 3. Process each environment defined in the TimedCommitStatus
+	err = r.processEnvironments(ctx, &tcs, &ps)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
+	}
+
+	// 4. Update status
+	err = r.Status().Update(ctx, &tcs)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to update TimedCommitStatus status: %w", err)
+	}
+
+	// Requeue periodically to check time-based conditions
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.TimedCommitStatusConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for TimedCommitStatus %q: %w", tcs.Name, err)
+	}
+
+	return ctrl.Result{
+		RequeueAfter: requeueDuration,
+	}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -103,6 +144,168 @@ func (r *TimedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr 
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
+	return nil
+}
+
+// processEnvironments processes each environment defined in the TimedCommitStatus spec,
+// creating or updating CommitStatus resources based on time-based rules.
+// The logic is: for each environment, check if the commit in the current environment's active branch
+// has been running for the required duration. If so, report success for the NEXT environment's proposed SHA.
+// This gates promotions by ensuring commits "bake" in lower environments before moving up.
+func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
+	logger := log.FromContext(ctx)
+
+	// Initialize or clear the environments status
+	tcs.Status.Environments = make([]promoterv1alpha1.EnvironmentTimedStatus, 0, len(tcs.Spec.Environments))
+
+	for _, envConfig := range tcs.Spec.Environments {
+		// Find the current environment index in the PromotionStrategy
+		var currentEnvIndex int = -1
+		var currentEnvStatus *promoterv1alpha1.EnvironmentStatus
+		for i := range ps.Status.Environments {
+			if ps.Status.Environments[i].Branch == envConfig.Branch {
+				currentEnvIndex = i
+				currentEnvStatus = &ps.Status.Environments[i]
+				break
+			}
+		}
+
+		if currentEnvStatus == nil {
+			logger.Info("Environment not found in PromotionStrategy status", "branch", envConfig.Branch)
+			continue
+		}
+
+		// Find the next (higher) environment in the promotion sequence
+		nextEnvIndex := currentEnvIndex + 1
+		if nextEnvIndex >= len(ps.Status.Environments) {
+			// This is the last environment, no next environment to gate
+			logger.V(1).Info("Skipping last environment in promotion sequence", "branch", envConfig.Branch)
+			continue
+		}
+
+		nextEnvStatus := &ps.Status.Environments[nextEnvIndex]
+
+		// Get the current environment's active hydrated SHA and commit time
+		currentActiveSha := currentEnvStatus.Active.Hydrated.Sha
+		currentActiveCommitTime := currentEnvStatus.Active.Hydrated.CommitTime.Time
+
+		// Get the next environment's proposed hydrated SHA
+		nextProposedSha := nextEnvStatus.Proposed.Hydrated.Sha
+
+		if currentActiveSha == "" {
+			logger.Info("No active hydrated commit in current environment", "branch", envConfig.Branch)
+			continue
+		}
+
+		if nextProposedSha == "" {
+			logger.V(1).Info("No proposed hydrated commit in next environment",
+				"currentBranch", envConfig.Branch,
+				"nextBranch", nextEnvStatus.Branch)
+			continue
+		}
+
+		// Calculate timing information based on current environment's active commit
+		var elapsed time.Duration
+		if !currentActiveCommitTime.IsZero() {
+			elapsed = time.Since(currentActiveCommitTime)
+		}
+
+		// Determine commit status phase based on time elapsed in current environment
+		// This status will be reported for the next environment's proposed SHA
+		phase, message := r.calculateCommitStatusPhase(currentActiveCommitTime, envConfig.Duration.Duration, elapsed, envConfig.Branch)
+
+		// Update status for this environment
+		envTimedStatus := promoterv1alpha1.EnvironmentTimedStatus{
+			Branch:           envConfig.Branch,
+			Sha:              currentActiveSha,
+			CommitTime:       metav1.NewTime(currentActiveCommitTime),
+			RequiredDuration: envConfig.Duration,
+			Phase:            string(phase),
+			TimeElapsed:      metav1.Duration{Duration: elapsed},
+		}
+		tcs.Status.Environments = append(tcs.Status.Environments, envTimedStatus)
+
+		// Create or update the CommitStatus for the NEXT environment's proposed SHA
+		// This gates the promotion to the next environment
+		// Pass the current (lower) environment branch so the commit status name reflects which env we're waiting on
+		err := r.upsertCommitStatus(ctx, tcs, ps, nextEnvStatus.Branch, nextProposedSha, phase, message, envConfig.Branch)
+		if err != nil {
+			return fmt.Errorf("failed to upsert CommitStatus for next environment %q: %w", nextEnvStatus.Branch, err)
+		}
+
+		logger.Info("Processed environment time gate",
+			"currentBranch", envConfig.Branch,
+			"currentActiveSha", currentActiveSha,
+			"nextBranch", nextEnvStatus.Branch,
+			"nextProposedSha", nextProposedSha,
+			"phase", phase,
+			"elapsed", elapsed.Round(time.Second),
+			"required", envConfig.Duration.Duration)
+	}
+
+	return nil
+}
+
+// calculateCommitStatusPhase determines the commit status phase based on time elapsed since deployment
+func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(commitTime time.Time, requiredDuration time.Duration, elapsed time.Duration, lowerEnvBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
+	if commitTime.IsZero() {
+		// If we don't have a commit time, we can't make a decision
+		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for commit time to be available in %s environment", lowerEnvBranch)
+	}
+
+	if elapsed >= requiredDuration {
+		// Sufficient time has passed
+		return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met for %s environment", lowerEnvBranch)
+	}
+
+	// Not enough time has passed yet
+	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for time-based gate on %s environment", lowerEnvBranch)
+}
+
+func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, lowerEnvBranch string) error {
+	logger := log.FromContext(ctx)
+
+	// Generate a consistent name for the CommitStatus
+	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-timed", tcs.Name, branch))
+
+	commitStatus := promoterv1alpha1.CommitStatus{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      commitStatusName,
+			Namespace: tcs.Namespace,
+		},
+	}
+
+	// Create or update the CommitStatus
+	_, err := ctrl.CreateOrUpdate(ctx, r.Client, &commitStatus, func() error {
+		// Set owner reference to the TimedCommitStatus
+		if err := ctrl.SetControllerReference(tcs, &commitStatus, r.Scheme); err != nil {
+			return fmt.Errorf("failed to set controller reference: %w", err)
+		}
+
+		// Set labels for easy identification
+		if commitStatus.Labels == nil {
+			commitStatus.Labels = make(map[string]string)
+		}
+		commitStatus.Labels["promoter.argoproj.io/timed-commit-status"] = utils.KubeSafeLabel(tcs.Name)
+		commitStatus.Labels["promoter.argoproj.io/branch"] = utils.KubeSafeLabel(branch)
+		commitStatus.Labels["promoter.argoproj.io/commit-status"] = "timed"
+
+		// Set the spec
+		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
+		// Use the lower environment branch name to show which environment we're waiting on
+		commitStatus.Spec.Name = fmt.Sprintf("timed-gate/%s", lowerEnvBranch)
+		commitStatus.Spec.Description = message
+		commitStatus.Spec.Phase = phase
+		commitStatus.Spec.Sha = sha
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to create or update CommitStatus: %w", err)
+	}
+
+	logger.V(1).Info("Upserted CommitStatus", "name", commitStatusName, "phase", phase)
 	return nil
 }
 

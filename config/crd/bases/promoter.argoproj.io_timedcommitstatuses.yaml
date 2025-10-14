@@ -39,8 +39,10 @@ spec:
           spec:
             description: spec defines the desired state of TimedCommitStatus
             properties:
-              environment:
+              environments:
                 items:
+                  description: EnvironmentTimeCommitStatus defines the branch/environment
+                    and duration to wait before considering the commit status as failed.
                   properties:
                     branch:
                       description: Branch is the name of the branch/environment you
@@ -67,7 +69,7 @@ spec:
                 - name
                 type: object
             required:
-            - environment
+            - environments
             - promotionStrategyRef
             type: object
           status:
@@ -141,6 +143,48 @@ spec:
                 type: array
                 x-kubernetes-list-map-keys:
                 - type
+                x-kubernetes-list-type: map
+              environments:
+                description: Environments holds the status of each environment being
+                  tracked.
+                items:
+                  description: EnvironmentTimedStatus defines the observed timing
+                    status for a specific environment.
+                  properties:
+                    branch:
+                      description: Branch is the name of the branch/environment.
+                      type: string
+                    commitTime:
+                      description: CommitTime is when the commit was deployed to the
+                        active environment.
+                      format: date-time
+                      type: string
+                    phase:
+                      description: Phase represents the current phase of the timed
+                        gate.
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      type: string
+                    requiredDuration:
+                      description: RequiredDuration is the duration that must elapse
+                        before promotion is allowed.
+                      type: string
+                    sha:
+                      description: Sha is the commit SHA being tracked for this environment.
+                      type: string
+                    timeElapsed:
+                      description: |-
+                        TimeElapsed is the duration that has elapsed since the commit was deployed.
+                        This is calculated at reconciliation time.
+                      type: string
+                  required:
+                  - branch
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
                 x-kubernetes-list-type: map
             type: object
         required:
