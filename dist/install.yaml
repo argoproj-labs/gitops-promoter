@@ -901,8 +901,10 @@ spec:
                           format: date-time
                           type: string
                         prMergeTime:
-                          description: PRMergeTime is the time when the pull request
-                            was merged.
+                          description: |-
+                            PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+                            it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+                            this time more accurate by fetching the actual merge time from the SCM via the webhook.
                           format: date-time
                           type: string
                         state:
@@ -1095,8 +1097,10 @@ spec:
                     format: date-time
                     type: string
                   prMergeTime:
-                    description: PRMergeTime is the time when the pull request was
-                      merged.
+                    description: |-
+                      PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+                      it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+                      this time more accurate by fetching the actual merge time from the SCM via the webhook.
                     format: date-time
                     type: string
                   state:
@@ -3398,8 +3402,10 @@ spec:
                                 format: date-time
                                 type: string
                               prMergeTime:
-                                description: PRMergeTime is the time when the pull
-                                  request was merged.
+                                description: |-
+                                  PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+                                  it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+                                  this time more accurate by fetching the actual merge time from the SCM via the webhook.
                                 format: date-time
                                 type: string
                               state:
@@ -3620,8 +3626,10 @@ spec:
                           format: date-time
                           type: string
                         prMergeTime:
-                          description: PRMergeTime is the time when the pull request
-                            was merged.
+                          description: |-
+                            PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+                            it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+                            this time more accurate by fetching the actual merge time from the SCM via the webhook.
                           format: date-time
                           type: string
                         state:
