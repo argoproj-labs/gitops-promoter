@@ -141,6 +141,12 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 
+				// Validate status fields are populated
+				g.Expect(tcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should be populated")
+				g.Expect(tcs.Status.Environments[0].CommitTime.Time).ToNot(BeZero(), "CommitTime should be populated")
+				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(1*time.Hour), "RequiredDuration should match spec")
+				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically("<", 1*time.Hour), "TimeElapsed should be < required duration")
+
 				// Verify CommitStatus was created for staging with pending phase
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
 				var cs promoterv1alpha1.CommitStatus
@@ -229,7 +235,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 		})
 
 		It("should report success status when time requirement is met and no pending promotion", func() {
-			By("Waiting for TimedCommitStatus to process")
+			By("Waiting for initial TimedCommitStatus to reach success")
 			Eventually(func(g Gomega) {
 				var tcs promoterv1alpha1.TimedCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -239,7 +245,14 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(tcs.Status.Environments).To(HaveLen(1))
+				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+				// Validate status fields are populated
+				g.Expect(tcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should be populated")
+				g.Expect(tcs.Status.Environments[0].CommitTime.Time).ToNot(BeZero(), "CommitTime should be populated")
+				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(1*time.Second), "RequiredDuration should match spec")
+				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically(">=", 1*time.Second), "TimeElapsed should be >= required duration")
 
 				// Verify CommitStatus was created for staging with success phase
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
@@ -252,6 +265,37 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(cs.Spec.Description).To(ContainSubstring("Time-based gate requirement met"))
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying status remains successful for 5 seconds")
+			Consistently(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &tcs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(tcs.Status.Environments).To(HaveLen(1))
+				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
+				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+				// Validate status fields remain consistent
+				g.Expect(tcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should remain populated")
+				g.Expect(tcs.Status.Environments[0].CommitTime.Time).ToNot(BeZero(), "CommitTime should remain populated")
+				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(1*time.Second), "RequiredDuration should remain consistent")
+				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically(">=", 4*time.Second), "TimeElapsed should continue to grow")
+
+				// Verify CommitStatus remains in success phase
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
+				var cs promoterv1alpha1.CommitStatus
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      commitStatusName,
+					Namespace: "default",
+				}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				g.Expect(cs.Spec.Description).To(ContainSubstring("Time-based gate requirement met"))
+			}, 5*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
 
@@ -337,6 +381,14 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				}, &tcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(tcs.Status.Environments).To(HaveLen(1))
+				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
+				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
+
+				// Validate status fields are populated
+				g.Expect(tcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should be populated")
+				g.Expect(tcs.Status.Environments[0].CommitTime.Time).ToNot(BeZero(), "CommitTime should be populated")
+				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(24*time.Hour), "RequiredDuration should match spec")
+				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically("<", 24*time.Hour), "TimeElapsed should be < required duration")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying status remains pending for 10 seconds")
@@ -349,7 +401,14 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(tcs.Status.Environments).To(HaveLen(1))
+				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
+
+				// Validate status fields remain consistent
+				g.Expect(tcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should remain populated")
+				g.Expect(tcs.Status.Environments[0].CommitTime.Time).ToNot(BeZero(), "CommitTime should remain populated")
+				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(24*time.Hour), "RequiredDuration should remain consistent")
+				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically(">", 9*time.Second), "TimeElapsed should still be < required duration")
 
 				// Verify CommitStatus was created for staging with pending phase
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
