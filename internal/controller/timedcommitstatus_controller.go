@@ -160,7 +160,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 	for _, envConfig := range tcs.Spec.Environments {
 		// Find the current environment index in the PromotionStrategy
-		var currentEnvIndex int = -1
+		currentEnvIndex := -1
 		var currentEnvStatus *promoterv1alpha1.EnvironmentStatus
 		for i := range ps.Status.Environments {
 			if ps.Status.Environments[i].Branch == envConfig.Branch {
@@ -302,14 +302,13 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 		// Set the spec
 		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
 		// Use the lower environment branch name to show which environment we're waiting on
-		commitStatus.Spec.Name = fmt.Sprintf("timed-gate/%s", lowerEnvBranch)
+		commitStatus.Spec.Name = "timed-gate/" + lowerEnvBranch
 		commitStatus.Spec.Description = message
 		commitStatus.Spec.Phase = phase
 		commitStatus.Spec.Sha = sha
 
 		return nil
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to create or update CommitStatus: %w", err)
 	}
