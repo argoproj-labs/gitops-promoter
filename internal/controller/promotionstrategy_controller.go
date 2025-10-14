@@ -291,6 +291,15 @@ func (r *PromotionStrategyReconciler) trackLeadTimeStart(ctx context.Context, ps
 		if envStatus.DoraMetrics.LeadTimeStartSha != "" &&
 			envStatus.DoraMetrics.LeadTimeStartSha != envStatus.Active.Dry.Sha {
 			// Log and emit event for interrupted release
+			previousShortSha := envStatus.DoraMetrics.LeadTimeStartSha
+			if len(previousShortSha) > 7 {
+				previousShortSha = previousShortSha[:7]
+			}
+			newShortSha := envStatus.Proposed.Dry.Sha
+			if len(newShortSha) > 7 {
+				newShortSha = newShortSha[:7]
+			}
+
 			logger.Info("Incomplete release interrupted by new commit",
 				"promotionStrategy", ps.Name,
 				"environment", envStatus.Branch,
@@ -300,8 +309,8 @@ func (r *PromotionStrategyReconciler) trackLeadTimeStart(ctx context.Context, ps
 			r.Recorder.Event(ps, "Normal", "IncompleteReleaseInterrupted",
 				fmt.Sprintf("Environment %s: Incomplete release %s was interrupted by new commit %s",
 					envStatus.Branch,
-					envStatus.DoraMetrics.LeadTimeStartSha[:7],
-					envStatus.Proposed.Dry.Sha[:7]))
+					previousShortSha,
+					newShortSha))
 		}
 
 		// Start tracking the new commit
@@ -331,6 +340,12 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 
 			// Record deployment
 			metrics.RecordDeployment(ps.Name, envStatus.Branch, isTerminal)
+			
+			activeShortSha := activeSha
+			if len(activeShortSha) > 7 {
+				activeShortSha = activeShortSha[:7]
+			}
+			
 			logger.Info("Recorded deployment",
 				"promotionStrategy", ps.Name,
 				"environment", envStatus.Branch,
@@ -339,7 +354,7 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 			)
 			r.Recorder.Event(ps, "Normal", "DeploymentRecorded",
 				fmt.Sprintf("Deployment to %s recorded for commit %s",
-					envStatus.Branch, activeSha[:7]))
+					envStatus.Branch, activeShortSha))
 		}
 	}
 
@@ -353,6 +368,11 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 			leadTime := time.Since(envStatus.DoraMetrics.LeadTimeStartCommitTime.Time)
 			metrics.RecordLeadTime(ps.Name, envStatus.Branch, isTerminal, leadTime.Seconds())
 
+			activeShortSha := envStatus.Active.Dry.Sha
+			if len(activeShortSha) > 7 {
+				activeShortSha = activeShortSha[:7]
+			}
+
 			logger.Info("Recorded lead time",
 				"promotionStrategy", ps.Name,
 				"environment", envStatus.Branch,
@@ -362,7 +382,7 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 			)
 			r.Recorder.Event(ps, "Normal", "LeadTimeRecorded",
 				fmt.Sprintf("Lead time for %s in %s: %.2f seconds",
-					envStatus.Active.Dry.Sha[:7],
+					activeShortSha,
 					envStatus.Branch,
 					leadTime.Seconds()))
 
@@ -384,6 +404,11 @@ func (r *PromotionStrategyReconciler) trackAndRecordFailures(ctx context.Context
 			metrics.RecordChangeFailure(ps.Name, envStatus.Branch, isTerminal)
 			envStatus.DoraMetrics.LastFailedCommitSha = activeSha
 
+			activeShortSha := activeSha
+			if len(activeShortSha) > 7 {
+				activeShortSha = activeShortSha[:7]
+			}
+
 			logger.Info("Recorded change failure",
 				"promotionStrategy", ps.Name,
 				"environment", envStatus.Branch,
@@ -392,7 +417,7 @@ func (r *PromotionStrategyReconciler) trackAndRecordFailures(ctx context.Context
 			)
 			r.Recorder.Event(ps, "Warning", "ChangeFailureRecorded",
 				fmt.Sprintf("Change failure in %s for commit %s",
-					envStatus.Branch, activeSha[:7]))
+					envStatus.Branch, activeShortSha))
 
 			// Start tracking MTTR if not already tracking
 			if envStatus.DoraMetrics.FailureStartTime.IsZero() {
