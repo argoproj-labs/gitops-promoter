@@ -2,6 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - namespace.yaml
-  - deployment.yaml
-  - webhook_service.yaml
+- namespace.yaml
+- deployment.yaml
+- webhook_service.yaml
+images:
+- name: controller
+  newName: quay.io/argoprojlabs/gitops-promoter
+  newTag: 0.0.0-test-e2e

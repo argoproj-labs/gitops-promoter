@@ -5158,3 +5158,16 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
+  timedCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      maxOf:
+      - bucket:
+          bucket: 100
+          qps: 10
+      - fastSlow:
+          fastDelay: 1s
+          maxFastAttempts: 3
+          slowDelay: 5m
+      rateLimiter: null
+      requeueDuration: 5m
