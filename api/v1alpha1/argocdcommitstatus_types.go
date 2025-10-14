@@ -40,18 +40,18 @@ type ArgoCDCommitStatusSpec struct {
 
 // URLConfig is a template that can be rendered using the Go template engine.
 type URLConfig struct {
-	// Template is a go text template and receives .Environments and .ArgoCDCommitStatus variables. A function called urlQueryEscape
+	// Template is a go text template and receives .Environment and .ArgoCDCommitStatus variables. A function called urlQueryEscape
 	// is available to escape url query parameters. The template can be configured with options to control the behavior
 	// during execution if a variable is not present.
 	//
 	// Example:
 	//
 	//   {{- $baseURL := "https://dev.argocd.local" -}}
-	//   {{- if eq .Environments "environment/development" -}}
+	//   {{- if eq .Environment "environment/development" -}}
 	//   {{- $baseURL = "https://dev.argocd.local" -}}
-	//   {{- else if eq .Environments "environment/staging" -}}
+	//   {{- else if eq .Environment "environment/staging" -}}
 	//   {{- $baseURL = "https://staging.argocd.local" -}}
-	//   {{- else if eq .Environments "environment/production" -}}
+	//   {{- else if eq .Environment "environment/production" -}}
 	//   {{- $baseURL = "https://prod.argocd.local" -}}
 	//   {{- end -}}
 	//   {{- $labels := "" -}}
