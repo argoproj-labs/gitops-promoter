@@ -371,7 +371,7 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 			leadTime := time.Since(envStatus.DoraMetrics.LeadTimeStartCommitTime.Time)
 			leadTimeSeconds := leadTime.Seconds()
 			metrics.RecordLeadTime(ps.Name, ps.Namespace, envStatus.Branch, isTerminal, leadTimeSeconds)
-			envStatus.DoraMetrics.LastLeadTimeSeconds = leadTimeSeconds
+			envStatus.DoraMetrics.LastLeadTimeSeconds = &metav1.Duration{Duration: leadTime}
 
 			activeShortSha := envStatus.Active.Dry.Sha
 			if len(activeShortSha) > 7 {
@@ -446,7 +446,7 @@ func (r *PromotionStrategyReconciler) trackAndRecordMTTR(ctx context.Context, ps
 		mttr := time.Since(envStatus.DoraMetrics.FailureStartTime.Time)
 		mttrSeconds := mttr.Seconds()
 		metrics.RecordMeanTimeToRestore(ps.Name, ps.Namespace, envStatus.Branch, isTerminal, mttrSeconds)
-		envStatus.DoraMetrics.LastMTTRSeconds = mttrSeconds
+		envStatus.DoraMetrics.LastMTTRSeconds = &metav1.Duration{Duration: mttr}
 
 		logger.Info("Recorded MTTR",
 			"promotionStrategy", ps.Name,

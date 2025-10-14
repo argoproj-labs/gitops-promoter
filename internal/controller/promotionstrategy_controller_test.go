@@ -25,11 +25,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"k8s.io/apimachinery/pkg/api/errors"
 
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -2696,8 +2693,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 
 				// Get the initial state of deployment metrics before creating PromotionStrategy
-				initialDeploymentCount := getMetricValue("dora_deployments_total", promotionStrategy.Name, promotionStrategy.Namespace, "development", "false")
-
 				By("Creating the PromotionStrategy")
 				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
@@ -2732,8 +2727,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				By("Verifying deployment metrics were recorded for initial state")
 				Eventually(func(g Gomega) {
 					// Check that deployment was recorded for development environment
-					newDeploymentCount := getMetricValue("dora_deployments_total", promotionStrategy.Name, promotionStrategy.Namespace, "development", "false")
-					g.Expect(newDeploymentCount).To(BeNumerically(">", initialDeploymentCount))
+					err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+					g.Expect(err).To(Succeed())
+					// Check that deployment was recorded for development environment
+					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Making a change to trigger promotion through environments")
@@ -2767,22 +2764,23 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("Verifying deployment metrics for all environments")
 				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+					g.Expect(err).To(Succeed())
+
 					// Each environment should have at least one deployment recorded
-					devDeployments := getMetricValue("dora_deployments_total", promotionStrategy.Name, promotionStrategy.Namespace, "development", "false")
-					g.Expect(devDeployments).To(BeNumerically(">=", 1))
-
-					stagingDeployments := getMetricValue("dora_deployments_total", promotionStrategy.Name, promotionStrategy.Namespace, "staging", "false")
-					g.Expect(stagingDeployments).To(BeNumerically(">=", 1))
-
-					prodDeployments := getMetricValue("dora_deployments_total", promotionStrategy.Name, promotionStrategy.Namespace, "production", "true")
-					g.Expect(prodDeployments).To(BeNumerically(">=", 1))
+					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
+					g.Expect(promotionStrategy.Status.Environments[1].DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
+					g.Expect(promotionStrategy.Status.Environments[2].DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying lead time metrics are recorded")
 				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+					g.Expect(err).To(Succeed())
+
 					// Lead time should be recorded for at least the terminal environment
-					leadTime := getMetricValue("dora_lead_time_seconds", promotionStrategy.Name, promotionStrategy.Namespace, "production", "true")
-					g.Expect(leadTime).To(BeNumerically(">", 0))
+					g.Expect(promotionStrategy.Status.Environments[2].DoraMetrics.LastLeadTimeSeconds).ToNot(BeNil())
+					g.Expect(promotionStrategy.Status.Environments[2].DoraMetrics.LastLeadTimeSeconds.Duration).To(BeNumerically(">", 0))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying DORA metrics state tracking")
@@ -2850,7 +2848,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				activeSha := promotionStrategy.Status.Environments[0].Active.Dry.Sha
-				initialFailureCount := getMetricValue("dora_change_failure_rate_total", promotionStrategy.Name, promotionStrategy.Namespace, "development", "false")
 
 				By("Simulating a commit status failure")
 				devCS.Spec.Sha = promotionStrategy.Status.Environments[0].Active.Hydrated.Sha
@@ -2860,8 +2857,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("Verifying change failure rate metric is incremented")
 				Eventually(func(g Gomega) {
-					newFailureCount := getMetricValue("dora_change_failure_rate_total", promotionStrategy.Name, promotionStrategy.Namespace, "development", "false")
-					g.Expect(newFailureCount).To(BeNumerically(">", initialFailureCount))
+					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.FailureCount).To(BeNumerically(">=", 1))
 
 					// Verify the state tracking
 					err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
@@ -2877,8 +2873,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("Verifying MTTR metric is recorded")
 				Eventually(func(g Gomega) {
-					mttr := getMetricValue("dora_mean_time_to_restore_seconds", promotionStrategy.Name, promotionStrategy.Namespace, "development", "false")
-					g.Expect(mttr).To(BeNumerically(">", 0))
+					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.LastMTTRSeconds).ToNot(BeNil())
+					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.LastMTTRSeconds.Duration).To(BeNumerically(">", 0))
 
 					// Verify the failure tracking is cleared
 					err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
@@ -2891,31 +2887,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		})
 	})
 })
-
-// getMetricValue retrieves the current value of a DORA metric for testing
-func getMetricValue(metricName, promotionStrategy, namespace, environment, isTerminal string) float64 {
-	labels := prometheus.Labels{
-		"promotion_strategy": promotionStrategy,
-		"namespace":          namespace,
-		"environment":        environment,
-		"is_terminal":        isTerminal,
-	}
-
-	metric := metrics.GetDORAMetricForTesting(metricName)
-	if metric == nil {
-		return 0
-	}
-
-	// Use prometheus testutil to get the metric value
-	if counterVec, ok := metric.(*prometheus.CounterVec); ok {
-		return testutil.ToFloat64(counterVec.With(labels))
-	}
-	if gaugeVec, ok := metric.(*prometheus.GaugeVec); ok {
-		return testutil.ToFloat64(gaugeVec.With(labels))
-	}
-
-	return 0
-}
 
 func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) { //nolint:unparam
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))

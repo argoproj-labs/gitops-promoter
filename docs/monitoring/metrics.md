@@ -114,7 +114,7 @@ Labels:
 * `environment`: The name of the environment (branch name).
 * `is_terminal`: Whether this is the terminal (last) environment in the promotion sequence (true, false).
 
-### dora_lead_time_seconds
+### lead_time_seconds
 
 A gauge tracking the lead time for changes in seconds. This measures the time from when a DRY commit is created to when it is successfully deployed in the environment (active commit status becomes successful).
 
@@ -138,7 +138,7 @@ Labels:
 * `environment`: The name of the environment (branch name).
 * `is_terminal`: Whether this is the terminal (last) environment in the promotion sequence (true, false).
 
-### dora_mean_time_to_restore_seconds
+### mean_time_to_restore_seconds
 
 A gauge tracking the mean time to restore in seconds. This measures the time from when an environment enters a failed state to when it returns to a healthy state.
 

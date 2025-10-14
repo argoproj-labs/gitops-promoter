@@ -34,7 +34,7 @@ These fields complement the Prometheus metrics and simplify testing and debuggin
 
 ## Metrics Produced
 
-### dora_deployments_total
+### deployments_total
 
 **Type**: Counter  
 **DORA Metric**: Deployment Frequency
@@ -45,13 +45,13 @@ This counter increments every time a change is merged to the active branch of an
 
 ```promql
 # Deployments per hour to production (terminal environment)
-rate(dora_deployments_total{is_terminal="true"}[1h])
+rate(deployments_total{is_terminal="true"}[1h])
 
 # Total deployments to a specific environment
-sum(dora_deployments_total{environment="production"})
+sum(deployments_total{environment="production"})
 
 # Deployment frequency by promotion strategy
-sum by (promotion_strategy) (rate(dora_deployments_total[24h]))
+sum by (promotion_strategy) (rate(deployments_total[24h]))
 ```
 
 ### dora_lead_time_seconds
@@ -94,7 +94,7 @@ This counter increments once per commit SHA when the active commit status enters
 (
   rate(dora_change_failure_rate_total{is_terminal="true"}[24h]) 
   / 
-  rate(dora_deployments_total{is_terminal="true"}[24h])
+  rate(deployments_total{is_terminal="true"}[24h])
 ) * 100
 
 # Total failures by environment
@@ -104,7 +104,7 @@ sum by (environment) (dora_change_failure_rate_total)
 rate(dora_change_failure_rate_total{environment="production"}[7d])
 ```
 
-### dora_mean_time_to_restore_seconds
+### mean_time_to_restore_seconds
 
 **Type**: Gauge  
 **DORA Metric**: Mean Time to Restore
@@ -119,13 +119,13 @@ This gauge tracks the time (in seconds) from when an environment enters a failed
 
 ```promql
 # MTTR in hours for production
-dora_mean_time_to_restore_seconds{is_terminal="true"} / 3600
+mean_time_to_restore_seconds{is_terminal="true"} / 3600
 
 # Average MTTR across all environments
-avg(dora_mean_time_to_restore_seconds)
+avg(mean_time_to_restore_seconds)
 
 # MTTR by promotion strategy
-dora_mean_time_to_restore_seconds
+mean_time_to_restore_seconds
 ```
 
 **Note**: Like lead time, this is a gauge representing the most recent recovery time. Store historical values to track trends.
@@ -136,10 +136,10 @@ The `is_terminal` label identifies the last environment in your promotion sequen
 
 ```promql
 # All metrics for terminal (production) environment
-dora_deployments_total{is_terminal="true"}
+deployments_total{is_terminal="true"}
 dora_lead_time_seconds{is_terminal="true"}
 dora_change_failure_rate_total{is_terminal="true"}
-dora_mean_time_to_restore_seconds{is_terminal="true"}
+mean_time_to_restore_seconds{is_terminal="true"}
 ```
 
 ## Events and Logs
@@ -187,7 +187,7 @@ Here's a complete set of PromQL queries for a DORA metrics dashboard:
 
 ```promql
 # Deployment Frequency (deployments per day, last 7 days)
-sum(increase(dora_deployments_total{is_terminal="true"}[1d])) / 7
+sum(increase(deployments_total{is_terminal="true"}[1d])) / 7
 
 # Lead Time for Changes (in hours)
 dora_lead_time_seconds{is_terminal="true"} / 3600
@@ -196,11 +196,11 @@ dora_lead_time_seconds{is_terminal="true"} / 3600
 (
   sum(increase(dora_change_failure_rate_total{is_terminal="true"}[7d]))
   /
-  sum(increase(dora_deployments_total{is_terminal="true"}[7d]))
+  sum(increase(deployments_total{is_terminal="true"}[7d]))
 ) * 100
 
 # Mean Time to Restore (in hours)
-dora_mean_time_to_restore_seconds{is_terminal="true"} / 3600
+mean_time_to_restore_seconds{is_terminal="true"} / 3600
 ```
 
 ## Best Practices

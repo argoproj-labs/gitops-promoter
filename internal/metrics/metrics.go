@@ -172,7 +172,7 @@ var (
 	// deploymentsToProductionTotal tracks the number of deployments to production (or any environment)
 	deploymentsToProductionTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "dora_deployments_total",
+			Name: "deployments_total",
 			Help: "Total number of deployments to an environment. Increments when a change is merged to the active branch.",
 		},
 		doraMetricsLabels,
@@ -181,7 +181,7 @@ var (
 	// leadTimeForChangesSeconds tracks the lead time from commit to successful deployment
 	leadTimeForChangesSeconds = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "dora_lead_time_seconds",
+			Name: "lead_time_seconds",
 			Help: "Lead time for changes in seconds. Time from DRY commit to successful deployment in the environment.",
 		},
 		doraMetricsLabels,
@@ -190,7 +190,7 @@ var (
 	// changeFailureRateTotal tracks the number of failed deployments
 	changeFailureRateTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "dora_change_failure_rate_total",
+			Name: "change_failure_rate_total",
 			Help: "Total number of failed deployments. Increments once per commit SHA when it enters a failed state.",
 		},
 		doraMetricsLabels,
@@ -199,7 +199,7 @@ var (
 	// meanTimeToRestoreSeconds tracks the time to restore service after a failure
 	meanTimeToRestoreSeconds = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "dora_mean_time_to_restore_seconds",
+			Name: "mean_time_to_restore_seconds",
 			Help: "Mean time to restore in seconds. Time from failure to recovery of the environment.",
 		},
 		doraMetricsLabels,
