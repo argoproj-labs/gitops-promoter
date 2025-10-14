@@ -2730,7 +2730,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
 					g.Expect(err).To(Succeed())
 					// Check that deployment was recorded for development environment
-					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
+					g.Expect(ctpDev.Status.DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Making a change to trigger promotion through environments")
@@ -2768,9 +2768,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(Succeed())
 
 					// Each environment should have at least one deployment recorded
-					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
-					g.Expect(promotionStrategy.Status.Environments[1].DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
-					g.Expect(promotionStrategy.Status.Environments[2].DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
+					g.Expect(ctpDev.Status.DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
+					g.Expect(ctpStaging.Status.DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
+					g.Expect(ctpProd.Status.DoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
+					// Also verify the PromotionStrategy aggregates terminal metrics
+					g.Expect(promotionStrategy.Status.TerminalEnvironmentDoraMetrics).ToNot(BeNil())
+					g.Expect(promotionStrategy.Status.TerminalEnvironmentDoraMetrics.DeploymentCount).To(BeNumerically(">=", 1))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying lead time metrics are recorded")
@@ -2779,8 +2782,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(Succeed())
 
 					// Lead time should be recorded for at least the terminal environment
-					g.Expect(promotionStrategy.Status.Environments[2].DoraMetrics.LastLeadTimeSeconds).ToNot(BeNil())
-					g.Expect(promotionStrategy.Status.Environments[2].DoraMetrics.LastLeadTimeSeconds.Duration).To(BeNumerically(">", 0))
+					g.Expect(ctpProd.Status.DoraMetrics.LastLeadTimeSeconds).ToNot(BeNil())
+					g.Expect(ctpProd.Status.DoraMetrics.LastLeadTimeSeconds.Duration).To(BeNumerically(">", 0))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying DORA metrics state tracking")
@@ -2789,12 +2792,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(err).To(Succeed())
 
 					// Check that DORA metrics state is being tracked
-					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.LastDeployedSha).To(Equal(finalDrySha))
-					g.Expect(promotionStrategy.Status.Environments[1].DoraMetrics.LastDeployedSha).To(Equal(finalDrySha))
-					g.Expect(promotionStrategy.Status.Environments[2].DoraMetrics.LastDeployedSha).To(Equal(finalDrySha))
+					g.Expect(ctpDev.Status.DoraMetrics.LastDeployedSha).To(Equal(finalDrySha))
+					g.Expect(ctpStaging.Status.DoraMetrics.LastDeployedSha).To(Equal(finalDrySha))
+					g.Expect(ctpProd.Status.DoraMetrics.LastDeployedSha).To(Equal(finalDrySha))
 
 					// Lead time tracking should be set for the commit
-					g.Expect(promotionStrategy.Status.Environments[2].DoraMetrics.LeadTimeStartSha).To(Equal(finalDrySha))
+					g.Expect(ctpProd.Status.DoraMetrics.LeadTimeStartSha).To(Equal(finalDrySha))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
@@ -2857,13 +2860,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("Verifying change failure rate metric is incremented")
 				Eventually(func(g Gomega) {
-					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.FailureCount).To(BeNumerically(">=", 1))
+					g.Expect(ctpDev.Status.DoraMetrics.FailureCount).To(BeNumerically(">=", 1))
 
 					// Verify the state tracking
 					err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
 					g.Expect(err).To(Succeed())
-					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.LastFailedCommitSha).To(Equal(activeSha))
-					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.FailureStartTime.IsZero()).To(BeFalse())
+					g.Expect(ctpDev.Status.DoraMetrics.LastFailedCommitSha).To(Equal(activeSha))
+					g.Expect(ctpDev.Status.DoraMetrics.FailureStartTime.IsZero()).To(BeFalse())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Simulating recovery from failure")
@@ -2873,13 +2876,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				By("Verifying MTTR metric is recorded")
 				Eventually(func(g Gomega) {
-					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.LastMTTRSeconds).ToNot(BeNil())
-					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.LastMTTRSeconds.Duration).To(BeNumerically(">", 0))
+					g.Expect(ctpDev.Status.DoraMetrics.LastMTTRSeconds).ToNot(BeNil())
+					g.Expect(ctpDev.Status.DoraMetrics.LastMTTRSeconds.Duration).To(BeNumerically(">", 0))
 
 					// Verify the failure tracking is cleared
 					err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
 					g.Expect(err).To(Succeed())
-					g.Expect(promotionStrategy.Status.Environments[0].DoraMetrics.FailureStartTime.IsZero()).To(BeTrue())
+					g.Expect(ctpDev.Status.DoraMetrics.FailureStartTime.IsZero()).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())

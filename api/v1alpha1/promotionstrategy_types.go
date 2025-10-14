@@ -123,6 +123,11 @@ type PromotionStrategyStatus struct {
 	// +listMapKey=branch
 	Environments []EnvironmentStatus `json:"environments"`
 
+	// TerminalEnvironmentDoraMetrics contains DORA metrics for the terminal (production) environment.
+	// This aggregates metrics from the terminal environment's ChangeTransferPolicy for convenience.
+	// +kubebuilder:validation:Optional
+	TerminalEnvironmentDoraMetrics *DoraMetricsState `json:"terminalEnvironmentDoraMetrics,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
@@ -158,55 +163,6 @@ type EnvironmentStatus struct {
 	// History is constructed on a best-effort basis and should be used for informational purposes only.
 	// History is in reverse chronological order (newest is first).
 	History []History `json:"history,omitempty"`
-
-	// DoraMetrics tracks the DORA metrics state for this environment.
-	// +kubebuilder:validation:Optional
-	DoraMetrics DoraMetricsState `json:"doraMetrics,omitempty"`
-}
-
-// DoraMetricsState tracks the state needed to calculate DORA metrics for an environment.
-type DoraMetricsState struct {
-	// LeadTimeStartCommitTime is the commit time of the dry commit currently being tracked for lead time.
-	// This is set when a new dry commit starts being promoted and is only cleared when that commit
-	// (or a later commit) has been promoted to and become healthy in the terminal environment.
-	// Even if a new commit arrives mid-deployment, lead time continues to be tracked from the original commit time.
-	LeadTimeStartCommitTime metav1.Time `json:"leadTimeStartCommitTime,omitempty"`
-
-	// LeadTimeStartSha is the SHA of the dry commit currently being tracked for lead time.
-	LeadTimeStartSha string `json:"leadTimeStartSha,omitempty"`
-
-	// LastDeployedSha tracks the last commit SHA that was deployed to this environment
-	// to ensure we only increment the deployment counter once per commit.
-	LastDeployedSha string `json:"lastDeployedSha,omitempty"`
-
-	// LastFailedCommitSha tracks the last commit SHA that entered a failed state to ensure we only
-	// increment the failure counter once per commit.
-	LastFailedCommitSha string `json:"lastFailedCommitSha,omitempty"`
-
-	// FailureStartTime tracks when the environment entered a failed state for MTTR calculation.
-	FailureStartTime metav1.Time `json:"failureStartTime,omitempty"`
-
-	// DeploymentCount is the total number of deployments to this environment.
-	// This is incremented each time a commit is promoted to the environment.
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:Minimum=0
-	DeploymentCount int64 `json:"deploymentCount,omitempty"`
-
-	// LastLeadTimeSeconds is the most recent lead time measurement in seconds.
-	// This represents the time from DRY commit creation to successful deployment.
-	// +kubebuilder:validation:Optional
-	LastLeadTimeSeconds *metav1.Duration `json:"lastLeadTimeSeconds,omitempty"`
-
-	// FailureCount is the total number of failures in this environment.
-	// This is incremented once per commit SHA when it enters a failed state.
-	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:Minimum=0
-	FailureCount int64 `json:"failureCount,omitempty"`
-
-	// LastMTTRSeconds is the most recent mean time to restore measurement in seconds.
-	// This represents the time from failure to recovery.
-	// +kubebuilder:validation:Optional
-	LastMTTRSeconds *metav1.Duration `json:"lastMTTRSeconds,omitempty"`
 }
 
 // HealthyDryShas is a list of dry commits that were observed to be healthy in the environment.

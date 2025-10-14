@@ -424,62 +424,6 @@ spec:
                       description: Branch is the name of the active branch for the
                         environment.
                       type: string
-                    doraMetrics:
-                      description: DoraMetrics tracks the DORA metrics state for this
-                        environment.
-                      properties:
-                        deploymentCount:
-                          description: |-
-                            DeploymentCount is the total number of deployments to this environment.
-                            This is incremented each time a commit is promoted to the environment.
-                          format: int64
-                          minimum: 0
-                          type: integer
-                        failureCount:
-                          description: |-
-                            FailureCount is the total number of failures in this environment.
-                            This is incremented once per commit SHA when it enters a failed state.
-                          format: int64
-                          minimum: 0
-                          type: integer
-                        failureStartTime:
-                          description: FailureStartTime tracks when the environment
-                            entered a failed state for MTTR calculation.
-                          format: date-time
-                          type: string
-                        lastDeployedSha:
-                          description: |-
-                            LastDeployedSha tracks the last commit SHA that was deployed to this environment
-                            to ensure we only increment the deployment counter once per commit.
-                          type: string
-                        lastFailedCommitSha:
-                          description: |-
-                            LastFailedCommitSha tracks the last commit SHA that entered a failed state to ensure we only
-                            increment the failure counter once per commit.
-                          type: string
-                        lastLeadTimeSeconds:
-                          description: |-
-                            LastLeadTimeSeconds is the most recent lead time measurement in seconds.
-                            This represents the time from DRY commit creation to successful deployment.
-                          type: string
-                        lastMTTRSeconds:
-                          description: |-
-                            LastMTTRSeconds is the most recent mean time to restore measurement in seconds.
-                            This represents the time from failure to recovery.
-                          type: string
-                        leadTimeStartCommitTime:
-                          description: |-
-                            LeadTimeStartCommitTime is the commit time of the dry commit currently being tracked for lead time.
-                            This is set when a new dry commit starts being promoted and is only cleared when that commit
-                            (or a later commit) has been promoted to and become healthy in the terminal environment.
-                            Even if a new commit arrives mid-deployment, lead time continues to be tracked from the original commit time.
-                          format: date-time
-                          type: string
-                        leadTimeStartSha:
-                          description: LeadTimeStartSha is the SHA of the dry commit
-                            currently being tracked for lead time.
-                          type: string
-                      type: object
                     history:
                       description: |-
                         History defines the history of promoted changes done by the PromotionStrategy for each environment.
@@ -1034,6 +978,63 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              terminalEnvironmentDoraMetrics:
+                description: |-
+                  TerminalEnvironmentDoraMetrics contains DORA metrics for the terminal (production) environment.
+                  This aggregates metrics from the terminal environment's ChangeTransferPolicy for convenience.
+                properties:
+                  deploymentCount:
+                    description: |-
+                      DeploymentCount is the total number of deployments to this environment.
+                      This is incremented each time a commit is promoted to the environment.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  failureCount:
+                    description: |-
+                      FailureCount is the total number of failures in this environment.
+                      This is incremented once per commit SHA when it enters a failed state.
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  failureStartTime:
+                    description: FailureStartTime tracks when the environment entered
+                      a failed state for MTTR calculation.
+                    format: date-time
+                    type: string
+                  lastDeployedSha:
+                    description: |-
+                      LastDeployedSha tracks the last commit SHA that was deployed to this environment
+                      to ensure we only increment the deployment counter once per commit.
+                    type: string
+                  lastFailedCommitSha:
+                    description: |-
+                      LastFailedCommitSha tracks the last commit SHA that entered a failed state to ensure we only
+                      increment the failure counter once per commit.
+                    type: string
+                  lastLeadTimeSeconds:
+                    description: |-
+                      LastLeadTimeSeconds is the most recent lead time measurement in seconds.
+                      This represents the time from DRY commit creation to successful deployment.
+                    type: string
+                  lastMTTRSeconds:
+                    description: |-
+                      LastMTTRSeconds is the most recent mean time to restore measurement in seconds.
+                      This represents the time from failure to recovery.
+                    type: string
+                  leadTimeStartCommitTime:
+                    description: |-
+                      LeadTimeStartCommitTime is the commit time of the dry commit currently being tracked for lead time.
+                      This is set when a new dry commit starts being promoted and is only cleared when that commit
+                      (or a later commit) has been promoted to and become healthy in the terminal environment.
+                      Even if a new commit arrives mid-deployment, lead time continues to be tracked from the original commit time.
+                    format: date-time
+                    type: string
+                  leadTimeStartSha:
+                    description: LeadTimeStartSha is the SHA of the dry commit currently
+                      being tracked for lead time.
+                    type: string
+                type: object
             required:
             - environments
             type: object

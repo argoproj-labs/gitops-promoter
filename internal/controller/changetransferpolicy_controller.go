@@ -153,6 +153,9 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	// calculateHistory is done at a best effort so we do not return any errors here, we just log them instead.
 	r.calculateHistory(ctx, &ctp, gitOperations)
 
+	// updateDoraMetrics tracks and records DORA metrics for this environment
+	r.updateDoraMetrics(ctx, &ctp)
+
 	err = r.Status().Update(ctx, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)

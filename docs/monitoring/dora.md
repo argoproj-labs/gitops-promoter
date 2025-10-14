@@ -17,18 +17,38 @@ These metrics are available in two forms:
 
 ## Status Fields
 
-In addition to Prometheus metrics, DORA metrics are stored in the `DoraMetrics` field of each environment's status. This makes the data readily available via `kubectl get` or any Kubernetes UI.
+DORA metrics are stored in two places:
 
-Example:
+1. **ChangeTransferPolicy Status**: Each CTP tracks DORA metrics for its specific environment in `status.doraMetrics`
+2. **PromotionStrategy Status**: Aggregates terminal environment metrics in `status.terminalEnvironmentDoraMetrics`
+
+### Accessing CTP Metrics
+
+Each ChangeTransferPolicy tracks metrics for its environment:
+
 ```bash
-kubectl get promotionstrategy my-app -o jsonpath='{.status.environments[*].doraMetrics}'
+# Get metrics for a specific environment's CTP
+kubectl get changetransferpolicy my-app-dev -o jsonpath='{.status.doraMetrics}'
+
+# Get metrics for production environment  
+kubectl get changetransferpolicy my-app-production -o jsonpath='{.status.doraMetrics}'
 ```
 
-Each environment tracks:
+### Accessing Terminal Environment Metrics via PromotionStrategy
+
+For convenience, the PromotionStrategy aggregates metrics from the terminal (production) environment:
+
+```bash
+# Get terminal environment DORA metrics
+kubectl get promotionstrategy my-app -o jsonpath='{.status.terminalEnvironmentDoraMetrics}'
+```
+
+Each DoraMetrics object tracks:
 - `deploymentCount`: Total number of deployments
-- `lastLeadTimeSeconds`: Most recent lead time measurement
+- `lastLeadTimeSeconds`: Most recent lead time measurement (Duration type)
 - `failureCount`: Total number of failures
-- `lastMTTRSeconds`: Most recent mean time to restore measurement
+- `lastMTTRSeconds`: Most recent mean time to restore measurement (Duration type)
+- Internal state fields for tracking lead time start, failure times, etc.
 
 These fields complement the Prometheus metrics and simplify testing and debugging.
 
