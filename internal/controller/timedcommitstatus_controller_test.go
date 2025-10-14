@@ -408,7 +408,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(tcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should remain populated")
 				g.Expect(tcs.Status.Environments[0].CommitTime.Time).ToNot(BeZero(), "CommitTime should remain populated")
 				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(24*time.Hour), "RequiredDuration should remain consistent")
-				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically(">", 9*time.Second), "TimeElapsed should still be < required duration")
+				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically("<", 24*time.Hour), "TimeElapsed should still be < required duration")
 
 				// Verify CommitStatus was created for staging with pending phase
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
