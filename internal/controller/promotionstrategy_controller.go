@@ -336,16 +336,17 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 
 		// If the active SHA matches the latest history entry and we haven't recorded this deployment yet
 		if latestHistory.Active.Dry.Sha == activeSha &&
-			envStatus.DoraMetrics.LeadTimeStartSha != activeSha {
+			envStatus.DoraMetrics.LastDeployedSha != activeSha {
 
 			// Record deployment
 			metrics.RecordDeployment(ps.Name, envStatus.Branch, isTerminal)
-			
+			envStatus.DoraMetrics.LastDeployedSha = activeSha
+
 			activeShortSha := activeSha
 			if len(activeShortSha) > 7 {
 				activeShortSha = activeShortSha[:7]
 			}
-			
+
 			logger.Info("Recorded deployment",
 				"promotionStrategy", ps.Name,
 				"environment", envStatus.Branch,

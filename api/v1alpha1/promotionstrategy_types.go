@@ -174,6 +174,10 @@ type DoraMetricsState struct {
 	// LeadTimeStartSha is the SHA of the dry commit currently being tracked for lead time.
 	LeadTimeStartSha string `json:"leadTimeStartSha,omitempty"`
 
+	// LastDeployedSha tracks the last commit SHA that was deployed to this environment
+	// to ensure we only increment the deployment counter once per commit.
+	LastDeployedSha string `json:"lastDeployedSha,omitempty"`
+
 	// LastFailedCommitSha tracks the last commit SHA that entered a failed state to ensure we only
 	// increment the failure counter once per commit.
 	LastFailedCommitSha string `json:"lastFailedCommitSha,omitempty"`

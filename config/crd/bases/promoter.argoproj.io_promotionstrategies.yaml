@@ -433,6 +433,11 @@ spec:
                             entered a failed state for MTTR calculation.
                           format: date-time
                           type: string
+                        lastDeployedSha:
+                          description: |-
+                            LastDeployedSha tracks the last commit SHA that was deployed to this environment
+                            to ensure we only increment the deployment counter once per commit.
+                          type: string
                         lastFailedCommitSha:
                           description: |-
                             LastFailedCommitSha tracks the last commit SHA that entered a failed state to ensure we only
