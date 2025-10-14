@@ -17,12 +17,9 @@ limitations under the License.
 package controller
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"os/exec"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -30,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
@@ -291,32 +289,19 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	// Use git interpret-trailers to add the Pull-request-merge-time trailer.
-	// Note: We use git interpret-trailers instead of manually parsing/formatting trailers to ensure
-	// we follow Git's exact trailer conventions and formatting rules. While git interpret-trailers
-	// doesn't provide a way to place one trailer directly after another specific trailer (the --where
-	// flag only accepts general positions like 'after', 'before', 'start', 'end' relative to ALL trailers,
-	// not a specific one), it's still the most reliable approach. The alternative would be maintaining
-	// complex custom parsing logic, which is error-prone and doesn't handle all of Git's trailer edge cases.
-	// As a result, the Pull-request-merge-time trailer will be appended at the end of the trailer block
-	// rather than directly after Pull-request-creation-time, but this is acceptable.
 	mergedTime := metav1.Now()
-	trailerValue := fmt.Sprintf("%s: %s", constants.TrailerPullRequestMergeTime, mergedTime.Format(time.RFC3339))
 
-	cmd := exec.Command("git", "interpret-trailers", "--trailer", trailerValue)
-	cmd.Stdin = strings.NewReader(pr.Spec.Commit.Message)
-
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to run git interpret-trailers: %w (stderr: %s)", err, stderrBuf.String())
+	updatedMessage, err := git.AddTrailerToCommitMessage(
+		pr.Spec.Commit.Message,
+		constants.TrailerPullRequestMergeTime,
+		mergedTime.Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to add trailer to commit message: %w", err)
 	}
 
 	// Update the commit message with the new trailers
-	pr.Spec.Commit.Message = strings.TrimSpace(stdoutBuf.String())
+	pr.Spec.Commit.Message = updatedMessage
 
 	if err := provider.Merge(ctx, *pr); err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
