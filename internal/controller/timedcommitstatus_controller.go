@@ -58,7 +58,25 @@ type TimedCommitStatusReconciler struct {
 func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	// How this should reconcile:
+	// 1. Fetch the TimedCommitStatus instance
+	// 2. If not found, return (object must have been deleted)
+	// 3. If found, ensure that the referenced PromotionStrategy exists
+	// 4. If the PromotionStrategy does not exist, set status to error and return
+
+	// Logic to reconcile the TimedCommitStatus resource.
+	// The time commit status logic is as follows:
+	// The purpose of this controller is to gate promotions based on the durations defined in the TimedCommitStatusConfiguration
+	// resource for each environment/branch. The TimedCommitStatus resource references a PromotionStrategy, and the controller ensures that promotions
+	// only occur if the required time has passed since the last promotion.
+	// The controller will periodically check the status of the PromotionStrategy and update the TimedCommitStatus accordingly.
+	// The controller will act as an activeCommitStatus, meaning it will report the state of the current environment based on the time-based rules.
+	// It will manage a commitstatus with the sha of active hydrated commit.
+	// If the time-based rules do not allow for a promotion, it will set the commitstatus to pending with a message indicating when the next promotion is allowed.
+	// If there is an error in fetching the PromotionStrategy or any other issue, it will set the commitstatus to failure with an appropriate message.
+	// If the time-based rules allow for a promotion, it will set the commitstatus to success.
+	// The controller will not directly trigger promotions, but will provide the necessary status updates to inform other components of the system.
+	// This ensures that promotions are gated based on time, preventing premature or unintended deployments.
 
 	return ctrl.Result{}, nil
 }
