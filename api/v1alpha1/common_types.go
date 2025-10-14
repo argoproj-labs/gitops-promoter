@@ -58,7 +58,9 @@ type AzureDevOps struct {
 type AzureWorkloadIdentity struct {
 	// Enabled indicates whether workload identity authentication should be used.
 	// When true, workload identity will be attempted even if tenantId/clientId are not specified,
-	// using environment variables AZURE_TENANT_ID and AZURE_CLIENT_ID instead.
+	// using environment variables AZURE_TENANT_ID and AZURE_CLIENT_ID instead,
+	// as these environment variables are injected by the workload identity webhook, if deployment and serviceaccount are properly annotated/labeled,
+	// see https://azure.github.io/azure-workload-identity/docs/installation/mutating-admission-webhook.html
 	// +kubebuilder:validation:Required
 	Enabled bool `json:"enabled"`
 	// TenantID is the Azure AD tenant ID.
