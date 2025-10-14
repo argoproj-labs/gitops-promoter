@@ -873,11 +873,11 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		}),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %s and Environments %s: %w", ctp.Name, ctp.Spec.ActiveBranch, err)
+		return nil, fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %s and Environment %s: %w", ctp.Name, ctp.Spec.ActiveBranch, err)
 	}
 
 	if len(prl.Items) > 1 {
-		return nil, fmt.Errorf("more than one PullRequest found for ChangeTransferPolicy %s and Environments %s", ctp.Name, ctp.Spec.ActiveBranch)
+		return nil, fmt.Errorf("more than one PullRequest found for ChangeTransferPolicy %s and Environment %s", ctp.Name, ctp.Spec.ActiveBranch)
 	}
 
 	if len(prl.Items) != 1 {
