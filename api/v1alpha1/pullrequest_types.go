@@ -49,6 +49,9 @@ type PullRequestSpec struct {
 	// MergeSha is the commit SHA that the head branch must match before the PR can be merged.
 	// This prevents a race condition where a PR is merged with a different commit than intended.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^[a-fA-F0-9]+$`
 	MergeSha string `json:"mergeSha"`
 	// State of the merge request closed/merged/open
 	// +kubebuilder:default:=open

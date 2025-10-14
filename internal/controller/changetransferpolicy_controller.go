@@ -892,6 +892,11 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 				return fmt.Errorf("failed to get PR %q: %w", pullRequest.Name, err)
 			}
 			pr.Spec.State = promoterv1alpha1.PullRequestMerged
+			// Backwards compatibility: ensure mergeSha is populated for existing PRs created before this field was required.
+			// This can be removed once all old PullRequest CRs have been recreated with the required field.
+			if pr.Spec.MergeSha == "" {
+				pr.Spec.MergeSha = ctp.Status.Proposed.Hydrated.Sha
+			}
 			return r.Update(ctx, &pr)
 		})
 		if err != nil {
