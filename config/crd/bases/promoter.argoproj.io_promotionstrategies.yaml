@@ -428,6 +428,18 @@ spec:
                       description: DoraMetrics tracks the DORA metrics state for this
                         environment.
                       properties:
+                        deploymentCount:
+                          description: |-
+                            DeploymentCount is the total number of deployments to this environment.
+                            This is incremented each time a commit is promoted to the environment.
+                          format: int64
+                          type: integer
+                        failureCount:
+                          description: |-
+                            FailureCount is the total number of failures in this environment.
+                            This is incremented once per commit SHA when it enters a failed state.
+                          format: int64
+                          type: integer
                         failureStartTime:
                           description: FailureStartTime tracks when the environment
                             entered a failed state for MTTR calculation.
@@ -443,6 +455,16 @@ spec:
                             LastFailedCommitSha tracks the last commit SHA that entered a failed state to ensure we only
                             increment the failure counter once per commit.
                           type: string
+                        lastLeadTimeSeconds:
+                          description: |-
+                            LastLeadTimeSeconds is the most recent lead time measurement in seconds.
+                            This represents the time from DRY commit creation to successful deployment.
+                          type: number
+                        lastMTTRSeconds:
+                          description: |-
+                            LastMTTRSeconds is the most recent mean time to restore measurement in seconds.
+                            This represents the time from failure to recovery.
+                          type: number
                         leadTimeStartCommitTime:
                           description: |-
                             LeadTimeStartCommitTime is the commit time of the dry commit currently being tracked for lead time.

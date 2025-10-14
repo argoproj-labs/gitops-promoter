@@ -341,6 +341,7 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 			// Record deployment
 			metrics.RecordDeployment(ps.Name, ps.Namespace, envStatus.Branch, isTerminal)
 			envStatus.DoraMetrics.LastDeployedSha = activeSha
+			envStatus.DoraMetrics.DeploymentCount++
 
 			activeShortSha := activeSha
 			if len(activeShortSha) > 7 {
@@ -352,10 +353,11 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 				"environment", envStatus.Branch,
 				"sha", activeSha,
 				"isTerminal", isTerminal,
+				"deploymentCount", envStatus.DoraMetrics.DeploymentCount,
 			)
-			r.Recorder.Event(ps, "Normal", "DeploymentRecorded",
-				fmt.Sprintf("Deployment to %s recorded for commit %s",
-					envStatus.Branch, activeShortSha))
+			r.Recorder.Event(ps, "Normal", "CommitPromoted",
+				fmt.Sprintf("Commit %s promoted to %s",
+					activeShortSha, envStatus.Branch))
 		}
 	}
 
@@ -367,7 +369,9 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 		// Calculate and record lead time
 		if !envStatus.DoraMetrics.LeadTimeStartCommitTime.IsZero() {
 			leadTime := time.Since(envStatus.DoraMetrics.LeadTimeStartCommitTime.Time)
-			metrics.RecordLeadTime(ps.Name, ps.Namespace, envStatus.Branch, isTerminal, leadTime.Seconds())
+			leadTimeSeconds := leadTime.Seconds()
+			metrics.RecordLeadTime(ps.Name, ps.Namespace, envStatus.Branch, isTerminal, leadTimeSeconds)
+			envStatus.DoraMetrics.LastLeadTimeSeconds = leadTimeSeconds
 
 			activeShortSha := envStatus.Active.Dry.Sha
 			if len(activeShortSha) > 7 {
@@ -378,14 +382,14 @@ func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Co
 				"promotionStrategy", ps.Name,
 				"environment", envStatus.Branch,
 				"sha", envStatus.Active.Dry.Sha,
-				"leadTimeSeconds", leadTime.Seconds(),
+				"leadTimeSeconds", leadTimeSeconds,
 				"isTerminal", isTerminal,
 			)
 			r.Recorder.Event(ps, "Normal", "LeadTimeRecorded",
 				fmt.Sprintf("Lead time for %s in %s: %.2f seconds",
 					activeShortSha,
 					envStatus.Branch,
-					leadTime.Seconds()))
+					leadTimeSeconds))
 
 			// Clear the tracking since we've recorded the lead time
 			envStatus.DoraMetrics.LeadTimeStartSha = envStatus.Active.Dry.Sha
@@ -404,6 +408,7 @@ func (r *PromotionStrategyReconciler) trackAndRecordFailures(ctx context.Context
 		if envStatus.DoraMetrics.LastFailedCommitSha != activeSha {
 			metrics.RecordChangeFailure(ps.Name, ps.Namespace, envStatus.Branch, isTerminal)
 			envStatus.DoraMetrics.LastFailedCommitSha = activeSha
+			envStatus.DoraMetrics.FailureCount++
 
 			activeShortSha := activeSha
 			if len(activeShortSha) > 7 {
@@ -415,6 +420,7 @@ func (r *PromotionStrategyReconciler) trackAndRecordFailures(ctx context.Context
 				"environment", envStatus.Branch,
 				"sha", activeSha,
 				"isTerminal", isTerminal,
+				"failureCount", envStatus.DoraMetrics.FailureCount,
 			)
 			r.Recorder.Event(ps, "Warning", "ChangeFailureRecorded",
 				fmt.Sprintf("Change failure in %s for commit %s",
@@ -438,17 +444,19 @@ func (r *PromotionStrategyReconciler) trackAndRecordMTTR(ctx context.Context, ps
 
 		// Calculate and record MTTR
 		mttr := time.Since(envStatus.DoraMetrics.FailureStartTime.Time)
-		metrics.RecordMeanTimeToRestore(ps.Name, ps.Namespace, envStatus.Branch, isTerminal, mttr.Seconds())
+		mttrSeconds := mttr.Seconds()
+		metrics.RecordMeanTimeToRestore(ps.Name, ps.Namespace, envStatus.Branch, isTerminal, mttrSeconds)
+		envStatus.DoraMetrics.LastMTTRSeconds = mttrSeconds
 
 		logger.Info("Recorded MTTR",
 			"promotionStrategy", ps.Name,
 			"environment", envStatus.Branch,
-			"mttrSeconds", mttr.Seconds(),
+			"mttrSeconds", mttrSeconds,
 			"isTerminal", isTerminal,
 		)
 		r.Recorder.Event(ps, "Normal", "MTTRRecorded",
 			fmt.Sprintf("Mean time to restore for %s: %.2f seconds",
-				envStatus.Branch, mttr.Seconds()))
+				envStatus.Branch, mttrSeconds))
 
 		// Clear the failure tracking
 		envStatus.DoraMetrics.FailureStartTime = metav1.Time{}

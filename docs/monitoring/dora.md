@@ -11,6 +11,27 @@ GitOps Promoter tracks four key metrics that map to DORA's core measurements:
 3. **Change Failure Rate**: Percentage of deployments causing failures
 4. **Mean Time to Restore (MTTR)**: Time to recover from failures
 
+These metrics are available in two forms:
+- **Prometheus metrics**: For monitoring dashboards and alerting
+- **Status fields**: Directly visible in the PromotionStrategy resource status for easy access via kubectl or UIs
+
+## Status Fields
+
+In addition to Prometheus metrics, DORA metrics are stored in the `DoraMetrics` field of each environment's status. This makes the data readily available via `kubectl get` or any Kubernetes UI.
+
+Example:
+```bash
+kubectl get promotionstrategy my-app -o jsonpath='{.status.environments[*].doraMetrics}'
+```
+
+Each environment tracks:
+- `deploymentCount`: Total number of deployments
+- `lastLeadTimeSeconds`: Most recent lead time measurement
+- `failureCount`: Total number of failures
+- `lastMTTRSeconds`: Most recent mean time to restore measurement
+
+These fields complement the Prometheus metrics and simplify testing and debugging.
+
 ## Metrics Produced
 
 ### dora_deployments_total
@@ -127,7 +148,7 @@ GitOps Promoter produces Kubernetes events and structured log entries for all DO
 
 ### Events
 
-- `DeploymentRecorded`: A deployment was recorded
+- `CommitPromoted`: A commit was promoted (deployed) to an environment
 - `LeadTimeRecorded`: Lead time was calculated and recorded
 - `ChangeFailureRecorded`: A change failure was detected
 - `MTTRRecorded`: Mean time to restore was calculated

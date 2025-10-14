@@ -185,6 +185,28 @@ type DoraMetricsState struct {
 
 	// FailureStartTime tracks when the environment entered a failed state for MTTR calculation.
 	FailureStartTime metav1.Time `json:"failureStartTime,omitempty"`
+
+	// DeploymentCount is the total number of deployments to this environment.
+	// This is incremented each time a commit is promoted to the environment.
+	// +kubebuilder:validation:Optional
+	DeploymentCount int64 `json:"deploymentCount,omitempty"`
+
+	// LastLeadTimeSeconds is the most recent lead time measurement in seconds.
+	// This represents the time from DRY commit creation to successful deployment.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Type=number
+	LastLeadTimeSeconds float64 `json:"lastLeadTimeSeconds,omitempty"`
+
+	// FailureCount is the total number of failures in this environment.
+	// This is incremented once per commit SHA when it enters a failed state.
+	// +kubebuilder:validation:Optional
+	FailureCount int64 `json:"failureCount,omitempty"`
+
+	// LastMTTRSeconds is the most recent mean time to restore measurement in seconds.
+	// This represents the time from failure to recovery.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Type=number
+	LastMTTRSeconds float64 `json:"lastMTTRSeconds,omitempty"`
 }
 
 // HealthyDryShas is a list of dry commits that were observed to be healthy in the environment.

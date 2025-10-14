@@ -47,3 +47,8 @@ All resources may produce the following events:
 |------------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | Warning    | ChangeTransferPolicyNotReady            | One or more of the [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) resources managed by this PromotionStrategy is not Ready. |
 | Warning    | PreviousEnvironmentCommitStatusNotReady | One or more of the active [CommitStatus](../crd-specs.md#commitstatus) resources for the previous environment is not Ready.               |
+| Normal     | CommitPromoted                          | A commit was promoted (deployed) to an environment. Part of DORA metrics tracking.                                                        |
+| Normal     | LeadTimeRecorded                        | Lead time for changes was calculated and recorded for a commit. Part of DORA metrics tracking.                                            |
+| Warning    | ChangeFailureRecorded                   | A change failure was detected (commit status entered failed state). Part of DORA metrics tracking.                                        |
+| Normal     | MTTRRecorded                            | Mean time to restore was calculated after an environment recovered from a failure. Part of DORA metrics tracking.                         |
+| Normal     | PromotionInterrupted                    | A new commit interrupted an incomplete release. Part of DORA metrics tracking.                                                            |
