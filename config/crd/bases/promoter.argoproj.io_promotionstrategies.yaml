@@ -424,6 +424,32 @@ spec:
                       description: Branch is the name of the active branch for the
                         environment.
                       type: string
+                    doraMetrics:
+                      description: DoraMetrics tracks the DORA metrics state for this
+                        environment.
+                      properties:
+                        failureStartTime:
+                          description: FailureStartTime tracks when the environment
+                            entered a failed state for MTTR calculation.
+                          format: date-time
+                          type: string
+                        lastFailedCommitSha:
+                          description: |-
+                            LastFailedCommitSha tracks the last commit SHA that entered a failed state to ensure we only
+                            increment the failure counter once per commit.
+                          type: string
+                        leadTimeStartCommitTime:
+                          description: |-
+                            LeadTimeStartCommitTime is the commit time of the dry commit currently being tracked for lead time.
+                            This is set when a new dry commit starts being promoted and is not cleared until that commit
+                            successfully reaches the terminal environment or is interrupted by a newer commit.
+                          format: date-time
+                          type: string
+                        leadTimeStartSha:
+                          description: LeadTimeStartSha is the SHA of the dry commit
+                            currently being tracked for lead time.
+                          type: string
+                      type: object
                     history:
                       description: |-
                         History defines the history of promoted changes done by the PromotionStrategy for each environment.

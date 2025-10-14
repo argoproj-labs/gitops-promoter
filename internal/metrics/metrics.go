@@ -165,6 +165,46 @@ var (
 		[]string{"ctp_found", "response_code"},
 	)
 
+	// DORA Metrics
+	// Labels for DORA metrics
+	doraMetricsLabels = []string{"promotion_strategy", "environment", "is_terminal"}
+
+	// deploymentsToProductionTotal tracks the number of deployments to production (or any environment)
+	deploymentsToProductionTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "dora_deployments_total",
+			Help: "Total number of deployments to an environment. Increments when a change is merged to the active branch.",
+		},
+		doraMetricsLabels,
+	)
+
+	// leadTimeForChangesSeconds tracks the lead time from commit to successful deployment
+	leadTimeForChangesSeconds = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "dora_lead_time_seconds",
+			Help: "Lead time for changes in seconds. Time from DRY commit to successful deployment in the environment.",
+		},
+		doraMetricsLabels,
+	)
+
+	// changeFailureRateTotal tracks the number of failed deployments
+	changeFailureRateTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "dora_change_failure_rate_total",
+			Help: "Total number of failed deployments. Increments once per commit SHA when it enters a failed state.",
+		},
+		doraMetricsLabels,
+	)
+
+	// meanTimeToRestoreSeconds tracks the time to restore service after a failure
+	meanTimeToRestoreSeconds = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "dora_mean_time_to_restore_seconds",
+			Help: "Mean time to restore in seconds. Time from failure to recovery of the environment.",
+		},
+		doraMetricsLabels,
+	)
+
 	// If you add metrics here, document them in docs/monitoring/metrics.md.
 )
 
@@ -179,6 +219,10 @@ func init() {
 		scmCallsRateLimitRemaining,
 		scmCallsRateLimitResetRemainingSeconds,
 		webhookProcessingDurationSeconds,
+		deploymentsToProductionTotal,
+		leadTimeForChangesSeconds,
+		changeFailureRateTotal,
+		meanTimeToRestoreSeconds,
 	)
 }
 
@@ -225,4 +269,44 @@ func RecordWebhookCall(ctpFound bool, responseCode int, duration time.Duration) 
 	}
 	webhookCallsTotal.With(labels).Inc()
 	webhookProcessingDurationSeconds.With(labels).Observe(duration.Seconds())
+}
+
+// RecordDeployment records a deployment to an environment.
+func RecordDeployment(promotionStrategy, environment string, isTerminal bool) {
+	labels := prometheus.Labels{
+		"promotion_strategy": promotionStrategy,
+		"environment":        environment,
+		"is_terminal":        strconv.FormatBool(isTerminal),
+	}
+	deploymentsToProductionTotal.With(labels).Inc()
+}
+
+// RecordLeadTime records the lead time for changes in seconds.
+func RecordLeadTime(promotionStrategy, environment string, isTerminal bool, leadTimeSeconds float64) {
+	labels := prometheus.Labels{
+		"promotion_strategy": promotionStrategy,
+		"environment":        environment,
+		"is_terminal":        strconv.FormatBool(isTerminal),
+	}
+	leadTimeForChangesSeconds.With(labels).Set(leadTimeSeconds)
+}
+
+// RecordChangeFailure records a change failure.
+func RecordChangeFailure(promotionStrategy, environment string, isTerminal bool) {
+	labels := prometheus.Labels{
+		"promotion_strategy": promotionStrategy,
+		"environment":        environment,
+		"is_terminal":        strconv.FormatBool(isTerminal),
+	}
+	changeFailureRateTotal.With(labels).Inc()
+}
+
+// RecordMeanTimeToRestore records the mean time to restore in seconds.
+func RecordMeanTimeToRestore(promotionStrategy, environment string, isTerminal bool, mttrSeconds float64) {
+	labels := prometheus.Labels{
+		"promotion_strategy": promotionStrategy,
+		"environment":        environment,
+		"is_terminal":        strconv.FormatBool(isTerminal),
+	}
+	meanTimeToRestoreSeconds.With(labels).Set(mttrSeconds)
 }

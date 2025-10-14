@@ -60,6 +60,14 @@ type PromotionStrategySpec struct {
 	Environments []Environment `json:"environments"`
 }
 
+// GetTerminalEnvironmentIndex returns the index of the terminal environment (the last environment in the promotion sequence).
+func (ps *PromotionStrategySpec) GetTerminalEnvironmentIndex() int {
+	if len(ps.Environments) == 0 {
+		return -1
+	}
+	return len(ps.Environments) - 1
+}
+
 // Environment defines a single environment in the promotion sequence.
 type Environment struct {
 	// Branch is the name of the active branch for the environment.
@@ -150,6 +158,28 @@ type EnvironmentStatus struct {
 	// History is constructed on a best-effort basis and should be used for informational purposes only.
 	// History is in reverse chronological order (newest is first).
 	History []History `json:"history,omitempty"`
+
+	// DoraMetrics tracks the DORA metrics state for this environment.
+	// +kubebuilder:validation:Optional
+	DoraMetrics DoraMetricsState `json:"doraMetrics,omitempty"`
+}
+
+// DoraMetricsState tracks the state needed to calculate DORA metrics for an environment.
+type DoraMetricsState struct {
+	// LeadTimeStartCommitTime is the commit time of the dry commit currently being tracked for lead time.
+	// This is set when a new dry commit starts being promoted and is not cleared until that commit
+	// successfully reaches the terminal environment or is interrupted by a newer commit.
+	LeadTimeStartCommitTime metav1.Time `json:"leadTimeStartCommitTime,omitempty"`
+
+	// LeadTimeStartSha is the SHA of the dry commit currently being tracked for lead time.
+	LeadTimeStartSha string `json:"leadTimeStartSha,omitempty"`
+
+	// LastFailedCommitSha tracks the last commit SHA that entered a failed state to ensure we only
+	// increment the failure counter once per commit.
+	LastFailedCommitSha string `json:"lastFailedCommitSha,omitempty"`
+
+	// FailureStartTime tracks when the environment entered a failed state for MTTR calculation.
+	FailureStartTime metav1.Time `json:"failureStartTime,omitempty"`
 }
 
 // HealthyDryShas is a list of dry commits that were observed to be healthy in the environment.

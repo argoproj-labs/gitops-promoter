@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -100,6 +101,9 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
 	r.calculateStatus(&ps, ctps)
+
+	// Update DORA metrics based on the current state
+	r.updateDoraMetrics(ctx, &ps)
 
 	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctps)
 	if err != nil {
@@ -246,6 +250,183 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	}
 
 	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.ChangeTransferPolicyNotReady, ctps...)
+}
+
+// updateDoraMetrics updates DORA metrics based on the current state of the environments.
+// This should be called after calculateStatus to ensure we have the latest state.
+func (r *PromotionStrategyReconciler) updateDoraMetrics(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) {
+	logger := log.FromContext(ctx)
+	terminalEnvIndex := ps.Spec.GetTerminalEnvironmentIndex()
+
+	for i := range ps.Status.Environments {
+		envStatus := &ps.Status.Environments[i]
+		isTerminal := i == terminalEnvIndex
+
+		// Track lead time: start timing when a new commit enters the environment
+		r.trackLeadTimeStart(ctx, ps, envStatus, i, isTerminal)
+
+		// Record deployment and lead time metrics when a change is successfully deployed
+		r.recordDeploymentAndLeadTime(ctx, ps, envStatus, i, isTerminal)
+
+		// Track and record failure metrics
+		r.trackAndRecordFailures(ctx, ps, envStatus, i, isTerminal)
+
+		// Track and record MTTR when recovering from failures
+		r.trackAndRecordMTTR(ctx, ps, envStatus, i, isTerminal)
+	}
+
+	logger.V(4).Info("Updated DORA metrics", "promotionStrategy", ps.Name)
+}
+
+// trackLeadTimeStart initializes lead time tracking when a new commit is being promoted.
+func (r *PromotionStrategyReconciler) trackLeadTimeStart(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, envStatus *promoterv1alpha1.EnvironmentStatus, envIndex int, isTerminal bool) {
+	logger := log.FromContext(ctx)
+
+	// If there's a proposed dry SHA that's different from the active one, and we're not already tracking it
+	if envStatus.Proposed.Dry.Sha != "" &&
+		envStatus.Proposed.Dry.Sha != envStatus.Active.Dry.Sha &&
+		envStatus.DoraMetrics.LeadTimeStartSha != envStatus.Proposed.Dry.Sha {
+
+		// Check if we're interrupting a previous incomplete release
+		if envStatus.DoraMetrics.LeadTimeStartSha != "" &&
+			envStatus.DoraMetrics.LeadTimeStartSha != envStatus.Active.Dry.Sha {
+			// Log and emit event for interrupted release
+			logger.Info("Incomplete release interrupted by new commit",
+				"promotionStrategy", ps.Name,
+				"environment", envStatus.Branch,
+				"previousSha", envStatus.DoraMetrics.LeadTimeStartSha,
+				"newSha", envStatus.Proposed.Dry.Sha,
+			)
+			r.Recorder.Event(ps, "Normal", "IncompleteReleaseInterrupted",
+				fmt.Sprintf("Environment %s: Incomplete release %s was interrupted by new commit %s",
+					envStatus.Branch,
+					envStatus.DoraMetrics.LeadTimeStartSha[:7],
+					envStatus.Proposed.Dry.Sha[:7]))
+		}
+
+		// Start tracking the new commit
+		envStatus.DoraMetrics.LeadTimeStartSha = envStatus.Proposed.Dry.Sha
+		envStatus.DoraMetrics.LeadTimeStartCommitTime = envStatus.Proposed.Dry.CommitTime
+		logger.V(4).Info("Started lead time tracking",
+			"promotionStrategy", ps.Name,
+			"environment", envStatus.Branch,
+			"sha", envStatus.Proposed.Dry.Sha,
+			"commitTime", envStatus.Proposed.Dry.CommitTime,
+		)
+	}
+}
+
+// recordDeploymentAndLeadTime records deployment and lead time metrics when a commit is successfully deployed.
+func (r *PromotionStrategyReconciler) recordDeploymentAndLeadTime(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, envStatus *promoterv1alpha1.EnvironmentStatus, envIndex int, isTerminal bool) {
+	logger := log.FromContext(ctx)
+
+	// Check if there's a new merge to the active branch (new entry in history)
+	if len(envStatus.History) > 0 {
+		latestHistory := envStatus.History[0]
+		activeSha := envStatus.Active.Dry.Sha
+
+		// If the active SHA matches the latest history entry and we haven't recorded this deployment yet
+		if latestHistory.Active.Dry.Sha == activeSha &&
+			envStatus.DoraMetrics.LeadTimeStartSha != activeSha {
+
+			// Record deployment
+			metrics.RecordDeployment(ps.Name, envStatus.Branch, isTerminal)
+			logger.Info("Recorded deployment",
+				"promotionStrategy", ps.Name,
+				"environment", envStatus.Branch,
+				"sha", activeSha,
+				"isTerminal", isTerminal,
+			)
+			r.Recorder.Event(ps, "Normal", "DeploymentRecorded",
+				fmt.Sprintf("Deployment to %s recorded for commit %s",
+					envStatus.Branch, activeSha[:7]))
+		}
+	}
+
+	// Check if the active commit status is successful and we're tracking this SHA for lead time
+	if envStatus.Active.Dry.Sha != "" &&
+		envStatus.DoraMetrics.LeadTimeStartSha == envStatus.Active.Dry.Sha &&
+		utils.AreCommitStatusesPassing(envStatus.Active.CommitStatuses) {
+
+		// Calculate and record lead time
+		if !envStatus.DoraMetrics.LeadTimeStartCommitTime.IsZero() {
+			leadTime := time.Since(envStatus.DoraMetrics.LeadTimeStartCommitTime.Time)
+			metrics.RecordLeadTime(ps.Name, envStatus.Branch, isTerminal, leadTime.Seconds())
+
+			logger.Info("Recorded lead time",
+				"promotionStrategy", ps.Name,
+				"environment", envStatus.Branch,
+				"sha", envStatus.Active.Dry.Sha,
+				"leadTimeSeconds", leadTime.Seconds(),
+				"isTerminal", isTerminal,
+			)
+			r.Recorder.Event(ps, "Normal", "LeadTimeRecorded",
+				fmt.Sprintf("Lead time for %s in %s: %.2f seconds",
+					envStatus.Active.Dry.Sha[:7],
+					envStatus.Branch,
+					leadTime.Seconds()))
+
+			// Clear the tracking since we've recorded the lead time
+			envStatus.DoraMetrics.LeadTimeStartSha = envStatus.Active.Dry.Sha
+		}
+	}
+}
+
+// trackAndRecordFailures tracks and records change failure rate metrics.
+func (r *PromotionStrategyReconciler) trackAndRecordFailures(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, envStatus *promoterv1alpha1.EnvironmentStatus, envIndex int, isTerminal bool) {
+	logger := log.FromContext(ctx)
+
+	// Check if the active commit status has failed
+	activeSha := envStatus.Active.Dry.Sha
+	if activeSha != "" && !utils.AreCommitStatusesPassing(envStatus.Active.CommitStatuses) {
+		// Only record failure once per commit
+		if envStatus.DoraMetrics.LastFailedCommitSha != activeSha {
+			metrics.RecordChangeFailure(ps.Name, envStatus.Branch, isTerminal)
+			envStatus.DoraMetrics.LastFailedCommitSha = activeSha
+
+			logger.Info("Recorded change failure",
+				"promotionStrategy", ps.Name,
+				"environment", envStatus.Branch,
+				"sha", activeSha,
+				"isTerminal", isTerminal,
+			)
+			r.Recorder.Event(ps, "Warning", "ChangeFailureRecorded",
+				fmt.Sprintf("Change failure in %s for commit %s",
+					envStatus.Branch, activeSha[:7]))
+
+			// Start tracking MTTR if not already tracking
+			if envStatus.DoraMetrics.FailureStartTime.IsZero() {
+				envStatus.DoraMetrics.FailureStartTime = metav1.Now()
+			}
+		}
+	}
+}
+
+// trackAndRecordMTTR tracks and records mean time to restore metrics.
+func (r *PromotionStrategyReconciler) trackAndRecordMTTR(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, envStatus *promoterv1alpha1.EnvironmentStatus, envIndex int, isTerminal bool) {
+	logger := log.FromContext(ctx)
+
+	// Check if we're tracking a failure and the environment has recovered
+	if !envStatus.DoraMetrics.FailureStartTime.IsZero() &&
+		utils.AreCommitStatusesPassing(envStatus.Active.CommitStatuses) {
+
+		// Calculate and record MTTR
+		mttr := time.Since(envStatus.DoraMetrics.FailureStartTime.Time)
+		metrics.RecordMeanTimeToRestore(ps.Name, envStatus.Branch, isTerminal, mttr.Seconds())
+
+		logger.Info("Recorded MTTR",
+			"promotionStrategy", ps.Name,
+			"environment", envStatus.Branch,
+			"mttrSeconds", mttr.Seconds(),
+			"isTerminal", isTerminal,
+		)
+		r.Recorder.Event(ps, "Normal", "MTTRRecorded",
+			fmt.Sprintf("Mean time to restore for %s: %.2f seconds",
+				envStatus.Branch, mttr.Seconds()))
+
+		// Clear the failure tracking
+		envStatus.DoraMetrics.FailureStartTime = metav1.Time{}
+	}
 }
 
 func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
