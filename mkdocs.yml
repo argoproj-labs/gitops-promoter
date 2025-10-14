@@ -30,6 +30,7 @@ nav:
   - Gating Promotions: gating-promotions.md
   - CommitStatus Controllers:
       - Argo CD: commit-status-controllers/argocd.md
+      - Timed: commit-status-controllers/timed.md
   - Multi-Tenancy: multi-tenancy.md
   - Monitoring:
       - Overview: monitoring/index.md
