@@ -50,7 +50,7 @@ spec:
                       type: string
                     duration:
                       description: |-
-                        Duration is the time duration to wait before considering the commit status as failed.
+                        Duration is the time duration to wait before considering the commit status as pending.
                         The duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
                       type: string
                   required:
