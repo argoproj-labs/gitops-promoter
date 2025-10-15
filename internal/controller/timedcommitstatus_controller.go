@@ -179,7 +179,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		nextEnvIndex := currentEnvIndex + 1
 		if nextEnvIndex >= len(ps.Status.Environments) {
 			// This is the last environment, no next environment to gate
-			logger.V(1).Info("Skipping last environment in promotion sequence", "branch", envConfig.Branch)
+			logger.Info("Skipping last environment in promotion sequence", "branch", envConfig.Branch)
 			continue
 		}
 
@@ -272,8 +272,6 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(commitTime time
 }
 
 func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, lowerEnvBranch string) error {
-	logger := log.FromContext(ctx)
-
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-timed", tcs.Name, branch))
 
@@ -296,7 +294,7 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 			commitStatus.Labels = make(map[string]string)
 		}
 		commitStatus.Labels["promoter.argoproj.io/timed-commit-status"] = utils.KubeSafeLabel(tcs.Name)
-		commitStatus.Labels["promoter.argoproj.io/branch"] = utils.KubeSafeLabel(branch)
+		commitStatus.Labels["promoter.argoproj.io/environment"] = utils.KubeSafeLabel(branch)
 		commitStatus.Labels["promoter.argoproj.io/commit-status"] = "timed"
 
 		// Set the spec
@@ -313,7 +311,6 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 		return fmt.Errorf("failed to create or update CommitStatus: %w", err)
 	}
 
-	logger.V(1).Info("Upserted CommitStatus", "name", commitStatusName, "phase", phase)
 	return nil
 }
 
