@@ -105,7 +105,7 @@ type TimedCommitStatus struct {
 
 	// metadata is a standard object metadata
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec defines the desired state of TimedCommitStatus
 	// +required
@@ -113,7 +113,7 @@ type TimedCommitStatus struct {
 
 	// status defines the observed state of TimedCommitStatus
 	// +optional
-	Status TimedCommitStatusStatus `json:"status,omitempty,omitzero"`
+	Status TimedCommitStatusStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

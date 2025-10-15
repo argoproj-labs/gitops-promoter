@@ -165,6 +165,9 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 	// Track if any time gate transitioned to success
 	timeGateTransitioned := false
 
+	// Save the previous status before clearing it, so we can detect transitions
+	previousStatus := tcs.Status.DeepCopy()
+
 	// Initialize or clear the environments status
 	tcs.Status.Environments = make([]promoterv1alpha1.TimedCommitStatusEnvironmentsStatus, 0, len(tcs.Spec.Environments))
 
@@ -236,7 +239,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		// Check if this time gate transitioned to success
 		// Find the previous status for this environment
 		var previousPhase string
-		for _, prevEnv := range tcs.Status.Environments {
+		for _, prevEnv := range previousStatus.Environments {
 			if prevEnv.Branch == envConfig.Branch {
 				previousPhase = prevEnv.Phase
 				break
@@ -383,23 +386,28 @@ func (r *TimedCommitStatusReconciler) touchPromotionStrategyIfOpenPR(ctx context
 }
 
 // calculateRequeueDuration determines when to requeue based on whether there are pending time gates.
-// If there are pending time gates, requeue every 1 minute to provide regular status updates.
+// If there are pending time gates where the duration has not been met, requeue every 1 minute for regular status updates.
+// If there are pending time gates where the duration has been met (waiting for open PR to merge), use the default duration.
 // Otherwise, use the default requeue duration from settings.
 func (r *TimedCommitStatusReconciler) calculateRequeueDuration(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus) time.Duration {
 	logger := log.FromContext(ctx)
 
-	// Check if there are any pending time gates
-	hasPendingGates := false
+	// Check if there are any pending time gates and whether their duration has been met
+	hasPendingGatesNotMet := false
+
 	for _, envStatus := range tcs.Status.Environments {
 		if envStatus.Phase == string(promoterv1alpha1.CommitPhasePending) {
-			hasPendingGates = true
-			break
+			// Check if the time elapsed has met the required duration
+			if envStatus.TimeElapsed.Duration < envStatus.RequiredDuration.Duration {
+				hasPendingGatesNotMet = true
+				break
+			}
 		}
 	}
 
-	// If there are pending gates, requeue every minute for regular status updates
-	if hasPendingGates {
-		logger.V(4).Info("Requeuing in 1 minute due to pending time gates")
+	// If there are pending gates where duration hasn't been met, requeue every minute for regular status updates
+	if hasPendingGatesNotMet {
+		logger.V(4).Info("Requeuing in 1 minute due to pending time gates with unmet duration")
 		return time.Minute
 	}
 
