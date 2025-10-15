@@ -213,24 +213,6 @@ environments:
     duration: 24h
 ```
 
-### Business Hours Only
-
-While the controller doesn't directly support "business hours only" logic, you can set longer durations that span typical business hours to ensure changes are observed during working hours:
-
-```yaml
-environments:
-  - branch: environment/development
-    duration: 8h  # Ensures changes are seen during at least one business day
-```
-
-## Best Practices
-
-1. **Start Conservative** - Begin with longer durations and reduce them as confidence grows
-2. **Match Your Monitoring** - Set durations that give your monitoring systems time to detect issues
-3. **Consider Your SLOs** - Align soak times with your error budget and incident detection times
-4. **Document Rationale** - Add annotations explaining why specific durations were chosen
-5. **Review Regularly** - Adjust durations based on incident history and confidence levels
-
 ## Troubleshooting
 
 ### Gate Stuck in Pending
@@ -260,11 +242,4 @@ kubectl get timedcommitstatus webservice-tier-1 -o yaml
 ```
 
 Check the `status.environments` section for detailed information about each environment's timing.
-
-## Related Resources
-
-- [Gating Promotions](../gating-promotions.md) - Overview of how commit statuses gate promotions
-- [Argo CD Commit Status Controller](./argocd.md) - Health-based gating using Argo CD
-- [PromotionStrategy CRD](../crd-specs.md#promotionstrategy) - Full API specification
-- [TimedCommitStatus CRD](../crd-specs.md#timedcommitstatus) - Full API specification
 
