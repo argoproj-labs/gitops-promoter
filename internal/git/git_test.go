@@ -63,7 +63,7 @@ var _ = Describe("GetBranchShas", func() {
 			_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
 			Expect(err).NotTo(HaveOccurred())
 
-			err = os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha": "abc123"}`), 0644)
+			err = os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), []byte(`{"drySha": "abc123"}`), 0o644)
 			Expect(err).NotTo(HaveOccurred())
 			_, err = runGitCmd(workDir, "add", "hydrator.metadata")
 			Expect(err).NotTo(HaveOccurred())
