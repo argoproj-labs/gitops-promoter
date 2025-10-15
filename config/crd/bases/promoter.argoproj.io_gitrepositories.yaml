@@ -128,6 +128,11 @@ spec:
             required:
             - scmProviderRef
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of the fields in [github gitlab forgejo fake] must
+                be set
+              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.fake)].filter(x,x==true).size()
+                == 1'
           status:
             description: GitRepositoryStatus defines the observed state of GitRepository
             type: object
