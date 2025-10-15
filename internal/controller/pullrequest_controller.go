@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
@@ -291,6 +292,20 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	mergedTime := metav1.Now()
+
+	updatedMessage, err := git.AddTrailerToCommitMessage(
+		pr.Spec.Commit.Message,
+		constants.TrailerPullRequestMergeTime,
+		mergedTime.Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to add trailer to commit message: %w", err)
+	}
+
+	// Update the commit message with the new trailers
+	pr.Spec.Commit.Message = updatedMessage
+
 	if err := provider.Merge(ctx, *pr); err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}

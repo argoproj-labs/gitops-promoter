@@ -596,6 +596,34 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 	return lines, nil
 }
 
+// AddTrailerToCommitMessage adds a trailer to a commit message using git interpret-trailers.
+// This ensures we follow Git's exact trailer conventions and formatting rules.
+// The trailer will be appended at the end of the trailer block.
+//
+// Note: We use git interpret-trailers instead of manually parsing/formatting trailers to ensure
+// we follow Git's exact trailer conventions and formatting rules. While git interpret-trailers
+// doesn't provide a way to place one trailer directly after another specific trailer (the --where
+// flag only accepts general positions like 'after', 'before', 'start', 'end' relative to ALL trailers,
+// not a specific one), it's still the most reliable approach. The alternative would be maintaining
+// complex custom parsing logic, which is error-prone and doesn't handle all of Git's trailer edge cases.
+func AddTrailerToCommitMessage(commitMessage, trailerKey, trailerValue string) (string, error) {
+	trailerLine := fmt.Sprintf("%s: %s", trailerKey, trailerValue)
+
+	cmd := exec.Command("git", "interpret-trailers", "--trailer", trailerLine)
+	cmd.Stdin = strings.NewReader(commitMessage)
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to run git interpret-trailers: %w (stderr: %s)", err, stderrBuf.String())
+	}
+
+	return strings.TrimSpace(stdoutBuf.String()), nil
+}
+
 // GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
 func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string]string, error) {
 	logger := log.FromContext(ctx)

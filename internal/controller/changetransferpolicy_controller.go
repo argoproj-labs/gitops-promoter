@@ -295,6 +295,16 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 	} else {
 		logger.V(4).Info("No " + constants.TrailerPullRequestCreationTime + " found in trailers")
 	}
+
+	if timeStr := activeTrailers[constants.TrailerPullRequestMergeTime]; timeStr != "" {
+		if mergeTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
+			logger.V(4).Info("failed to parse "+constants.TrailerPullRequestMergeTime, "time", timeStr, "err", err)
+		} else {
+			h.PullRequest.PRMergeTime = metav1.NewTime(mergeTime)
+		}
+	} else {
+		logger.V(4).Info("No " + constants.TrailerPullRequestMergeTime + " found in trailers")
+	}
 }
 
 // populateCommitStatuses populates the commit statuses for a history entry
