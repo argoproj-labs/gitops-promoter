@@ -86,7 +86,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Remove any existing Ready condition. We want to start fresh.
 	meta.RemoveStatusCondition(ps.GetConditions(), string(promoterConditions.Ready))
 
-	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a slice with the same order as ps.Spec.TimedCommitStatusEnvironments.
+	// If a ChangeTransferPolicy does not exist, create it otherwise get it and store the ChangeTransferPolicy in a slice with the same order as ps.Spec.Environments.
 	ctps := make([]*promoterv1alpha1.ChangeTransferPolicy, len(ps.Spec.Environments))
 	for i, environment := range ps.Spec.Environments {
 		var ctp *promoterv1alpha1.ChangeTransferPolicy
@@ -216,10 +216,10 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 }
 
 // calculateStatus calculates the status of the PromotionStrategy based on the ChangeTransferPolicies.
-// ps.Spec.TimedCommitStatusEnvironments must be the same length and in the same order as ctps.
-// This function updates ps.Status.TimedCommitStatusEnvironments to be the same length and order as ps.Spec.TimedCommitStatusEnvironments.
+// ps.Spec.Environments must be the same length and in the same order as ctps.
+// This function updates ps.Status.Environments to be the same length and order as ps.Spec.Environments.
 func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.PromotionStrategy, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
-	// Reconstruct current environment state based on ps.TimedCommitStatusEnvironments order. Dropped environments will effectively be
+	// Reconstruct current environment state based on ps.Environments order. Dropped environments will effectively be
 	// deleted, and new environments will be added as empty statuses. Those new environments will be populated in the
 	// ctp loop.
 	environmentStatuses := make([]promoterv1alpha1.EnvironmentStatus, len(ps.Spec.Environments))
@@ -314,7 +314,7 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 }
 
 // updatePreviousEnvironmentCommitStatus checks if any environment is ready to be merged and if so, merges the pull request. It does this by looking at any active and proposed commit statuses.
-// ps.Spec.TimedCommitStatusEnvironments and ps.Status.TimedCommitStatusEnvironments must be the same length and in the same order as ctps.
+// ps.Spec.Environments and ps.Status.Environments must be the same length and in the same order as ctps.
 func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctps []*promoterv1alpha1.ChangeTransferPolicy) error {
 	logger := log.FromContext(ctx)
 	// Go through each environment and copy any commit statuses from the previous environment if the previous environment's running dry commit is the same as the
