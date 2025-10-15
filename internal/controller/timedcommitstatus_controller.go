@@ -114,7 +114,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// 5. If a time gate transitioned to success and there's an open PR, touch the PromotionStrategy to trigger reconciliation
 	if timeGateTransitioned {
-		err = r.touchPromotionStrategyIfOpenPR(ctx, &tcs, &ps)
+		err = r.touchPromotionStrategyIfOpenPR(ctx, &ps)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to touch PromotionStrategy: %w", err)
 		}
@@ -343,7 +343,7 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 // touchPromotionStrategyIfOpenPR adds or updates the ReconcileAtAnnotation on the PromotionStrategy
 // if there's an open PR in any environment. This triggers the PromotionStrategy controller to reconcile.
 // An open PR is indicated by the proposed dry SHA being different from the active dry SHA.
-func (r *TimedCommitStatusReconciler) touchPromotionStrategyIfOpenPR(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
+func (r *TimedCommitStatusReconciler) touchPromotionStrategyIfOpenPR(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
 	logger := log.FromContext(ctx)
 
 	// Check if any environment has an open PR by comparing active and proposed dry SHAs
