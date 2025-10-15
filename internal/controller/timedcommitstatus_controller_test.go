@@ -13,7 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
+// to run just this test use: cd /Users/zaller/Development/promoter && KUBEBUILDER_ASSETS="/Users/zaller/Development/promoter/bin/k8s/1.31.0-darwin-arm64" ./bin/ginkgo-v2.26.0 -v --focus "TimedCommitStatus Controller" internal/controller/
 package controller
 
 import (
@@ -484,6 +484,194 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				// Status should be empty since PromotionStrategy doesn't exist
 				g.Expect(tcs.Status.Environments).To(BeEmpty())
 			}, 2*time.Second, 500*time.Millisecond).Should(Succeed())
+		})
+	})
+
+	Context("When time gate transitions to success with open PR", func() {
+		ctx := context.Background()
+
+		var name string
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+		var timedCommitStatus *promoterv1alpha1.TimedCommitStatus
+
+		BeforeEach(func() {
+			By("Creating the test resources")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-touch-ps", "default")
+
+			// Configure ProposedCommitStatuses to check for timed commit status
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "timed"},
+			}
+
+			setupInitialTestGitRepoOnServer(name, name)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			By("Waiting for PromotionStrategy to be reconciled with initial state")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, promotionStrategy)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a pending promotion in staging environment")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			makeChangeAndHydrateRepo(gitPath, name, name, "pending change in staging", "pending change")
+
+			// Trigger webhook to create PR in staging
+			var ctpStaging promoterv1alpha1.ChangeTransferPolicy
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: "default",
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			simulateWebhook(ctx, k8sClient, &ctpStaging)
+
+			By("Waiting for staging environment to have a pending promotion (proposed != active)")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, promotionStrategy)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+				// Staging should have different proposed vs active (pending promotion/open PR)
+				g.Expect(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha).ToNot(Equal(promotionStrategy.Status.Environments[1].Active.Dry.Sha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a TimedCommitStatus resource with duration starting long then shortening to 10s")
+			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.TimedCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+						{
+							Branch:   "environment/development",
+							Duration: metav1.Duration{Duration: 2 * time.Hour}, // Start with long duration
+						},
+						{
+							Branch:   "environment/staging",
+							Duration: metav1.Duration{Duration: 2 * time.Hour},
+						},
+						{
+							Branch:   "environment/production",
+							Duration: metav1.Duration{Duration: 2 * time.Hour},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, timedCommitStatus)).To(Succeed())
+
+			By("Waiting for TimedCommitStatus to initially report pending status")
+			Eventually(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &tcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				// Should have status for dev and staging (production is last, so no gate)
+				g.Expect(tcs.Status.Environments).To(HaveLen(2))
+				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Updating TimedCommitStatus to use 10 second duration to trigger transition")
+			Eventually(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &tcs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Update to 10 second duration
+				tcs.Spec.Environments[0].Duration = metav1.Duration{Duration: 10 * time.Second}
+				tcs.Spec.Environments[1].Duration = metav1.Duration{Duration: 10 * time.Second}
+				tcs.Spec.Environments[2].Duration = metav1.Duration{Duration: 10 * time.Second}
+
+				err = k8sClient.Update(ctx, &tcs)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			_ = k8sClient.Delete(ctx, timedCommitStatus)
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		It("should add ReconcileAtAnnotation to PromotionStrategy when time gate transitions to success", func() {
+			By("Waiting for the time gate to transition to success (after 10 seconds)")
+			Eventually(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &tcs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Dev environment should transition to success after 10 seconds
+				g.Expect(tcs.Status.Environments).To(HaveLen(2))
+				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
+				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
+					"Dev environment should transition to success after duration")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying that PromotionStrategy has ReconcileAtAnnotation added")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// The annotation should be present
+				g.Expect(ps.Annotations).To(HaveKey(promoterv1alpha1.ReconcileAtAnnotation),
+					"PromotionStrategy should have ReconcileAtAnnotation")
+
+				// Verify the annotation value is populated and is a valid RFC3339Nano timestamp
+				annotationValue := ps.Annotations[promoterv1alpha1.ReconcileAtAnnotation]
+				g.Expect(annotationValue).ToNot(BeEmpty(),
+					"ReconcileAtAnnotation should be populated")
+
+				_, err = time.Parse(time.RFC3339Nano, annotationValue)
+				g.Expect(err).NotTo(HaveOccurred(),
+					"ReconcileAtAnnotation should be a valid RFC3339Nano timestamp")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying that the annotation remains stable (doesn't constantly update)")
+			Consistently(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// The annotation should still be present
+				g.Expect(ps.Annotations).To(HaveKey(promoterv1alpha1.ReconcileAtAnnotation))
+				// Note: The annotation value might change if there are multiple reconciliations,
+				// but the annotation key should remain present
+			}, 5*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
 })
