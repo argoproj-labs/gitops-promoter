@@ -100,7 +100,8 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// 3. Process each environment defined in the TimedCommitStatus
-	err = r.processEnvironments(ctx, &tcs, &ps)
+	// Returns true if any time gate transitioned to success
+	timeGateTransitioned, err := r.processEnvironments(ctx, &tcs, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
@@ -111,11 +112,16 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to update TimedCommitStatus status: %w", err)
 	}
 
-	// Requeue periodically to check time-based conditions
-	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.TimedCommitStatusConfiguration](ctx, r.SettingsMgr)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for TimedCommitStatus %q: %w", tcs.Name, err)
+	// 5. If a time gate transitioned to success and there's an open PR, touch the PromotionStrategy to trigger reconciliation
+	if timeGateTransitioned {
+		err = r.touchPromotionStrategyIfOpenPR(ctx, &tcs, &ps)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to touch PromotionStrategy: %w", err)
+		}
 	}
+
+	// Requeue based on the shortest duration or default requeue duration
+	requeueDuration := r.calculateRequeueDuration(ctx, &tcs)
 
 	return ctrl.Result{
 		RequeueAfter: requeueDuration,
@@ -152,8 +158,12 @@ func (r *TimedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr 
 // The logic is: for each environment, check if the commit in the current environment's active branch
 // has been running for the required duration. If so, report success for the NEXT environment's proposed SHA.
 // This gates promotions by ensuring commits "bake" in lower environments before moving up.
-func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
+// Returns true if any time gate transitioned from pending to success.
+func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (bool, error) {
 	logger := log.FromContext(ctx)
+
+	// Track if any time gate transitioned to success
+	timeGateTransitioned := false
 
 	// Initialize or clear the environments status
 	tcs.Status.Environments = make([]promoterv1alpha1.TimedCommitStatusEnvironmentsStatus, 0, len(tcs.Spec.Environments))
@@ -223,6 +233,22 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 			phase, message = r.calculateCommitStatusPhase(currentActiveCommitTime, envConfig.Duration.Duration, elapsed, envConfig.Branch)
 		}
 
+		// Check if this time gate transitioned to success
+		// Find the previous status for this environment
+		var previousPhase string
+		for _, prevEnv := range tcs.Status.Environments {
+			if prevEnv.Branch == envConfig.Branch {
+				previousPhase = prevEnv.Phase
+				break
+			}
+		}
+		if previousPhase == string(promoterv1alpha1.CommitPhasePending) && phase == promoterv1alpha1.CommitPhaseSuccess {
+			timeGateTransitioned = true
+			logger.Info("Time gate transitioned to success",
+				"branch", envConfig.Branch,
+				"sha", currentActiveSha)
+		}
+
 		// Update status for this environment
 		envTimedStatus := promoterv1alpha1.TimedCommitStatusEnvironmentsStatus{
 			Branch:           envConfig.Branch,
@@ -239,7 +265,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		// Pass the current (lower) environment branch so the commit status name reflects which env we're waiting on
 		err := r.upsertCommitStatus(ctx, tcs, ps, nextEnvStatus.Branch, nextProposedSha, phase, message, envConfig.Branch)
 		if err != nil {
-			return fmt.Errorf("failed to upsert CommitStatus for next environment %q: %w", nextEnvStatus.Branch, err)
+			return false, fmt.Errorf("failed to upsert CommitStatus for next environment %q: %w", nextEnvStatus.Branch, err)
 		}
 
 		logger.Info("Processed environment time gate",
@@ -252,7 +278,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 			"required", envConfig.Duration.Duration)
 	}
 
-	return nil
+	return timeGateTransitioned, nil
 }
 
 // calculateCommitStatusPhase determines the commit status phase based on time elapsed since deployment
@@ -312,6 +338,79 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	}
 
 	return nil
+}
+
+// touchPromotionStrategyIfOpenPR adds or updates the ReconcileAtAnnotation on the PromotionStrategy
+// if there's an open PR in any environment. This triggers the PromotionStrategy controller to reconcile.
+// An open PR is indicated by the proposed dry SHA being different from the active dry SHA.
+func (r *TimedCommitStatusReconciler) touchPromotionStrategyIfOpenPR(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
+	logger := log.FromContext(ctx)
+
+	// Check if any environment has an open PR by comparing active and proposed dry SHAs
+	hasOpenPR := false
+	for _, envStatus := range ps.Status.Environments {
+		if envStatus.Proposed.Dry.Sha != envStatus.Active.Dry.Sha {
+			hasOpenPR = true
+			logger.V(1).Info("Found open PR in environment",
+				"branch", envStatus.Branch,
+				"activeDrySha", envStatus.Active.Dry.Sha,
+				"proposedDrySha", envStatus.Proposed.Dry.Sha)
+			break
+		}
+	}
+
+	if !hasOpenPR {
+		logger.V(1).Info("No open PRs found, skipping PromotionStrategy annotation update")
+		return nil
+	}
+
+	// Touch the PromotionStrategy annotation to trigger reconciliation
+	psUpdated := ps.DeepCopy()
+	if psUpdated.Annotations == nil {
+		psUpdated.Annotations = make(map[string]string)
+	}
+	psUpdated.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339Nano)
+
+	err := r.Patch(ctx, psUpdated, client.MergeFrom(ps))
+	if err != nil {
+		return fmt.Errorf("failed to update PromotionStrategy annotation: %w", err)
+	}
+
+	logger.Info("Triggered PromotionStrategy reconciliation due to open PR and time gate",
+		"promotionStrategy", ps.Name)
+
+	return nil
+}
+
+// calculateRequeueDuration determines when to requeue based on whether there are pending time gates.
+// If there are pending time gates, requeue every 1 minute to provide regular status updates.
+// Otherwise, use the default requeue duration from settings.
+func (r *TimedCommitStatusReconciler) calculateRequeueDuration(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus) time.Duration {
+	logger := log.FromContext(ctx)
+
+	// Check if there are any pending time gates
+	hasPendingGates := false
+	for _, envStatus := range tcs.Status.Environments {
+		if envStatus.Phase == string(promoterv1alpha1.CommitPhasePending) {
+			hasPendingGates = true
+			break
+		}
+	}
+
+	// If there are pending gates, requeue every minute for regular status updates
+	if hasPendingGates {
+		logger.V(4).Info("Requeuing in 1 minute due to pending time gates")
+		return time.Minute
+	}
+
+	// Otherwise use the default requeue duration
+	defaultDuration, err := settings.GetRequeueDuration[promoterv1alpha1.TimedCommitStatusConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		logger.Error(err, "failed to get default requeue duration, using 1 hour")
+		return time.Hour
+	}
+
+	return defaultDuration
 }
 
 // enqueueTimedCommitStatusForPromotionStrategy returns a handler that enqueues all TimedCommitStatus resources

@@ -140,6 +140,30 @@ If a lower environment has a pending promotion (i.e., proposed SHA != active SHA
 
 The controller uses the `CommitTime` from the PromotionStrategy's environment status. This timestamp represents when the commit was deployed to the environment. The controller calculates elapsed time from this timestamp.
 
+q### Intelligent Reconciliation
+
+The TimedCommitStatus controller uses an intelligent requeue strategy to provide timely status updates and minimize promotion latency:
+
+**Frequent Status Updates**: When there are pending time gates (i.e., commits waiting to meet their required duration), the controller reconciles every **1 minute** to provide regular status updates. This means:
+- The `timeElapsed` field in the status updates every minute, giving you a live view of progress
+- You can monitor how much time remains before a gate is satisfied
+- When no time gates are pending, the controller uses the default reconciliation interval (typically 1 hour) to reduce overhead
+
+**Automatic PromotionStrategy Triggering**: When a time gate transitions from `pending` to `success`, the controller automatically triggers a PromotionStrategy reconciliation by updating its `promoter.argoproj.io/reconcile-at` annotation. This ensures:
+- The PromotionStrategy picks up newly satisfied time gates immediately
+- Pull requests can be auto-merged without waiting for the PromotionStrategy's next scheduled reconciliation
+- The overall promotion latency is minimized
+
+**Example Timeline**: With a PromotionStrategy that reconciles every hour and a 15-minute time gate:
+- **0 min**: Commit deployed to development, time gate starts as `pending`
+- **1-14 min**: TimedCommitStatus reconciles every minute, updating `timeElapsed` in status
+- **15 min**: Time gate transitions to `success`, PromotionStrategy is triggered immediately
+- **15 min**: PromotionStrategy reconciles, sees satisfied gate, auto-merges PR (if configured)
+
+Without this optimization, the PR would have to wait until the next scheduled PromotionStrategy reconciliation (potentially 45+ minutes later).
+
+This behavior is automatic and requires no configuration.
+
 ### Status Fields
 
 The TimedCommitStatus resource maintains detailed status information:
