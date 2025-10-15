@@ -109,7 +109,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Environments: []promoterv1alpha1.EnvironmentTimeCommitStatus{
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
 							Branch:   "environment/development",
 							Duration: metav1.Duration{Duration: 1 * time.Hour},
@@ -217,7 +217,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Environments: []promoterv1alpha1.EnvironmentTimeCommitStatus{
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
 							Branch:   "environment/development",
 							Duration: metav1.Duration{Duration: 1 * time.Second}, // Very short so it's already met
@@ -361,7 +361,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Environments: []promoterv1alpha1.EnvironmentTimeCommitStatus{
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
 							Branch:   "environment/development",
 							Duration: metav1.Duration{Duration: 24 * time.Hour}, // Very long, won't be met
@@ -456,7 +456,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: "non-existent",
 					},
-					Environments: []promoterv1alpha1.EnvironmentTimeCommitStatus{
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
 							Branch:   "environment/dev",
 							Duration: metav1.Duration{Duration: 1 * time.Hour},

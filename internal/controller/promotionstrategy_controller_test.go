@@ -286,12 +286,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			// 		Namespace: promotionStrategy.Namespace,
 			// 	}, promotionStrategy)
 			// 	g.Expect(err).To(Succeed())
-			// 	g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(Not(BeNil()))
-			// 	g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-			// 	g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(Not(BeNil()))
-			// 	g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-			// 	g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
-			// 	g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			// 	g.Expect(promotionStrategy.Status.TimedCommitStatusEnvironments[0].PullRequest).To(Not(BeNil()))
+			// 	g.Expect(promotionStrategy.Status.TimedCommitStatusEnvironments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			// 	g.Expect(promotionStrategy.Status.TimedCommitStatusEnvironments[1].PullRequest).To(Not(BeNil()))
+			// 	g.Expect(promotionStrategy.Status.TimedCommitStatusEnvironments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			// 	g.Expect(promotionStrategy.Status.TimedCommitStatusEnvironments[2].PullRequest).To(Not(BeNil()))
+			// 	g.Expect(promotionStrategy.Status.TimedCommitStatusEnvironments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 			// }, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Checking that the pull request for the development, staging, and production environments are closed and have had their ctp statuses cleared")

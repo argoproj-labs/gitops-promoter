@@ -41,7 +41,7 @@ spec:
             properties:
               environments:
                 items:
-                  description: EnvironmentTimeCommitStatus defines the branch/environment
+                  description: TimedCommitStatusEnvironments defines the branch/environment
                     and duration to wait before considering the commit status as failed.
                   properties:
                     branch:
@@ -148,8 +148,8 @@ spec:
                 description: Environments holds the status of each environment being
                   tracked.
                 items:
-                  description: EnvironmentTimedStatus defines the observed timing
-                    status for a specific environment.
+                  description: TimedCommitStatusEnvironmentsStatus defines the observed
+                    timing status for a specific environment.
                   properties:
                     branch:
                       description: Branch is the name of the branch/environment.
@@ -181,6 +181,11 @@ spec:
                       type: string
                   required:
                   - branch
+                  - commitTime
+                  - phase
+                  - requiredDuration
+                  - sha
+                  - timeElapsed
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:

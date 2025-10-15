@@ -156,7 +156,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 	logger := log.FromContext(ctx)
 
 	// Initialize or clear the environments status
-	tcs.Status.Environments = make([]promoterv1alpha1.EnvironmentTimedStatus, 0, len(tcs.Spec.Environments))
+	tcs.Status.Environments = make([]promoterv1alpha1.TimedCommitStatusEnvironmentsStatus, 0, len(tcs.Spec.Environments))
 
 	for _, envConfig := range tcs.Spec.Environments {
 		// Find the current environment index in the PromotionStrategy
@@ -224,7 +224,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		}
 
 		// Update status for this environment
-		envTimedStatus := promoterv1alpha1.EnvironmentTimedStatus{
+		envTimedStatus := promoterv1alpha1.TimedCommitStatusEnvironmentsStatus{
 			Branch:           envConfig.Branch,
 			Sha:              currentActiveSha,
 			CommitTime:       metav1.NewTime(currentActiveCommitTime),

@@ -35,11 +35,11 @@ type TimedCommitStatusSpec struct {
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 
 	// +required
-	Environments []EnvironmentTimeCommitStatus `json:"environments"`
+	Environments []TimedCommitStatusEnvironments `json:"environments"`
 }
 
-// EnvironmentTimeCommitStatus defines the branch/environment and duration to wait before considering the commit status as failed.
-type EnvironmentTimeCommitStatus struct {
+// TimedCommitStatusEnvironments defines the branch/environment and duration to wait before considering the commit status as failed.
+type TimedCommitStatusEnvironments struct {
 	// Branch is the name of the branch/environment you want to gate for the configured duration.
 	// +required
 	Branch string `json:"branch"`
@@ -61,7 +61,7 @@ type TimedCommitStatusStatus struct {
 	// +listType=map
 	// +listMapKey=branch
 	// +optional
-	Environments []EnvironmentTimedStatus `json:"environments,omitempty"`
+	Environments []TimedCommitStatusEnvironmentsStatus `json:"environments,omitempty"`
 
 	// conditions represent the current state of the TimedCommitStatus resource.
 	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
@@ -78,33 +78,33 @@ type TimedCommitStatusStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// EnvironmentTimedStatus defines the observed timing status for a specific environment.
-type EnvironmentTimedStatus struct {
+// TimedCommitStatusEnvironmentsStatus defines the observed timing status for a specific environment.
+type TimedCommitStatusEnvironmentsStatus struct {
 	// Branch is the name of the branch/environment.
 	// +required
 	Branch string `json:"branch"`
 
 	// Sha is the commit SHA being tracked for this environment.
-	// +optional
-	Sha string `json:"sha,omitempty"`
+	// +required
+	Sha string `json:"sha"`
 
 	// CommitTime is when the commit was deployed to the active environment.
-	// +optional
-	CommitTime metav1.Time `json:"commitTime,omitempty"`
+	// +required
+	CommitTime metav1.Time `json:"commitTime"`
 
 	// RequiredDuration is the duration that must elapse before promotion is allowed.
-	// +optional
-	RequiredDuration metav1.Duration `json:"requiredDuration,omitempty"`
+	// +required
+	RequiredDuration metav1.Duration `json:"requiredDuration"`
 
 	// Phase represents the current phase of the timed gate.
 	// +kubebuilder:validation:Enum=pending;success;failure
-	// +optional
-	Phase string `json:"phase,omitempty"`
+	// +required
+	Phase string `json:"phase"`
 
 	// TimeElapsed is the duration that has elapsed since the commit was deployed.
 	// This is calculated at reconciliation time.
-	// +optional
-	TimeElapsed metav1.Duration `json:"timeElapsed,omitempty"`
+	// +required
+	TimeElapsed metav1.Duration `json:"timeElapsed"`
 }
 
 // +kubebuilder:object:root=true
