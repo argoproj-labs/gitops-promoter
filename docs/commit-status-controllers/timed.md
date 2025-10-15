@@ -140,7 +140,7 @@ If a lower environment has a pending promotion (i.e., proposed SHA != active SHA
 
 The controller uses the `CommitTime` from the PromotionStrategy's environment status. This timestamp represents when the commit was deployed to the environment. The controller calculates elapsed time from this timestamp.
 
-q### Intelligent Reconciliation
+### Intelligent Reconciliation
 
 The TimedCommitStatus controller uses an intelligent requeue strategy to provide timely status updates and minimize promotion latency:
 
