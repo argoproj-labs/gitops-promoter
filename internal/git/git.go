@@ -391,29 +391,21 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	logger := log.FromContext(ctx)
 
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
-	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.activeBranch) == "" {
+	if gitPath == "" {
 		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	// Checkout the environment branch
-	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "--progress", "-B", environmentBranch, "origin/"+environmentBranch)
-	if err != nil {
-		logger.Error(err, "could not git checkout", "gitError", stderr)
-		return false, err
-	}
-	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
-
-	// Fetch the next environment branch
+	// Fetch both branches to ensure we have the latest remote refs
 	start := time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "fetch", "origin", environmentNextBranch)
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", environmentBranch, environmentNextBranch)
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
-		logger.Error(err, "could not fetch branch", "gitError", stderr)
+		logger.Error(err, "could not fetch branches", "gitError", stderr)
 		return false, err
 	}
-	logger.V(4).Info("Fetched branch", "branch", environmentNextBranch)
+	logger.V(4).Info("Fetched branches", "environmentBranch", environmentBranch, "environmentNextBranch", environmentNextBranch)
 
-	// Get the diff between the two branches
+	// Get the diff between the two branches using remote refs directly (no checkout needed)
 	stdout, stderr, err := g.runCmd(ctx, gitPath, "diff", fmt.Sprintf("origin/%s...origin/%s", environmentBranch, environmentNextBranch), "--name-only", "--diff-filter=ACMRT")
 	if err != nil {
 		logger.Error(err, "could not get diff", "gitError", stderr)
@@ -503,37 +495,38 @@ func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory strin
 	return stdoutBuf.String(), stderrBuf.String(), nil
 }
 
-// HasConflict checks if there is a merge conflict between the proposed branch and the active branch. It assumes that
-// origin/<branch> is currently fetched and updated in the local repository. This should happen via GetBranchShas function
-// earlier in the reconcile.
+// HasConflict checks if there is a merge conflict between the proposed branch and the active branch using git merge-tree.
+// This is a stateless operation that doesn't modify the working tree.
 func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch, activeBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
 	repoPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
-
-	// Checkout the active branch
-	if _, stderr, err := g.runCmd(ctx, repoPath, "checkout", "--progress", "-B", activeBranch, "origin/"+activeBranch); err != nil {
-		logger.Error(err, "could not checkout active branch", "branch", activeBranch, "stderr", stderr)
-		return false, fmt.Errorf("failed to checkout active branch %q: %w", activeBranch, err)
+	if repoPath == "" {
+		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	// Merge the proposed branch without committing
-	stdout, stderr, mergeErr := g.runCmd(ctx, repoPath, "merge", "--no-commit", "--no-ff", "origin/"+proposedBranch)
-	conflictDetected := strings.Contains(stdout, "CONFLICT")
-
-	// Always attempt to abort the merge to clean up
-	if _, abortStderr, abortErr := g.runCmd(ctx, repoPath, "merge", "--abort"); abortErr != nil {
-		if !strings.Contains(abortStderr, "MERGE_HEAD missing") { // Ignore the error if there is no merge in progress
-			logger.Error(abortErr, "could not abort merge", "stderr", abortStderr)
-			return false, fmt.Errorf("failed to abort merge: %w", abortErr)
-		}
+	// Ensure we have the latest refs
+	start := time.Now()
+	_, stderr, err := g.runCmd(ctx, repoPath, "fetch", "origin", activeBranch, proposedBranch)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
+	if err != nil {
+		logger.Error(err, "could not fetch branches", "gitError", stderr)
+		return false, fmt.Errorf("failed to fetch branches: %w", err)
 	}
+
+	// Use git merge-tree to perform a stateless merge check
+	// merge-tree outputs information about conflicts without touching the working tree
+	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "origin/"+activeBranch, "origin/"+proposedBranch)
+	if err != nil {
+		logger.Error(err, "could not run merge-tree", "gitError", stderr)
+		return false, fmt.Errorf("failed to run merge-tree for branches %q and %q: %w", activeBranch, proposedBranch, err)
+	}
+
+	// Check if the output contains conflict markers
+	conflictDetected := strings.Contains(stdout, "<<<<<<<") || strings.Contains(stdout, "=======") || strings.Contains(stdout, ">>>>>>>")
 
 	if conflictDetected {
+		logger.V(4).Info("Conflict detected between branches", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
 		return true, nil
-	}
-	if mergeErr != nil {
-		logger.Error(mergeErr, "could not merge branches", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
-		return false, fmt.Errorf("failed to test merge branch %q into %q: %w", proposedBranch, activeBranch, mergeErr)
 	}
 
 	return false, nil
