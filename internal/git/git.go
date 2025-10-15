@@ -13,7 +13,6 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -134,7 +133,7 @@ type BranchShas struct {
 	Hydrated string
 }
 
-// GetBranchShas checks out the given branch, pulls the latest changes, and returns the hydrated and dry SHAs.
+// GetBranchShas fetches the latest changes and returns the hydrated and dry SHAs without checking out or modifying the working directory.
 func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string) (BranchShas, error) {
 	logger := log.FromContext(ctx)
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -143,23 +142,19 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string
 	}
 
 	logger.V(4).Info("git path", "path", gitPath)
-	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "--progress", "-B", branch, "origin/"+branch)
-	if err != nil {
-		logger.Error(err, "could not git checkout", "gitError", stderr)
-		return BranchShas{}, err
-	}
-	logger.V(4).Info("Checked out branch", "branch", branch)
 
+	// Fetch the branch without checking it out - no working directory modifications
 	start := time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "pull", "--progress")
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
-		logger.Error(err, "could not git pull", "gitError", stderr)
+		logger.Error(err, "could not git fetch", "gitError", stderr)
 		return BranchShas{}, err
 	}
-	logger.V(4).Info("Pulled branch", "branch", branch)
+	logger.V(4).Info("Fetched branch", "branch", branch)
 
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", branch)
+	// Get the SHA using rev-parse on the remote ref - no checkout needed
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", "origin/"+branch)
 	if err != nil {
 		logger.Error(err, "could not get branch shas", "gitError", stderr)
 		return BranchShas{}, err
@@ -169,20 +164,20 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string
 	shas.Hydrated = strings.TrimSpace(stdout)
 	logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", shas.Hydrated)
 
-	// TODO: safe path join
-	metadataFile := gitPath + "/hydrator.metadata"
-	jsonFile, err := os.Open(metadataFile)
+	// Read the metadata file directly from the remote ref without touching the filesystem
+	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", "origin/"+branch+":hydrator.metadata")
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			logger.Info("hydrator.metadata file not found", "file", metadataFile)
+		// Check if the error is because the file doesn't exist
+		if strings.Contains(stderr, "does not exist") || strings.Contains(stderr, "Path not found") {
+			logger.Info("hydrator.metadata file not found in branch", "branch", branch)
 			return shas, nil
 		}
-		return BranchShas{}, fmt.Errorf("could not open metadata file: %w", err)
+		logger.Error(err, "could not git show file", "gitError", stderr)
+		return BranchShas{}, fmt.Errorf("could not get metadata file: %w", err)
 	}
 
 	var hydratorFile HydratorMetadata
-	decoder := json.NewDecoder(jsonFile)
-	err = decoder.Decode(&hydratorFile)
+	err = json.Unmarshal([]byte(metadataFileStdout), &hydratorFile)
 	if err != nil {
 		return BranchShas{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
 	}
@@ -396,29 +391,21 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 	logger := log.FromContext(ctx)
 
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
-	if gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo)+g.activeBranch) == "" {
+	if gitPath == "" {
 		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	// Checkout the environment branch
-	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "--progress", "-B", environmentBranch, "origin/"+environmentBranch)
-	if err != nil {
-		logger.Error(err, "could not git checkout", "gitError", stderr)
-		return false, err
-	}
-	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
-
-	// Fetch the next environment branch
+	// Fetch both branches without checking them out - no working directory modifications
 	start := time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "fetch", "origin", environmentNextBranch)
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", environmentBranch, environmentNextBranch)
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
-		logger.Error(err, "could not fetch branch", "gitError", stderr)
+		logger.Error(err, "could not fetch branches", "gitError", stderr)
 		return false, err
 	}
-	logger.V(4).Info("Fetched branch", "branch", environmentNextBranch)
+	logger.V(4).Info("Fetched branches", "environmentBranch", environmentBranch, "environmentNextBranch", environmentNextBranch)
 
-	// Get the diff between the two branches
+	// Get the diff between the two branches using origin refs - no checkout needed
 	stdout, stderr, err := g.runCmd(ctx, gitPath, "diff", fmt.Sprintf("origin/%s...origin/%s", environmentBranch, environmentNextBranch), "--name-only", "--diff-filter=ACMRT")
 	if err != nil {
 		logger.Error(err, "could not get diff", "gitError", stderr)
