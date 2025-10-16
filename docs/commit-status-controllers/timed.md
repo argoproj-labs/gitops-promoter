@@ -1,10 +1,10 @@
 # Timed Commit Status Controller
 
-The Timed Commit Status controller provides time-based gating for environment promotions. It ensures that changes "bake" in lower environments for a specified duration before being promoted to higher environments. This is useful for implementing safety practices like "soak time" or "bake time" requirements.
+The Timed Commit Status controller provides time-based gating for environment promotions. It ensures that changes "bake" in environments for a specified duration. This is useful for implementing safety practices like "soak time" or "bake time" requirements.
 
 ## Overview
 
-The TimedCommitStatus controller monitors the active commits in specified environments and automatically creates CommitStatus resources that gate promotions to subsequent environments based on how long a commit has been running in the current environment.
+The TimedCommitStatus controller monitors the active commits in specified environments and automatically creates CommitStatus resources that act as active commit status gates based on how long a commit has been running in each environment.
 
 ### How It Works
 
@@ -12,12 +12,12 @@ For each environment configured in a TimedCommitStatus resource:
 
 1. The controller checks how long the current active commit has been running in that environment
 2. It compares the elapsed time against the configured required duration
-3. It creates/updates a CommitStatus for the **next** environment's proposed SHA
+3. It creates/updates a CommitStatus for the **current** environment's active SHA
 4. The CommitStatus phase is set to:
-   - `pending` - If the required duration has not been met, or if there's a pending promotion in the lower environment
+   - `pending` - If the required duration has not been met, or if there's a pending promotion in the environment
    - `success` - If the required duration has been met and no pending promotion exists
 
-This gating mechanism prevents changes from being promoted too quickly through your environment pipeline.
+This gating mechanism prevents changes from being promoted from environments too quickly, including from the lowest level environment in your pipeline.
 
 ## Example Configurations
 
@@ -41,12 +41,12 @@ spec:
 ```
 
 This configuration:
-- Requires changes to run in `development` for 1 hour before promoting to `staging`
-- Requires changes to run in `staging` for 4 hours before promoting to `production`
+- Requires changes to run in `development` for 1 hour before they can be promoted out
+- Requires changes to run in `staging` for 4 hours before they can be promoted out
 
 ### Integrating with PromotionStrategy
 
-To use time-based gating, configure your PromotionStrategy to check for the `timed` commit status key:
+To use time-based gating, configure your PromotionStrategy to check for the `timed` commit status key as an active commit status:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -56,20 +56,18 @@ metadata:
 spec:
   gitRepositoryRef:
     name: webservice-tier-1
+  activeCommitStatuses:
+    - key: timed
   environments:
     - branch: environment/development
     - branch: environment/staging
-      proposedCommitStatuses:
-        - key: timed
     - branch: environment/production
-      proposedCommitStatuses:
-        - key: timed
 ```
 
 In this configuration:
-- Changes can be promoted to `development` immediately (no gates)
 - Changes must meet the 1-hour requirement in `development` before being promoted to `staging`
 - Changes must meet the 4-hour requirement in `staging` before being promoted to `production`
+- The timed gate applies globally as an active commit status, preventing promotions when time requirements are not met
 
 ### Complete Example with Multiple Gates
 
@@ -85,16 +83,13 @@ spec:
     name: webservice-tier-1
   activeCommitStatuses:
     - key: argocd-health
+    - key: timed
+  proposedCommitStatuses:
+    - key: manual-approval
   environments:
     - branch: environment/development
     - branch: environment/staging
-      proposedCommitStatuses:
-        - key: timed
-        - key: manual-approval
     - branch: environment/production
-      proposedCommitStatuses:
-        - key: timed
-        - key: manual-approval
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: TimedCommitStatus
@@ -108,13 +103,16 @@ spec:
       duration: 2h
     - branch: environment/staging
       duration: 8h
+    - branch: environment/production
+      duration: 24h
 ```
 
 This configuration requires:
 - Argo CD health checks to pass in all environments (active commit status)
 - 2-hour soak time in development before promoting to staging
 - 8-hour soak time in staging before promoting to production
-- Manual approval for both staging and production promotions
+- 24-hour soak time in production (useful for audit/compliance)
+- Manual approval before any promotion (proposed commit status)
 
 ## Duration Formats
 
@@ -130,11 +128,11 @@ The `duration` field accepts standard Go duration strings:
 
 ### Pending Promotions
 
-If a lower environment has a pending promotion (i.e., proposed SHA != active SHA), the time-based gate will report `pending` for the next environment. This ensures that:
+If an environment has a pending promotion (i.e., proposed SHA != active SHA), the time-based gate will report `pending` for that environment. This ensures that:
 
-1. Pending changes in lower environments are merged before new changes can be promoted higher
+1. Pending changes are merged before the environment is considered stable for promotion
 2. The promotion pipeline remains orderly and predictable
-3. You don't accidentally promote past an untested change
+3. You don't accidentally promote from an environment with untested changes
 
 ### Commit Time Tracking
 
@@ -234,7 +232,7 @@ If no CommitStatus is created:
 1. Verify the PromotionStrategy reference is correct
 2. Ensure the environment branch names match exactly
 3. Check that the PromotionStrategy has been reconciled and has status populated
-4. Verify there's a next environment in the sequence (the last environment doesn't get a gate)
+4. Verify the environment has an active commit
 
 ### Checking Current Status
 

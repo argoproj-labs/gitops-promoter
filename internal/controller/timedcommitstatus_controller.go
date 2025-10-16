@@ -156,8 +156,9 @@ func (r *TimedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr 
 // processEnvironments processes each environment defined in the TimedCommitStatus spec,
 // creating or updating CommitStatus resources based on time-based rules.
 // The logic is: for each environment, check if the commit in the current environment's active branch
-// has been running for the required duration. If so, report success for the NEXT environment's proposed SHA.
-// This gates promotions by ensuring commits "bake" in lower environments before moving up.
+// has been running for the required duration. If so, report success for the current environment's active SHA.
+// This allows using the timed commit status as an active commit status gate to block promotions
+// when the current environment hasn't been stable for the required duration.
 // Returns true if any time gate transitioned from pending to success.
 func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (bool, error) {
 	logger := log.FromContext(ctx)
@@ -172,12 +173,10 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 	tcs.Status.Environments = make([]promoterv1alpha1.TimedCommitStatusEnvironmentsStatus, 0, len(tcs.Spec.Environments))
 
 	for _, envConfig := range tcs.Spec.Environments {
-		// Find the current environment index in the PromotionStrategy
-		currentEnvIndex := -1
+		// Find the current environment in the PromotionStrategy
 		var currentEnvStatus *promoterv1alpha1.EnvironmentStatus
 		for i := range ps.Status.Environments {
 			if ps.Status.Environments[i].Branch == envConfig.Branch {
-				currentEnvIndex = i
 				currentEnvStatus = &ps.Status.Environments[i]
 				break
 			}
@@ -188,32 +187,12 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 			continue
 		}
 
-		// Find the next (higher) environment in the promotion sequence
-		nextEnvIndex := currentEnvIndex + 1
-		if nextEnvIndex >= len(ps.Status.Environments) {
-			// This is the last environment, no next environment to gate
-			logger.Info("Skipping last environment in promotion sequence", "branch", envConfig.Branch)
-			continue
-		}
-
-		nextEnvStatus := &ps.Status.Environments[nextEnvIndex]
-
 		// Get the current environment's active hydrated SHA and commit time
 		currentActiveSha := currentEnvStatus.Active.Hydrated.Sha
 		currentActiveCommitTime := currentEnvStatus.Active.Hydrated.CommitTime.Time
 
-		// Get the next environment's proposed hydrated SHA
-		nextProposedSha := nextEnvStatus.Proposed.Hydrated.Sha
-
 		if currentActiveSha == "" {
 			logger.Info("No active hydrated commit in current environment", "branch", envConfig.Branch)
-			continue
-		}
-
-		if nextProposedSha == "" {
-			logger.V(1).Info("No proposed hydrated commit in next environment",
-				"currentBranch", envConfig.Branch,
-				"nextBranch", nextEnvStatus.Branch)
 			continue
 		}
 
@@ -224,14 +203,14 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		}
 
 		// Determine commit status phase based on time elapsed in current environment
-		// This status will be reported for the next environment's proposed SHA
+		// This status will be reported for the current environment's active SHA
 		var phase promoterv1alpha1.CommitStatusPhase
 		var message string
-		// If there is a pending promotion in the lower (current) environment (proposed != active), report pending
+		// If there is a pending promotion in the current environment (proposed != active), report pending
 		// This indicates there's an open PR that hasn't been merged yet
 		if currentEnvStatus.Proposed.Dry.Sha != "" && currentEnvStatus.Proposed.Dry.Sha != currentEnvStatus.Active.Dry.Sha {
 			phase = promoterv1alpha1.CommitPhasePending
-			message = fmt.Sprintf("Waiting for pending promotion in %s environment to be merged before allowing promotion", envConfig.Branch)
+			message = fmt.Sprintf("Waiting for pending promotion in %s environment to be merged", envConfig.Branch)
 		} else {
 			phase, message = r.calculateCommitStatusPhase(currentActiveCommitTime, envConfig.Duration.Duration, elapsed, envConfig.Branch)
 		}
@@ -263,19 +242,16 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		}
 		tcs.Status.Environments = append(tcs.Status.Environments, envTimedStatus)
 
-		// Create or update the CommitStatus for the NEXT environment's proposed SHA
-		// This gates the promotion to the next environment
-		// Pass the current (lower) environment branch so the commit status name reflects which env we're waiting on
-		err := r.upsertCommitStatus(ctx, tcs, ps, nextEnvStatus.Branch, nextProposedSha, phase, message, envConfig.Branch)
+		// Create or update the CommitStatus for the current environment's active SHA
+		// This acts as an active commit status that gates promotions from this environment
+		err := r.upsertCommitStatus(ctx, tcs, ps, envConfig.Branch, currentActiveSha, phase, message, envConfig.Branch)
 		if err != nil {
-			return false, fmt.Errorf("failed to upsert CommitStatus for next environment %q: %w", nextEnvStatus.Branch, err)
+			return false, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
 		}
 
 		logger.Info("Processed environment time gate",
-			"currentBranch", envConfig.Branch,
-			"currentActiveSha", currentActiveSha,
-			"nextBranch", nextEnvStatus.Branch,
-			"nextProposedSha", nextProposedSha,
+			"branch", envConfig.Branch,
+			"activeSha", currentActiveSha,
 			"phase", phase,
 			"elapsed", elapsed.Round(time.Second),
 			"required", envConfig.Duration.Duration)
@@ -285,22 +261,22 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 }
 
 // calculateCommitStatusPhase determines the commit status phase based on time elapsed since deployment
-func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(commitTime time.Time, requiredDuration time.Duration, elapsed time.Duration, lowerEnvBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
+func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(commitTime time.Time, requiredDuration time.Duration, elapsed time.Duration, envBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
 	if commitTime.IsZero() {
 		// If we don't have a commit time, we can't make a decision
-		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for commit time to be available in %s environment", lowerEnvBranch)
+		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for commit time to be available in %s environment", envBranch)
 	}
 
 	if elapsed >= requiredDuration {
 		// Sufficient time has passed
-		return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met for %s environment", lowerEnvBranch)
+		return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met for %s environment", envBranch)
 	}
 
 	// Not enough time has passed yet
-	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for time-based gate on %s environment", lowerEnvBranch)
+	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for time-based gate on %s environment", envBranch)
 }
 
-func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, lowerEnvBranch string) error {
+func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) error {
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-timed", tcs.Name, branch))
 
@@ -328,8 +304,8 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 
 		// Set the spec
 		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
-		// Use the lower environment branch name to show which environment we're waiting on
-		commitStatus.Spec.Name = "timed-gate/" + lowerEnvBranch
+		// Use the environment branch name to show which environment's time gate this is checking
+		commitStatus.Spec.Name = "timed-gate/" + envBranch
 		commitStatus.Spec.Description = message
 		commitStatus.Spec.Phase = phase
 		commitStatus.Spec.Sha = sha

@@ -13,7 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-// to run just this test use: cd /Users/zaller/Development/promoter && KUBEBUILDER_ASSETS="/Users/zaller/Development/promoter/bin/k8s/1.31.0-darwin-arm64" ./bin/ginkgo-v2.26.0 -v --focus "TimedCommitStatus Controller" internal/controller/
+
 package controller
 
 import (
@@ -48,8 +48,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-pending", "default")
 
-			// Configure ProposedCommitStatuses to check for timed commit status
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			// Configure ActiveCommitStatuses to check for timed commit status
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: "timed"},
 			}
 
@@ -126,7 +126,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			_ = k8sClient.Delete(ctx, promotionStrategy)
 		})
 
-		It("should report pending status when lower environment has open PR", func() {
+		It("should report pending status when environment has open PR", func() {
 			By("Waiting for TimedCommitStatus to process the pending promotion")
 			Eventually(func(g Gomega) {
 				var tcs promoterv1alpha1.TimedCommitStatus
@@ -147,8 +147,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(1*time.Hour), "RequiredDuration should match spec")
 				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically("<", 1*time.Hour), "TimeElapsed should be < required duration")
 
-				// Verify CommitStatus was created for staging with pending phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
+				// Verify CommitStatus was created for dev environment (not staging) with pending phase
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/development-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -176,7 +176,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-time-met", "default")
 
 			// Only use 2 environments for this test
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: "timed"},
 			}
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
@@ -260,8 +260,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically(">=", 1*time.Second),
 					"TimeElapsed must be >= RequiredDuration for success phase")
 
-				// Verify CommitStatus was created for staging with success phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
+				// Verify CommitStatus was created for dev environment (current environment) with success phase
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/development-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -292,8 +292,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically(">=", 1*time.Second),
 					"TimeElapsed should continue to be >= RequiredDuration")
 
-				// Verify CommitStatus phase remains success
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
+				// Verify CommitStatus phase remains success for dev environment
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/development-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -320,7 +320,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-time-not-met", "default")
 
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: "timed"},
 			}
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
@@ -423,8 +423,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically("<", 24*time.Hour),
 					"TimeElapsed should still be < RequiredDuration (24 hours)")
 
-				// Verify CommitStatus phase remains pending
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/staging-timed")
+				// Verify CommitStatus phase remains pending for dev environment
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/development-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -501,8 +501,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-touch-ps", "default")
 
-			// Configure ProposedCommitStatuses to check for timed commit status
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			// Configure ActiveCommitStatuses to check for timed commit status
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 				{Key: "timed"},
 			}
 
@@ -588,8 +588,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 					Namespace: "default",
 				}, &tcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				// Should have status for dev and staging (production is last, so no gate)
-				g.Expect(tcs.Status.Environments).To(HaveLen(2))
+				// Should have status for all three environments now (dev, staging, and production)
+				g.Expect(tcs.Status.Environments).To(HaveLen(3))
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -629,7 +629,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Dev environment should transition to success after 10 seconds
-				g.Expect(tcs.Status.Environments).To(HaveLen(2))
+				g.Expect(tcs.Status.Environments).To(HaveLen(3))
 				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 					"Dev environment should transition to success after duration")
