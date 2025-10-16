@@ -900,6 +900,14 @@ spec:
                             was created.
                           format: date-time
                           type: string
+                        prMergeTime:
+                          description: |-
+                            PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+                            it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+                            this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note
+                            for that commit.
+                          format: date-time
+                          type: string
                         state:
                           description: State is the state of the pull request.
                           enum:
@@ -1087,6 +1095,14 @@ spec:
                   prCreationTime:
                     description: PRCreationTime is the time when the pull request
                       was created.
+                    format: date-time
+                    type: string
+                  prMergeTime:
+                    description: |-
+                      PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+                      it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+                      this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note
+                      for that commit.
                     format: date-time
                     type: string
                   state:
@@ -3387,6 +3403,14 @@ spec:
                                   request was created.
                                 format: date-time
                                 type: string
+                              prMergeTime:
+                                description: |-
+                                  PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+                                  it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+                                  this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note
+                                  for that commit.
+                                format: date-time
+                                type: string
                               state:
                                 description: State is the state of the pull request.
                                 enum:
@@ -3602,6 +3626,14 @@ spec:
                         prCreationTime:
                           description: PRCreationTime is the time when the pull request
                             was created.
+                          format: date-time
+                          type: string
+                        prMergeTime:
+                          description: |-
+                            PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+                            it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+                            this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note
+                            for that commit.
                           format: date-time
                           type: string
                         state:

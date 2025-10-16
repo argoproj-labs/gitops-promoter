@@ -8,6 +8,8 @@ const (
 	TrailerCommitStatusProposedPrefix = "Commit-status-proposed-"
 	// TrailerPullRequestCreationTime is the trailer key used to store the creation time of the pull request.
 	TrailerPullRequestCreationTime = "Pull-request-creation-time"
+	// TrailerPullRequestMergeTime is the trailer key used to store the merge time of the pull request.
+	TrailerPullRequestMergeTime = "Pull-request-merge-time"
 	// TrailerPullRequestID is the trailer key used to store the pull request ID.
 	TrailerPullRequestID = "Pull-request-id"
 	// TrailerPullRequestSourceBranch is the trailer key used to store the source branch of the pull request.
