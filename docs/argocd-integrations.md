@@ -61,3 +61,15 @@ To enable these deep links, add the following to your `argocd-cm` ConfigMap:
       icon.class: fa-code-pull-request
       if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "ChangeTransferPolicy" && resource.status.pullRequest != nil && resource.status.pullRequest.url != ""
 ```
+
+## Commit Status Keys in Resource Tree
+
+Argo CD supports [showing values of specific labels in the resource tree](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#resource-custom-labels).
+
+![Screenshot of Argo CD resource tree. The CommitStatus resources are labeled with their key.](assets/argocd-resource-tree-labels.png)
+
+To enable this, add the following to your `argocd-cm` ConfigMap:
+
+```yaml
+  resource.customLabels: promoter.argoproj.io/commit-status
+```
