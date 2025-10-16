@@ -1,6 +1,7 @@
 package git_test
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 )
 
 func TestGit(t *testing.T) {
@@ -43,7 +49,7 @@ var _ = Describe("GetBranchShas", func() {
 	})
 
 	Context("When the branch does not exist on the remote", func() {
-		It("should provide a clear error message", func() {
+		It("should provide a clear error message from GetBranchShas", func() {
 			By("Setting up a bare git repository")
 			_, err := runGitCmd(tempRepoDir, "init", "--bare")
 			Expect(err).NotTo(HaveOccurred())
@@ -77,22 +83,45 @@ var _ = Describe("GetBranchShas", func() {
 			_, err = runGitCmd(workDir, "push", "origin", defaultBranch)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cloning the repository")
-			cloneDir, err := os.MkdirTemp("", "git-clone-*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				Expect(os.RemoveAll(cloneDir)).To(Succeed())
-			}()
+			// Prepare EnvironmentOperations
+			repo := &v1alpha1.GitRepository{
+				Spec: v1alpha1.GitRepositorySpec{
+					GitHub: &v1alpha1.GitHubRepo{
+						Owner: "test-owner",
+						Name:  "testrepo",
+					},
+					ScmProviderRef: v1alpha1.ScmProviderObjectReference{
+						Kind: "ScmProvider",
+						Name: "testprovider",
+					},
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testrepo",
+					Namespace: "default",
+				},
+			}
+			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+			g := git.NewEnvironmentOperations(repo, gap, defaultBranch)
+			Expect(g.CloneRepo(GinkgoT().Context())).To(Succeed())
 
-			_, err = runGitCmd(cloneDir, "clone", "--filter=blob:none", tempRepoDir, ".")
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Attempting to fetch a non-existent branch")
-			nonExistentBranch := "environments/qal-usw2-eks-next"
-			output, err := runGitCmd(cloneDir, "fetch", "origin", nonExistentBranch)
-
+			// Call GetBranchShas with a non-existent branch
+			_, err = g.GetBranchShas(GinkgoT().Context(), "environments/qal-usw2-eks-next")
 			Expect(err).To(HaveOccurred())
-			Expect(output).To(ContainSubstring("couldn't find remote ref"))
+			Expect(err.Error()).To(ContainSubstring("failed to fetch branch"))
+
+			// Having a missing branch is a common error, so we're ensuring the error message is clear.
+			Expect(err.Error()).To(ContainSubstring("couldn't find remote ref"))
 		})
 	})
 })
+
+type fakeGitProvider struct {
+	tempDirPath string
+}
+
+func (f *fakeGitProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string {
+	// Return the local bare repo path for testing
+	return f.tempDirPath
+}
+func (f *fakeGitProvider) GetUser(ctx context.Context) (string, error)  { return "user", nil }
+func (f *fakeGitProvider) GetToken(ctx context.Context) (string, error) { return "token", nil }
