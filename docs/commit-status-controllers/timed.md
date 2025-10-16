@@ -17,7 +17,7 @@ For each environment configured in a TimedCommitStatus resource:
    - `pending` - If the required duration has not been met, or if there's a pending promotion in the environment
    - `success` - If the required duration has been met and no pending promotion exists
 
-This gating mechanism prevents changes from being promoted from environments too quickly, including from the lowest level environment in your pipeline.
+This gating mechanism prevents changes from being promoted from environments too quickly.
 
 ## Example Configurations
 
@@ -111,7 +111,7 @@ This configuration requires:
 - Argo CD health checks to pass in all environments (active commit status)
 - 2-hour soak time in development before promoting to staging
 - 8-hour soak time in staging before promoting to production
-- 24-hour soak time in production (useful for audit/compliance)
+- 24-hour soak time in production (just informational does not block any promotion, because no next environment)
 - Manual approval before any promotion (proposed commit status)
 
 ## Duration Formats
@@ -128,7 +128,7 @@ The `duration` field accepts standard Go duration strings:
 
 ### Pending Promotions
 
-If an environment has a pending promotion (i.e., proposed SHA != active SHA), the time-based gate will report `pending` for that environment. This ensures that:
+If an environment has a pending promotion (i.e., proposed dry SHA != active dry SHA), the time-based gate will report `pending` for that environment. This ensures that:
 
 1. Pending changes are merged before the environment is considered stable for promotion
 2. The promotion pipeline remains orderly and predictable
