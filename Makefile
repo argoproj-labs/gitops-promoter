@@ -298,6 +298,15 @@ $(GORELEASER): $(LOCALBIN)
 serve-docs:
 	$(CONTAINER_TOOL) run ${MKDOCS_RUN_ARGS} --rm -it -p 8000:8000 -v ${CURRENT_DIR}:/docs -w /docs --entrypoint "" ${MKDOCS_DOCKER_IMAGE} sh -c 'pip install mkdocs; pip install $$(mkdocs get-deps); mkdocs serve -a $$(ip route get 1 | awk '\''{print $$7}'\''):8000'
 
+.PHONY: lint-docs
+lint-docs:  ## Build docs and fail if there are warnings
+	@mkdocs build 2>&1 | tee mkdocs-lint.log
+	@if grep -q 'WARNING' mkdocs-lint.log; then \
+	  echo "MkDocs build produced warnings!"; \
+	  cat mkdocs-lint.log; \
+	  exit 1; \
+	fi
+
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)
 # $2 - package url which can be installed

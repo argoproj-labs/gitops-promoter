@@ -2,10 +2,9 @@
 
 GitOps Promoter produces metrics counter and histogram metrics for all network-bound operations.
 
-!!!important "Metrics Subject to Change"
-
-    The metrics produced by GitOps Promoter are subject to change as the project evolves until the 1.0 release. 
-    Please refer to this document for the latest metrics.
+> [!IMPORTANT]
+> The metrics produced by GitOps Promoter are subject to change as the project evolves until the 1.0 release. 
+> Please refer to this document for the latest metrics.
 
 ## git_operations_total
 

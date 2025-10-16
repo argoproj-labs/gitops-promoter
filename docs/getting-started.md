@@ -36,13 +36,12 @@ During the creation the GitHub App, you will need to configure the following set
 
 ### Webhooks (Optional - but highly recommended)
 
-!!! note "Configure your webhook ingress"
-
-    We do support configuration of a GitHub App webhook that triggers PR creation upon Push. However, we do not configure
-    the ingress to allow GitHub to reach the GitOps Promoter. You will need to configure the ingress to allow GitHub to reach 
-    the GitOps Promoter via the service promoter-webhook-receiver which listens on port `3333`. If you do not use webhooks 
-    you might want to adjust the auto reconciliation interval to a lower value using these `promotionStrategyRequeueDuration` and
-    `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
+> [!NOTE]
+> We do support configuration of a GitHub App webhook that triggers PR creation upon Push. However, we do not configure
+> the ingress to allow GitHub to reach the GitOps Promoter. You will need to configure the ingress to allow GitHub to reach 
+> the GitOps Promoter via the service promoter-webhook-receiver which listens on port `3333`. If you do not use webhooks 
+> you might want to adjust the auto reconciliation interval to a lower value using these `promotionStrategyRequeueDuration` and
+> `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
 
 Webhook URL: `https://<your-promoter-webhook-receiver-ingress>/`
 
@@ -87,9 +86,8 @@ stringData:
   githubAppPrivateKey: <your-private-key>
 ```
 
-!!! note 
-
-    This Secret will need to be installed to the same namespace that you plan on creating PromotionStrategy resources in.
+> [!NOTE]
+> This Secret will need to be installed to the same namespace that you plan on creating PromotionStrategy resources in.
 
 We also need a GitRepository and ScmProvider, which is are custom resources that represents a git repository and a provider. 
 Here is an example of both resources:
@@ -118,10 +116,9 @@ spec:
     name: <your-scmprovider-name>
 ```
 
-!!! note 
-
-    The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy 
-    resources in, and it also needs to be in the same namespace of the secret it references.
+> [!NOTE]
+> The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy 
+> resources in, and it also needs to be in the same namespace of the secret it references.
 
 ## GitLab Configuration
 
@@ -217,9 +214,8 @@ spec:
     name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
 ```
 
-!!! note 
-
-    The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy resources in, and it also needs to be in the same namespace of the secret it references.
+> [!NOTE]
+> The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy resources in, and it also needs to be in the same namespace of the secret it references.
 
 
 ## Promotion Strategy
@@ -244,23 +240,20 @@ spec:
     name: <git-repository-ref-name> # The name of the GitRepository resource
 ```
 
-!!! important
+> [!IMPORTANT]
+> Each `branch` configured here is the branch that GitOps Promoter will merge into. Your [hydrator](index.md#prerequisites)
+> configuration must hydrate to these branch names, but **suffixed with `-next`**. This convention is hard-coded in
+> GitOps Promoter.
+>
+> For an example of how to configure the Argo CD Source Hydrator, see the [Argo CD tutorial](tutorial-argocd-apps.md#deploy-an-application-for-3-environments).
+> (Note the difference between the `syncSource` and the `hydrateTo` fields.)
 
-    Each `branch` configured here is the branch that GitOps Promoter will merge into. Your [hydrator](index.md#prerequisites)
-    configuration must hydrate to these branch names, but **suffixed with `-next`**. This convention is hard-coded in
-    GitOps Promoter.
+> [!NOTE]
+> Notice that the branches are prefixed with `environment/`. This is a convention that we recommend you follow.
 
-    For an example of how to configure the Argo CD Source Hydrator, see the [Argo CD tutorial](tutorial-argocd-apps.md#deploy-an-application-for-3-environments).
-    (Note the difference between the `syncSource` and the `hydrateTo` fields.)
-
-!!! note 
-
-    Notice that the branches are prefixed with `environment/`. This is a convention that we recommend you follow.
-
-!!! note 
-
-    The `autoMerge` field is optional and defaults to `true`. We set it to `false` here because we do not have any
-    CommitStatus checks configured. With these all set to `false` we will have to manually merge the PRs.
+> [!NOTE]
+> The `autoMerge` field is optional and defaults to `true`. We set it to `false` here because we do not have any
+> CommitStatus checks configured. With these all set to `false` we will have to manually merge the PRs.
 
 ## Launching the UI
 
