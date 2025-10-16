@@ -214,6 +214,31 @@ make docker-build
 - If deepcopy methods are missing, run `make generate`
 - If UI builds fail, check Node.js version and run `npm install` in the UI directory
 
+# Setting up MkDocs and Python Virtual Environment
+
+To build and serve documentation locally, set up a Python virtual environment at the repository root:
+
+```fish
+python3 -m venv .venv
+source .venv/bin/activate.fish
+pip install -r docs/requirements.txt
+mkdocs serve
+```
+
+- This will install all MkDocs dependencies, including plugins for GitHub-style alerts.
+
+## Verifying Documentation Linting
+
+To check that your documentation changes do not introduce any MkDocs warnings, run:
+
+```bash
+make lint-docs
+```
+
+This will build the documentation and fail if any warnings are present. The full MkDocs output will be shown if there are issues, making it easy to debug. This check is also run automatically in CI for every pull request.
+
+Make sure you have activated your Python virtual environment and installed dependencies as described above before running this command.
+
 ## Additional Resources
 
 - Main documentation: https://gitops-promoter.readthedocs.io/

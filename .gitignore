@@ -83,3 +83,8 @@ yarn-error.log*
 
 # Built UI static files
 ui/web/static/
+
+# MkDocs build output
+mkdocs-lint.log
+# MkDocs build site directory
+site/
