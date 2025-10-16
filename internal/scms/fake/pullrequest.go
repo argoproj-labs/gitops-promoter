@@ -159,15 +159,13 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	}
 
 	// Verify that the source branch HEAD matches the expected merge SHA
-	if pullRequest.Spec.MergeSha != "" {
-		actualSha, err := pr.runGitCmd(gitPath, "rev-parse", "origin/"+pullRequest.Spec.SourceBranch)
-		if err != nil {
-			return fmt.Errorf("failed to get SHA of source branch: %w", err)
-		}
-		actualSha = strings.TrimSpace(actualSha)
-		if actualSha != pullRequest.Spec.MergeSha {
-			return fmt.Errorf("source branch HEAD SHA %q does not match expected merge SHA %q", actualSha, pullRequest.Spec.MergeSha)
-		}
+	actualSha, err := pr.runGitCmd(gitPath, "rev-parse", "origin/"+pullRequest.Spec.SourceBranch)
+	if err != nil {
+		return fmt.Errorf("failed to get SHA of source branch: %w", err)
+	}
+	actualSha = strings.TrimSpace(actualSha)
+	if actualSha != pullRequest.Spec.MergeSha {
+		return fmt.Errorf("source branch HEAD SHA %q does not match expected merge SHA %q", actualSha, pullRequest.Spec.MergeSha)
 	}
 
 	_, err = pr.runGitCmd(gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
