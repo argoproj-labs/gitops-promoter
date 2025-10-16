@@ -31,8 +31,6 @@ jobs:
           make build-extension
       - name: UI Checks
         run: make lint-ui
-      - name: Lint Docs
-        run: make lint-docs
       - name: Set up Python and venv for docs
         uses: actions/setup-python@v5
         with:
@@ -42,6 +40,8 @@ jobs:
           python3 -m venv .venv
           . .venv/bin/activate
           pip install -r docs/requirements.txt
+      - name: Lint Docs
+        run: . .venv/bin/activate && make lint-docs
       - name: Get dependencies
         run: go mod download
       - name: Restore build output from cache
