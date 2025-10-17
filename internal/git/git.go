@@ -331,6 +331,8 @@ func (g *EnvironmentOperations) GetShaTime(ctx context.Context, sha string) (v1.
 }
 
 // PromoteEnvironmentWithMerge merges the next environment branch into the current environment branch and pushes the result.
+// This assumes that both branches have already been fetched via GetBranchShas earlier in the reconciliation,
+// ensuring we merge the exact same refs that were checked for PR requirements.
 func (g *EnvironmentOperations) PromoteEnvironmentWithMerge(ctx context.Context, environmentBranch, environmentNextBranch string) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Promoting environment with merge", "environmentBranch", environmentBranch, "environmentNextBranch", environmentNextBranch)
@@ -340,22 +342,17 @@ func (g *EnvironmentOperations) PromoteEnvironmentWithMerge(ctx context.Context,
 		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	start := time.Now()
-	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin")
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
-	if err != nil {
-		logger.Error(err, "could not fetch origin", "gitError", stderr)
-		return err
-	}
-
-	_, stderr, err = g.runCmd(ctx, gitPath, "checkout", "--progress", "-B", environmentBranch, "origin/"+environmentBranch)
+	// Checkout the environment branch from the already-fetched origin ref
+	// We use the origin ref to ensure we're working with the same commits that were checked
+	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "--progress", "-B", environmentBranch, "origin/"+environmentBranch)
 	if err != nil {
 		logger.Error(err, "could not git checkout", "gitError", stderr)
 		return err
 	}
 	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
 
-	start = time.Now()
+	// Merge using the already-fetched origin ref to ensure we merge the same commits that were checked
+	start := time.Now()
 	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+environmentNextBranch, "-m", "This is a no-op commit merging from "+environmentNextBranch+" into "+environmentBranch+"\n\n"+constants.TrailerNoOp+": true\n")
 	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
