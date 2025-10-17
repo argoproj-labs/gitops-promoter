@@ -54,6 +54,11 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	ArgoCDCommitStatus ArgoCDCommitStatusConfiguration `json:"argocdCommitStatus"`
+
+	// TimedCommitStatus contains the configuration for the TimedCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	TimedCommitStatus TimedCommitStatusConfiguration `json:"timedCommitStatus"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -122,6 +127,17 @@ type ArgoCDCommitStatusConfiguration struct {
 	// +required
 	// +kubebuilder:default=true
 	WatchLocalApplications bool `json:"watchLocalApplications"`
+}
+
+// TimedCommitStatusConfiguration defines the configuration for the TimedCommitStatus controller.
+//
+// This configuration controls how the TimedCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type TimedCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the TimedCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
 }
 
 // WorkQueue defines the work queue configuration for a controller.

@@ -9,4 +9,5 @@ resources:
 - promoter_v1alpha1_argocdcommitstatus.yaml
 - promoter_v1alpha1_controllerconfiguration.yaml
 - promoter_v1alpha1_clusterscmprovider.yaml
+- promoter_v1alpha1_timedcommitstatus.yaml
 #+kubebuilder:scaffold:manifestskustomizesamples
