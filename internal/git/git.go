@@ -514,25 +514,21 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 }
 
 // MergeWithOursStrategy merges the proposed branch into the active branch using the "ours" strategy.
+// This assumes that both branches have already been fetched via GetBranchShas earlier in the reconciliation,
+// ensuring we merge the exact same refs that were checked for conflicts.
 func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
 	logger := log.FromContext(ctx)
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
 
-	// Fetch both branches to ensure we have the latest refs
-	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", proposedBranch, activeBranch)
-	if err != nil {
-		logger.Error(err, "Failed to fetch branches", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
-		return fmt.Errorf("failed to fetch branches: %w", err)
-	}
-
-	// Checkout the proposed branch from origin
-	_, stderr, err = g.runCmd(ctx, gitPath, "checkout", "-B", proposedBranch, "origin/"+proposedBranch)
+	// Checkout the proposed branch from the already-fetched origin ref
+	// We use the origin ref to ensure we're working with the same commits that were checked for conflicts
+	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "-B", proposedBranch, "origin/"+proposedBranch)
 	if err != nil {
 		logger.Error(err, "Failed to checkout branch", "branch", proposedBranch, "stderr", stderr)
 		return fmt.Errorf("failed to checkout branch %q: %w", proposedBranch, err)
 	}
 
-	// Perform the merge with "ours" strategy using origin ref
+	// Perform the merge with "ours" strategy using the already-fetched origin ref
 	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "-s", "ours", "origin/"+activeBranch)
 	if err != nil {
 		logger.Error(err, "Failed to merge branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
