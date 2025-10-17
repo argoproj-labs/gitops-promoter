@@ -106,6 +106,7 @@ These files are auto-generated and should not be edited manually:
 make test              # Run all tests
 make test-parallel     # Run tests in parallel (faster)
 make test-e2e          # Run end-to-end tests
+KUBEBUILDER_ASSETS="<fullpath>/bin/k8s/1.31.0-darwin-arm64" ./bin/ginkgo-v2.26.0 -v --focus "TimedCommitStatus Controller" internal/controller/ # To run a specific focused task replace the --focus flag with the correct test you want
 ```
 
 ### Test Patterns
@@ -214,33 +215,113 @@ make docker-build
 - If deepcopy methods are missing, run `make generate`
 - If UI builds fail, check Node.js version and run `npm install` in the UI directory
 
-# Setting up MkDocs and Python Virtual Environment
+## Test Debugging Protocol
 
-To build and serve documentation locally, set up a Python virtual environment at the repository root:
+### Critical: Always Capture stderr for Controller Logs
 
-```fish
-python3 -m venv .venv
-source .venv/bin/activate.fish
-pip install -r docs/requirements.txt
-mkdocs serve
-```
-
-- This will install all MkDocs dependencies, including plugins for GitHub-style alerts.
-
-## Verifying Documentation Linting
-
-To check that your documentation changes do not introduce any MkDocs warnings, run:
+**Controller logs go to stderr.** Always use `2>&1` in test commands:
 
 ```bash
-make lint-docs
+# ✅ CORRECT - Captures both stdout and stderr
+go test -v ./pkg -ginkgo.focus="test" -ginkgo.v 2>&1 > /tmp/test.log
+
+# ❌ WRONG - Misses controller logs
+go test -v ./pkg > test.log
 ```
 
-This will build the documentation and fail if any warnings are present. The full MkDocs output will be shown if there are issues, making it easy to debug. This check is also run automatically in CI for every pull request.
+### Standard Test Investigation Pattern
 
-Make sure you have activated your Python virtual environment and installed dependencies as described above before running this command.
+1. **Capture everything**:
+   ```bash
+   go test -v ./package -ginkgo.focus="test name" -ginkgo.v -timeout 5m 2>&1 > /tmp/test.log
+   ```
+
+2. **Validate capture**:
+   ```bash
+   wc -l /tmp/test.log  # Should be 500+ lines, not ~20
+   ```
+
+3. **Search for expected behavior**:
+   ```bash
+   grep "expected log message" /tmp/test.log | wc -l
+   # Returns count (0 = code path didn't execute)
+   ```
+
+### Grep Exit Codes
+
+- Exit 0: Pattern found
+- Exit 1: Pattern not found (NOT an error!)
+- Exit 2: Grep syntax error
+
+**Important**: `grep ... | wc -l` always succeeds even if grep found nothing.
+
+### Validating Tests Actually Test What They Claim
+
+Always verify expected code paths executed:
+
+```bash
+# Search for key log messages that prove the code ran
+grep "Testing for conflicts between branches" /tmp/test.log | wc -l
+grep "Conflicts detected, performing merge with 'ours' strategy" /tmp/test.log
+```
+
+**Red flag**: Test passes but expected log messages missing = false positive.
+
+### Quick Investigation Commands
+
+```bash
+# Capture and validate in one step
+go test -v ./pkg -ginkgo.v 2>&1 > /tmp/out.log && wc -l /tmp/out.log
+
+# Find why test failed
+grep -A20 "FAILED" /tmp/out.log
+
+# Check if specific code executed
+grep -c "key log message" /tmp/out.log
+
+# See test result
+tail -5 /tmp/out.log
+```
+
+### Running Multiple Iterations
+
+```bash
+# Run N times, stop on first failure
+for i in {1..5}; do 
+    echo "=== Run $i ==="
+    go test ./pkg -ginkgo.focus="test" -timeout 5m || exit 1
+done
+```
+
+### Using autoMerge for Deterministic Tests
+
+The `autoMerge` field (on `ChangeTransferPolicy.spec.autoMerge` and `Environment.autoMerge`) prevents PRs from auto-merging:
+
+```go
+// Disable auto-merge during test setup
+promotionStrategy.Spec.Environments[1].AutoMerge = ptr.To(false)
+
+// Assert on PR states (PRs stay open)
+
+// Re-enable to allow completion
+ps.Spec.Environments[1].AutoMerge = ptr.To(true)
+k8sClient.Update(ctx, &ps)
+```
+
+**Use for**: Preventing timing races in tests without needing commit status checks.
+
+### Checklist Before Concluding Investigation
+
+- [ ] Used `2>&1` to capture stderr
+- [ ] Used `-ginkgo.v` for detailed output
+- [ ] Validated log file has substantial content (`wc -l`)
+- [ ] Searched for expected log messages from code being tested
+- [ ] Verified test result (PASS/FAIL) in output
+- [ ] If test passed, confirmed expected code paths executed (not false positive)
 
 ## Additional Resources
 
 - Main documentation: https://gitops-promoter.readthedocs.io/
 - Project repository: https://github.com/argoproj-labs/gitops-promoter
 - Related video: "Space Age GitOps: The Rise of the Humble Pull Request"
+- Test debugging protocol: `.ai/go-test-debugging-protocol.md`
