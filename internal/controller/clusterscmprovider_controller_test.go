@@ -22,7 +22,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	v1 "k8s.io/api/core/v1"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -64,8 +64,7 @@ var _ = Describe("ClusterScmProvider Controller", func() {
 						Namespace: "default",
 					},
 					Spec: promoterv1alpha1.ScmProviderSpec{
-						SecretRef: &v1.LocalObjectReference{Name: resourceName},
-						Fake:      &promoterv1alpha1.Fake{},
+						Fake: &promoterv1alpha1.Fake{},
 					},
 					// TODO(user): Specify other spec details if needed.
 				}
