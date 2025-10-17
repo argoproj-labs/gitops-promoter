@@ -106,7 +106,6 @@ These files are auto-generated and should not be edited manually:
 make test              # Run all tests
 make test-parallel     # Run tests in parallel (faster)
 make test-e2e          # Run end-to-end tests
-KUBEBUILDER_ASSETS="<fullpath>/bin/k8s/1.31.0-darwin-arm64" ./bin/ginkgo-v2.26.0 -v --focus "TimedCommitStatus Controller" internal/controller/ # To run a specific focused task replace the --focus flag with the correct test you want
 ```
 
 ### Test Patterns
@@ -215,113 +214,258 @@ make docker-build
 - If deepcopy methods are missing, run `make generate`
 - If UI builds fail, check Node.js version and run `npm install` in the UI directory
 
-## Test Debugging Protocol
+# Setting up MkDocs and Python Virtual Environment
 
-### Critical: Always Capture stderr for Controller Logs
+To build and serve documentation locally, set up a Python virtual environment at the repository root:
 
-**Controller logs go to stderr.** Always use `2>&1` in test commands:
+```fish
+python3 -m venv .venv
+source .venv/bin/activate.fish
+pip install -r docs/requirements.txt
+mkdocs serve
+```
+
+- This will install all MkDocs dependencies, including plugins for GitHub-style alerts.
+
+## Verifying Documentation Linting
+
+To check that your documentation changes do not introduce any MkDocs warnings, run:
 
 ```bash
-# ✅ CORRECT - Captures both stdout and stderr
-go test -v ./pkg -ginkgo.focus="test" -ginkgo.v 2>&1 > /tmp/test.log
-
-# ❌ WRONG - Misses controller logs
-go test -v ./pkg > test.log
+make lint-docs
 ```
 
-### Standard Test Investigation Pattern
+This will build the documentation and fail if any warnings are present. The full MkDocs output will be shown if there are issues, making it easy to debug. This check is also run automatically in CI for every pull request.
 
-1. **Capture everything**:
-   ```bash
-   go test -v ./package -ginkgo.focus="test name" -ginkgo.v -timeout 5m 2>&1 > /tmp/test.log
-   ```
-
-2. **Validate capture**:
-   ```bash
-   wc -l /tmp/test.log  # Should be 500+ lines, not ~20
-   ```
-
-3. **Search for expected behavior**:
-   ```bash
-   grep "expected log message" /tmp/test.log | wc -l
-   # Returns count (0 = code path didn't execute)
-   ```
-
-### Grep Exit Codes
-
-- Exit 0: Pattern found
-- Exit 1: Pattern not found (NOT an error!)
-- Exit 2: Grep syntax error
-
-**Important**: `grep ... | wc -l` always succeeds even if grep found nothing.
-
-### Validating Tests Actually Test What They Claim
-
-Always verify expected code paths executed:
-
-```bash
-# Search for key log messages that prove the code ran
-grep "Testing for conflicts between branches" /tmp/test.log | wc -l
-grep "Conflicts detected, performing merge with 'ours' strategy" /tmp/test.log
-```
-
-**Red flag**: Test passes but expected log messages missing = false positive.
-
-### Quick Investigation Commands
-
-```bash
-# Capture and validate in one step
-go test -v ./pkg -ginkgo.v 2>&1 > /tmp/out.log && wc -l /tmp/out.log
-
-# Find why test failed
-grep -A20 "FAILED" /tmp/out.log
-
-# Check if specific code executed
-grep -c "key log message" /tmp/out.log
-
-# See test result
-tail -5 /tmp/out.log
-```
-
-### Running Multiple Iterations
-
-```bash
-# Run N times, stop on first failure
-for i in {1..5}; do 
-    echo "=== Run $i ==="
-    go test ./pkg -ginkgo.focus="test" -timeout 5m || exit 1
-done
-```
-
-### Using autoMerge for Deterministic Tests
-
-The `autoMerge` field (on `ChangeTransferPolicy.spec.autoMerge` and `Environment.autoMerge`) prevents PRs from auto-merging:
-
-```go
-// Disable auto-merge during test setup
-promotionStrategy.Spec.Environments[1].AutoMerge = ptr.To(false)
-
-// Assert on PR states (PRs stay open)
-
-// Re-enable to allow completion
-ps.Spec.Environments[1].AutoMerge = ptr.To(true)
-k8sClient.Update(ctx, &ps)
-```
-
-**Use for**: Preventing timing races in tests without needing commit status checks.
-
-### Checklist Before Concluding Investigation
-
-- [ ] Used `2>&1` to capture stderr
-- [ ] Used `-ginkgo.v` for detailed output
-- [ ] Validated log file has substantial content (`wc -l`)
-- [ ] Searched for expected log messages from code being tested
-- [ ] Verified test result (PASS/FAIL) in output
-- [ ] If test passed, confirmed expected code paths executed (not false positive)
+Make sure you have activated your Python virtual environment and installed dependencies as described above before running this command.
 
 ## Additional Resources
 
 - Main documentation: https://gitops-promoter.readthedocs.io/
 - Project repository: https://github.com/argoproj-labs/gitops-promoter
 - Related video: "Space Age GitOps: The Rise of the Humble Pull Request"
-- Test debugging protocol: `.ai/go-test-debugging-protocol.md`
+
+---
+
+# AI Agent Protocol: Go Test Debugging
+
+## Critical Rule: Always Capture stderr
+
+**Controller logs go to stderr, not stdout.** Always use `2>&1` in test commands.
+
+```bash
+# ✅ CORRECT - Captures both stdout and stderr
+go test -v ./pkg -ginkgo.focus="test" -ginkgo.v 2>&1 > test.log
+
+# ❌ WRONG - Misses controller logs
+go test -v ./pkg -ginkgo.focus="test" > test.log
+```
+
+## Standard Test Execution Pattern
+
+### Initial Run
+```bash
+go test -v ./package -ginkgo.focus="test name" -ginkgo.v -timeout 5m 2>&1 > /tmp/test-output.log
+```
+
+### Validate Capture Success
+```bash
+wc -l /tmp/test-output.log
+# Expect: 500+ lines for detailed logs
+# If < 50 lines: Missing -ginkgo.v or logs weren't generated
+```
+
+### Search for Expected Behavior
+```bash
+grep "expected log message" /tmp/test-output.log | wc -l
+# Returns: count of matches (0 = code path didn't execute)
+```
+
+## Grep Exit Code Interpretation
+
+```
+Exit 0: Pattern found (matches exist)
+Exit 1: Pattern not found (NOT an error, just no matches)
+Exit 2: Grep command error (syntax issue)
+```
+
+**Protocol**: When grep returns exit 1, this means "not found" - it is EXPECTED when searching for something that doesn't exist.
+
+## Search Patterns for Log Validation
+
+### Check if Reconciliation Occurred
+```bash
+grep -c "Reconciling ChangeTransferPolicy" /tmp/test.log
+```
+
+### Check if Specific Code Path Executed
+```bash
+# Function entry point log message
+grep "Testing for conflicts between branches" /tmp/test.log | wc -l
+
+# Function behavior log message  
+grep "Conflicts detected, performing merge with 'ours' strategy" /tmp/test.log | wc -l
+```
+
+### Extract Key State Information
+```bash
+# Branch SHAs
+grep "branchShas" /tmp/test.log
+
+# Pull request states
+grep "PullRequest.*state" /tmp/test.log
+```
+
+## Real-Time Filtering (No File Save)
+
+When you need immediate feedback without saving full logs:
+
+```bash
+go test -v ./pkg -ginkgo.focus="test" 2>&1 | grep -E "ERROR|FAIL|specific-pattern"
+```
+
+**Use when**: Quick validation, looking for specific events  
+**Don't use when**: Need to search multiple patterns or examine full context
+
+## Running Multiple Iterations
+
+### Stop on First Failure
+```bash
+for i in {1..5}; do 
+    echo "=== Run $i ==="
+    go test ./pkg -ginkgo.focus="test" -timeout 5m || exit 1
+done
+```
+
+### Collect All Results
+```bash
+for i in {1..10}; do
+    go test ./pkg -ginkgo.focus="test" -timeout 2m 2>&1 | tail -1 >> /tmp/results.txt
+done
+cat /tmp/results.txt
+```
+
+## Decision Tree: When to Save vs Stream
+
+### Save to File First (Recommended for Investigation)
+- Need to search multiple patterns
+- Need context around matches (use grep -C)
+- Output is large (>1000 lines)
+- Will analyze multiple aspects of same run
+
+### Stream/Filter Live  
+- Only need one specific pattern
+- Quick validation ("did X happen?")
+- Output is manageable
+- Know exactly what you're looking for
+
+## Common Investigation Scenarios
+
+### Scenario 1: Test Passes, Need to Verify Code Path Executed
+```bash
+# Step 1: Capture full run
+go test -v ./pkg -ginkgo.focus="test" -ginkgo.v -timeout 5m 2>&1 > /tmp/test.log
+
+# Step 2: Search for expected log message
+grep "expected behavior log" /tmp/test.log | wc -l
+
+# Step 3: If 0, code path didn't execute - test may be false positive
+```
+
+### Scenario 2: Test Fails, Need Root Cause
+```bash
+# Step 1: Run and capture
+go test -v ./pkg -ginkgo.focus="test" -ginkgo.v -timeout 5m 2>&1 > /tmp/fail.log
+
+# Step 2: Find failure point
+grep -A20 "FAILED" /tmp/fail.log
+
+# Step 3: Check what was happening before failure
+grep -B20 "FAILED" /tmp/fail.log
+```
+
+### Scenario 3: Test is Flaky
+```bash
+# Step 1: Run multiple times quickly
+for i in {1..5}; do go test ./pkg -ginkgo.focus="test" || break; done
+
+# Step 2: If it failed, capture detailed run
+go test -v ./pkg -ginkgo.focus="test" -ginkgo.v 2>&1 > /tmp/flaky.log
+
+# Step 3: Search for timing indicators
+grep -E "timeout|reconcile.*duration" /tmp/flaky.log
+```
+
+## grep Pattern Optimization
+
+### Instead of This (Can Miss Matches)
+```bash
+grep "exact string with spaces" test.log
+```
+
+### Do This (More Reliable)
+```bash
+# Use -E for extended regex
+grep -E "pattern1|pattern2" test.log
+
+# Case-insensitive when appropriate
+grep -i "error" test.log
+```
+
+## File Management Protocol
+
+### Use /tmp for Test Output
+```bash
+# ✅ Do this
+go test ... 2>&1 > /tmp/test-output.log
+
+# ❌ Don't do this (clutters repo)
+go test ... 2>&1 > test-output.log
+```
+
+## Validation Checklist
+
+Before concluding a test investigation, verify:
+
+- [ ] Captured logs to file using `2>&1`
+- [ ] Confirmed log file has substantial content (`wc -l` > 100)
+- [ ] Searched for expected log messages from code being tested
+- [ ] Checked if expected code paths executed (found their log messages)
+- [ ] Verified test result (PASS/FAIL) at end of log
+- [ ] If test passed, confirmed it's not a false positive (code actually ran)
+
+## Quick Reference: Essential Commands
+
+```bash
+# Capture everything
+go test -v ./pkg -ginkgo.focus="test" -ginkgo.v -timeout 5m 2>&1 > /tmp/out.log
+
+# Validate capture
+wc -l /tmp/out.log
+
+# Search (count matches)
+grep "pattern" /tmp/out.log | wc -l
+
+# Search with context
+grep -C10 "pattern" /tmp/out.log
+
+# Check test result
+tail -5 /tmp/out.log
+```
+
+## Protocol for Unknown Test Failures
+
+1. **Capture**: `go test -v ./pkg -ginkgo.v 2>&1 > /tmp/test.log`
+2. **Validate**: `wc -l /tmp/test.log` (ensure logs captured)
+3. **Find failure**: `grep -A10 "FAILED" /tmp/test.log`
+4. **Check errors**: `grep -i error /tmp/test.log`
+5. **Timeline**: `grep -E "Reconciling.*End" /tmp/test.log | tail -20`
+
+## Remember
+
+- **2>&1 is non-negotiable** for controller tests
+- **-ginkgo.v is required** for detailed logs
+- **wc -l before grep** to ensure logs exist
+- **grep exit 1 is normal** when pattern not found
+- **Save to /tmp** to avoid repo clutter
+- **Always validate capture** before concluding "no matches"
