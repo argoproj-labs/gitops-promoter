@@ -493,23 +493,24 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	logger := log.FromContext(ctx)
 	repoPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
 
-	// Use git merge-tree to perform a stateless merge check
-	// merge-tree outputs information about conflicts without touching the working tree
-	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "origin/"+activeBranch, "origin/"+proposedBranch)
+	// Use git merge-tree --write-tree to perform a stateless merge check
+	// With --write-tree, git exits with code 1 if conflicts exist, and writes conflict info to stderr
+	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "--write-tree", "origin/"+activeBranch, "origin/"+proposedBranch)
+
 	if err != nil {
-		logger.Error(err, "could not run merge-tree", "gitError", stderr)
+		// Exit code 1 with conflict info in stderr means conflicts were detected
+		combinedOutput := stdout + stderr
+		if strings.Contains(combinedOutput, "CONFLICT") {
+			logger.V(4).Info("Merge conflict detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+			return true, nil
+		}
+		// Some other error occurred
+		logger.Error(err, "could not run merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stdout", stdout, "stderr", stderr)
 		return false, fmt.Errorf("failed to run merge-tree for branches %q and %q: %w", activeBranch, proposedBranch, err)
 	}
 
-	// Check if the output contains conflict markers
-	conflictDetected := strings.Contains(stdout, "<<<<<<<") || strings.Contains(stdout, "=======") || strings.Contains(stdout, ">>>>>>>")
-
-	if conflictDetected {
-		logger.V(4).Info("Merge conflict detected via merge-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
-		return true, nil
-	}
-
-	logger.V(4).Info("No merge conflicts detected via merge-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+	// Exit code 0 means clean merge - stdout contains the resulting tree SHA
+	logger.V(4).Info("No merge conflicts detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "mergeTreeSHA", strings.TrimSpace(stdout))
 	return false, nil
 }
 
