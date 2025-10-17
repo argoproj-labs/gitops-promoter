@@ -32,7 +32,7 @@ jobs:
       - name: UI Checks
         run: make lint-ui
       - name: Set up Python and venv for docs
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Create venv and install MkDocs requirements
