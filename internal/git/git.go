@@ -496,7 +496,6 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	// Use git merge-tree --write-tree to perform a stateless merge check
 	// With --write-tree, git exits with code 1 if conflicts exist, and writes conflict info to stderr
 	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "--write-tree", "origin/"+activeBranch, "origin/"+proposedBranch)
-
 	if err != nil {
 		// Exit code 1 with conflict info in stderr means conflicts were detected
 		combinedOutput := stdout + stderr
