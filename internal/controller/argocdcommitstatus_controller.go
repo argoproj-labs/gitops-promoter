@@ -600,12 +600,12 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		if client.IgnoreNotFound(err) != nil {
 			return nil, fmt.Errorf("failed to get CommitStatus object: %w", err)
 		}
-		// Create
 		err = r.localClient.Create(ctx, &desiredCommitStatus)
 		logger.Info("Created CommitStatus", "name", desiredCommitStatus.Name, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create CommitStatus object: %w", err)
 		}
+		return &desiredCommitStatus, nil
 	}
 
 	if currentCommitStatus.Spec == desiredCommitStatus.Spec {

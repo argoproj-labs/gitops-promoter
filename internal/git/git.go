@@ -13,7 +13,6 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,13 +23,11 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/relvacode/iso8601"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/gitpaths"
 )
 
@@ -64,19 +61,12 @@ type HydratorMetadata struct {
 // NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter is used to differentiate
 // between different environments that might use the same GitRepository and avoid conflicts between concurrent
 // operations.
-func NewEnvironmentOperations(ctx context.Context, k8sClient client.Client, gap scms.GitOperationsProvider, repoRef v1alpha1.ObjectReference, obj v1.Object, activeBranch string) (*EnvironmentOperations, error) {
-	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repoRef.Name})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
-	}
-
-	gitOperations := EnvironmentOperations{
+func NewEnvironmentOperations(gitRepo *v1alpha1.GitRepository, gap scms.GitOperationsProvider, activeBranch string) *EnvironmentOperations {
+	return &EnvironmentOperations{
 		gap:          gap,
 		gitRepo:      gitRepo,
 		activeBranch: activeBranch,
 	}
-
-	return &gitOperations, nil
 }
 
 // CloneRepo clones the gitRepo to a temporary directory if needed. Does nothing if the repo is already cloned.
@@ -143,46 +133,42 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string
 	}
 
 	logger.V(4).Info("git path", "path", gitPath)
-	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "--progress", "-B", branch, "origin/"+branch)
-	if err != nil {
-		logger.Error(err, "could not git checkout", "gitError", stderr)
-		return BranchShas{}, err
-	}
-	logger.V(4).Info("Checked out branch", "branch", branch)
 
+	// Fetch the branch to ensure we have the latest remote ref
 	start := time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "pull", "--progress")
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", branch)
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
 	if err != nil {
-		logger.Error(err, "could not git pull", "gitError", stderr)
-		return BranchShas{}, err
+		logger.Error(err, "could not fetch branch", "gitError", stderr)
+		return BranchShas{}, fmt.Errorf("failed to fetch branch %q: %w", branch, err)
 	}
-	logger.V(4).Info("Pulled branch", "branch", branch)
+	logger.V(4).Info("Fetched branch", "branch", branch)
 
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", branch)
+	// Get the SHA of the remote branch
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", "origin/"+branch)
 	if err != nil {
-		logger.Error(err, "could not get branch shas", "gitError", stderr)
-		return BranchShas{}, err
+		logger.Error(err, "could not get branch sha", "gitError", stderr)
+		return BranchShas{}, fmt.Errorf("failed to get SHA for branch %q: %w", branch, err)
 	}
 
 	shas := BranchShas{}
 	shas.Hydrated = strings.TrimSpace(stdout)
 	logger.V(4).Info("Got hydrated branch sha", "branch", branch, "sha", shas.Hydrated)
 
-	// TODO: safe path join
-	metadataFile := gitPath + "/hydrator.metadata"
-	jsonFile, err := os.Open(metadataFile)
+	// Get the metadata file contents directly from the remote branch
+	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", "origin/"+branch+":hydrator.metadata")
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			logger.Info("hydrator.metadata file not found", "file", metadataFile)
+		if strings.Contains(stderr, "does not exist") || strings.Contains(stderr, "Path not in") {
+			logger.Info("hydrator.metadata file not found", "branch", branch)
 			return shas, nil
 		}
-		return BranchShas{}, fmt.Errorf("could not open metadata file: %w", err)
+		logger.Error(err, "could not get metadata file", "gitError", stderr)
+		return BranchShas{}, fmt.Errorf("failed to read hydrator.metadata from branch %q: %w", branch, err)
 	}
+	logger.V(4).Info("Got metadata file", "branch", branch)
 
 	var hydratorFile HydratorMetadata
-	decoder := json.NewDecoder(jsonFile)
-	err = decoder.Decode(&hydratorFile)
+	err = json.Unmarshal([]byte(metadataFileStdout), &hydratorFile)
 	if err != nil {
 		return BranchShas{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
 	}
