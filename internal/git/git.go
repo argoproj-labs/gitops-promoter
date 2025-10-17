@@ -378,6 +378,8 @@ func (g *EnvironmentOperations) PromoteEnvironmentWithMerge(ctx context.Context,
 
 // IsPullRequestRequired will compare the environment branch with the next environment branch and return true if a PR is required.
 // The PR is required if the diff between the two branches contain edits to yaml files.
+// This assumes that both branches have already been fetched via GetBranchShas earlier in the reconciliation,
+// ensuring we check the same refs that were used for conflict detection.
 func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, environmentNextBranch, environmentBranch string) (bool, error) {
 	logger := log.FromContext(ctx)
 
@@ -386,17 +388,8 @@ func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, envir
 		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	// Fetch both branches without checking them out - no working directory modifications
-	start := time.Now()
-	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", environmentBranch, environmentNextBranch)
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetch, metrics.GitOperationResultFromError(err), time.Since(start))
-	if err != nil {
-		logger.Error(err, "could not fetch branches", "gitError", stderr)
-		return false, err
-	}
-	logger.V(4).Info("Fetched branches", "environmentBranch", environmentBranch, "environmentNextBranch", environmentNextBranch)
-
-	// Get the diff between the two branches using origin refs - no checkout needed
+	// Get the diff between the two branches using already-fetched origin refs - no checkout or fetch needed
+	// This ensures we're checking the same refs that were checked for conflicts
 	stdout, stderr, err := g.runCmd(ctx, gitPath, "diff", fmt.Sprintf("origin/%s...origin/%s", environmentBranch, environmentNextBranch), "--name-only", "--diff-filter=ACMRT")
 	if err != nil {
 		logger.Error(err, "could not get diff", "gitError", stderr)
