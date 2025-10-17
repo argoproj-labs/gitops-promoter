@@ -493,17 +493,9 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	logger := log.FromContext(ctx)
 	repoPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
 
-	// First, find the merge-base between the two branches
-	mergeBaseStdout, stderr, err := g.runCmd(ctx, repoPath, "merge-base", "origin/"+activeBranch, "origin/"+proposedBranch)
-	if err != nil {
-		logger.Error(err, "could not find merge-base", "gitError", stderr)
-		return false, fmt.Errorf("failed to find merge-base for branches %q and %q: %w", activeBranch, proposedBranch, err)
-	}
-	mergeBase := strings.TrimSpace(mergeBaseStdout)
-
 	// Use git merge-tree to perform a stateless merge check
 	// merge-tree outputs information about conflicts without touching the working tree
-	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", mergeBase, "origin/"+activeBranch, "origin/"+proposedBranch)
+	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "origin/"+activeBranch, "origin/"+proposedBranch)
 	if err != nil {
 		logger.Error(err, "could not run merge-tree", "gitError", stderr)
 		return false, fmt.Errorf("failed to run merge-tree for branches %q and %q: %w", activeBranch, proposedBranch, err)
