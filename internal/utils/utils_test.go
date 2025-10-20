@@ -207,6 +207,8 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 	It("should recover from panic and convert it to an error", func() {
 		var err error
+		// We use fakeclient here since it's virtually impossible to trigger a panic otherwise. Don't spread
+		// this use to other tests if at all avoidable.
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
 
 		// This function will panic, and HandleReconciliationResult should recover from it
@@ -223,6 +225,8 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 	It("should handle normal errors without panicking", func() {
 		var err error
+		// We use fakeclient here since it's virtually impossible to trigger a panic otherwise. Don't spread
+		// this use to other tests if at all avoidable.
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
 
 		// Create the object in the fake client so HandleReconciliationResult can update it
@@ -241,6 +245,8 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 	It("should handle successful reconciliation without error", func() {
 		var err error
+		// We use fakeclient here since it's virtually impossible to trigger a panic otherwise. Don't spread
+		// this use to other tests if at all avoidable.
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
 
 		// Create the object in the fake client so HandleReconciliationResult can update it
