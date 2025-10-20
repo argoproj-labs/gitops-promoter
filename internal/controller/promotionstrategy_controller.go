@@ -339,7 +339,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			logger.V(4).Info("Skipping previous environment commit status update - no proposed change in current environment",
 				"activeBranch", ctp.Spec.ActiveBranch,
 				"activeDrySha", ctp.Status.Active.Dry.Sha,
-				"proposedDrySha", ctp.Status.Proposed.Dry.Sha)q
+				"proposedDrySha", ctp.Status.Proposed.Dry.Sha)
 			continue
 		}
 
