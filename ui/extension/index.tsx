@@ -64,8 +64,8 @@ window.extensionsAPI?.registerResourceExtension(
 );
 
 // Register status panel extension 
-window.extensionsAPI?.registerStatusPanelExtension(
-  StatusPanelComponent,
-  'Promotion Strategy',
-  'promotion_strategy_status'
-);
+// window.extensionsAPI?.registerStatusPanelExtension(
+//   StatusPanelComponent,
+//   'Promotion Strategy',
+//   'promotion_strategy_status'
+// );
