@@ -57,6 +57,16 @@ type PullRequestReconciler struct {
 	SettingsMgr *settings.Manager
 }
 
+// ErrPullRequestIDUnknown is returned when attempting to transition a pull request to a non-open state
+// without knowing the PR ID. This should never happen in normal operation.
+type ErrPullRequestIDUnknown struct {
+	State promoterv1alpha1.PullRequestState
+}
+
+func (e *ErrPullRequestIDUnknown) Error() string {
+	return fmt.Sprintf("failed to transition pull request to state %s because the PR ID is unknown - this should never happen, please report a bug", e.State)
+}
+
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/finalizers,verbs=update

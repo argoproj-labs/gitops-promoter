@@ -80,7 +80,8 @@ spec:
                   rule: self == oldSelf
               state:
                 default: open
-                description: State of the merge request closed/merged/open
+                description: State of the pull request (closed, merged, or open).
+                  Must always be "open" when creating a new pull request.
                 enum:
                 - closed
                 - merged
@@ -187,6 +188,11 @@ spec:
                 type: string
             type: object
         type: object
+        x-kubernetes-validations:
+        - message: Cannot transition to 'closed' or 'merged' state when status.id
+            is empty - this should never happen, so please report a bug
+          rule: self.spec.state == 'open' || has(self.status.id) && self.status.id
+            != ""
     served: true
     storage: true
     subresources:

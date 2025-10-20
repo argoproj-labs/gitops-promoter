@@ -1171,6 +1171,16 @@ spec:
                     description: Domain is the domain of the fake SCM provider. This
                       is used for testing purposes.
                     type: string
+                  operations:
+                    description: Operations defines the expected outcomes of operations
+                      performed against the fake SCM provider.
+                    properties:
+                      create:
+                        default: Success
+                        description: Create indicates the expected outcome of Create
+                          operations.
+                        type: string
+                    type: object
                 type: object
               forgejo:
                 description: Forgejo required configuration for Forgejo as the SCM
@@ -3756,7 +3766,10 @@ spec:
                   rule: self == oldSelf
               state:
                 default: open
-                description: State of the merge request closed/merged/open
+                description: |-
+                  State of the pull request (closed, merged, or open). Must always be "open" when creating a new pull request.
+                  Before setting to "closed" or "merged", make sure the status.id field is populated. Otherwise, the PullRequest
+                  controller will not be able to close or merge the PR in the SCM, and reconciliation will fail.
                 enum:
                 - closed
                 - merged
@@ -3863,6 +3876,11 @@ spec:
                 type: string
             type: object
         type: object
+        x-kubernetes-validations:
+        - message: Cannot transition to 'closed' or 'merged' state when status.id
+            is empty
+          rule: self.spec.state != 'closed' && self.spec.state != 'merged' || has(self.status.id)
+            && self.status.id != ""
     served: true
     storage: true
     subresources:
@@ -3969,6 +3987,16 @@ spec:
                     description: Domain is the domain of the fake SCM provider. This
                       is used for testing purposes.
                     type: string
+                  operations:
+                    description: Operations defines the expected outcomes of operations
+                      performed against the fake SCM provider.
+                    properties:
+                      create:
+                        default: Success
+                        description: Create indicates the expected outcome of Create
+                          operations.
+                        type: string
+                    type: object
                 type: object
               forgejo:
                 description: Forgejo required configuration for Forgejo as the SCM

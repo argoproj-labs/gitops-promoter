@@ -895,6 +895,19 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	}
 
 	if pullRequest.Spec.State == promoterv1alpha1.PullRequestOpen && pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+		if pullRequest.Status.ID == "" {
+			// We could rely on XValidation to catch the missing ID when setting the PR to merged, but this gives a
+			// better error message.
+
+			// If the PR has a ready condition with status false, get that reason/message for this error message.
+			prReadyCondition := meta.FindStatusCondition(pullRequest.Status.Conditions, string(promoterConditions.Ready))
+			if prReadyCondition != nil && prReadyCondition.Status == metav1.ConditionFalse {
+				return &pullRequest, fmt.Errorf("cannot merge PullRequest without an ID: PullRequest not ready: %s: %s", prReadyCondition.Reason, prReadyCondition.Message)
+			}
+
+			return &pullRequest, fmt.Errorf("cannot merge PullRequest %q without an ID", pullRequest.Name)
+		}
+
 		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			var pr promoterv1alpha1.PullRequest
 			err = r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
