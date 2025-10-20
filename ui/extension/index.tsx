@@ -1,6 +1,5 @@
 import React from 'react';
 import './index.scss';
-import StatusPanelComponent from './statusPanel';
 import ResourceExtension from './resourceExtension';
 import type { PromotionStrategy } from '../shared/src/types/promotion';
 
@@ -61,11 +60,4 @@ window.extensionsAPI?.registerResourceExtension(
   'PromotionStrategy',
   'PromotionStrategy',
   { icon: 'fa-code-branch' }
-);
-
-// Register status panel extension 
-window.extensionsAPI?.registerStatusPanelExtension(
-  StatusPanelComponent,
-  'Promotion Strategy',
-  'promotion_strategy_status'
 );

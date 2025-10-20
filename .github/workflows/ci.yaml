@@ -31,6 +31,17 @@ jobs:
           make build-extension
       - name: UI Checks
         run: make lint-ui
+      - name: Set up Python and venv for docs
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6
+        with:
+          python-version: '3.11'
+      - name: Create venv and install MkDocs requirements
+        run: |
+          python3 -m venv .venv
+          . .venv/bin/activate
+          pip install -r docs/requirements.txt
+      - name: Lint Docs
+        run: . .venv/bin/activate && make lint-docs
       - name: Get dependencies
         run: go mod download
       - name: Restore build output from cache

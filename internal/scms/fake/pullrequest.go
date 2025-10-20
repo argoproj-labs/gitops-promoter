@@ -50,6 +50,7 @@ func NewFakePullRequestProvider(k8sClient client.Client) *PullRequest {
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (id string, err error) {
 	logger := log.FromContext(ctx)
 	mutexPR.Lock()
+	defer mutexPR.Unlock()
 	if pullRequests == nil {
 		pullRequests = make(map[string]pullRequestProviderState)
 	}
@@ -76,7 +77,6 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		state: v1alpha1.PullRequestOpen,
 	}
 
-	mutexPR.Unlock()
 	return id, nil
 }
 
@@ -93,6 +93,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	}
 
 	mutexPR.Lock()
+	defer mutexPR.Unlock()
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
@@ -101,7 +102,6 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 		id:    pullRequests[prKey].id,
 		state: v1alpha1.PullRequestClosed,
 	}
-	mutexPR.Unlock()
 	return nil
 }
 
@@ -179,6 +179,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	}
 
 	mutexPR.Lock()
+	defer mutexPR.Unlock()
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 
 	if _, ok := pullRequests[prKey]; !ok {
@@ -188,7 +189,6 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		id:    pullRequests[prKey].id,
 		state: v1alpha1.PullRequestMerged,
 	}
-	mutexPR.Unlock()
 	return nil
 }
 

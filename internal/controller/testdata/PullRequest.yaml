@@ -14,6 +14,8 @@ spec:
   mergeSha: abc123def456789012345678901234567890abcd
 
   # Must be closed, merged, or open. Default is open.
+  # Must be set to "open" when initially created, and cannot be set to "closed" or "merged" unless status.id is set
+  # (which the controller should do automatically as long as there are no errors).
   state:
 status:
   conditions:
