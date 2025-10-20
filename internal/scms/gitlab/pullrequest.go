@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -228,21 +226,21 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, prObj v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
-		Namespace: prObj.Namespace,
-		Name:      prObj.Spec.RepositoryReference.Name,
+		Namespace: pullRequest.Namespace,
+		Name:      pullRequest.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return false, v1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to get repo: %w", err)
+		return false, "", time.Time{}, fmt.Errorf("failed to get repo: %w", err)
 	}
 
 	options := &gitlab.ListMergeRequestsOptions{
-		SourceBranch: gitlab.Ptr(prObj.Spec.SourceBranch),
-		TargetBranch: gitlab.Ptr(prObj.Spec.TargetBranch),
+		SourceBranch: gitlab.Ptr(pullRequest.Spec.SourceBranch),
+		TargetBranch: gitlab.Ptr(pullRequest.Spec.TargetBranch),
 		State:        gitlab.Ptr("opened"),
 	}
 
@@ -252,34 +250,22 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj v1alpha1.PullRequest)
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return false, v1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to list pull requests: %w", err)
+		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
 	logGitLabRateLimitsIfAvailable(
 		logger,
-		prObj.Spec.RepositoryReference.Name,
+		pullRequest.Spec.RepositoryReference.Name,
 		resp,
 	)
 	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
 	if len(mrs) > 0 {
-		url, err := pr.GetUrl(ctx, prObj)
-		if err != nil {
-			return false, v1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to get pull request URL: %w", err)
-		}
-
-		pullRequestStatus := v1alpha1.PullRequestCommonStatus{
-			ID:             strconv.Itoa(mrs[0].IID),
-			State:          mapMergeRequestState(mrs[0].State),
-			Url:            url,
-			PRCreationTime: metav1.Time{Time: *mrs[0].CreatedAt},
-		}
-
-		return true, pullRequestStatus, nil
+		return true, strconv.Itoa(mrs[0].IID), *mrs[0].CreatedAt, nil
 	}
 
-	return false, v1alpha1.PullRequestCommonStatus{}, nil
+	return false, "", time.Time{}, nil
 }
 
 // GetUrl retrieves the URL of the pull request.
