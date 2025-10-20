@@ -57,11 +57,6 @@ var _ = Describe("PullRequest Controller", func() {
 				Namespace: "default",
 			}
 
-			pullRequest.Spec.Title = "This is the initial title"
-			pullRequest.Spec.TargetBranch = "development"
-			pullRequest.Spec.SourceBranch = "development-next"
-			pullRequest.Spec.Description = "Pull Request for testing errors"
-
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
@@ -107,11 +102,6 @@ var _ = Describe("PullRequest Controller", func() {
 				Namespace: "default",
 			}
 
-			pullRequest.Spec.Title = "Initial Title"
-			pullRequest.Spec.TargetBranch = "staging"
-			pullRequest.Spec.SourceBranch = "staging-next"
-			pullRequest.Spec.Description = "Initial Description"
-
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
@@ -152,11 +142,6 @@ var _ = Describe("PullRequest Controller", func() {
 
 			scmProvider.Spec.SecretRef = &v1.LocalObjectReference{Name: "non-existing-secret"}
 
-			pullRequest.Spec.Title = "Initial Title"
-			pullRequest.Spec.TargetBranch = "development"
-			pullRequest.Spec.SourceBranch = "development-next"
-			pullRequest.Spec.Description = "Initial Description"
-
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
@@ -182,10 +167,6 @@ var _ = Describe("PullRequest Controller", func() {
 
 			_, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "create-merged")
 
-			pullRequest.Spec.Title = "Initial Title"
-			pullRequest.Spec.TargetBranch = "development"
-			pullRequest.Spec.SourceBranch = "development-next"
-			pullRequest.Spec.Description = "Initial Description"
 			pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -203,10 +184,6 @@ var _ = Describe("PullRequest Controller", func() {
 
 			_, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "create-closed")
 
-			pullRequest.Spec.Title = "Initial Title"
-			pullRequest.Spec.TargetBranch = "development"
-			pullRequest.Spec.SourceBranch = "development-next"
-			pullRequest.Spec.Description = "Initial Description"
 			pullRequest.Spec.State = promoterv1alpha1.PullRequestClosed
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -274,10 +251,10 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
 			},
-			Title:        "",
-			TargetBranch: "",
-			SourceBranch: "",
-			Description:  "",
+			Title:        "Initial Title",
+			TargetBranch: "development",
+			SourceBranch: "development-next",
+			Description:  "Initial Description",
 			State:        "open",
 		},
 		Status: promoterv1alpha1.PullRequestStatus{},
