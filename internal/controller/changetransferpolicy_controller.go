@@ -894,29 +894,45 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 			"activeDryCommitTime", ctp.Status.Active.Dry.CommitTime)
 	}
 
-	if pullRequest.Spec.State == promoterv1alpha1.PullRequestOpen && pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			var pr promoterv1alpha1.PullRequest
-			err = r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to get PR %q: %w", pullRequest.Name, err)
-			}
-			pr.Spec.State = promoterv1alpha1.PullRequestMerged
-			return r.Update(ctx, &pr)
-		})
-		if err != nil {
-			return &pullRequest, fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
-		}
-		r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
-		logger.Info("Merged pull request")
+	if pullRequest.Status.State != promoterv1alpha1.PullRequestOpen {
+		// Nothing to do, the PR has to be open to be merged.
 		return &pullRequest, nil
 	}
 
-	if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+	if pullRequest.Spec.State != promoterv1alpha1.PullRequestOpen {
 		// This is for the case where the PR is set to merge in k8s but something else is blocking it, like an external commit status check.
 		logger.Info("Pull request can not be merged, probably due to SCM", "pr", pullRequest.Name)
+
+		return &pullRequest, nil
 	}
 
+	if pullRequest.Status.ID == "" {
+		// We could rely on XValidation to catch the missing ID when setting the PR to merged, but this gives a
+		// better error message.
+
+		// If the PR has a ready condition with status false, get that reason/message for this error message.
+		prReadyCondition := meta.FindStatusCondition(pullRequest.Status.Conditions, string(promoterConditions.Ready))
+		if prReadyCondition != nil && prReadyCondition.Status == metav1.ConditionFalse {
+			return &pullRequest, fmt.Errorf("cannot merge PullRequest without an ID: PullRequest not ready: %s: %s", prReadyCondition.Reason, prReadyCondition.Message)
+		}
+
+		return &pullRequest, fmt.Errorf("cannot merge PullRequest %q without an ID", pullRequest.Name)
+	}
+
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var pr promoterv1alpha1.PullRequest
+		err = r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get PR %q: %w", pullRequest.Name, err)
+		}
+		pr.Spec.State = promoterv1alpha1.PullRequestMerged
+		return r.Update(ctx, &pr)
+	})
+	if err != nil {
+		return &pullRequest, fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
+	}
+	r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
+	logger.Info("Merged pull request")
 	return &pullRequest, nil
 }
 

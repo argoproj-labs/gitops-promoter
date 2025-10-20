@@ -10,8 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
@@ -50,6 +49,7 @@ func NewFakePullRequestProvider(k8sClient client.Client) *PullRequest {
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (id string, err error) {
 	logger := log.FromContext(ctx)
 	mutexPR.Lock()
+	defer mutexPR.Unlock()
 	if pullRequests == nil {
 		pullRequests = make(map[string]pullRequestProviderState)
 	}
@@ -76,7 +76,6 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		state: v1alpha1.PullRequestOpen,
 	}
 
-	mutexPR.Unlock()
 	return id, nil
 }
 
@@ -93,6 +92,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	}
 
 	mutexPR.Lock()
+	defer mutexPR.Unlock()
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
@@ -101,7 +101,6 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 		id:    pullRequests[prKey].id,
 		state: v1alpha1.PullRequestClosed,
 	}
-	mutexPR.Unlock()
 	return nil
 }
 
@@ -169,6 +168,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	}
 
 	mutexPR.Lock()
+	defer mutexPR.Unlock()
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 
 	if _, ok := pullRequests[prKey]; !ok {
@@ -178,23 +178,16 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		id:    pullRequests[prKey].id,
 		state: v1alpha1.PullRequestMerged,
 	}
-	mutexPR.Unlock()
 	return nil
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
 	mutexPR.RLock()
 	found, id := pr.findOpen(ctx, pullRequest)
 	mutexPR.RUnlock()
 
-	prState := v1alpha1.PullRequestCommonStatus{
-		ID:             id,
-		State:          v1alpha1.PullRequestOpen,
-		Url:            fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", pullRequest.Spec.RepositoryReference.Name, pullRequest.Spec.SourceBranch, id),
-		PRCreationTime: metav1.Now(),
-	}
-	return found, prState, nil
+	return found, id, time.Now(), nil
 }
 
 func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string) {

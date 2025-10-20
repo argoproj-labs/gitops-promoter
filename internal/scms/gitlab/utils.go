@@ -26,17 +26,6 @@ func logGitLabRateLimitsIfAvailable(
 	}
 }
 
-func mapMergeRequestState(gl string) v1alpha1.PullRequestState {
-	switch gl {
-	case "opened":
-		return v1alpha1.PullRequestOpen
-	case "closed":
-		return v1alpha1.PullRequestClosed
-	default:
-		return v1alpha1.PullRequestMerged
-	}
-}
-
 func phaseToBuildState(phase v1alpha1.CommitStatusPhase) gitlab.BuildStateValue {
 	switch phase {
 	case v1alpha1.CommitPhaseSuccess:
