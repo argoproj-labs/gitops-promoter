@@ -55,11 +55,11 @@ To enable these deep links, add the following to your `argocd-cm` ConfigMap:
     - url: '{{.resource.status.url}}'
       title: Pull Request
       icon.class: fa-code-pull-request
-      if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "PullRequest" && resource.status.url != ""
+      if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "PullRequest" && resource.status.url != nil && resource.status.url != ""
     - url: '{{.resource.status.pullRequest.url}}'
       title: Pull Request
       icon.class: fa-code-pull-request
-      if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "ChangeTransferPolicy" && resource.status.pullRequest != nil && resource.status.pullRequest.url != ""
+      if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "ChangeTransferPolicy" && resource.status.pullRequest != nil && resource.status.pullRequest.url != nil && resource.status.pullRequest.url != ""
 ```
 
 ## Commit Status Keys in Resource Tree

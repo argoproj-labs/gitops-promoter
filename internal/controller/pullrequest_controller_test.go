@@ -255,6 +255,7 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 			TargetBranch: "development",
 			SourceBranch: "development-next",
 			Description:  "Initial Description",
+			MergeSha:     "abc123def456789012345678901234567890abcd", // Dummy SHA for testing
 			State:        "open",
 		},
 		Status: promoterv1alpha1.PullRequestStatus{},

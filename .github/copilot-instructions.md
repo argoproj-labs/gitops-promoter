@@ -177,6 +177,34 @@ Key environment variables:
 6. **Documentation**: Update docs when changing behavior or APIs
 7. **Backwards Compatibility**: While in v1alpha1, breaking changes are allowed but should be avoided if possible
 
+## Pull Request Titles
+
+All pull request titles should follow the [Conventional Commits](https://www.conventionalcommits.org/) specification. Use one of the following prefixes:
+
+- `feat:` - New features or enhancements
+- `fix:` - Bug fixes
+- `docs:` - Documentation only changes
+- `chore:` - Maintenance tasks, dependency updates, or other non-feature/non-fix changes
+- `test:` - Adding or updating tests
+- `refactor:` - Code changes that neither fix bugs nor add features
+- `perf:` - Performance improvements
+- `ci:` - Changes to CI/CD configuration
+- `build:` - Changes to build system or external dependencies
+- `style:` - Code style changes (formatting, missing semicolons, etc.)
+
+### Examples
+- `feat: add support for multiple environments in promotion strategy`
+- `fix: resolve race condition in pull request merge`
+- `docs: update getting started guide with new configuration options`
+- `chore: update golang dependencies`
+- `test: add unit tests for git operations`
+
+### Scopes (Optional)
+You may optionally include a scope in parentheses after the type:
+- `feat(api): add new CRD for deployment tracking`
+- `fix(controller): handle nil pointer in reconciliation loop`
+- `docs(architecture): clarify SCM integration patterns`
+
 ## Common Tasks
 
 ### Adding a New CRD Field

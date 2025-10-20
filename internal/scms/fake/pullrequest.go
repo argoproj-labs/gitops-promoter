@@ -130,39 +130,49 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 
 	gitServerPort := 5000 + ginkgov2.GinkgoParallelProcess()
 	gitServerPortStr := strconv.Itoa(gitServerPort)
-	err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name), ".")
+	_, err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name), ".")
 	if err != nil {
 		return err
 	}
 
-	err = pr.runGitCmd(gitPath, "config", "user.name", "GitOps Promoter")
-	if err != nil {
-		logger.Error(err, "could not set git config")
-		return err
-	}
-
-	err = pr.runGitCmd(gitPath, "config", "user.email", "GitOpsPromoter@argoproj.io")
+	_, err = pr.runGitCmd(gitPath, "config", "user.name", "GitOps Promoter")
 	if err != nil {
 		logger.Error(err, "could not set git config")
 		return err
 	}
 
-	err = pr.runGitCmd(gitPath, "config", "pull.rebase", "false")
+	_, err = pr.runGitCmd(gitPath, "config", "user.email", "GitOpsPromoter@argoproj.io")
+	if err != nil {
+		logger.Error(err, "could not set git config")
+		return err
+	}
+
+	_, err = pr.runGitCmd(gitPath, "config", "pull.rebase", "false")
 	if err != nil {
 		return err
 	}
 
-	err = pr.runGitCmd(gitPath, "fetch", "--all")
+	_, err = pr.runGitCmd(gitPath, "fetch", "--all")
 	if err != nil {
 		return fmt.Errorf("failed to fetch all: %w", err)
 	}
 
-	err = pr.runGitCmd(gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
+	// Verify that the source branch HEAD matches the expected merge SHA
+	actualSha, err := pr.runGitCmd(gitPath, "rev-parse", "origin/"+pullRequest.Spec.SourceBranch)
+	if err != nil {
+		return fmt.Errorf("failed to get SHA of source branch: %w", err)
+	}
+	actualSha = strings.TrimSpace(actualSha)
+	if actualSha != pullRequest.Spec.MergeSha {
+		return fmt.Errorf("source branch HEAD SHA %q does not match expected merge SHA %q", actualSha, pullRequest.Spec.MergeSha)
+	}
+
+	_, err = pr.runGitCmd(gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
 	if err != nil {
 		return fmt.Errorf("failed to merge branch: %w", err)
 	}
 
-	err = pr.runGitCmd(gitPath, "push")
+	_, err = pr.runGitCmd(gitPath, "push")
 	if err != nil {
 		return err
 	}
@@ -210,7 +220,7 @@ func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name s
 	return fmt.Sprintf("%s/%s/%s/%s", owner, name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
 }
 
-func (pr *PullRequest) runGitCmd(gitPath string, args ...string) error {
+func (pr *PullRequest) runGitCmd(gitPath string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
@@ -223,18 +233,18 @@ func (pr *PullRequest) runGitCmd(gitPath string, args ...string) error {
 	}
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start git command: %w", err)
+		return "", fmt.Errorf("failed to start git command: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {
 		if strings.Contains(stderrBuf.String(), "already exists and is not an empty directory") ||
 			strings.Contains(stdoutBuf.String(), "nothing to commit, working tree clean") {
-			return nil
+			return stdoutBuf.String(), nil
 		}
-		return fmt.Errorf("failed to run git command: %s", stderrBuf.String())
+		return "", fmt.Errorf("failed to run git command: %s", stderrBuf.String())
 	}
 
-	return nil
+	return stdoutBuf.String(), nil
 }
 
 // GetUrl retrieves the URL of the pull request.
