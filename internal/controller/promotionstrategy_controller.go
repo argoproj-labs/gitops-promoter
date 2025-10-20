@@ -332,18 +332,23 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 		previousEnvironmentStatus := ps.Status.Environments[i-1]
 		currentEnvironmentStatus := ps.Status.Environments[i]
 
-		// Skip if there's no proposed change in the current environment (i.e., active and proposed are the same).
-		// In this case, there's no PR to put a commit status on, so we shouldn't create/update one.
-		// This prevents updating commit status on already-merged PRs when the previous environment merges.
-		if ctp.Status.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha {
-			logger.V(4).Info("Skipping previous environment commit status update - no proposed change in current environment",
+		// Skip if there is no proposed change in the current environment or if the previous environment dry sha does not match the current proposed dry sha.
+		// This means that either:
+		// 1. The current environment has not proposed any changes.
+		// 2. The previous environment has moved on since the current environment proposed its changes.
+		// In either case, we should not update the previous environment commit status. This causes closed PRs to have pending commit statuses indefinitely.
+		if ctp.Status.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha || previousEnvironmentStatus.Active.Dry.Sha != ctp.Status.Proposed.Dry.Sha {
+			logger.V(4).Info("Skipping previous environment commit status update - no proposed change in current environment or previous environment dry sha does not match current proposed dry sha",
 				"activeBranch", ctp.Spec.ActiveBranch,
 				"activeDrySha", ctp.Status.Active.Dry.Sha,
-				"proposedDrySha", ctp.Status.Proposed.Dry.Sha)
+				"proposedDrySha", ctp.Status.Proposed.Dry.Sha,
+				"previousEnvironmentActiveDrySha", previousEnvironmentStatus.Active.Dry.Sha,
+				"currentEnvironmentActiveDrySha", ctp.Status.Proposed.Dry.Sha,
+			)
 			continue
 		}
 
-		isPending, pendingReason := isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus, ctp.Status.Proposed.Dry.Sha)
+		isPending, pendingReason := isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus)
 
 		commitStatusPhase := promoterv1alpha1.CommitPhaseSuccess
 		if isPending {
@@ -374,11 +379,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 }
 
 // isPreviousEnvironmentPending returns whether the previous environment is pending and a reason string if it is pending.
-func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus, proposedDrySha string) (isPending bool, reason string) {
-	if previousEnvironmentStatus.Active.Dry.Sha != proposedDrySha {
-		return true, "Waiting for previous environment's active commit to match proposed commit"
-	}
-
+func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
 	// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
 	// time. Basically, we can't move back in time.
 	previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
