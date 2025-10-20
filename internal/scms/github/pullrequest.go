@@ -170,6 +170,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		&github.PullRequestOptions{
 			MergeMethod:        "merge",
 			DontDefaultIfBlank: false,
+			SHA:                pullRequest.Spec.MergeSha,
 		})
 	if response != nil {
 		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))

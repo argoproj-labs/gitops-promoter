@@ -9,6 +9,9 @@ spec:
   targetBranch:
   sourceBranch:
   description:
+  # The commit SHA that must be at the head of the source branch for the merge to succeed.
+  # This prevents race conditions where a different commit gets merged than intended.
+  mergeSha: abc123def456789012345678901234567890abcd
 
   # Must be closed, merged, or open. Default is open.
   # Must be set to "open" when initially created, and cannot be set to "closed" or "merged" unless status.id is set
