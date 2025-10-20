@@ -2818,3 +2818,213 @@ func argocdApplications(namespace string, name string) (argocd.Application, argo
 	}
 	return apps[0], apps[1], apps[2]
 }
+
+var _ = Describe("PromotionStrategy Bug Tests", func() {
+	Context("When PR merges while previous environment has non-passing checks", func() {
+		It("should not update commit status to pending after PR is already merged", func() {
+			By("Creating the resource")
+			ctx := context.Background()
+			name, scmSecret, scmProvider, gitRepo, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-bug-test", "default")
+			setupInitialTestGitRepoOnServer(name, name)
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{
+					Key: healthCheckCSKey,
+				},
+			}
+			activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
+			activeCommitStatusDevelopment.Labels = map[string]string{
+				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
+			}
+			activeCommitStatusStaging.Spec.Name = healthCheckCSKey
+			activeCommitStatusStaging.Labels = map[string]string{
+				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, activeCommitStatusDevelopment)).To(Succeed())
+			Expect(k8sClient.Create(ctx, activeCommitStatusStaging)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			ctpDev := promoterv1alpha1.ChangeTransferPolicy{}
+			ctpStaging := promoterv1alpha1.ChangeTransferPolicy{}
+
+			By("Waiting for ChangeTransferPolicies to be created")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Adding first commit")
+			gitPath1, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, name, name, "first commit", "")
+			simulateWebhook(ctx, k8sClient, &ctpDev)
+			simulateWebhook(ctx, k8sClient, &ctpStaging)
+
+			By("Waiting for dev PR to be auto-merged (first commit)")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Marking dev's active commit status as success for first commit")
+			var firstDevActiveSha string
+			Eventually(func(g Gomega) {
+				_, err = runGitCmd(gitPath1, "fetch")
+				Expect(err).NotTo(HaveOccurred())
+				sha, err := runGitCmd(gitPath1, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
+				Expect(err).NotTo(HaveOccurred())
+				firstDevActiveSha = strings.TrimSpace(sha)
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      activeCommitStatusDevelopment.Name,
+					Namespace: activeCommitStatusDevelopment.Namespace,
+				}, activeCommitStatusDevelopment)
+				g.Expect(err).To(Succeed())
+
+				activeCommitStatusDevelopment.Spec.Sha = firstDevActiveSha
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Waiting for staging PR to be auto-merged (first commit)")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+				// At this point, staging's active == proposed (both are firstDrySha)
+				g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying staging stays stable with active == proposed (ensure skip logic kicks in)")
+			Consistently(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+				g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
+			}, time.Second*5, time.Millisecond*500).Should(Succeed())
+
+			By("Capturing baseline: previous-environment commit status should be at success")
+			csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpStaging.Name)
+			commitStatus := &promoterv1alpha1.CommitStatus{}
+			var commitStatusOriginalSha string
+			var commitStatusOriginalPhase promoterv1alpha1.CommitStatusPhase
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      csName,
+					Namespace: ctpStaging.Namespace,
+				}, commitStatus)
+				g.Expect(err).To(Succeed())
+				g.Expect(commitStatus.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Capture baseline values
+			commitStatusOriginalSha = commitStatus.Spec.Sha
+			commitStatusOriginalPhase = commitStatus.Spec.Phase
+
+			GinkgoLogr.Info("Baseline commit status captured",
+				"phase", commitStatusOriginalPhase,
+				"sha", commitStatusOriginalSha)
+
+			By("Setting dev's commit status to PENDING (simulating a non-passing check)")
+			Eventually(func(g Gomega) {
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      activeCommitStatusDevelopment.Name,
+					Namespace: activeCommitStatusDevelopment.Namespace,
+				}, activeCommitStatusDevelopment)
+				g.Expect(err).To(Succeed())
+
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhasePending
+				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Triggering PromotionStrategy reconciliation multiple times to test skip logic")
+			for i := 0; i < 5; i++ {
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+					g.Expect(err).To(Succeed())
+					orig := promotionStrategy.DeepCopy()
+					if promotionStrategy.Annotations == nil {
+						promotionStrategy.Annotations = make(map[string]string)
+					}
+					promotionStrategy.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = metav1.Now().Format(time.RFC3339)
+					err = k8sClient.Patch(ctx, promotionStrategy, client.MergeFrom(orig))
+					g.Expect(err).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+
+			By("Verifying commit status was NOT updated after staging PR merged")
+			// The bug would be: commit status gets updated to "pending" even though staging's active == proposed
+			// The fix at line 341 prevents this by skipping the update when active == proposed
+			// Use Consistently (not Eventually) since we're checking that something DOESN'T change
+			Consistently(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      csName,
+					Namespace: ctpStaging.Namespace,
+				}, commitStatus)
+				g.Expect(err).To(Succeed())
+
+				// Phase should stay at success
+				g.Expect(commitStatus.Spec.Phase).To(Equal(commitStatusOriginalPhase),
+					"CommitStatus phase changed from '%s' to '%s' after PR merged. "+
+						"The skip logic should have prevented any updates.",
+					commitStatusOriginalPhase, commitStatus.Spec.Phase)
+
+				// SHA should not have changed - it should still point to the original merged commit
+				g.Expect(commitStatus.Spec.Sha).To(Equal(commitStatusOriginalSha),
+					"CommitStatus SHA changed from '%s' to '%s' after PR merged. "+
+						"The skip logic should have kept it pointing to the original merged commit.",
+					commitStatusOriginalSha, commitStatus.Spec.Sha)
+			}, time.Second*5, time.Millisecond*500).Should(Succeed())
+
+			GinkgoLogr.Info("Final commit status state (after all reconciliations)",
+				"phase", commitStatus.Spec.Phase,
+				"sha", commitStatus.Spec.Sha,
+				"originalPhase", commitStatusOriginalPhase,
+				"originalSha", commitStatusOriginalSha)
+
+			By("Verifying staging CTP still has active == proposed")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(ctpStaging.Status.Proposed.Dry.Sha),
+					"Staging should still have active == proposed")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+		})
+	})
+})
