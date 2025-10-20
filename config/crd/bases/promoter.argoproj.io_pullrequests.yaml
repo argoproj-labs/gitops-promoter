@@ -190,7 +190,7 @@ spec:
         type: object
         x-kubernetes-validations:
         - message: Cannot transition to 'closed' or 'merged' state when status.id
-            is empty - this should never happen, so please report a bug
+            is empty
           rule: self.spec.state == 'open' || has(self.status.id) && self.status.id
             != ""
     served: true

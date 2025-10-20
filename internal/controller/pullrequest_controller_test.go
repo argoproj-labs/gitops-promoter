@@ -195,7 +195,7 @@ var _ = Describe("PullRequest Controller", func() {
 			By("Verifying the create operation fails due to CEL validation")
 			err := k8sClient.Create(ctx, pullRequest)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Cannot transition to 'closed' or 'merged' state when status.id is empty - this should never happen, so please report a bug"))
+			Expect(err.Error()).To(ContainSubstring("Cannot transition to 'closed' or 'merged' state when status.id is empty"))
 		})
 
 		It("should fail to create a PullRequest with spec.state set to 'closed'", func() {
@@ -216,7 +216,7 @@ var _ = Describe("PullRequest Controller", func() {
 			By("Verifying the create operation fails due to CEL validation")
 			err := k8sClient.Create(ctx, pullRequest)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("Cannot transition to 'closed' or 'merged' state when status.id is empty - this should never happen, so please report a bug"))
+			Expect(err.Error()).To(ContainSubstring("Cannot transition to 'closed' or 'merged' state when status.id is empty"))
 		})
 	})
 })
