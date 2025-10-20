@@ -3035,7 +3035,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Verifying commit status was NOT updated after staging PR merged")
 			// The bug would be: commit status gets updated to "pending" even though staging's active == proposed
-			// The fix at line 341 prevents this by skipping the update when active == proposed
+			// Prevent this by skipping the update when active == proposed
 			// Use Consistently (not Eventually) since we're checking that something DOESN'T change
 			Consistently(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
