@@ -3756,8 +3756,9 @@ spec:
                   rule: self == oldSelf
               state:
                 default: open
-                description: State of the pull request (closed, merged, or open).
-                  Must always be "open" when creating a new pull request.
+                description: |-
+                  State of the pull request (closed, merged, or open). Must always be "open" when creating a new pull request.
+                  This value may not be changed to "closed" or "merged" unless the pull request status.id is set.
                 enum:
                 - closed
                 - merged

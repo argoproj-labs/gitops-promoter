@@ -47,6 +47,7 @@ type PullRequestSpec struct {
 	// Commit contains configuration for how we will merge/squash/etc the pull request.
 	Commit CommitConfiguration `json:"commit,omitempty"`
 	// State of the pull request (closed, merged, or open). Must always be "open" when creating a new pull request.
+	// This value may not be changed to "closed" or "merged" unless the pull request status.id is set.
 	// +kubebuilder:default:=open
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=closed;merged;open
