@@ -484,12 +484,11 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	repoPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
 
 	// Use git merge-tree --write-tree to perform a stateless merge check
-	// With --write-tree, git exits with code 1 if conflicts exist, and writes conflict info to stderr
+	// With --write-tree, git exits with code 1 if conflicts exist, and writes conflict info to stdout
 	stdout, stderr, err := g.runCmd(ctx, repoPath, "merge-tree", "--write-tree", "origin/"+activeBranch, "origin/"+proposedBranch)
 	if err != nil {
 		// Exit code 1 with conflict info in stderr means conflicts were detected
-		combinedOutput := stdout + stderr
-		if strings.Contains(combinedOutput, "CONFLICT") {
+		if strings.Contains(stdout, "CONFLICT") {
 			logger.V(4).Info("Merge conflict detected via merge-tree --write-tree", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
 			return true, nil
 		}
