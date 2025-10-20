@@ -46,7 +46,8 @@ type PullRequestSpec struct {
 	Description string `json:"description,omitempty"`
 	// Commit contains configuration for how we will merge/squash/etc the pull request.
 	Commit CommitConfiguration `json:"commit,omitempty"`
-	// State of the merge request closed/merged/open
+	// State of the pull request (closed, merged, or open). Must always be "open" when creating a new pull request.
+	// This value may not be changed to "closed" or "merged" unless the pull request status.id is set.
 	// +kubebuilder:default:=open
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=closed;merged;open
@@ -93,6 +94,7 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 // PullRequest is the Schema for the pullrequests API
 // +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.id`
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
+// +kubebuilder:validation:XValidation:rule=`self.spec.state == 'open' || has(self.status.id) && self.status.id != ""`,message="Cannot transition to 'closed' or 'merged' state when status.id is empty"
 type PullRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

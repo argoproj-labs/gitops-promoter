@@ -50,17 +50,12 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should successfully reconcile the resource when updating title then merging", func() {
 			By("Reconciling the created resource")
 
-			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "update-title-merge", "default")
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "update-title-merge")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
 				Namespace: "default",
 			}
-
-			pullRequest.Spec.Title = "This is the initial title"
-			pullRequest.Spec.TargetBranch = "development"
-			pullRequest.Spec.SourceBranch = "development-next"
-			pullRequest.Spec.Description = "Pull Request for testing errors"
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -100,17 +95,12 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should successfully reconcile the resource when closing", func() {
 			By("Reconciling the created resource")
 
-			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "update-title-close", "default")
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "update-title-close")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
 				Namespace: "default",
 			}
-
-			pullRequest.Spec.Title = "Initial Title"
-			pullRequest.Spec.TargetBranch = "staging"
-			pullRequest.Spec.SourceBranch = "staging-next"
-			pullRequest.Spec.Description = "Initial Description"
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -143,7 +133,7 @@ var _ = Describe("PullRequest Controller", func() {
 		It("should successfully reconcile the resource and update conditions with the error", func() {
 			By("Reconciling the created resource")
 
-			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "bad-configuration-no-scm-secret", "default")
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "bad-configuration-no-scm-secret")
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -151,11 +141,6 @@ var _ = Describe("PullRequest Controller", func() {
 			}
 
 			scmProvider.Spec.SecretRef = &v1.LocalObjectReference{Name: "non-existing-secret"}
-
-			pullRequest.Spec.Title = "Initial Title"
-			pullRequest.Spec.TargetBranch = "development"
-			pullRequest.Spec.SourceBranch = "development-next"
-			pullRequest.Spec.Description = "Initial Description"
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -173,9 +158,47 @@ var _ = Describe("PullRequest Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
+
+	Context("When attempting to create a PullRequest with invalid initial state", func() {
+		ctx := context.Background()
+
+		It("should fail to create a PullRequest with spec.state set to 'merged'", func() {
+			By("Attempting to create a PullRequest with spec.state='merged' and empty status.id")
+
+			_, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "create-merged")
+
+			pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+			By("Verifying the create operation fails due to CEL validation")
+			err := k8sClient.Create(ctx, pullRequest)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Cannot transition to 'closed' or 'merged' state when status.id is empty"))
+		})
+
+		It("should fail to create a PullRequest with spec.state set to 'closed'", func() {
+			By("Attempting to create a PullRequest with spec.state='closed' and empty status.id")
+
+			_, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "create-closed")
+
+			pullRequest.Spec.State = promoterv1alpha1.PullRequestClosed
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+			By("Verifying the create operation fails due to CEL validation")
+			err := k8sClient.Create(ctx, pullRequest)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Cannot transition to 'closed' or 'merged' state when status.id is empty"))
+		})
+	})
 })
 
-func pullRequestResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
+func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 	setupInitialTestGitRepoOnServer(name, name)
 
@@ -183,7 +206,7 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: namespace,
+			Namespace: "default",
 		},
 		Data: nil,
 	}
@@ -192,7 +215,7 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: namespace,
+			Namespace: "default",
 		},
 		Spec: promoterv1alpha1.ScmProviderSpec{
 			SecretRef: &v1.LocalObjectReference{Name: name},
@@ -204,7 +227,7 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 	gitRepo := &promoterv1alpha1.GitRepository{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: namespace,
+			Namespace: "default",
 		},
 		Spec: promoterv1alpha1.GitRepositorySpec{
 			Fake: &promoterv1alpha1.FakeRepo{
@@ -222,16 +245,16 @@ func pullRequestResources(ctx context.Context, name, namespace string) (string, 
 		TypeMeta: metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: namespace,
+			Namespace: "default",
 		},
 		Spec: promoterv1alpha1.PullRequestSpec{
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
 			},
-			Title:        "",
-			TargetBranch: "",
-			SourceBranch: "",
-			Description:  "",
+			Title:        "Initial Title",
+			TargetBranch: "development",
+			SourceBranch: "development-next",
+			Description:  "Initial Description",
 			State:        "open",
 		},
 		Status: promoterv1alpha1.PullRequestStatus{},
