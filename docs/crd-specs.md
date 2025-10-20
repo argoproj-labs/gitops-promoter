@@ -1,4 +1,4 @@
-## PromotionStrategy
+### PromotionStrategy
 
 The PromotionStrategy is the user's interface to controlling how changes are promoted through their environments. In 
 this CR, the user configures the list of live hydrated environment branches in their order of promotion. They'll also
@@ -8,7 +8,7 @@ configure the checks which must pass between promotion steps.
 {!internal/controller/testdata/PromotionStrategy.yaml!}
 ```
 
-## ChangeTransferPolicy
+### ChangeTransferPolicy
 
 A ChangeTransferPolicy represents a pair hydrated environment branch pair: the proposed environment branch and the live
 environment branch. When a new commit appears in the proposed branch, the ChangeTransferPolicy will open a PR against 
@@ -26,7 +26,7 @@ ChangeTransferPolicies.
 {!internal/controller/testdata/ChangeTransferPolicy.yaml!}
 ```
 
-## PullRequest
+### PullRequest
 
 A PullRequest is a thin wrapper around the SCM's pull request API. ChangeTransferPolicies use PullRequests to manage
 promotions.
@@ -35,7 +35,7 @@ promotions.
 {!internal/controller/testdata/PullRequest.yaml!}
 ```
 
-## CommitStatus
+### CommitStatus
 
 A CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses are the primary source of truth for
 promotion gates. In the ideal case, the CommitStatus will write its state to the SCM's API so that the appropriate
@@ -46,7 +46,7 @@ use the contents of the CommitStatuses `spec` fields.
 {!internal/controller/testdata/CommitStatus.yaml!}
 ```
 
-## GitRepository
+### GitRepository
 
 A GitRepository represents a single git repository. It references an ScmProvider to enable access via some configured
 auth mechanism.
@@ -55,7 +55,7 @@ auth mechanism.
 {!internal/controller/testdata/GitRepository.yaml!}
 ```
 
-## ScmProvider
+### ScmProvider
 
 An ScmProvider represents a scm instance (such as github). It references a Secret to enable access via some configured
 auth mechanism.
@@ -64,7 +64,7 @@ auth mechanism.
 {!internal/controller/testdata/ScmProvider.yaml!}
 ```
 
-## ClusterScmProvider
+### ClusterScmProvider
 
 A ClusterScmProvider represents a SCM instance (such as GitHub). ClusterScmProvider is the cluster-scoped alternative to the ScmProvider. It references a Secret in the same namespace where the promoter is running to enable access via some configured
 auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in the cluster, regardless of namespace.
@@ -73,7 +73,7 @@ auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in t
 {!internal/controller/testdata/ClusterScmProvider.yaml!}
 ```
 
-## ArgoCDCommitStatus
+### ArgoCDCommitStatus
 
 An ArgoCDCommitStatus is used as a way to aggregate all the Argo CD Applications that are being used in the promotion strategy. It is used
 to check the status of the Argo CD Applications that are being used in the promotion strategy.
@@ -81,7 +81,7 @@ to check the status of the Argo CD Applications that are being used in the promo
 ```yaml
 {!internal/controller/testdata/ArgoCDCommitStatus.yaml!}
 ```
-## ControllerConfiguration
+### ControllerConfiguration
 
 A ControllerConfiguration is used to configure the behavior of the promoter.
 
@@ -92,3 +92,35 @@ All fields are required, but defaults are provided in the installation manifests
 ```yaml
 {!internal/controller/testdata/ControllerConfiguration.yaml!}
 ```
+
+## Status Conditions
+
+Every CRD which is reconciled has a `status.conditions` field. Each CRD currently only populates a single `Ready` 
+condition. If the `Ready` condition is `True`, then it means that 1) reconciliation of the resource has completed 
+successfully, and 2) all child resources also had a `Ready` condition of `True`.
+
+### Condition Reasons
+
+All CRDs may have the following condition reasons:
+
+* `ReconciliationSuccess`
+* `ReconciliationFailed`
+
+#### `ArgoCDCommitStatus`
+
+The `ArgoCDCommitStatus` CRD may also have the following condition reasons:
+
+* `CommitStatusesNotReady`
+
+#### `ChangeTransferPolicy`
+
+The `ChangeTransferPolicy` CRD may also have the following condition reasons:
+
+* `PullRequestNotReady`
+
+#### `PromotionStrategy`
+
+The `PromotionStrategy` CRD may also have the following condition reasons:
+
+* `PreviousEnvironmentCommitStatusNotReady`
+* `ChangeTransferPolicyNotReady`

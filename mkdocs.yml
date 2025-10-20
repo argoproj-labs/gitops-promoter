@@ -40,7 +40,9 @@ nav:
   - FAQs: faqs.md
   - Tutorials:
       - Argo CD Apps: tutorial-argocd-apps.md
+  - Argo CD Integrations: argocd-integrations.md
 plugins:
+  - gh-admonitions
   - redirects:
       redirect_maps:
         'metrics.md': 'monitoring/metrics.md' # Page was moved to a subdirectory.

@@ -13,15 +13,18 @@ export interface Commit {
   commitTime?: string | null;
   repoURL?: string;
   references?: Array<{
-    commit: {
-      author?: string;
-      sha?: string;
-      subject?: string;
-      date?: string;
-      body?: string;
-      repoURL?: string;
-    };
+    commit: ReferenceCommit;
   }>;
+}
+
+export interface ReferenceCommit  {
+  sha?: string;
+  author?: string;
+  subject?: string;
+  body?: string;
+  date?: string;
+  url?: string;
+  repoURL?: string;
 }
 
 export interface PullRequest {
@@ -113,12 +116,8 @@ export interface EnrichedEnvDetails {
   activePrUrl: string | null;
   activePrNumber: number | null;
   
-  activeReferenceSha: string;
-  activeReferenceCommitAuthor: string;
-  activeReferenceCommitSubject: string;
-  activeReferenceCommitDate: string;
-  activeReferenceCommitUrl: string;
-  activeReferenceCommitBody: string;
+  activeReferenceCommit: ReferenceCommit | null;
+  activeReferenceCommitUrl: string | null;
   
   // Proposed commits
   proposedSha: string;
@@ -133,12 +132,8 @@ export interface EnrichedEnvDetails {
   proposedChecksSummary: { successCount: number; totalCount: number; shouldDisplay: boolean };
   proposedStatus: 'success' | 'failure' | 'pending' | 'unknown';
 
-  proposedReferenceSha: string;
-  proposedReferenceCommitAuthor: string;
-  proposedReferenceCommitSubject: string;
-  proposedReferenceCommitDate: string;
-  proposedReferenceCommitUrl: string;
-  proposedReferenceCommitBody: string;
+  proposedReferenceCommit: ReferenceCommit | null;
+  proposedReferenceCommitUrl: string | null;
 }
 
 export type PromotionPhase = 'promoted' | 'failure' | 'pending' | 'unknown'; 

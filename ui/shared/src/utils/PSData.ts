@@ -1,13 +1,13 @@
 import { getCommitUrl, extractNameOnly, extractBodyPreTrailer, formatDate } from './util';
 import { getEnvironmentStatus, getHealthStatus } from './getStatus';
-import type { 
-  CommitStatus, 
-  Commit, 
-  Environment, 
-  PromotionStrategy, 
-  Check, 
+import type {
+  CommitStatus,
+  Commit,
+  Environment,
+  PromotionStrategy,
+  Check,
   EnrichedEnvDetails,
-  PromotionPhase
+  PromotionPhase, ReferenceCommit
 } from '../types/promotion';
 
 
@@ -29,25 +29,11 @@ function calculateHealthSummary(checks: Check[]): { successCount: number; totalC
 }
 
 // Extract reference commit data
-function extractReferenceCommitData(dryCommit: Commit): {
-  sha: string;
-  author: string;
-  subject: string;
-  body: string;
-  date: string;
-  url: string;
-} {
+function extractReferenceCommitData(dryCommit: Commit): null | ReferenceCommit {
   const referenceCommit = dryCommit.references && dryCommit.references[0]?.commit;
   
   if (!referenceCommit) {
-    return {
-      sha: '-',
-      author: '-',
-      subject: '-',
-      body: '-',
-      date: '-',
-      url: ''
-    };
+    return null;
   }
   
   const sha = referenceCommit.sha ? referenceCommit.sha.slice(0, 7) : '-';
@@ -116,12 +102,8 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     activeCommitDate: activeCommitInfo.commitTime ? formatDate(activeCommitInfo.commitTime) : '-',
     activeCommitUrl: getCommitUrl(activeCommitInfo.repoURL ?? '', activeCommitInfo.sha ?? ''),
     activeSha: activeCommitInfo.sha ? activeCommitInfo.sha.slice(0, 7) : '-',
-    activeReferenceCommitSubject: activeReferenceData.subject,
-    activeReferenceCommitBody: activeReferenceData.body,
-    activeReferenceCommitAuthor: activeReferenceData.author,
-    activeReferenceCommitDate: activeReferenceData.date,
-    activeReferenceCommitUrl: activeReferenceData.url,
-    activeReferenceSha: activeReferenceData.sha,
+    activeReferenceCommit: activeReferenceData,
+    activeReferenceCommitUrl: activeReferenceData ? getCommitUrl(activeCommitInfo.repoURL ?? '', activeReferenceData.sha ?? '') : null,
     activeChecks: historicalChecks,
     activeChecksSummary,
 
@@ -135,12 +117,8 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     proposedDryCommitDate: proposedDry.commitTime ? formatDate(proposedDry.commitTime) : '-',
     proposedDryCommitUrl: getCommitUrl(proposedDry.repoURL ?? '', proposedDry.sha ?? ''),
     proposedSha: proposedDry.sha ? proposedDry.sha.slice(0, 7) : '-',
-    proposedReferenceCommitSubject: proposedReferenceData.subject,
-    proposedReferenceCommitBody: proposedReferenceData.body,
-    proposedReferenceCommitAuthor: proposedReferenceData.author,
-    proposedReferenceCommitDate: proposedReferenceData.date,
-    proposedReferenceCommitUrl: proposedReferenceData.url,
-    proposedReferenceSha: proposedReferenceData.sha,
+    proposedReferenceCommit: proposedReferenceData,
+    proposedReferenceCommitUrl: proposedReferenceData ? getCommitUrl(proposedDry.repoURL ?? '', proposedReferenceData.sha ?? '') : null,
     proposedChecks,
     proposedChecksSummary,
   };

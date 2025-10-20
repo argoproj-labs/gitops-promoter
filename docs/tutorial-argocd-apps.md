@@ -19,15 +19,18 @@ To complete this tutorial, you will need the following:
 * [A GitHub Account](https://github.com/)
 * [Git](https://git-scm.com/)
 
+> [!NOTE]
+> GitOps Promoter provides several opt-in Argo CD integrations that improve the user experience. Check out the 
+> [Argo CD Integrations](./argocd-integrations.md) page for more information.
+
 ## Set up the test cluster
 
 ### Create the cluster
 
 If you don't have a test cluster yet, create one. With kind, simply run `kind create cluster`
 
-!!! tip "Alternatively"
-
-    You can name the cluster with `kind create cluster --name promoter`
+> [!TIP]
+> You can name the cluster with `kind create cluster --name promoter`
 
 Confirm that your access works with `kubectl get nodes`. Nodes should have a name starting with the name of your cluster (per example: `promoter-control-plane`)
 
@@ -63,12 +66,11 @@ Connect with this password for the `admin` user.
 > See [Getting Started](./getting-started.md)
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.11.2/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.14.0/install.yaml
 ```
 
-!!! note
-
-    You may want to run the command twice to deploy the controller configuration after the CRDs were deployed.
+> [!NOTE]
+> You may want to run the command twice to deploy the controller configuration after the CRDs were deployed.
 
 ## Set up a sample repository
 
@@ -105,17 +107,16 @@ However, we are running the workload locally and the webhook is not required for
 
 If you want to set up the webhook, read [Getting started](./getting-started.md) and try to use [https://smee.io/](https://smee.io/).
 
-!!! tip "Alternatively"
-
-    You can adjust the setting down to something like 15 or 30 seconds.
-
-    See the [default config](https://github.com/argoproj-labs/gitops-promoter/blob/65d5905c51acac5d1caf3af01ceb0747795207e5/config/config/controllerconfiguration.yaml#L14-L17) for the config location.
-
-    ```shell
-    kubectl patch -n promoter-system controllerconfiguration promoter-controller-configuration \
-      --type merge \
-      -p '{"spec": {"promotionStrategyRequeueDuration": "30s", "changeTransferPolicyRequeueDuration": "30s", "argocdCommitStatusRequeueDuration": "30s", "pullRequestRequeueDuration": "30s"}}'
-    ```
+> [!TIP]
+> You can adjust the setting down to something like 15 or 30 seconds.
+>
+> See the [default config](https://github.com/argoproj-labs/gitops-promoter/blob/65d5905c51acac5d1caf3af01ceb0747795207e5/config/config/controllerconfiguration.yaml#L14-L17) for the config location.
+>
+> ```shell
+> kubectl patch -n promoter-system controllerconfiguration promoter-controller-configuration \
+>   --type merge \
+>   -p '{"spec": {"promotionStrategyRequeueDuration": "30s", "changeTransferPolicyRequeueDuration": "30s", "argocdCommitStatusRequeueDuration": "30s", "pullRequestRequeueDuration": "30s"}}'
+> ```
 
 #### Generate a key
 
@@ -211,10 +212,9 @@ If you go to the Argo CD UI, in the applications, you should now see the "SOURCE
 
 It should have the message "from HEAD (...) to environment/development-next (...)"
 
-!!! important
-
-    The Application will have an error under "APP CONDITIONS" that "app path does not exist." That's because the
-    Promoter has not yet moved the hydrated manifests to the syncSource branches. That's the next step.
+> [!IMPORTANT]
+> The Application will have an error under "APP CONDITIONS" that "app path does not exist." That's because the
+> Promoter has not yet moved the hydrated manifests to the syncSource branches. That's the next step.
 
 This means three things in case of a change in the main branch:
 
@@ -246,7 +246,7 @@ spec:
     name: github-app-promoter
   github:
     appID: ${GITHUB_APP_ID}
-    installationID: ${GITHUB_APP_INSTALLATION_ID}
+    installationID: ${GITHUB_APP_INSTALLATION_ID} # Optional, will query ListInstallations if not provided
 EOF
 ```
 
@@ -317,9 +317,8 @@ Here, we implement a simple strategy:
 2. Auto-merge on staging (if development is successful)
 3. Manual merge on production
 
-!!! note
-
-    You should see 2 PRs getting merged automatically and 1 PR to merge manually for the production. That is normal: we branched from the main branch wich is DRY. The promoter detects change and do what's needed to sync the two branches.
+> [!NOTE]
+> You should see 2 PRs getting merged automatically and 1 PR to merge manually for the production. That is normal: we branched from the main branch wich is DRY. The promoter detects change and do what's needed to sync the two branches.
 
 ## Play with your environment
 
@@ -327,6 +326,5 @@ We deployed the application "helm-guestbook" from the example repository.
 
 Try editing the main branch: number of replicas, helm templates... And see the PRs getting promoted from development to staging, then wait for your approval for the prod.
 
-!!! note
-
-    Since we are not using the webhook. It can takes 5 to 15 minutes to complete the cycle unless you've set the requeue duration to a lower value.
+> [!NOTE]
+> Since we are not using the webhook. It can takes 5 to 15 minutes to complete the cycle unless you've set the requeue duration to a lower value.

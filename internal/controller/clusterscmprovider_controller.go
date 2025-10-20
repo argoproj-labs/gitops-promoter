@@ -58,7 +58,7 @@ func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ClusterScmProviderReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ClusterScmProviderReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ClusterScmProvider{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("clusterscmprovider").

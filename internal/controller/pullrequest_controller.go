@@ -24,15 +24,20 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
@@ -76,6 +81,9 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest: %w", err)
 	}
+
+	// Remove any existing Ready condition. We want to start fresh.
+	meta.RemoveStatusCondition(pr.GetConditions(), string(promoterConditions.Ready))
 
 	provider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
@@ -160,18 +168,31 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
 
-	pullRequestDuration, err := r.SettingsMgr.GetPullRequestRequeueDuration(ctx)
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PullRequestConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get pull request requeue duration: %w", err)
 	}
 
-	return ctrl.Result{RequeueAfter: pullRequestDuration}, nil
+	return ctrl.Result{RequeueAfter: requeueDuration}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	err := ctrl.NewControllerManagedBy(mgr).
+func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	// Use Direct methods to read configuration from the API server without cache during setup.
+	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.PullRequestConfiguration, ctrl.Request](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get pull request rate limiter: %w", err)
+	}
+
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.PullRequestConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get pull request max concurrent reconciles: %w", err)
+	}
+
+	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -185,9 +206,14 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
 	}
 
+	gitRepository, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
 	switch {
 	case scmProvider.GetSpec().GitHub != nil:
-		return github.NewGithubPullRequestProvider(r.Client, scmProvider, *secret) //nolint:wrapcheck
+		return github.NewGithubPullRequestProvider(ctx, r.Client, scmProvider, *secret, gitRepository.Spec.GitHub.Owner) //nolint:wrapcheck
 	case scmProvider.GetSpec().GitLab != nil:
 		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck
 	case scmProvider.GetSpec().Forgejo != nil:
@@ -258,11 +284,25 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 	if err := provider.Update(ctx, pr.Spec.Title, pr.Spec.Description, pr); err != nil {
 		return fmt.Errorf("failed to update pull request: %w", err)
 	}
-	r.Recorder.Event(&pr, "Normal", "PullRequestUpdated", fmt.Sprintf("Pull Request %s updated", pr.Name))
+	r.Recorder.Event(&pr, "Normal", constants.PullRequestUpdatedReason, fmt.Sprintf("Pull Request %s updated", pr.Name))
 	return nil
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	mergedTime := metav1.Now()
+
+	updatedMessage, err := git.AddTrailerToCommitMessage(
+		pr.Spec.Commit.Message,
+		constants.TrailerPullRequestMergeTime,
+		mergedTime.Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to add trailer to commit message: %w", err)
+	}
+
+	// Update the commit message with the new trailers
+	pr.Spec.Commit.Message = updatedMessage
+
 	if err := provider.Merge(ctx, *pr); err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}
