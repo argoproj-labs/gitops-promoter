@@ -61,10 +61,3 @@ window.extensionsAPI?.registerResourceExtension(
   'PromotionStrategy',
   { icon: 'fa-code-branch' }
 );
-
-// Register status panel extension 
-// window.extensionsAPI?.registerStatusPanelExtension(
-//   StatusPanelComponent,
-//   'Promotion Strategy',
-//   'promotion_strategy_status'
-// );
