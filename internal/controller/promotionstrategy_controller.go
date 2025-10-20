@@ -332,6 +332,17 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			continue
 		}
 
+		// Skip if there's no proposed change in the current environment (i.e., active and proposed are the same).
+		// In this case, there's no PR to put a commit status on, so we shouldn't create/update one.
+		// This prevents updating commit status on already-merged PRs when the previous environment merges.
+		if ctp.Status.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha {
+			logger.V(4).Info("Skipping previous environment commit status update - no proposed change in current environment",
+				"activeBranch", ctp.Spec.ActiveBranch,
+				"activeDrySha", ctp.Status.Active.Dry.Sha,
+				"proposedDrySha", ctp.Status.Proposed.Dry.Sha)
+			continue
+		}
+
 		previousEnvironmentStatus := ps.Status.Environments[i-1]
 		currentEnvironmentStatus := ps.Status.Environments[i]
 
