@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	"github.com/google/go-github/v71/github"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -192,13 +190,13 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil || gitRepo == nil {
-		return false, v1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to get GitRepository: %w", err)
+		return false, "", time.Time{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	start := time.Now()
@@ -210,7 +208,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return false, v1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to list pull requests: %w", err)
+		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -220,21 +218,10 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	logger.V(4).Info("github response status",
 		"status", response.Status)
 	if len(pullRequests) > 0 {
-		url, err := pr.GetUrl(ctx, pullRequest)
-		if err != nil {
-			return false, v1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to get pull request URL: %w", err)
-		}
-
-		prStatus := v1alpha1.PullRequestCommonStatus{
-			ID:             strconv.Itoa(*pullRequests[0].Number),
-			State:          v1alpha1.PullRequestState(*pullRequests[0].State),
-			PRCreationTime: metav1.Time{Time: pullRequests[0].CreatedAt.Time},
-			Url:            url,
-		}
-		return true, prStatus, nil
+		return true, strconv.Itoa(*pullRequests[0].Number), pullRequests[0].CreatedAt.Time, nil
 	}
 
-	return false, v1alpha1.PullRequestCommonStatus{}, nil
+	return false, "", time.Time{}, nil
 }
 
 // GetUrl returns the URL of the pull request.

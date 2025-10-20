@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	forgejo "codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2"
 	k8sV1 "k8s.io/api/core/v1"
 	k8sClient "sigs.k8s.io/controller-runtime/pkg/client"
@@ -190,15 +188,15 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 }
 
 // FindOpen checks if a pull request with the specified source and target branches exists and is open.
-func (pr *PullRequest) FindOpen(ctx context.Context, prObj promoterv1alpha1.PullRequest) (bool, promoterv1alpha1.PullRequestCommonStatus, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha1.PullRequest) (bool, string, time.Time, error) {
 	logger := log.FromContext(ctx)
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, k8sClient.ObjectKey{
-		Namespace: prObj.Namespace,
-		Name:      prObj.Spec.RepositoryReference.Name,
+		Namespace: pullRequest.Namespace,
+		Name:      pullRequest.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return false, promoterv1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to get git repository from object: %w", err)
+		return false, "", time.Time{}, fmt.Errorf("failed to get git repository from object: %w", err)
 	}
 
 	options := forgejo.ListPullRequestsOptions{
@@ -211,36 +209,19 @@ func (pr *PullRequest) FindOpen(ctx context.Context, prObj promoterv1alpha1.Pull
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return false, promoterv1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to list pull requests: %w", err)
+		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 
 	for _, prItem := range prs {
-		if prItem.Head.Name != prObj.Spec.SourceBranch ||
-			prItem.Base.Name != prObj.Spec.TargetBranch {
+		if prItem.Head.Name != pullRequest.Spec.SourceBranch ||
+			prItem.Base.Name != pullRequest.Spec.TargetBranch {
 			continue
 		}
-
-		prState, err := forgejoPullRequestStateToPullRequestState(*prItem)
-		if err != nil {
-			return false, promoterv1alpha1.PullRequestCommonStatus{}, err
-		}
-
-		url, err := pr.GetUrl(ctx, prObj)
-		if err != nil {
-			return false, promoterv1alpha1.PullRequestCommonStatus{}, fmt.Errorf("failed to get pull request URL: %w", err)
-		}
-
-		pullRequestStatus := promoterv1alpha1.PullRequestCommonStatus{
-			ID:             strconv.FormatInt(prItem.Index, 10),
-			State:          prState,
-			Url:            url,
-			PRCreationTime: metav1.Time{Time: *prItem.Created},
-		}
-		return true, pullRequestStatus, nil
+		return true, strconv.FormatInt(prItem.Index, 10), *prItem.Created, nil
 	}
 
-	return false, promoterv1alpha1.PullRequestCommonStatus{}, nil
+	return false, "", time.Time{}, nil
 }
 
 func checkOpenPR(ctx context.Context, pr PullRequest, repo *promoterv1alpha1.GitRepository, prID int64) (bool, error) {

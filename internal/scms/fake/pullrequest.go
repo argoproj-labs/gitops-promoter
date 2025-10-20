@@ -10,8 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
@@ -193,18 +192,12 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
 	mutexPR.RLock()
 	found, id := pr.findOpen(ctx, pullRequest)
 	mutexPR.RUnlock()
 
-	prState := v1alpha1.PullRequestCommonStatus{
-		ID:             id,
-		State:          v1alpha1.PullRequestOpen,
-		Url:            fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", pullRequest.Spec.RepositoryReference.Name, pullRequest.Spec.SourceBranch, id),
-		PRCreationTime: metav1.Now(),
-	}
-	return found, prState, nil
+	return found, id, time.Now(), nil
 }
 
 func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string) {
