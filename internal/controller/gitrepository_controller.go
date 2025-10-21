@@ -20,10 +20,13 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -39,20 +42,26 @@ type GitRepositoryReconciler struct {
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories/finalizers,verbs=update
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the GitRepository object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.17.2/pkg/reconcile
 func (r *GitRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
+	logger.Info("Reconciling GitRepository")
 
-	// TODO(user): your logic here
+	var gitRepo promoterv1alpha1.GitRepository
+	if err := r.Get(ctx, req.NamespacedName, &gitRepo); err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("GitRepository not found", "namespace", req.Namespace, "name", req.Name)
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	if deleted, err := r.handleFinalizer(ctx, &gitRepo); err != nil || deleted {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -66,4 +75,55 @@ func (r *GitRepositoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
+}
+
+func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository) (bool, error) {
+	logger := log.FromContext(ctx)
+	finalizer := "gitrepository.promoter.argoproj.io/finalizer"
+
+	if gitRepo.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(gitRepo, finalizer) {
+			// Not being deleted and already has finalizer, nothing to do.
+			return false, nil
+		}
+
+		// Finalizer is missing, add it.
+		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
+			if err := r.Get(ctx, client.ObjectKeyFromObject(gitRepo), gitRepo); err != nil {
+				return err //nolint:wrapcheck
+			}
+			if controllerutil.AddFinalizer(gitRepo, finalizer) {
+				return r.Update(ctx, gitRepo)
+			}
+			return nil
+		})
+	}
+
+	// If we're here, the object is being deleted
+	if !controllerutil.ContainsFinalizer(gitRepo, finalizer) {
+		// Finalizer already removed, nothing to do.
+		return false, nil
+	}
+
+	// Check if there are any PullRequests referencing this GitRepository
+	var pullRequests promoterv1alpha1.PullRequestList
+	if err := r.List(ctx, &pullRequests, client.InNamespace(gitRepo.Namespace)); err != nil {
+		return false, fmt.Errorf("failed to list PullRequests: %w", err)
+	}
+
+	for _, pr := range pullRequests.Items {
+		if pr.Spec.RepositoryReference.Name == gitRepo.Name {
+			logger.Info("GitRepository still has dependent PullRequests, cannot delete", 
+				"gitRepository", gitRepo.Name, "pullRequest", pr.Name)
+			return true, fmt.Errorf("GitRepository %s/%s still has dependent PullRequest %s", 
+				gitRepo.Namespace, gitRepo.Name, pr.Name)
+		}
+	}
+
+	// No dependent PullRequests, remove finalizer
+	controllerutil.RemoveFinalizer(gitRepo, finalizer)
+	if err := r.Update(ctx, gitRepo); err != nil {
+		return true, fmt.Errorf("failed to remove finalizer: %w", err)
+	}
+	return true, nil
 }
