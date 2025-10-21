@@ -1,6 +1,6 @@
 # Renovate Setup Instructions
 
-This repository uses Renovate to automatically update Go and golangci-lint versions. This document describes the setup and any manual steps required.
+This repository uses **self-hosted Renovate via GitHub Workflows** to automatically update Go and golangci-lint versions. This document describes the setup and any manual steps required.
 
 ## Overview
 
@@ -18,38 +18,75 @@ Renovate has been configured to:
 
 4. **Group Go and golangci-lint updates together** in a single PR when both have updates
 
+## Why Self-Hosted Renovate?
+
+We use self-hosted Renovate (via GitHub Workflows) instead of the hosted GitHub App because:
+- **Post-upgrade tasks are only supported in self-hosted mode** - We need to run `go mod tidy` and `make lint-fix` automatically
+- Full control over when and how Renovate runs
+- No external dependencies on Renovate's hosted infrastructure
+
 ## Required Setup Steps
 
-### 1. Install Renovate Bot
+### 1. Create a GitHub App for Renovate
 
-You need to install the Renovate GitHub App or set up self-hosted Renovate.
+To run Renovate as a GitHub App with proper permissions, you need to create a dedicated GitHub App:
 
-#### Option A: GitHub App (Recommended for most teams)
+1. **Create the GitHub App**:
+   - Go to your organization settings: https://github.com/organizations/argoproj-labs/settings/apps
+   - Click "New GitHub App"
+   - Fill in the details:
+     - **GitHub App name**: `renovate-bot` (or similar)
+     - **Homepage URL**: `https://github.com/argoproj-labs/gitops-promoter`
+     - **Webhook**: Uncheck "Active" (we don't need webhooks)
+   
+2. **Set Repository Permissions**:
+   - **Contents**: Read & Write (to push commits)
+   - **Pull Requests**: Read & Write (to create/update PRs)
+   - **Issues**: Read & Write (for onboarding PR)
+   - **Metadata**: Read-only (required)
+   - **Workflows**: Read & Write (to update workflow files if needed)
 
-1. Go to https://github.com/apps/renovate
-2. Click "Install" or "Configure"
-3. Select the `argoproj-labs` organization
-4. Choose either:
-   - **All repositories** (if you want Renovate for all repos), or
-   - **Only select repositories** and choose `gitops-promoter`
-5. Click "Install" or "Save"
+3. **Install the App**:
+   - After creating, click "Install App"
+   - Select the `argoproj-labs` organization
+   - Choose "Only select repositories" and select `gitops-promoter`
+   - Click "Install"
 
-#### Option B: Self-Hosted Renovate
+4. **Generate a Private Key**:
+   - In the app settings, scroll to "Private keys"
+   - Click "Generate a private key"
+   - Save the downloaded `.pem` file securely
 
-If you prefer self-hosted Renovate:
+### 2. Configure Repository Secrets
 
-1. Follow the [Renovate self-hosting documentation](https://docs.renovatebot.com/getting-started/running/)
-2. Configure Renovate to run on a schedule (e.g., weekly)
-3. Ensure Renovate has access to create branches and PRs in this repository
+Add the following secrets to the repository:
 
-### 2. Verify Configuration
+1. Go to repository settings: https://github.com/argoproj-labs/gitops-promoter/settings/secrets/actions
+2. Click "New repository secret" and add:
+   - **Name**: `RENOVATE_APP_ID`
+   - **Value**: The App ID from your GitHub App (found in app settings)
+3. Add another secret:
+   - **Name**: `RENOVATE_APP_PRIVATE_KEY`
+   - **Value**: The entire contents of the `.pem` file (including `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----`)
 
-After installation, Renovate should:
-- Create an initial "Configure Renovate" PR to activate itself
-- Start scanning for updates on the configured schedule (every weekend)
+### 3. Verify Configuration
+
+After setup, the Renovate workflow will:
+- Run automatically every weekend (Saturday and Sunday at 3 AM UTC)
+- Can be triggered manually via "Actions" → "Renovate" → "Run workflow"
+- Create an initial "Configure Renovate" PR on first run
 - Create PRs for Go and golangci-lint updates when available
 
 ## How It Works
+
+### Workflow Execution
+
+The Renovate workflow (`.github/workflows/renovate.yaml`) runs:
+- **Automatically**: Every weekend (Saturday and Sunday) at 3 AM UTC
+- **Manually**: Via "Actions" → "Renovate" → "Run workflow" in GitHub UI
+- **On config changes**: When the workflow or renovate.json5 files are updated
+
+The workflow uses a GitHub App token for authentication, which provides better rate limits and permissions than a PAT.
 
 ### Update Detection
 
@@ -71,6 +108,8 @@ When Renovate creates a PR for Go or golangci-lint updates, it will:
 
 The `lint-fix` command is run with `|| true` to allow the PR to be created even if there are linting errors that can't be auto-fixed.
 
+**Note**: Post-upgrade tasks only work with self-hosted Renovate. The hosted GitHub App does not support this feature.
+
 ### Manual Intervention
 
 If the automated `lint-fix` doesn't resolve all issues, the PR will still be created with:
@@ -88,6 +127,19 @@ This is the same workflow as PR #609, but with much less manual work upfront.
 
 ## Configuration Details
 
+### Renovate Workflow (`.github/workflows/renovate.yaml`)
+
+Key workflow features:
+
+- **Schedule**: Runs every weekend (Saturday and Sunday at 3 AM UTC)
+- **Manual trigger**: Can be run on-demand with optional dry-run mode
+- **Authentication**: Uses GitHub App token (better than PAT)
+- **Permissions**: Minimal permissions needed (contents, PRs, issues)
+- **Environment variables**: 
+  - `RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS`: Whitelist of commands that can run
+  - `RENOVATE_DRY_RUN`: Test mode without making changes
+  - `LOG_LEVEL`: Configurable logging (default: info)
+
 ### Renovate Configuration (`renovate.json5`)
 
 Key configuration options:
@@ -97,6 +149,8 @@ Key configuration options:
 - **Concurrent Limit**: Maximum of 3 PRs at once
 - **Automerge**: Disabled (requires manual review)
 - **Post-upgrade tasks**: Runs `go mod tidy` and `make lint-fix`
+  - These only work because we're using self-hosted Renovate
+  - Commands must be whitelisted in the workflow
 
 ### Dependabot Configuration (`.github/dependabot.yaml`)
 
@@ -112,18 +166,26 @@ This avoids conflicts between the two tools.
 
 ## Troubleshooting
 
+### Renovate workflow fails with authentication error
+
+1. Verify the GitHub App is installed on the repository
+2. Check that `RENOVATE_APP_ID` and `RENOVATE_APP_PRIVATE_KEY` secrets are set correctly
+3. Ensure the private key includes the full PEM format (including headers)
+4. Verify the GitHub App has the required permissions (Contents, PRs, Issues)
+
 ### Renovate isn't creating PRs
 
-1. Check if Renovate is installed and has repository access
-2. Check the Renovate dashboard: https://app.renovatebot.com/dashboard
-3. Look for Renovate's debug logs in the repository's "Issues" or "Pull Requests" tabs
-4. Verify the `renovate.json5` configuration is valid JSON5
+1. Check the workflow run logs in "Actions" → "Renovate"
+2. Try running manually with debug logging: Set logLevel to "debug"
+3. Verify the `renovate.json5` configuration is valid JSON5
+4. Check if there are actually new versions available
 
-### PRs are created but lint-fix doesn't run
+### PRs are created but post-upgrade tasks don't run
 
 1. Check if `make lint-fix` works locally
-2. Verify Renovate has sufficient permissions to push to branches
-3. Check the Renovate logs for postUpgradeTasks execution errors
+2. Verify commands are whitelisted in `RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS`
+3. Check the Renovate workflow logs for postUpgradeTasks execution errors
+4. Ensure the workflow has write permissions for contents
 
 ### Manual fixes are needed for every update
 
@@ -134,20 +196,51 @@ This is expected behavior! The goal is to:
 
 ## Testing Renovate Locally
 
-You can test Renovate configuration changes locally:
+You can test the Renovate configuration locally before running it in the workflow:
 
 ```bash
 # Install Renovate CLI
 npm install -g renovate
 
-# Run Renovate in dry-run mode
-export RENOVATE_TOKEN="your-github-token"
-renovate --dry-run argoproj-labs/gitops-promoter
+# Run Renovate in dry-run mode (requires GitHub token with repo permissions)
+export RENOVATE_TOKEN="your-github-personal-access-token"
+renovate --dry-run=full --log-level=debug argoproj-labs/gitops-promoter
 ```
+
+### Testing the Workflow
+
+To test the workflow without making real changes:
+
+1. Go to "Actions" → "Renovate" → "Run workflow"
+2. Set "Dry-Run" to `true`
+3. Set "Log-Level" to `debug`
+4. Click "Run workflow"
+5. Check the logs to see what Renovate would do
+
+## Security Considerations
+
+### GitHub App Private Key
+
+- The private key should be stored **only** in GitHub Secrets
+- Never commit the `.pem` file to the repository
+- Rotate the key if it's ever exposed
+- The key gives write access to the repository, so protect it carefully
+
+### Command Whitelisting
+
+The workflow only allows specific commands in `RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS`:
+- `go mod tidy` - Safe, only updates dependency checksums
+- `make lint-fix` - Runs golangci-lint with auto-fix
+
+If you need to add more commands, update both:
+1. The workflow file (`.github/workflows/renovate.yaml`)
+2. The renovate.json5 configuration
 
 ## References
 
 - [Renovate Documentation](https://docs.renovatebot.com/)
+- [Running Renovate as a GitHub App](https://docs.renovatebot.com/modules/platform/github/#running-as-a-github-app)
 - [Renovate Configuration Options](https://docs.renovatebot.com/configuration-options/)
 - [Regex Managers](https://docs.renovatebot.com/modules/manager/regex/)
 - [Post-upgrade Tasks](https://docs.renovatebot.com/configuration-options/#postupgradetasks)
+- [Self-Hosted Renovate](https://docs.renovatebot.com/getting-started/running/)

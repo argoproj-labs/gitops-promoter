@@ -1,0 +1,56 @@
+name: Renovate
+on:
+  schedule:
+    # Run every weekend at 3 AM UTC (Saturday and Sunday)
+    - cron: '0 3 * * 6,0'
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: "Dry-Run"
+        default: "false"
+        required: false
+      logLevel:
+        description: "Log-Level"
+        default: "debug"
+        required: false
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/renovate.yaml'
+      - 'renovate.json5'
+
+permissions:
+  contents: read
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get token
+        id: get_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RENOVATE_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+
+      - name: Self-hosted Renovate
+        uses: renovatebot/github-action@v41.7.2
+        with:
+          configurationFile: renovate.json5
+          token: ${{ steps.get_token.outputs.token }}
+        env:
+          LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
+          RENOVATE_DRY_RUN: ${{ inputs.dryRun == 'true' }}
+          # Enable post-upgrade tasks (only works with self-hosted Renovate)
+          RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS: >-
+            ["^go mod tidy$", "^make lint-fix"]
+          # Ensure Renovate uses the proper Git author
+          RENOVATE_GIT_AUTHOR: 'Renovate Bot <bot@renovateapp.com>'
