@@ -113,9 +113,9 @@ func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *
 
 	for _, pr := range pullRequests.Items {
 		if pr.Spec.RepositoryReference.Name == gitRepo.Name {
-			logger.Info("GitRepository still has dependent PullRequests, cannot delete", 
+			logger.Info("GitRepository still has dependent PullRequests, cannot delete",
 				"gitRepository", gitRepo.Name, "pullRequest", pr.Name)
-			return true, fmt.Errorf("GitRepository %s/%s still has dependent PullRequest %s", 
+			return true, fmt.Errorf("GitRepository %s/%s still has dependent PullRequest %s",
 				gitRepo.Namespace, gitRepo.Name, pr.Name)
 		}
 	}

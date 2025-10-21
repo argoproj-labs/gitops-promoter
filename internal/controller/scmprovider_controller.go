@@ -123,11 +123,11 @@ func (r *ScmProviderReconciler) handleFinalizer(ctx context.Context, scmProvider
 	}
 
 	for _, gitRepo := range gitRepos.Items {
-		if gitRepo.Spec.ScmProviderRef.Name == scmProvider.Name && 
-		   gitRepo.Spec.ScmProviderRef.Kind == promoterv1alpha1.ScmProviderKind {
-			logger.Info("ScmProvider still has dependent GitRepositories, cannot delete", 
+		if gitRepo.Spec.ScmProviderRef.Name == scmProvider.Name &&
+			gitRepo.Spec.ScmProviderRef.Kind == promoterv1alpha1.ScmProviderKind {
+			logger.Info("ScmProvider still has dependent GitRepositories, cannot delete",
 				"scmProvider", scmProvider.Name, "gitRepository", gitRepo.Name)
-			return true, fmt.Errorf("ScmProvider %s/%s still has dependent GitRepository %s", 
+			return true, fmt.Errorf("ScmProvider %s/%s still has dependent GitRepository %s",
 				scmProvider.Namespace, scmProvider.Name, gitRepo.Name)
 		}
 	}
@@ -147,7 +147,7 @@ func (r *ScmProviderReconciler) handleFinalizer(ctx context.Context, scmProvider
 
 func (r *ScmProviderReconciler) ensureSecretFinalizer(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider) error {
 	logger := log.FromContext(ctx)
-	
+
 	if scmProvider.Spec.SecretRef == nil {
 		return nil
 	}
@@ -167,6 +167,12 @@ func (r *ScmProviderReconciler) ensureSecretFinalizer(ctx context.Context, scmPr
 		return fmt.Errorf("failed to get Secret: %w", err)
 	}
 
+	// Don't add finalizer to a Secret that's already being deleted
+	if !secret.DeletionTimestamp.IsZero() {
+		logger.Info("Secret is being deleted, skipping finalizer", "secret", secretKey)
+		return nil
+	}
+
 	if controllerutil.ContainsFinalizer(&secret, finalizer) {
 		return nil
 	}
@@ -174,6 +180,10 @@ func (r *ScmProviderReconciler) ensureSecretFinalizer(ctx context.Context, scmPr
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
 		if err := r.Get(ctx, secretKey, &secret); err != nil {
 			return err //nolint:wrapcheck
+		}
+		// Check again after getting the secret in case it was deleted during the retry
+		if !secret.DeletionTimestamp.IsZero() {
+			return nil
 		}
 		if controllerutil.AddFinalizer(&secret, finalizer) {
 			return r.Update(ctx, &secret)
@@ -184,7 +194,7 @@ func (r *ScmProviderReconciler) ensureSecretFinalizer(ctx context.Context, scmPr
 
 func (r *ScmProviderReconciler) removeSecretFinalizer(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider) error {
 	logger := log.FromContext(ctx)
-	
+
 	if scmProvider.Spec.SecretRef == nil {
 		return nil
 	}
@@ -220,7 +230,7 @@ func (r *ScmProviderReconciler) removeSecretFinalizer(ctx context.Context, scmPr
 			continue
 		}
 		if sp.Spec.SecretRef != nil && sp.Spec.SecretRef.Name == secret.Name {
-			logger.Info("Secret still referenced by other ScmProvider, keeping finalizer", 
+			logger.Info("Secret still referenced by other ScmProvider, keeping finalizer",
 				"secret", secretKey, "scmProvider", sp.Name)
 			return nil
 		}

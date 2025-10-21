@@ -78,8 +78,8 @@ type ScmProvider struct {
 }
 
 // GetConditions returns the conditions of the ScmProvider.
-func (sp *ScmProvider) GetConditions() *[]metav1.Condition {
-	return &sp.Status.Conditions
+func (s *ScmProvider) GetConditions() *[]metav1.Condition {
+	return &s.Status.Conditions
 }
 
 //+kubebuilder:object:root=true

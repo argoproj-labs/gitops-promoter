@@ -42,8 +42,8 @@ type ClusterScmProvider struct {
 }
 
 // GetConditions returns the conditions of the ClusterScmProvider.
-func (csp *ClusterScmProvider) GetConditions() *[]metav1.Condition {
-	return &csp.Status.Conditions
+func (s *ClusterScmProvider) GetConditions() *[]metav1.Condition {
+	return &s.Status.Conditions
 }
 
 // +kubebuilder:object:root=true
