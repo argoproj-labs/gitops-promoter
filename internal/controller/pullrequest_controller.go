@@ -298,6 +298,7 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 	mergedTime := metav1.Now()
 
 	updatedMessage, err := git.AddTrailerToCommitMessage(
+		ctx,
 		pr.Spec.Commit.Message,
 		constants.TrailerPullRequestMergeTime,
 		mergedTime.Format(time.RFC3339),

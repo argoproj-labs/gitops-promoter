@@ -221,7 +221,7 @@ func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name s
 }
 
 func (pr *PullRequest) runGitCmd(ctx context.Context, gitPath string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx "git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf

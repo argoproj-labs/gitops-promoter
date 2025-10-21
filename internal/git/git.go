@@ -568,10 +568,10 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 // flag only accepts general positions like 'after', 'before', 'start', 'end' relative to ALL trailers,
 // not a specific one), it's still the most reliable approach. The alternative would be maintaining
 // complex custom parsing logic, which is error-prone and doesn't handle all of Git's trailer edge cases.
-func AddTrailerToCommitMessage(commitMessage, trailerKey, trailerValue string) (string, error) {
+func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, trailerValue string) (string, error) {
 	trailerLine := fmt.Sprintf("%s: %s", trailerKey, trailerValue)
 
-	cmd := exec.CommandContext(context.Background(), "git", "interpret-trailers", "--trailer", trailerLine)
+	cmd := exec.CommandContext(ctx, "git", "interpret-trailers", "--trailer", trailerLine)
 	cmd.Stdin = strings.NewReader(commitMessage)
 
 	var stdoutBuf bytes.Buffer
@@ -605,7 +605,7 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	}
 
 	// Then pipe it to git interpret-trailers using stdin
-	cmd := exec.CommandContext(context.Background(), "git", "interpret-trailers", "--only-trailers")
+	cmd := exec.CommandContext(ctx, "git", "interpret-trailers", "--only-trailers")
 	cmd.Dir = gitPath
 	cmd.Stdin = strings.NewReader(msgStdout)
 
