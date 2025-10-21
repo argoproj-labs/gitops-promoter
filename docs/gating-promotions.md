@@ -162,7 +162,7 @@ The [TimedCommitStatus](commit-status-controllers/timed.md) controller implement
 
 Key features:
 - Monitors how long commits have been running in each environment
-- Creates CommitStatus resources with key `timed`
+- Creates CommitStatus resources with key `timer`
 - Reports pending until the required duration is met
 - Prevents promotions when there are pending changes in lower environments
 

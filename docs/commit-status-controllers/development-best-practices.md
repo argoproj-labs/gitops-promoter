@@ -2,6 +2,10 @@
 
 This document outlines best practices for implementing custom commit status controllers in GitOps Promoter.
 
+## Videos
+
+- [GitOps Promoter Commit Status Controllers Overview](https://www.youtube.com/watch?v=Usi38ly1pe0) - An introduction to commit status controllers and their role in GitOps Promoter.
+
 ## Required Labels
 
 All commit status controllers should set the following standard labels on the `CommitStatus` resources they create:
