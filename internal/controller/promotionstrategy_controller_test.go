@@ -1547,11 +1547,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
 				g.Expect(sha).To(Not(BeEmpty()))
-				proposedCommitStatusDevelopment.Spec.Sha = sha
-				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Create(ctx, proposedCommitStatusDevelopment)
-				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
-				g.Expect(err).To(Succeed())
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				if proposedCommitStatusDevelopment.ResourceVersion == "" {
+					proposedCommitStatusDevelopment.Spec.Sha = sha
+					proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					err = k8sClient.Create(ctx, proposedCommitStatusDevelopment)
+					GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
+					g.Expect(err).To(Succeed())
+				}
 
 				g.Expect(len(ctpDev.Status.Proposed.CommitStatuses)).To(Not(BeZero()))
 				g.Expect(ctpDev.Status.Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
@@ -1770,11 +1773,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
 				g.Expect(sha).To(Not(BeEmpty()))
-				proposedCommitStatusDevelopment.Spec.Sha = sha
-				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Create(ctx, proposedCommitStatusDevelopment)
-				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
-				g.Expect(err).To(Succeed())
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				if proposedCommitStatusDevelopment.ResourceVersion == "" {
+					proposedCommitStatusDevelopment.Spec.Sha = sha
+					proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					err = k8sClient.Create(ctx, proposedCommitStatusDevelopment)
+					GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
+					g.Expect(err).To(Succeed())
+				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the development pull request has been merged and that staging, production pull request are still open")
@@ -2417,11 +2423,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
 				g.Expect(sha).To(Not(BeEmpty()))
-				proposedCommitStatusDevelopment.Spec.Sha = sha
-				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Create(ctx, proposedCommitStatusDevelopment)
-				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
-				g.Expect(err).To(Succeed())
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				if proposedCommitStatusDevelopment.ResourceVersion == "" {
+					proposedCommitStatusDevelopment.Spec.Sha = sha
+					proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					err = k8sClient.Create(ctx, proposedCommitStatusDevelopment)
+					GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
+					g.Expect(err).To(Succeed())
+				}
 
 				g.Expect(len(ctpDev.Status.Proposed.CommitStatuses)).To(Not(BeZero()))
 				g.Expect(ctpDev.Status.Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusDevelopment.Spec.Url))
