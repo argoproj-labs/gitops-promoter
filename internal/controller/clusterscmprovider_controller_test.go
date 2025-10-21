@@ -25,11 +25,13 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
 //go:embed testdata/ClusterScmProvider.yaml
@@ -84,8 +86,10 @@ var _ = Describe("ClusterScmProvider Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &ClusterScmProviderReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:      k8sClient,
+				Scheme:      k8sClient.Scheme(),
+				Recorder:    record.NewFakeRecorder(10),
+				SettingsMgr: settings.NewManager(k8sClient, k8sClient, settings.ManagerConfig{ControllerNamespace: "default"}),
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{

@@ -266,12 +266,14 @@ func HandleReconciliationResult(
 
 	logger := log.FromContext(ctx)
 
-	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
 	if obj.GetName() == "" && obj.GetNamespace() == "" {
 		// This happens when the Get in the Reconcile function returns "not found." It's expected and safe to skip.
-		logger.V(4).Info(obj.GetObjectKind().GroupVersionKind().Kind + " not found, skipping reconciliation")
+		logger.Info("Reconciling  End", "duration", time.Since(startTime))
+		logger.V(4).Info(" not found, skipping reconciliation")
 		return
 	}
+
+	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
 
 	conditions := obj.GetConditions() // GetConditions() is guaranteed to be non-nil for our CRDs.
 	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
@@ -294,7 +296,9 @@ func HandleReconciliationResult(
 		}
 		recorder.Eventf(obj, eventType, readyCondition.Reason, readyCondition.Message)
 		if updateErr := updateReadyCondition(ctx, obj, client, conditions, readyCondition.Status, readyCondition.Reason, readyCondition.Message); updateErr != nil {
-			*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
+			if !k8serrors.IsConflict(updateErr) {
+				*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
+			}
 		}
 		return
 	}
@@ -303,8 +307,10 @@ func HandleReconciliationResult(
 		recorder.Eventf(obj, "Warning", string(promoterConditions.ReconciliationError), "Reconciliation failed: %v", *err)
 	}
 	if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionFalse, string(promoterConditions.ReconciliationError), fmt.Sprintf("Reconciliation failed: %s", *err)); updateErr != nil {
-		//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-		*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
+		if !k8serrors.IsConflict(updateErr) {
+			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
+			*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
+		}
 	}
 }
 
