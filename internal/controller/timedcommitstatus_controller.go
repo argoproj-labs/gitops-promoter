@@ -18,14 +18,14 @@ package controller
 
 import (
 	"context"
-	stderrors "errors"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -73,7 +73,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// 1. Fetch the TimedCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &tcs, &client.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("TimedCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
@@ -92,7 +92,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 	err = r.Get(ctx, psKey, &ps)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Error(err, "referenced PromotionStrategy not found", "promotionStrategy", tcs.Spec.PromotionStrategyRef.Name)
 			return ctrl.Result{}, fmt.Errorf("referenced PromotionStrategy %q not found: %w", tcs.Spec.PromotionStrategyRef.Name, err)
 		}
@@ -208,16 +208,9 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 		// Determine commit status phase based on time elapsed in current environment
 		// This status will be reported for the current environment's active SHA
-		var phase promoterv1alpha1.CommitStatusPhase
-		var message string
-		// If there is a pending promotion in the current environment (proposed != active), report pending
-		// This indicates there's an open PR that hasn't been merged yet
-		if currentEnvStatus.Proposed.Dry.Sha != "" && currentEnvStatus.Proposed.Dry.Sha != currentEnvStatus.Active.Dry.Sha {
-			phase = promoterv1alpha1.CommitPhasePending
-			message = fmt.Sprintf("Waiting for pending promotion in %s environment to be merged", envConfig.Branch)
-		} else {
-			phase, message = r.calculateCommitStatusPhase(currentActiveCommitTime, envConfig.Duration.Duration, elapsed, envConfig.Branch)
-		}
+		// When a new commit is merged, the active SHA and commit time automatically update,
+		// which naturally resets the timer to 0 and reports pending until the duration is met
+		phase, message := r.calculateCommitStatusPhase(currentActiveCommitTime, envConfig.Duration.Duration, elapsed, envConfig.Branch)
 
 		// Check if this time gate transitioned to success
 		// Find the previous status for this environment
@@ -350,7 +343,7 @@ func (r *TimedCommitStatusReconciler) touchPromotionStrategyIfOpenPR(ctx context
 	// Touch the PromotionStrategy annotation to trigger reconciliation
 	psUpdated := ps.DeepCopy()
 	if psUpdated == nil {
-		return stderrors.New("failed to deep copy PromotionStrategy")
+		return errors.New("failed to deep copy PromotionStrategy")
 	}
 	if psUpdated.Annotations == nil {
 		psUpdated.Annotations = make(map[string]string)

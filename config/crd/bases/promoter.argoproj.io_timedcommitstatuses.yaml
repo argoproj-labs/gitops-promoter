@@ -157,7 +157,6 @@ spec:
                       enum:
                       - pending
                       - success
-                      - failure
                       type: string
                     requiredDuration:
                       description: RequiredDuration is the duration that must elapse

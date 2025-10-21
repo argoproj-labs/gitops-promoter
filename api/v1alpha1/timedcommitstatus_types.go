@@ -86,7 +86,7 @@ type TimedCommitStatusEnvironmentsStatus struct {
 	RequiredDuration metav1.Duration `json:"requiredDuration"`
 
 	// Phase represents the current phase of the timed gate.
-	// +kubebuilder:validation:Enum=pending;success;failure
+	// +kubebuilder:validation:Enum=pending;success
 	// +required
 	Phase string `json:"phase"`
 

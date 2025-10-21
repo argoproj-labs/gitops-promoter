@@ -126,13 +126,16 @@ The `duration` field accepts standard Go duration strings:
 
 ## Behavior Details
 
-### Pending Promotions
+### Timer Reset on New Commits
 
-If an environment has a pending promotion (i.e., proposed dry SHA != active dry SHA), the time-based gate will report `pending` for that environment. This ensures that:
+When a new commit is merged to an environment, the timer automatically resets. The controller tracks the active commit's SHA and commit time, so:
 
-1. Pending changes are merged before the environment is considered stable for promotion
-2. The promotion pipeline remains orderly and predictable
-3. You don't accidentally promote from an environment with untested changes
+1. A new commit becomes active with a fresh `CommitTime`
+2. The controller calculates elapsed time from the new commit time (effectively resetting to 0)
+3. The time gate shows `pending` until the new commit meets the duration requirement
+4. This ensures every commit must satisfy the soak time requirement before being promoted
+
+This automatic reset behavior means you don't need any special configuration - the controller naturally enforces that each commit runs for the required duration.
 
 ### Commit Time Tracking
 

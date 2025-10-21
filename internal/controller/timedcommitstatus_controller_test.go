@@ -34,7 +34,7 @@ import (
 )
 
 var _ = Describe("TimedCommitStatus Controller", func() {
-	Context("When a lower environment has a pending promotion", func() {
+	Context("When time requirement is not met", func() {
 		ctx := context.Background()
 
 		var name string
@@ -71,35 +71,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Creating a pending promotion in dev environment")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			makeChangeAndHydrateRepo(gitPath, name, name, "pending change in dev", "pending change")
-
-			// Trigger webhook to create PR
-			var ctpDev promoterv1alpha1.ChangeTransferPolicy
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
-					Namespace: "default",
-				}, &ctpDev)
-				g.Expect(err).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
-			simulateWebhook(ctx, k8sClient, &ctpDev)
-
-			By("Waiting for dev environment to have a pending promotion (proposed != active)")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-				// Dev should have different proposed vs active (pending promotion)
-				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha).ToNot(Equal(promotionStrategy.Status.Environments[0].Active.Dry.Sha))
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Creating a TimedCommitStatus resource")
+			By("Creating a TimedCommitStatus resource with 1 hour requirement")
 			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -126,8 +98,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			_ = k8sClient.Delete(ctx, promotionStrategy)
 		})
 
-		It("should report pending status when environment has open PR", func() {
-			By("Waiting for TimedCommitStatus to process the pending promotion")
+		It("should report pending status when time requirement is not met", func() {
+			By("Waiting for TimedCommitStatus to process the environment")
 			Eventually(func(g Gomega) {
 				var tcs promoterv1alpha1.TimedCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -147,7 +119,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(1*time.Hour), "RequiredDuration should match spec")
 				g.Expect(tcs.Status.Environments[0].TimeElapsed.Duration).To(BeNumerically("<", 1*time.Hour), "TimeElapsed should be < required duration")
 
-				// Verify CommitStatus was created for dev environment (not staging) with pending phase
+				// Verify CommitStatus was created for dev environment with pending phase
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/development-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -156,7 +128,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(cs.Spec.Description).To(ContainSubstring("Waiting for pending promotion in environment/development"))
+				g.Expect(cs.Spec.Description).To(ContainSubstring("Waiting for time-based gate on environment/development"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
