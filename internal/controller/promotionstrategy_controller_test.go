@@ -1149,11 +1149,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				sha = strings.TrimSpace(sha)
 
 				g.Expect(sha).To(Not(BeEmpty()))
-				activeCommitStatusDevelopment.Spec.Sha = sha
-				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Create(ctx, activeCommitStatusDevelopment)
-				GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
-				g.Expect(err).To(Succeed())
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				if activeCommitStatusDevelopment.ResourceVersion == "" {
+					activeCommitStatusDevelopment.Spec.Sha = sha
+					activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					err = k8sClient.Create(ctx, activeCommitStatusDevelopment)
+					GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
+					g.Expect(err).To(Succeed())
+				}
 
 				// Check that the proposed commit has the correct sha, aka it has reconciled at least once since adding new commits
 				err = k8sClient.Get(ctx, types.NamespacedName{
@@ -1213,11 +1216,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpProd.Status.Proposed.Hydrated.Sha).To(Equal(shaProdProposed))
 
-				activeCommitStatusStaging.Spec.Sha = sha
-				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Create(ctx, activeCommitStatusStaging)
-				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
-				g.Expect(err).To(Succeed())
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				if activeCommitStatusStaging.ResourceVersion == "" {
+					activeCommitStatusStaging.Spec.Sha = sha
+					activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					err = k8sClient.Create(ctx, activeCommitStatusStaging)
+					GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
+					g.Expect(err).To(Succeed())
+				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the production pull request has been merged")
@@ -1347,11 +1353,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 
 				sha := ctpDev.Status.Active.Hydrated.Sha
-				activeCommitStatusDevelopment.Spec.Sha = sha
-				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Create(ctx, activeCommitStatusDevelopment)
-				GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
-				g.Expect(err).To(Succeed())
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				if activeCommitStatusDevelopment.ResourceVersion == "" {
+					activeCommitStatusDevelopment.Spec.Sha = sha
+					activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					err = k8sClient.Create(ctx, activeCommitStatusDevelopment)
+					GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
+					g.Expect(err).To(Succeed())
+				}
 
 				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(sha))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -1405,11 +1414,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpProd.Status.Proposed.Hydrated.Sha).To(Equal(shaProdProposed))
 
-				activeCommitStatusStaging.Spec.Sha = sha
-				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Create(ctx, activeCommitStatusStaging)
-				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
-				g.Expect(err).To(Succeed())
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				if activeCommitStatusStaging.ResourceVersion == "" {
+					activeCommitStatusStaging.Spec.Sha = sha
+					activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					err = k8sClient.Create(ctx, activeCommitStatusStaging)
+					GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
+					g.Expect(err).To(Succeed())
+				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("By checking that the production pull request has been merged")
@@ -2499,11 +2511,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpStaging.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
 				g.Expect(sha).To(Not(BeEmpty()))
-				proposedCommitStatusStaging.Spec.Sha = sha
-				proposedCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Create(ctx, proposedCommitStatusStaging)
-				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
-				g.Expect(err).To(Succeed())
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				if proposedCommitStatusStaging.ResourceVersion == "" {
+					proposedCommitStatusStaging.Spec.Sha = sha
+					proposedCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					err = k8sClient.Create(ctx, proposedCommitStatusStaging)
+					GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
+					g.Expect(err).To(Succeed())
+				}
 
 				g.Expect(len(ctpStaging.Status.Proposed.CommitStatuses)).To(Not(BeZero()))
 				g.Expect(ctpStaging.Status.Proposed.CommitStatuses[0].Url).To(Equal(proposedCommitStatusStaging.Spec.Url))
@@ -2896,10 +2911,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(err).NotTo(HaveOccurred())
 				firstDevActiveSha = strings.TrimSpace(sha)
 
-				activeCommitStatusDevelopment.Spec.Sha = firstDevActiveSha
-				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Create(ctx, activeCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				if activeCommitStatusDevelopment.ResourceVersion == "" {
+					activeCommitStatusDevelopment.Spec.Sha = firstDevActiveSha
+					activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					err = k8sClient.Create(ctx, activeCommitStatusDevelopment)
+					g.Expect(err).To(Succeed())
+				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Waiting for staging PR to be auto-merged (first commit)")
