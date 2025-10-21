@@ -146,7 +146,7 @@ The controller uses the `CommitTime` from the PromotionStrategy's environment st
 The TimedCommitStatus controller uses an intelligent requeue strategy to provide timely status updates and minimize promotion latency:
 
 **Frequent Status Updates**: When there are pending time gates where the required duration has **not yet been met**, the controller reconciles every **1 minute** to provide regular status updates. This means:
-- The `timeElapsed` field in the status updates every minute, giving you a live view of progress toward meeting the required duration
+- The `atLeastTimeRemaining` field in the status updates every minute, giving you a live view of progress toward meeting the required duration
 - You can monitor how much time remains before a gate is satisfied
 - Once all time gates have either met their required duration, the controller uses the configured reconciliation interval (default is 1 hour) to reduce overhead
 
@@ -162,7 +162,7 @@ status:
       sha: abc123def456
       commitTime: "2024-01-15T10:00:00Z"
       requiredDuration: 1h
-      timeElapsed: 45m30s
+      atLeastTimeRemaining: 14m30s
       phase: pending
 ```
 
@@ -171,7 +171,7 @@ Fields:
 - `sha` - The active commit SHA in this environment
 - `commitTime` - When the commit was deployed
 - `requiredDuration` - The configured required duration
-- `timeElapsed` - How long the commit has been running
+- `atLeastTimeRemaining` - Minimum time remaining until the gate is satisfied (0 when phase is success)
 - `phase` - Current gate status (`pending` or `success`)
 
 ## Use Cases

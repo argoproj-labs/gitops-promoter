@@ -210,6 +210,10 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 		// Calculate timing information based on current environment's active commit
 		elapsed := time.Since(currentActiveCommitTime)
+		timeRemaining := envConfig.Duration.Duration - elapsed
+		if timeRemaining < 0 {
+			timeRemaining = 0
+		}
 
 		// Determine commit status phase based on time elapsed in current environment
 		// This status will be reported for the current environment's active SHA
@@ -235,12 +239,12 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 		// Update status for this environment
 		envTimedStatus := promoterv1alpha1.TimedCommitStatusEnvironmentsStatus{
-			Branch:           envConfig.Branch,
-			Sha:              currentActiveSha,
-			CommitTime:       metav1.NewTime(currentActiveCommitTime),
-			RequiredDuration: envConfig.Duration,
-			Phase:            string(phase),
-			TimeElapsed:      metav1.Duration{Duration: elapsed},
+			Branch:               envConfig.Branch,
+			Sha:                  currentActiveSha,
+			CommitTime:           metav1.NewTime(currentActiveCommitTime),
+			RequiredDuration:     envConfig.Duration,
+			Phase:                string(phase),
+			AtLeastTimeRemaining: metav1.Duration{Duration: timeRemaining},
 		}
 		tcs.Status.Environments = append(tcs.Status.Environments, envTimedStatus)
 
@@ -373,8 +377,8 @@ func (r *TimedCommitStatusReconciler) calculateRequeueDuration(ctx context.Conte
 
 	for _, envStatus := range tcs.Status.Environments {
 		if envStatus.Phase == string(promoterv1alpha1.CommitPhasePending) {
-			// Check if the time elapsed has met the required duration
-			if envStatus.TimeElapsed.Duration < envStatus.RequiredDuration.Duration {
+			// Check if there is still time remaining before the gate is satisfied
+			if envStatus.AtLeastTimeRemaining.Duration > 0 {
 				hasPendingGatesNotMet = true
 				break
 			}

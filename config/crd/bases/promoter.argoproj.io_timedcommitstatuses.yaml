@@ -143,6 +143,11 @@ spec:
                   description: TimedCommitStatusEnvironmentsStatus defines the observed
                     timing status for a specific environment.
                   properties:
+                    atLeastTimeRemaining:
+                      description: |-
+                        AtLeastTimeRemaining is the minimum amount of time remaining until the gate is satisfied.
+                        This is calculated at reconciliation time. When the gate is satisfied (phase=success), this will be 0.
+                      type: string
                     branch:
                       description: Branch is the name of the branch/environment.
                       type: string
@@ -167,18 +172,13 @@ spec:
                     sha:
                       description: Sha is the commit SHA being tracked for this environment.
                       type: string
-                    timeElapsed:
-                      description: |-
-                        TimeElapsed is the duration that has elapsed since the commit was deployed.
-                        This is calculated at reconciliation time.
-                      type: string
                   required:
+                  - atLeastTimeRemaining
                   - branch
                   - commitTime
                   - phase
                   - requiredDuration
                   - sha
-                  - timeElapsed
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:

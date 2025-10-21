@@ -92,10 +92,10 @@ type TimedCommitStatusEnvironmentsStatus struct {
 	// +required
 	Phase string `json:"phase"`
 
-	// TimeElapsed is the duration that has elapsed since the commit was deployed.
-	// This is calculated at reconciliation time.
+	// AtLeastTimeRemaining is the minimum amount of time remaining until the gate is satisfied.
+	// This is calculated at reconciliation time. When the gate is satisfied (phase=success), this will be 0.
 	// +required
-	TimeElapsed metav1.Duration `json:"timeElapsed"`
+	AtLeastTimeRemaining metav1.Duration `json:"atLeastTimeRemaining"`
 }
 
 // +kubebuilder:object:root=true
