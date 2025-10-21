@@ -23,10 +23,8 @@ import (
 	"sort"
 	"time"
 
-	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -170,103 +168,49 @@ func (r *ClusterScmProviderReconciler) handleFinalizer(ctx context.Context, clus
 }
 
 func (r *ClusterScmProviderReconciler) ensureSecretFinalizer(ctx context.Context, clusterScmProvider *promoterv1alpha1.ClusterScmProvider) error {
-	logger := log.FromContext(ctx)
-
 	if clusterScmProvider.Spec.SecretRef == nil {
 		return nil
 	}
 
-	finalizer := promoterv1alpha1.ClusterScmProviderSecretFinalizer
-	secretKey := types.NamespacedName{
-		Namespace: r.SettingsMgr.GetControllerNamespace(),
-		Name:      clusterScmProvider.Spec.SecretRef.Name,
-	}
-
-	var secret v1.Secret
-	if err := r.Get(ctx, secretKey, &secret); err != nil {
-		if k8serrors.IsNotFound(err) {
-			logger.Info("Secret not found, skipping finalizer", "secret", secretKey)
-			return nil
-		}
-		return fmt.Errorf("failed to get Secret: %w", err)
-	}
-
-	// Don't add finalizer to a Secret that's already being deleted
-	if !secret.DeletionTimestamp.IsZero() {
-		logger.Info("Secret is being deleted, skipping finalizer", "secret", secretKey)
-		return nil
-	}
-
-	if controllerutil.ContainsFinalizer(&secret, finalizer) {
-		return nil
-	}
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
-		if err := r.Get(ctx, secretKey, &secret); err != nil {
-			return err //nolint:wrapcheck
-		}
-		// Check again after getting the secret in case it was deleted during the retry
-		if !secret.DeletionTimestamp.IsZero() {
-			return nil
-		}
-		if controllerutil.AddFinalizer(&secret, finalizer) {
-			return r.Update(ctx, &secret)
-		}
-		return nil
-	})
+	return ensureSecretFinalizerForProvider(
+		ctx,
+		r.Client,
+		r.SettingsMgr.GetControllerNamespace(),
+		clusterScmProvider.Spec.SecretRef.Name,
+		promoterv1alpha1.ClusterScmProviderSecretFinalizer,
+	)
 }
 
 func (r *ClusterScmProviderReconciler) removeSecretFinalizer(ctx context.Context, clusterScmProvider *promoterv1alpha1.ClusterScmProvider) error {
-	logger := log.FromContext(ctx)
-
 	if clusterScmProvider.Spec.SecretRef == nil {
-		return nil
-	}
-
-	finalizer := promoterv1alpha1.ClusterScmProviderSecretFinalizer
-	secretKey := types.NamespacedName{
-		Namespace: r.SettingsMgr.GetControllerNamespace(),
-		Name:      clusterScmProvider.Spec.SecretRef.Name,
-	}
-
-	var secret v1.Secret
-	if err := r.Get(ctx, secretKey, &secret); err != nil {
-		if k8serrors.IsNotFound(err) {
-			logger.Info("Secret not found, skipping finalizer removal", "secret", secretKey)
-			return nil
-		}
-		return fmt.Errorf("failed to get Secret: %w", err)
-	}
-
-	if !controllerutil.ContainsFinalizer(&secret, finalizer) {
 		return nil
 	}
 
 	// Check if there are other ClusterScmProviders using this Secret
-	var clusterScmProviders promoterv1alpha1.ClusterScmProviderList
-	if err := r.List(ctx, &clusterScmProviders); err != nil {
-		return fmt.Errorf("failed to list ClusterScmProviders: %w", err)
+	checkOtherProviders := func() (bool, error) {
+		var clusterScmProviders promoterv1alpha1.ClusterScmProviderList
+		if err := r.List(ctx, &clusterScmProviders); err != nil {
+			return false, fmt.Errorf("failed to list ClusterScmProviders: %w", err)
+		}
+
+		for _, csp := range clusterScmProviders.Items {
+			// Skip the ClusterScmProvider being deleted
+			if csp.Name == clusterScmProvider.Name {
+				continue
+			}
+			if csp.Spec.SecretRef != nil && csp.Spec.SecretRef.Name == clusterScmProvider.Spec.SecretRef.Name {
+				return true, nil
+			}
+		}
+		return false, nil
 	}
 
-	for _, csp := range clusterScmProviders.Items {
-		// Skip the ClusterScmProvider being deleted
-		if csp.Name == clusterScmProvider.Name {
-			continue
-		}
-		if csp.Spec.SecretRef != nil && csp.Spec.SecretRef.Name == secret.Name {
-			logger.Info("Secret still referenced by other ClusterScmProvider, keeping finalizer",
-				"secret", secretKey, "clusterScmProvider", csp.Name)
-			return nil
-		}
-	}
-
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
-		if err := r.Get(ctx, secretKey, &secret); err != nil {
-			return err //nolint:wrapcheck
-		}
-		if controllerutil.RemoveFinalizer(&secret, finalizer) {
-			return r.Update(ctx, &secret)
-		}
-		return nil
-	})
+	return removeSecretFinalizerForProvider(
+		ctx,
+		r.Client,
+		r.SettingsMgr.GetControllerNamespace(),
+		clusterScmProvider.Spec.SecretRef.Name,
+		promoterv1alpha1.ClusterScmProviderSecretFinalizer,
+		checkOtherProviders,
+	)
 }
