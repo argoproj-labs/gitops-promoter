@@ -72,6 +72,7 @@ type ChangeRequestPolicyCommitStatusPhase struct {
 	Phase string `json:"phase"`
 
 	// Url is the URL of the commit status
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	Url string `json:"url,omitempty"`
 }
 
@@ -95,6 +96,7 @@ type CommitShaState struct {
 	// CommitTime is the time the commit was made
 	CommitTime metav1.Time `json:"commitTime,omitempty"`
 	// RepoURL is the URL of the repository where the commit is located
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	RepoURL string `json:"repoURL,omitempty"`
 	// Author is the author of the commit
 	Author string `json:"author,omitempty"`
@@ -178,6 +180,7 @@ type PullRequestCommonStatus struct {
 	// for that commit.
 	PRMergeTime metav1.Time `json:"prMergeTime,omitempty"`
 	// Url is the URL of the pull request.
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	Url string `json:"url,omitempty"`
 }
 
