@@ -109,6 +109,52 @@ commitStatus.Labels["my-controller.example.com/custom-info"] = "value"
 4. **Consistency**: Standard labels create a predictable API across all commit status controllers
 5. **Integration**: Other controllers and tools can rely on these labels for their logic
 
+## Triggering Reconciliation of ChangeTransferPolicies
+
+When your commit status controller detects important state transitions (e.g., a gate transitioning from pending to success), you may want to trigger immediate reconciliation of the affected ChangeTransferPolicy to minimize promotion latency.
+
+### The Pattern
+
+Touch the **specific ChangeTransferPolicy** for the environment that changed:
+
+
+### Important Considerations
+
+1. **Only Trigger on Real Changes**: Don't touch annotations on every reconciliation, only when state actually changes
+2. **Handle Not Found Gracefully**: The ChangeTransferPolicy might not exist yet (or might have been deleted)
+3. **Use Patch, Not Update**: Patching is safer for concurrent modifications
+4. **Log Actions**: Always log when you trigger reconciliation for debugging
+
+### Testing
+
+When writing tests for this pattern, verify:
+
+```go
+It("should add ReconcileAtAnnotation to ChangeTransferPolicy when state transitions", func() {
+    Eventually(func(g Gomega) {
+        // Get the ChangeTransferPolicy for the environment
+        ctpName := utils.KubeSafeUniqueName(ctx, 
+            utils.GetChangeTransferPolicyName(ps.Name, "environment/development"))
+        
+        var ctp promoterv1alpha1.ChangeTransferPolicy
+        err := k8sClient.Get(ctx, types.NamespacedName{
+            Name:      ctpName,
+            Namespace: "default",
+        }, &ctp)
+        g.Expect(err).NotTo(HaveOccurred())
+        
+        // Verify the annotation is present
+        g.Expect(ctp.Annotations).To(
+            HaveKey(promoterv1alpha1.ReconcileAtAnnotation))
+        
+        // Verify it's a valid timestamp
+        annotationValue := ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation]
+        _, err = time.Parse(time.RFC3339Nano, annotationValue)
+        g.Expect(err).NotTo(HaveOccurred())
+    }, constants.EventuallyTimeout).Should(Succeed())
+})
+```
+
 ## Validation
 
 To verify your controller sets labels correctly, check a created CommitStatus:
