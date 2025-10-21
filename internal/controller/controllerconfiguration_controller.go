@@ -59,7 +59,7 @@ func (r *ControllerConfigurationReconciler) Reconcile(ctx context.Context, req c
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ControllerConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ControllerConfigurationReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ControllerConfiguration{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("controllerconfiguration").

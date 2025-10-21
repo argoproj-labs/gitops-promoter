@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"k8s.io/client-go/tools/record"
@@ -110,7 +111,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
 	}
 
-	requeueDuration, err := r.SettingsMgr.GetPromotionStrategyRequeueDuration(ctx)
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get requeue duration for PromotionStrategy %q: %w", ps.Name, err)
 	}
@@ -122,8 +123,8 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.CommitStatus{}, ".spec.sha", func(rawObj client.Object) []string {
+func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.CommitStatus{}, ".spec.sha", func(rawObj client.Object) []string {
 		//nolint:forcetypeassert
 		cs := rawObj.(*promoterv1alpha1.CommitStatus)
 		return []string{cs.Spec.Sha}
@@ -131,9 +132,22 @@ func (r *PromotionStrategyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("failed to set field index for .spec.sha: %w", err)
 	}
 
-	err := ctrl.NewControllerManagedBy(mgr).
+	// Use Direct methods to read configuration from the API server without cache during setup.
+	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.PromotionStrategyConfiguration, ctrl.Request](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get PromotionStrategy rate limiter: %w", err)
+	}
+
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get PromotionStrategy max concurrent reconciles: %w", err)
+	}
+
+	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -330,6 +344,20 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 		previousEnvironmentStatus := ps.Status.Environments[i-1]
 		currentEnvironmentStatus := ps.Status.Environments[i]
+
+		// Skip if there's no proposed change in the current environment (i.e., active and proposed are the same).
+		// In this case, there's no PR to put a commit status on, so we shouldn't create/update one.
+		// This prevents updating commit status on already-merged PRs when the previous environment state changes.
+		if ctp.Status.Active.Dry.Sha == ctp.Status.Proposed.Dry.Sha {
+			logger.V(4).Info("Skipping previous environment commit status update - no proposed change in current environment",
+				"activeBranch", ctp.Spec.ActiveBranch,
+				"activeDrySha", ctp.Status.Active.Dry.Sha,
+				"proposedDrySha", ctp.Status.Proposed.Dry.Sha,
+				"previousEnvironmentActiveDrySha", previousEnvironmentStatus.Active.Dry.Sha,
+				"currentEnvironmentActiveDrySha", ctp.Status.Proposed.Dry.Sha,
+			)
+			continue
+		}
 
 		isPending, pendingReason := isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus, ctp.Status.Proposed.Dry.Sha)
 

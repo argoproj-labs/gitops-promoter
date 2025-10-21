@@ -58,7 +58,7 @@ func (r *GitRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *GitRepositoryReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *GitRepositoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.GitRepository{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Complete(r)

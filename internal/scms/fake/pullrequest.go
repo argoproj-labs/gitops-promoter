@@ -10,8 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 
@@ -50,6 +49,7 @@ func NewFakePullRequestProvider(k8sClient client.Client) *PullRequest {
 func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (id string, err error) {
 	logger := log.FromContext(ctx)
 	mutexPR.Lock()
+	defer mutexPR.Unlock()
 	if pullRequests == nil {
 		pullRequests = make(map[string]pullRequestProviderState)
 	}
@@ -76,7 +76,6 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		state: v1alpha1.PullRequestOpen,
 	}
 
-	mutexPR.Unlock()
 	return id, nil
 }
 
@@ -93,6 +92,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 	}
 
 	mutexPR.Lock()
+	defer mutexPR.Unlock()
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 	if _, ok := pullRequests[prKey]; !ok {
 		return errors.New("pull request not found")
@@ -101,7 +101,6 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 		id:    pullRequests[prKey].id,
 		state: v1alpha1.PullRequestClosed,
 	}
-	mutexPR.Unlock()
 	return nil
 }
 
@@ -131,44 +130,55 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 
 	gitServerPort := 5000 + ginkgov2.GinkgoParallelProcess()
 	gitServerPortStr := strconv.Itoa(gitServerPort)
-	err = pr.runGitCmd(gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name), ".")
+	_, err = pr.runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", "-b", pullRequest.Spec.TargetBranch, fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name), ".")
 	if err != nil {
 		return err
 	}
 
-	err = pr.runGitCmd(gitPath, "config", "user.name", "GitOps Promoter")
-	if err != nil {
-		logger.Error(err, "could not set git config")
-		return err
-	}
-
-	err = pr.runGitCmd(gitPath, "config", "user.email", "GitOpsPromoter@argoproj.io")
+	_, err = pr.runGitCmd(ctx, gitPath, "config", "user.name", "GitOps Promoter")
 	if err != nil {
 		logger.Error(err, "could not set git config")
 		return err
 	}
 
-	err = pr.runGitCmd(gitPath, "config", "pull.rebase", "false")
+	_, err = pr.runGitCmd(ctx, gitPath, "config", "user.email", "GitOpsPromoter@argoproj.io")
+	if err != nil {
+		logger.Error(err, "could not set git config")
+		return err
+	}
+
+	_, err = pr.runGitCmd(ctx, gitPath, "config", "pull.rebase", "false")
 	if err != nil {
 		return err
 	}
 
-	err = pr.runGitCmd(gitPath, "fetch", "--all")
+	_, err = pr.runGitCmd(ctx, gitPath, "fetch", "--all")
 	if err != nil {
 		return fmt.Errorf("failed to fetch all: %w", err)
 	}
 
-	err = pr.runGitCmd(gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
+	// Verify that the source branch HEAD matches the expected merge SHA
+	actualSha, err := pr.runGitCmd(ctx, gitPath, "rev-parse", "origin/"+pullRequest.Spec.SourceBranch)
+	if err != nil {
+		return fmt.Errorf("failed to get SHA of source branch: %w", err)
+	}
+	actualSha = strings.TrimSpace(actualSha)
+	if actualSha != pullRequest.Spec.MergeSha {
+		return fmt.Errorf("source branch HEAD SHA %q does not match expected merge SHA %q", actualSha, pullRequest.Spec.MergeSha)
+	}
+
+	_, err = pr.runGitCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
 	if err != nil {
 		return fmt.Errorf("failed to merge branch: %w", err)
 	}
 
-	err = pr.runGitCmd(gitPath, "push")
+	_, err = pr.runGitCmd(ctx, gitPath, "push")
 	if err != nil {
 		return err
 	}
 
 	mutexPR.Lock()
+	defer mutexPR.Unlock()
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 
 	if _, ok := pullRequests[prKey]; !ok {
@@ -178,23 +188,16 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		id:    pullRequests[prKey].id,
 		state: v1alpha1.PullRequestMerged,
 	}
-	mutexPR.Unlock()
 	return nil
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, v1alpha1.PullRequestCommonStatus, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
 	mutexPR.RLock()
 	found, id := pr.findOpen(ctx, pullRequest)
 	mutexPR.RUnlock()
 
-	prState := v1alpha1.PullRequestCommonStatus{
-		ID:             id,
-		State:          v1alpha1.PullRequestOpen,
-		Url:            fmt.Sprintf("http://localhost:5000/%s/%s/pull/%s", pullRequest.Spec.RepositoryReference.Name, pullRequest.Spec.SourceBranch, id),
-		PRCreationTime: metav1.Now(),
-	}
-	return found, prState, nil
+	return found, id, time.Now(), nil
 }
 
 func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string) {
@@ -217,8 +220,8 @@ func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name s
 	return fmt.Sprintf("%s/%s/%s/%s", owner, name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
 }
 
-func (pr *PullRequest) runGitCmd(gitPath string, args ...string) error {
-	cmd := exec.Command("git", args...)
+func (pr *PullRequest) runGitCmd(ctx context.Context, gitPath string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
@@ -230,18 +233,18 @@ func (pr *PullRequest) runGitCmd(gitPath string, args ...string) error {
 	}
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start git command: %w", err)
+		return "", fmt.Errorf("failed to start git command: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {
 		if strings.Contains(stderrBuf.String(), "already exists and is not an empty directory") ||
 			strings.Contains(stdoutBuf.String(), "nothing to commit, working tree clean") {
-			return nil
+			return stdoutBuf.String(), nil
 		}
-		return fmt.Errorf("failed to run git command: %s", stderrBuf.String())
+		return "", fmt.Errorf("failed to run git command: %s", stderrBuf.String())
 	}
 
-	return nil
+	return stdoutBuf.String(), nil
 }
 
 // GetUrl retrieves the URL of the pull request.

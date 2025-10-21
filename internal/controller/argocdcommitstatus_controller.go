@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/multicluster-runtime/pkg/controller"
 
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -222,7 +223,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status: %w", err)
 	}
 
-	requeueDuration, err := r.SettingsMgr.GetArgoCDCommitStatusRequeueDuration(ctx)
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ArgoCDCommitStatusConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get ArgoCDCommitStatus requeue duration: %w", err)
 	}
@@ -388,13 +389,15 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(ap
 	healthy := 0
 	degraded := 0
 	for _, s := range appsInEnvironment {
-		if s.commitStatus.Spec.Sha != resolvedSha {
+		switch {
+		case s.commitStatus.Spec.Sha != resolvedSha:
 			pending++
-		} else if s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess {
+		case s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess:
 			healthy++
-		} else if s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseFailure {
+		case s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseFailure:
 			degraded++
-		} else {
+		default:
+			// Count other phases (pending, unknown, etc.) as pending
 			pending++
 		}
 	}
@@ -494,20 +497,38 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ArgoCDCommitStatusReconciler) SetupWithManager(mcMgr mcmanager.Manager) error {
+func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcMgr mcmanager.Manager) error {
 	// Set the local client for interacting with manager cluster
 	r.localClient = mcMgr.GetLocalManager().GetClient()
 
-	err := mcbuilder.ControllerManagedBy(mcMgr).
+	// Use Direct methods to read configuration from the API server without cache during setup.
+	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.ArgoCDCommitStatusConfiguration, mcreconcile.Request](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get ArgoCDCommitStatus rate limiter: %w", err)
+	}
+
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.ArgoCDCommitStatusConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get ArgoCDCommitStatus max concurrent reconciles: %w", err)
+	}
+
+	// Get the controller configuration to check if local Applications should be watched
+	watchLocalApplications, err := r.SettingsMgr.GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
-			mcbuilder.WithEngageWithLocalCluster(true),
-			mcbuilder.WithEngageWithProviderClusters(true),
-		).
+			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
+			mcbuilder.WithEngageWithProviderClusters(true)).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -580,12 +601,12 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		if client.IgnoreNotFound(err) != nil {
 			return nil, fmt.Errorf("failed to get CommitStatus object: %w", err)
 		}
-		// Create
 		err = r.localClient.Create(ctx, &desiredCommitStatus)
 		logger.Info("Created CommitStatus", "name", desiredCommitStatus.Name, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create CommitStatus object: %w", err)
 		}
+		return &desiredCommitStatus, nil
 	}
 
 	if currentCommitStatus.Spec == desiredCommitStatus.Spec {
@@ -634,7 +655,11 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
 	case scmProvider.GetSpec().GitHub != nil:
 		logger.V(4).Info("Creating GitHub git authentication provider")
-		return github.NewGithubGitAuthenticationProvider(ctx, r.localClient, scmProvider, secret, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: ps.Spec.RepositoryReference.Name}), ps.Spec.RepositoryReference, nil
+		provider, err := github.NewGithubGitAuthenticationProvider(ctx, r.localClient, scmProvider, secret, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: ps.Spec.RepositoryReference.Name})
+		if err != nil {
+			return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create GitHub client: %w", err)
+		}
+		return provider, ps.Spec.RepositoryReference, nil
 	case scmProvider.GetSpec().GitLab != nil:
 		logger.V(4).Info("Creating GitLab git authentication provider")
 		gitlabClient, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)

@@ -21,6 +21,14 @@ import (
 
 var logger = ctrl.Log.WithName("webhookReceiver")
 
+// Provider type constants
+const (
+	ProviderGitHub  = "github"
+	ProviderGitLab  = "gitlab"
+	ProviderForgejo = "forgejo"
+	ProviderUnknown = ""
+)
+
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
 	mgr       controllerruntime.Manager
@@ -66,6 +74,27 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 	return nil
 }
 
+// DetectProvider determines the SCM provider based on webhook headers.
+// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, or ProviderUnknown.
+func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
+	// Check for GitHub webhook headers
+	if r.Header.Get("X-Github-Event") != "" || r.Header.Get("X-Github-Delivery") != "" {
+		return ProviderGitHub
+	}
+
+	// Check for GitLab webhook headers
+	if r.Header.Get("X-Gitlab-Event") != "" || r.Header.Get("X-Gitlab-Token") != "" {
+		return ProviderGitLab
+	}
+
+	// Check for Forgejo/Gitea webhook headers
+	if r.Header.Get("X-Forgejo-Event") != "" || r.Header.Get("X-Gitea-Event") != "" {
+		return ProviderForgejo
+	}
+
+	return ProviderUnknown
+}
+
 func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	var responseCode int
 	var ctpFound bool
@@ -84,6 +113,16 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "must be a POST request", responseCode)
 		return
 	}
+
+	// Determine provider from headers
+	provider := wr.DetectProvider(r)
+	if provider == ProviderUnknown {
+		logger.V(4).Info("unable to detect provider from headers")
+		responseCode = http.StatusBadRequest
+		http.Error(w, "unable to detect SCM provider from headers", responseCode)
+		return
+	}
+
 	// TODO: add a configurable payload max side for DoS protection.
 	jsonBytes, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -92,9 +131,9 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctp, err := wr.findChangeTransferPolicy(r.Context(), jsonBytes)
+	ctp, err := wr.findChangeTransferPolicy(r.Context(), provider, jsonBytes)
 	if err != nil {
-		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err)
+		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err, "provider", provider)
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
 		return
@@ -121,6 +160,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		logger.Error(err, fmt.Sprintf("failed to update ChangeTransferPolicy annotations '%s/%s' from webhook", ctp.Namespace, ctp.Name))
 		responseCode = http.StatusInternalServerError
 		http.Error(w, "could not cause reconcile of ChangeTransferPolicy", responseCode)
+		return
 	}
 	logger.Info("Triggered reconcile of ChangeTransferPolicy via webhook", "namespace", ctp.Namespace, "name", ctp.Name)
 
@@ -128,20 +168,32 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(responseCode)
 }
 
-func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, jsonBytes []byte) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provider string, jsonBytes []byte) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	var beforeSha string
 	var ref string
 	ctpLists := promoterv1alpha1.ChangeTransferPolicyList{}
 
-	// TODO: probably move to own function once we start adding providers because rules might be more complex
-	if gjson.GetBytes(jsonBytes, "before").Exists() && gjson.GetBytes(jsonBytes, "pusher").Exists() {
-		// Github
-		beforeSha = gjson.GetBytes(jsonBytes, "before").String()
-		ref = gjson.GetBytes(jsonBytes, "ref").String()
+	// Extract webhook data based on provider
+	switch provider {
+	case ProviderGitHub, ProviderForgejo:
+		// GitHub and Forgejo/Gitea webhook format (both use 'pusher')
+		if gjson.GetBytes(jsonBytes, "before").Exists() && gjson.GetBytes(jsonBytes, "pusher").Exists() {
+			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
+			ref = gjson.GetBytes(jsonBytes, "ref").String()
+		}
+	case ProviderGitLab:
+		// GitLab webhook format
+		if gjson.GetBytes(jsonBytes, "before").Exists() && gjson.GetBytes(jsonBytes, "user_name").Exists() {
+			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
+			ref = gjson.GetBytes(jsonBytes, "ref").String()
+		}
+	default:
+		logger.V(4).Info("unsupported provider", "provider", provider)
+		return nil, nil
 	}
 
 	if beforeSha == "" {
-		logger.V(4).Info("unable to match provider payload, might not be a pull request event or is malformed")
+		logger.V(4).Info("unable to extract commit SHA from provider payload", "provider", provider)
 		return nil, nil
 	}
 

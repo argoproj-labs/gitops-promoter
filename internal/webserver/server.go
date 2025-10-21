@@ -13,7 +13,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	ginlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
+	webserverlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
 	"github.com/argoproj-labs/gitops-promoter/ui/web"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
@@ -220,8 +220,8 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	}
 
 	router := gin.New()
-	router.Use(ginlogr.Ginlogr(logger, time.RFC3339, true))
-	router.Use(ginlogr.RecoveryWithLogr(logger, time.RFC3339, true, true))
+	router.Use(webserverlogr.Ginlogr(logger, time.RFC3339, true))
+	router.Use(webserverlogr.RecoveryWithLogr(logger, time.RFC3339, true, true))
 
 	router.GET("/watch", WatchHeadersMiddleware(), ws.Event.serveHTTP(), ws.httpWatch)
 

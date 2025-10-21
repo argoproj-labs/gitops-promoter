@@ -72,6 +72,8 @@ type ChangeRequestPolicyCommitStatusPhase struct {
 	Phase string `json:"phase"`
 
 	// Url is the URL of the commit status
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
+	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
 }
 
@@ -95,6 +97,8 @@ type CommitShaState struct {
 	// CommitTime is the time the commit was made
 	CommitTime metav1.Time `json:"commitTime,omitempty"`
 	// RepoURL is the URL of the repository where the commit is located
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
+	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	RepoURL string `json:"repoURL,omitempty"`
 	// Author is the author of the commit
 	Author string `json:"author,omitempty"`
@@ -172,7 +176,14 @@ type PullRequestCommonStatus struct {
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
+	// PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+	// it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+	// this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note
+	// for that commit.
+	PRMergeTime metav1.Time `json:"prMergeTime,omitempty"`
 	// Url is the URL of the pull request.
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
+	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
 }
 

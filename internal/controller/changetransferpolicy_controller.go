@@ -44,6 +44,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -108,10 +109,11 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
 	}
-	gitOperations, err := git.NewEnvironmentOperations(ctx, r.Client, gitAuthProvider, ctp.Spec.RepositoryReference, &ctp, ctp.Spec.ActiveBranch)
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: ctp.GetNamespace(), Name: ctp.Spec.RepositoryReference.Name})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to initialize git client: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
+	gitOperations := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, ctp.Spec.ActiveBranch)
 
 	// TODO: could probably short circuit the clone and use an ls-remote to compare the sha's of the current ctp status,
 	// this would help with slamming the git provider with clone requests on controller restarts.
@@ -163,7 +165,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	// There's nothing special about 1ns, it just has to be > 0.
 	requeueDuration := 1 * time.Nanosecond
 	if !directPushWasPerformed {
-		requeueDuration, err = r.SettingsMgr.GetChangeTransferPolicyRequeueDuration(ctx)
+		requeueDuration, err = settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
 		}
@@ -293,6 +295,16 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 	} else {
 		logger.V(4).Info("No " + constants.TrailerPullRequestCreationTime + " found in trailers")
 	}
+
+	if timeStr := activeTrailers[constants.TrailerPullRequestMergeTime]; timeStr != "" {
+		if mergeTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
+			logger.V(4).Info("failed to parse "+constants.TrailerPullRequestMergeTime, "time", timeStr, "err", err)
+		} else {
+			h.PullRequest.PRMergeTime = metav1.NewTime(mergeTime)
+		}
+	} else {
+		logger.V(4).Info("No " + constants.TrailerPullRequestMergeTime + " found in trailers")
+	}
 }
 
 // populateCommitStatuses populates the commit statuses for a history entry
@@ -405,9 +417,9 @@ func removeKnownTrailers(input string) string {
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
 		//nolint:forcetypeassert
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Proposed.Hydrated.Sha}
@@ -416,7 +428,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 	}
 
 	// This gets used by the CommitStatus controller to find the ChangeTransferPolicy to trigger reconcile
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
 		//nolint:forcetypeassert
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Active.Hydrated.Sha}
@@ -424,7 +436,19 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		return fmt.Errorf("failed to set field index for .status.active.hydrated.sha: %w", err)
 	}
 
-	err := ctrl.NewControllerManagedBy(mgr).
+	// Use Direct methods to read configuration from the API server without cache during setup.
+	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.ChangeTransferPolicyConfiguration, ctrl.Request](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get ChangeTransferPolicy rate limiter: %w", err)
+	}
+
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get ChangeTransferPolicy max concurrent reconciles: %w", err)
+	}
+
+	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ChangeTransferPolicy{},
 			builder.WithPredicates(predicate.Or(
 				predicate.GenerationChangedPredicate{},
@@ -436,6 +460,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(mgr ctrl.Manager) erro
 		// checks whether it needs to update a related ChangeTransferPolicy by setting an annotation. Avoiding .Owns
 		// here avoids duplicate reconciliations.
 		Owns(&promoterv1alpha1.PullRequest{}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -451,7 +476,11 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
 	case scmProvider.GetSpec().GitHub != nil:
 		logger.V(4).Info("Creating GitHub git authentication provider")
-		return github.NewGithubGitAuthenticationProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: namespace, Name: repoRef.Name}), nil
+		p, err := github.NewGithubGitAuthenticationProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: namespace, Name: repoRef.Name})
+		if err != nil {
+			return nil, fmt.Errorf("failed to create GitHub Auth Provider: %w", err)
+		}
+		return p, nil
 	case scmProvider.GetSpec().GitLab != nil:
 		logger.V(4).Info("Creating GitLab git authentication provider")
 		provider, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
@@ -736,16 +765,18 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prName = utils.GetPullRequestName(gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.Fake != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	default:
+		return nil, errors.New("unsupported git repository type")
 	}
 
 	prName = utils.KubeSafeUniqueName(ctx, prName)
 
-	controllerConfiguration, err := r.SettingsMgr.GetControllerConfiguration(ctx)
+	templatePullRequestTemplate, err := r.SettingsMgr.GetPullRequestControllersTemplate(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get global promotion configuration: %w", err)
+		return nil, fmt.Errorf("failed to get pull request template from settings: %w", err)
 	}
 
-	title, description, err := TemplatePullRequest(&controllerConfiguration.Spec.PullRequest, map[string]any{"ChangeTransferPolicy": ctp})
+	title, description, err := TemplatePullRequest(templatePullRequestTemplate, map[string]any{"ChangeTransferPolicy": ctp})
 	if err != nil {
 		return nil, fmt.Errorf("failed to template pull request: %w", err)
 	}
@@ -773,6 +804,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		pr.Spec.SourceBranch = ctp.Spec.ProposedBranch
 		pr.Spec.Description = description
 		pr.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s", title, description)
+		pr.Spec.MergeSha = ctp.Status.Proposed.Hydrated.Sha
 		if pr.CreationTimestamp.IsZero() {
 			// New PR
 			pr.Spec.State = promoterv1alpha1.PullRequestOpen
@@ -815,6 +847,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		logger.V(4).Info("Pull request already exists and is up to date", "pullRequest", pr)
 	case controllerutil.OperationResultUpdated:
 		logger.V(4).Info("Updated pull request", "pullRequest", pr)
+	default:
+		logger.V(4).Info("Unexpected operation result", "result", res)
 	}
 
 	return &pr, nil
@@ -865,29 +899,45 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 			"activeDryCommitTime", ctp.Status.Active.Dry.CommitTime)
 	}
 
-	if pullRequest.Spec.State == promoterv1alpha1.PullRequestOpen && pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
-		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			var pr promoterv1alpha1.PullRequest
-			err = r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to get PR %q: %w", pullRequest.Name, err)
-			}
-			pr.Spec.State = promoterv1alpha1.PullRequestMerged
-			return r.Update(ctx, &pr)
-		})
-		if err != nil {
-			return &pullRequest, fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
-		}
-		r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
-		logger.Info("Merged pull request")
+	if pullRequest.Status.State != promoterv1alpha1.PullRequestOpen {
+		// Nothing to do, the PR has to be open to be merged.
 		return &pullRequest, nil
 	}
 
-	if pullRequest.Status.State == promoterv1alpha1.PullRequestOpen {
+	if pullRequest.Spec.State != promoterv1alpha1.PullRequestOpen {
 		// This is for the case where the PR is set to merge in k8s but something else is blocking it, like an external commit status check.
 		logger.Info("Pull request can not be merged, probably due to SCM", "pr", pullRequest.Name)
+
+		return &pullRequest, nil
 	}
 
+	if pullRequest.Status.ID == "" {
+		// We could rely on XValidation to catch the missing ID when setting the PR to merged, but this gives a
+		// better error message.
+
+		// If the PR has a ready condition with status false, get that reason/message for this error message.
+		prReadyCondition := meta.FindStatusCondition(pullRequest.Status.Conditions, string(promoterConditions.Ready))
+		if prReadyCondition != nil && prReadyCondition.Status == metav1.ConditionFalse {
+			return &pullRequest, fmt.Errorf("cannot merge PullRequest without an ID: PullRequest not ready: %s: %s", prReadyCondition.Reason, prReadyCondition.Message)
+		}
+
+		return &pullRequest, fmt.Errorf("cannot merge PullRequest %q without an ID", pullRequest.Name)
+	}
+
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var pr promoterv1alpha1.PullRequest
+		err = r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get PR %q: %w", pullRequest.Name, err)
+		}
+		pr.Spec.State = promoterv1alpha1.PullRequestMerged
+		return r.Update(ctx, &pr)
+	})
+	if err != nil {
+		return &pullRequest, fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
+	}
+	r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
+	logger.Info("Merged pull request")
 	return &pullRequest, nil
 }
 
@@ -923,13 +973,13 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 }
 
 // TemplatePullRequest renders the title and description of a pull request using the provided data map.
-func TemplatePullRequest(prc *promoterv1alpha1.PullRequestConfiguration, data map[string]any) (string, string, error) {
-	title, err := utils.RenderStringTemplate(prc.Template.Title, data)
+func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[string]any) (string, string, error) {
+	title, err := utils.RenderStringTemplate(prt.Title, data)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to render pull request title template: %w", err)
 	}
 
-	description, err := utils.RenderStringTemplate(prc.Template.Description, data)
+	description, err := utils.RenderStringTemplate(prt.Description, data)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to render pull request description template: %w", err)
 	}

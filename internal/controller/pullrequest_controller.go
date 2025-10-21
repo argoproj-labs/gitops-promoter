@@ -24,8 +24,10 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
@@ -102,7 +104,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	logger.Info("Checking for open PR on provider")
-	found, foundState, err := provider.FindOpen(ctx, pr)
+	found, prID, prCreationTime, err := provider.FindOpen(ctx, pr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
 	}
@@ -110,9 +112,13 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Calculate the state of the PR based on the provider, if found we have to be open
 	if found {
 		pr.Status.State = promoterv1alpha1.PullRequestOpen
-		pr.Status.ID = foundState.ID
-		pr.Status.PRCreationTime = foundState.PRCreationTime
-		pr.Status.Url = foundState.Url
+		pr.Status.ID = prID
+		pr.Status.PRCreationTime = metav1.NewTime(prCreationTime)
+		url, err := provider.GetUrl(ctx, pr)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to get pull request URL: %w", err)
+		}
+		pr.Status.Url = url
 	} else if pr.Status.ID != "" {
 		// If we don't find the PR, but we have an ID, it means it was deleted on the provider side
 		if err := r.Delete(ctx, &pr); err != nil {
@@ -152,6 +158,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 			}
 			return ctrl.Result{}, nil
+		default:
+			return ctrl.Result{}, fmt.Errorf("unknown PullRequest state %q: this should not happen, please report a bug", pr.Spec.State)
 		}
 	} else {
 		logger.Info("Updating PullRequest")
@@ -166,18 +174,31 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
 
-	pullRequestDuration, err := r.SettingsMgr.GetPullRequestRequeueDuration(ctx)
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PullRequestConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get pull request requeue duration: %w", err)
 	}
 
-	return ctrl.Result{RequeueAfter: pullRequestDuration}, nil
+	return ctrl.Result{RequeueAfter: requeueDuration}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *PullRequestReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	err := ctrl.NewControllerManagedBy(mgr).
+func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	// Use Direct methods to read configuration from the API server without cache during setup.
+	// The cache is not started during SetupWithManager, so we must use the non-cached API reader.
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.PullRequestConfiguration, ctrl.Request](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get pull request rate limiter: %w", err)
+	}
+
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.PullRequestConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get pull request max concurrent reconciles: %w", err)
+	}
+
+	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -274,6 +295,21 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	mergedTime := metav1.Now()
+
+	updatedMessage, err := git.AddTrailerToCommitMessage(
+		ctx,
+		pr.Spec.Commit.Message,
+		constants.TrailerPullRequestMergeTime,
+		mergedTime.Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to add trailer to commit message: %w", err)
+	}
+
+	// Update the commit message with the new trailers
+	pr.Spec.Commit.Message = updatedMessage
+
 	if err := provider.Merge(ctx, *pr); err != nil {
 		return fmt.Errorf("failed to merge pull request: %w", err)
 	}

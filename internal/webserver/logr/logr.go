@@ -1,6 +1,6 @@
-// Package ginlogr provides log handling using logr package.
+// Package logr provides log handling using logr package.
 // Code structure based on ginrus package.
-package ginlogr
+package logr
 
 import (
 	"errors"

@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.3
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: changetransferpolicies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -137,7 +137,11 @@ spec:
                           type: string
                         url:
                           description: Url is the URL of the commit status
+                          pattern: ^(https?://.*)?$
                           type: string
+                          x-kubernetes-validations:
+                          - message: must be a valid URL
+                            rule: self == '' || isURL(self)
                       required:
                       - key
                       - phase
@@ -188,7 +192,11 @@ spec:
                                 repoURL:
                                   description: RepoURL is the URL of the repository
                                     where the commit is located.
+                                  pattern: ^(https?://.*)?$
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid URL
+                                    rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
                                   type: string
@@ -202,7 +210,11 @@ spec:
                       repoURL:
                         description: RepoURL is the URL of the repository where the
                           commit is located
+                        pattern: ^(https?://.*)?$
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid URL
+                          rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
                         type: string
@@ -252,7 +264,11 @@ spec:
                                 repoURL:
                                   description: RepoURL is the URL of the repository
                                     where the commit is located.
+                                  pattern: ^(https?://.*)?$
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid URL
+                                    rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
                                   type: string
@@ -266,7 +282,11 @@ spec:
                       repoURL:
                         description: RepoURL is the URL of the repository where the
                           commit is located
+                        pattern: ^(https?://.*)?$
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid URL
+                          rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
                         type: string
@@ -373,7 +393,11 @@ spec:
                                 type: string
                               url:
                                 description: Url is the URL of the commit status
+                                pattern: ^(https?://.*)?$
                                 type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid URL
+                                  rule: self == '' || isURL(self)
                             required:
                             - key
                             - phase
@@ -426,7 +450,11 @@ spec:
                                       repoURL:
                                         description: RepoURL is the URL of the repository
                                           where the commit is located.
+                                        pattern: ^(https?://.*)?$
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
                                         type: string
@@ -440,7 +468,11 @@ spec:
                             repoURL:
                               description: RepoURL is the URL of the repository where
                                 the commit is located
+                              pattern: ^(https?://.*)?$
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
                               type: string
@@ -493,7 +525,11 @@ spec:
                                       repoURL:
                                         description: RepoURL is the URL of the repository
                                           where the commit is located.
+                                        pattern: ^(https?://.*)?$
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
                                         type: string
@@ -507,7 +543,11 @@ spec:
                             repoURL:
                               description: RepoURL is the URL of the repository where
                                 the commit is located
+                              pattern: ^(https?://.*)?$
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
                               type: string
@@ -544,7 +584,11 @@ spec:
                                 type: string
                               url:
                                 description: Url is the URL of the commit status
+                                pattern: ^(https?://.*)?$
                                 type: string
+                                x-kubernetes-validations:
+                                - message: must be a valid URL
+                                  rule: self == '' || isURL(self)
                             required:
                             - key
                             - phase
@@ -594,7 +638,11 @@ spec:
                                       repoURL:
                                         description: RepoURL is the URL of the repository
                                           where the commit is located.
+                                        pattern: ^(https?://.*)?$
                                         type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
                                         type: string
@@ -608,7 +656,11 @@ spec:
                             repoURL:
                               description: RepoURL is the URL of the repository where
                                 the commit is located
+                              pattern: ^(https?://.*)?$
                               type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
                               type: string
@@ -631,6 +683,14 @@ spec:
                             was created.
                           format: date-time
                           type: string
+                        prMergeTime:
+                          description: |-
+                            PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+                            it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+                            this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note
+                            for that commit.
+                          format: date-time
+                          type: string
                         state:
                           description: State is the state of the pull request.
                           enum:
@@ -640,7 +700,11 @@ spec:
                           type: string
                         url:
                           description: Url is the URL of the pull request.
+                          pattern: ^(https?://.*)?$
                           type: string
+                          x-kubernetes-validations:
+                          - message: must be a valid URL
+                            rule: self == '' || isURL(self)
                       type: object
                   type: object
                 type: array
@@ -669,7 +733,11 @@ spec:
                           type: string
                         url:
                           description: Url is the URL of the commit status
+                          pattern: ^(https?://.*)?$
                           type: string
+                          x-kubernetes-validations:
+                          - message: must be a valid URL
+                            rule: self == '' || isURL(self)
                       required:
                       - key
                       - phase
@@ -720,7 +788,11 @@ spec:
                                 repoURL:
                                   description: RepoURL is the URL of the repository
                                     where the commit is located.
+                                  pattern: ^(https?://.*)?$
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid URL
+                                    rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
                                   type: string
@@ -734,7 +806,11 @@ spec:
                       repoURL:
                         description: RepoURL is the URL of the repository where the
                           commit is located
+                        pattern: ^(https?://.*)?$
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid URL
+                          rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
                         type: string
@@ -784,7 +860,11 @@ spec:
                                 repoURL:
                                   description: RepoURL is the URL of the repository
                                     where the commit is located.
+                                  pattern: ^(https?://.*)?$
                                   type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid URL
+                                    rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
                                   type: string
@@ -798,7 +878,11 @@ spec:
                       repoURL:
                         description: RepoURL is the URL of the repository where the
                           commit is located
+                        pattern: ^(https?://.*)?$
                         type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid URL
+                          rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
                         type: string
@@ -820,6 +904,14 @@ spec:
                       was created.
                     format: date-time
                     type: string
+                  prMergeTime:
+                    description: |-
+                      PRMergeTime is the time when the pull request was merged. This time can vary slightly from the actual merge time because
+                      it is the time when the ChangeTransferPolicy controller sets the pull requests spec to merge. In the future we plan on making
+                      this time more accurate by fetching the actual merge time from the SCM via the webhook this would then be updated in the git note
+                      for that commit.
+                    format: date-time
+                    type: string
                   state:
                     description: State is the state of the pull request.
                     enum:
@@ -829,7 +921,11 @@ spec:
                     type: string
                   url:
                     description: Url is the URL of the pull request.
+                    pattern: ^(https?://.*)?$
                     type: string
+                    x-kubernetes-validations:
+                    - message: must be a valid URL
+                      rule: self == '' || isURL(self)
                 type: object
             type: object
         type: object

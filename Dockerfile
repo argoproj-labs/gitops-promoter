@@ -23,7 +23,7 @@ RUN npx vite build
 RUN mkdir -p ../web/static && cp -r dist/* ../web/static/
 
 # Build the gitops-promoter binary
-FROM golang:1.24 AS builder
+FROM golang:1.25 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -55,7 +55,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o gi
 # Use distroless as minimal base image to package the gitops-promoter binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 #FROM gcr.io/distroless/static:nonroot #TODO: figure out smallest/safest way to get git installed
-FROM golang:1.24
+FROM golang:1.25
 WORKDIR /
 RUN mkdir /git
 COPY --from=builder /workspace/gitops-promoter .
