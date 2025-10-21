@@ -1142,12 +1142,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      activeCommitStatusDevelopment.Name,
-					Namespace: activeCommitStatusDevelopment.Namespace,
-				}, activeCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
@@ -1550,12 +1544,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      proposedCommitStatusDevelopment.Name,
-					Namespace: proposedCommitStatusDevelopment.Namespace,
-				}, proposedCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
@@ -1779,12 +1767,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      proposedCommitStatusDevelopment.Name,
-					Namespace: proposedCommitStatusDevelopment.Namespace,
-				}, proposedCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
@@ -2432,12 +2414,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      proposedCommitStatusDevelopment.Name,
-					Namespace: proposedCommitStatusDevelopment.Namespace,
-				}, proposedCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
@@ -2511,12 +2487,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      proposedCommitStatusStaging.Name,
-					Namespace: proposedCommitStatusStaging.Namespace,
-				}, proposedCommitStatusStaging)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ProposedBranch)
