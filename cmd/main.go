@@ -231,8 +231,9 @@ func runController(
 		panic("unable to create ScmProvider controller")
 	}
 	if err = (&controller.GitRepositoryReconciler{
-		Client: localManager.GetClient(),
-		Scheme: localManager.GetScheme(),
+		Client:   localManager.GetClient(),
+		Scheme:   localManager.GetScheme(),
+		Recorder: localManager.GetEventRecorderFor("GitRepository"),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create GitRepository controller")
 	}
@@ -262,6 +263,7 @@ func runController(
 	if err = (&controller.ClusterScmProviderReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("ClusterScmProvider"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create ClusterScmProvider controller")

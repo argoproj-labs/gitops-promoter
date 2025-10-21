@@ -124,3 +124,51 @@ The `PromotionStrategy` CRD may also have the following condition reasons:
 
 * `PreviousEnvironmentCommitStatusNotReady`
 * `ChangeTransferPolicyNotReady`
+
+## Finalizers
+
+GitOps Promoter uses Kubernetes finalizers to ensure resources are deleted in the correct order, preventing orphaned 
+resources and ensuring proper cleanup of external resources (like pull requests in the SCM).
+
+**All finalizers are managed automatically by the controllers. You do not need to set them manually via GitOps.**
+
+### PullRequest Finalizer
+
+**Finalizer**: `pullrequest.promoter.argoporoj.io/finalizer`
+
+When a PullRequest is deleted, the finalizer ensures that the pull request is properly closed on the SCM before the 
+Kubernetes resource is removed. This prevents orphaned pull requests in your SCM.
+
+### GitRepository Finalizer
+
+**Finalizer**: `gitrepository.promoter.argoproj.io/finalizer`
+
+The GitRepository finalizer prevents deletion of the GitRepository while any PullRequest resources still reference it. 
+This ensures that PullRequests can authenticate to the SCM to close themselves properly before the GitRepository is 
+removed.
+
+### ScmProvider and ClusterScmProvider Finalizers
+
+**ScmProvider Finalizer**: `scmprovider.promoter.argoproj.io/finalizer`  
+**ClusterScmProvider Finalizer**: `clusterscmprovider.promoter.argoproj.io/finalizer`
+
+These finalizers prevent deletion of the SCM provider while any GitRepository resources still reference it. Additionally, 
+the ScmProvider and ClusterScmProvider controllers manage finalizers on the Secret resources they reference:
+
+**Secret Finalizer (ScmProvider)**: `scmprovider.promoter.argoproj.io/secret-finalizer`  
+**Secret Finalizer (ClusterScmProvider)**: `clusterscmprovider.promoter.argoproj.io/secret-finalizer`
+
+This ensures that the Secret containing authentication credentials is not deleted while it's still needed by the SCM 
+provider.
+
+### Deletion Order
+
+When you delete a PromotionStrategy and its associated resources, the finalizers ensure deletion happens in this order:
+
+1. **PullRequest** - Closes the PR on the SCM
+2. **GitRepository** - Can be deleted once all PullRequests are gone
+3. **ScmProvider/ClusterScmProvider** - Can be deleted once all GitRepositories are gone
+4. **Secret** - Can be deleted once all ScmProviders/ClusterScmProviders are gone
+
+If you attempt to delete resources out of order, Kubernetes will mark them for deletion but they will remain in a 
+"Terminating" state until their dependent resources are removed. This is normal and expected behavior.

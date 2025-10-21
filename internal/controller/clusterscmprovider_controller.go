@@ -19,11 +19,13 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -34,12 +36,14 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // ClusterScmProviderReconciler reconciles a ClusterScmProvider object
 type ClusterScmProviderReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
+	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
 }
 
@@ -50,11 +54,14 @@ type ClusterScmProviderReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling ClusterScmProvider")
+	startTime := time.Now()
 
 	var clusterScmProvider promoterv1alpha1.ClusterScmProvider
+	defer utils.HandleReconciliationResult(ctx, startTime, &clusterScmProvider, r.Client, r.Recorder, &err)
+
 	if err := r.Get(ctx, req.NamespacedName, &clusterScmProvider); err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("ClusterScmProvider not found", "name", req.Name)
