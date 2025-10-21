@@ -92,10 +92,10 @@ type TimedCommitStatusEnvironmentsStatus struct {
 	// +required
 	Phase string `json:"phase"`
 
-	// AtLeastDurationRemaining is the minimum amount of time remaining until the gate is satisfied.
+	// AtMostDurationRemaining is the maximum amount of time remaining until the gate is satisfied.
 	// This is calculated at reconciliation time. When the gate is satisfied (phase=success), this will be 0.
 	// +required
-	AtLeastDurationRemaining metav1.Duration `json:"atLeastDurationRemaining"`
+	AtMostDurationRemaining metav1.Duration `json:"atMostDurationRemaining"`
 }
 
 // +kubebuilder:object:root=true

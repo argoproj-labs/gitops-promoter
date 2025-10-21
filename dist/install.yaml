@@ -4578,9 +4578,9 @@ spec:
                   description: TimedCommitStatusEnvironmentsStatus defines the observed
                     timing status for a specific environment.
                   properties:
-                    atLeastDurationRemaining:
+                    atMostDurationRemaining:
                       description: |-
-                        AtLeastDurationRemaining is the minimum amount of time remaining until the gate is satisfied.
+                        AtMostDurationRemaining is the maximum amount of time remaining until the gate is satisfied.
                         This is calculated at reconciliation time. When the gate is satisfied (phase=success), this will be 0.
                       type: string
                     branch:
@@ -4608,7 +4608,7 @@ spec:
                       description: Sha is the commit SHA being tracked for this environment.
                       type: string
                   required:
-                  - atLeastDurationRemaining
+                  - atMostDurationRemaining
                   - branch
                   - commitTime
                   - phase

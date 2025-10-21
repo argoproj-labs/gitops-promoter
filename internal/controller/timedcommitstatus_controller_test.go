@@ -117,7 +117,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(tcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should be populated")
 				g.Expect(tcs.Status.Environments[0].CommitTime.Time).ToNot(BeZero(), "CommitTime should be populated")
 				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(1*time.Hour), "RequiredDuration should match spec")
-				g.Expect(tcs.Status.Environments[0].AtLeastDurationRemaining.Duration).To(BeNumerically(">", 0), "AtLeastDurationRemaining should be > 0 when pending")
+				g.Expect(tcs.Status.Environments[0].AtMostDurationRemaining.Duration).To(BeNumerically(">", 0), "AtMostDurationRemaining should be > 0 when pending")
 
 				// Verify CommitStatus was created for dev environment with pending phase
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/development-timed")
@@ -229,8 +229,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(1*time.Second), "RequiredDuration should match spec")
 
 				// Verify the duration requirement has been met (time remaining should be 0)
-				g.Expect(tcs.Status.Environments[0].AtLeastDurationRemaining.Duration).To(Equal(time.Duration(0)),
-					"AtLeastDurationRemaining must be 0 for success phase")
+				g.Expect(tcs.Status.Environments[0].AtMostDurationRemaining.Duration).To(Equal(time.Duration(0)),
+					"AtMostDurationRemaining must be 0 for success phase")
 
 				// Verify CommitStatus was created for dev environment (current environment) with success phase
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/development-timed")
@@ -261,8 +261,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 					"Phase must remain success once duration requirement is met")
 
 				// Duration requirement should still be met (time remaining should be 0)
-				g.Expect(tcs.Status.Environments[0].AtLeastDurationRemaining.Duration).To(Equal(time.Duration(0)),
-					"AtLeastDurationRemaining should remain 0")
+				g.Expect(tcs.Status.Environments[0].AtMostDurationRemaining.Duration).To(Equal(time.Duration(0)),
+					"AtMostDurationRemaining should remain 0")
 
 				// Verify CommitStatus phase remains success for dev environment
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/development-timed")
@@ -372,8 +372,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				g.Expect(tcs.Status.Environments[0].RequiredDuration.Duration).To(Equal(24*time.Hour), "RequiredDuration should match spec")
 
 				// Verify the duration requirement has NOT been met (time remaining should be > 0)
-				g.Expect(tcs.Status.Environments[0].AtLeastDurationRemaining.Duration).To(BeNumerically(">", 0),
-					"AtLeastDurationRemaining must be > 0 for pending phase")
+				g.Expect(tcs.Status.Environments[0].AtMostDurationRemaining.Duration).To(BeNumerically(">", 0),
+					"AtMostDurationRemaining must be > 0 for pending phase")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying phase stays pending for 10 seconds (doesn't incorrectly switch to success)")
@@ -392,8 +392,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 					"Phase must remain pending while time remaining > 0")
 
 				// Duration requirement should still NOT be met (time remaining should be > 0)
-				g.Expect(tcs.Status.Environments[0].AtLeastDurationRemaining.Duration).To(BeNumerically(">", 0),
-					"AtLeastDurationRemaining should still be > 0 (24 hours not elapsed)")
+				g.Expect(tcs.Status.Environments[0].AtMostDurationRemaining.Duration).To(BeNumerically(">", 0),
+					"AtMostDurationRemaining should still be > 0 (24 hours not elapsed)")
 
 				// Verify CommitStatus phase remains pending for dev environment
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/development-timed")
