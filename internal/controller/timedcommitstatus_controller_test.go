@@ -53,7 +53,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				{Key: "timed"},
 			}
 
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -188,7 +188,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				},
 			}
 
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -332,7 +332,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				},
 			}
 
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -506,7 +506,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				{Key: "timed"},
 			}
 
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
