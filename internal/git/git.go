@@ -447,7 +447,7 @@ func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory strin
 		return "", "", fmt.Errorf("failed to get token: %w", err)
 	}
 
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = []string{
 		"GIT_ASKPASS=promoter_askpass.sh", // Needs to be on path
 		"GIT_USERNAME=" + user,
@@ -571,7 +571,7 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 func AddTrailerToCommitMessage(commitMessage, trailerKey, trailerValue string) (string, error) {
 	trailerLine := fmt.Sprintf("%s: %s", trailerKey, trailerValue)
 
-	cmd := exec.Command("git", "interpret-trailers", "--trailer", trailerLine)
+	cmd := exec.CommandContext(context.Background(), "git", "interpret-trailers", "--trailer", trailerLine)
 	cmd.Stdin = strings.NewReader(commitMessage)
 
 	var stdoutBuf bytes.Buffer
@@ -605,7 +605,7 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	}
 
 	// Then pipe it to git interpret-trailers using stdin
-	cmd := exec.Command("git", "interpret-trailers", "--only-trailers")
+	cmd := exec.CommandContext(context.Background(), "git", "interpret-trailers", "--only-trailers")
 	cmd.Dir = gitPath
 	cmd.Stdin = strings.NewReader(msgStdout)
 

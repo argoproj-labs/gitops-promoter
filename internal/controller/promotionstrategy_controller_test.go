@@ -2163,6 +2163,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						g.Expect(commitStatus.Spec.Url).To(Equal("https://staging.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
 					case "environment/production":
 						g.Expect(commitStatus.Spec.Url).To(Equal("https://prod.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
+					default:
+						Fail("Unexpected environment branch: " + environment.Branch)
 					}
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}

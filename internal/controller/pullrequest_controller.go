@@ -158,6 +158,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 			}
 			return ctrl.Result{}, nil
+		default:
+			logger.Info("Unknown PullRequest state", "state", pr.Spec.State)
 		}
 	} else {
 		logger.Info("Updating PullRequest")

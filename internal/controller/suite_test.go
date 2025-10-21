@@ -784,7 +784,7 @@ func makeChangeAndHydrateRepoNoOp(gitPath string, repoOwner string, repoName str
 }
 
 func runGitCmd(directory string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(context.Background(), "git", args...)
 	var stdoutBuf bytes.Buffer
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
