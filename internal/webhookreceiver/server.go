@@ -175,8 +175,8 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 
 	// Extract webhook data based on provider
 	switch provider {
-	case ProviderGitHub:
-		// GitHub webhook format
+	case ProviderGitHub, ProviderForgejo:
+		// GitHub and Forgejo/Gitea webhook format (both use 'pusher')
 		if gjson.GetBytes(jsonBytes, "before").Exists() && gjson.GetBytes(jsonBytes, "pusher").Exists() {
 			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
 			ref = gjson.GetBytes(jsonBytes, "ref").String()
@@ -184,12 +184,6 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 	case ProviderGitLab:
 		// GitLab webhook format
 		if gjson.GetBytes(jsonBytes, "before").Exists() && gjson.GetBytes(jsonBytes, "user_name").Exists() {
-			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
-			ref = gjson.GetBytes(jsonBytes, "ref").String()
-		}
-	case ProviderForgejo:
-		// Forgejo/Gitea webhook format (similar to GitHub)
-		if gjson.GetBytes(jsonBytes, "before").Exists() && gjson.GetBytes(jsonBytes, "pusher").Exists() {
 			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
 			ref = gjson.GetBytes(jsonBytes, "ref").String()
 		}

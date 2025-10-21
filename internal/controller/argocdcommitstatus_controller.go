@@ -389,13 +389,15 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(ap
 	healthy := 0
 	degraded := 0
 	for _, s := range appsInEnvironment {
-		if s.commitStatus.Spec.Sha != resolvedSha {
+		switch {
+		case s.commitStatus.Spec.Sha != resolvedSha:
 			pending++
-		} else if s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess {
+		case s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess:
 			healthy++
-		} else if s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseFailure {
+		case s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseFailure:
 			degraded++
-		} else {
+		default:
+			// Count other phases (pending, unknown, etc.) as pending
 			pending++
 		}
 	}

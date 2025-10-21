@@ -80,6 +80,8 @@ type PullRequestStatus struct {
 	// PRCreationTime the time the PR was created
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
 	// Url is the URL of the pull request.
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
+	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
 
 	// Conditions Represents the observations of the current state.
