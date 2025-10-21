@@ -303,7 +303,7 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 		// Set the spec
 		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
 		// Use the environment branch name to show which environment's time gate this is checking
-		commitStatus.Spec.Name = "timed-gate/" + envBranch
+		commitStatus.Spec.Name = "timer/" + envBranch
 		commitStatus.Spec.Description = message
 		commitStatus.Spec.Phase = phase
 		commitStatus.Spec.Sha = sha
