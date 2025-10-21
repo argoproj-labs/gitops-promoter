@@ -168,6 +168,9 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 	// Save the previous status before clearing it, so we can detect transitions
 	previousStatus := tcs.Status.DeepCopy()
+	if previousStatus == nil {
+		previousStatus = &promoterv1alpha1.TimedCommitStatusStatus{}
+	}
 
 	// Initialize or clear the environments status
 	tcs.Status.Environments = make([]promoterv1alpha1.TimedCommitStatusEnvironmentsStatus, 0, len(tcs.Spec.Environments))
@@ -345,6 +348,9 @@ func (r *TimedCommitStatusReconciler) touchPromotionStrategyIfOpenPR(ctx context
 
 	// Touch the PromotionStrategy annotation to trigger reconciliation
 	psUpdated := ps.DeepCopy()
+	if psUpdated == nil {
+		return fmt.Errorf("failed to deep copy PromotionStrategy")
+	}
 	if psUpdated.Annotations == nil {
 		psUpdated.Annotations = make(map[string]string)
 	}
