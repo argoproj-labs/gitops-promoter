@@ -555,6 +555,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			Namespace: argoCDCommitStatus.Namespace, // Applications could come from multiple namespaces have to put this somewhere and avoid collisions
 			Labels: map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "argocd-health",
+				promoterv1alpha1.EnvironmentLabel:  targetBranch,
 			},
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 		},

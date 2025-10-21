@@ -292,8 +292,8 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 			commitStatus.Labels = make(map[string]string)
 		}
 		commitStatus.Labels["promoter.argoproj.io/timed-commit-status"] = utils.KubeSafeLabel(tcs.Name)
-		commitStatus.Labels["promoter.argoproj.io/environment"] = utils.KubeSafeLabel(branch)
-		commitStatus.Labels["promoter.argoproj.io/commit-status"] = "timer"
+		commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
+		commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = "timer"
 
 		// Set the spec
 		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
