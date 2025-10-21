@@ -266,6 +266,8 @@ func HandleReconciliationResult(
 
 	logger := log.FromContext(ctx)
 
+	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
+
 	// Check for empty object first before accessing GetObjectKind() to avoid nil pointer dereference.
 	// This check was moved before the GetObjectKind() call because newly created controller objects
 	// (e.g., var gitRepo promoterv1alpha1.GitRepository) don't have TypeMeta populated until they're
@@ -273,12 +275,9 @@ func HandleReconciliationResult(
 	// empty, so GetObjectKind() would return an empty struct and cause issues.
 	if obj.GetName() == "" && obj.GetNamespace() == "" {
 		// This happens when the Get in the Reconcile function returns "not found." It's expected and safe to skip.
-		logger.Info("Reconciling  End", "duration", time.Since(startTime))
 		logger.V(4).Info(" not found, skipping reconciliation")
 		return
 	}
-
-	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
 
 	conditions := obj.GetConditions() // GetConditions() is guaranteed to be non-nil for our CRDs.
 	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
@@ -301,13 +300,7 @@ func HandleReconciliationResult(
 		}
 		recorder.Eventf(obj, eventType, readyCondition.Reason, readyCondition.Message)
 		if updateErr := updateReadyCondition(ctx, obj, client, conditions, readyCondition.Status, readyCondition.Reason, readyCondition.Message); updateErr != nil {
-			// Ignore conflict errors when updating status. Conflicts can occur when multiple
-			// reconciliations happen concurrently (e.g., when both resource changes and webhook
-			// events trigger reconciliation). The retry logic in controller-runtime will handle
-			// these conflicts automatically in the next reconciliation loop.
-			if !k8serrors.IsConflict(updateErr) {
-				*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
-			}
+			*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
 		}
 		return
 	}
@@ -317,10 +310,8 @@ func HandleReconciliationResult(
 	}
 	if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionFalse, string(promoterConditions.ReconciliationError), fmt.Sprintf("Reconciliation failed: %s", *err)); updateErr != nil {
 		// Ignore conflict errors when updating status (see comment above).
-		if !k8serrors.IsConflict(updateErr) {
-			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-			*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
-		}
+		//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
+		*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
 	}
 }
 
