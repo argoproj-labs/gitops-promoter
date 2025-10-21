@@ -204,7 +204,7 @@ npm install -g renovate
 
 # Run Renovate in dry-run mode (requires GitHub token with repo permissions)
 export RENOVATE_TOKEN="your-github-personal-access-token"
-renovate --dry-run=full --log-level=debug argoproj-labs/gitops-promoter
+renovate --dry-run=full argoproj-labs/gitops-promoter
 ```
 
 ### Testing the Workflow
