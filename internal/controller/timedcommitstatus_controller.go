@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -101,8 +100,8 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// 3. Process each environment defined in the TimedCommitStatus
-	// Returns true if any time gate transitioned to success
-	timeGateTransitioned, err := r.processEnvironments(ctx, &tcs, &ps)
+	// Returns the list of environments that transitioned to success
+	transitionedEnvironments, err := r.processEnvironments(ctx, &tcs, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
@@ -113,11 +112,11 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to update TimedCommitStatus status: %w", err)
 	}
 
-	// 5. If a time gate transitioned to success and there's an open PR, touch the PromotionStrategy to trigger reconciliation
-	if timeGateTransitioned {
-		err = r.touchPromotionStrategyIfOpenPR(ctx, &ps)
+	// 5. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
+	if len(transitionedEnvironments) > 0 {
+		err = r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
 		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to touch PromotionStrategy: %w", err)
+			return ctrl.Result{}, fmt.Errorf("failed to touch ChangeTransferPolicies: %w", err)
 		}
 	}
 
@@ -160,12 +159,12 @@ func (r *TimedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr 
 // has been running for the required duration. If so, report success for the current environment's active SHA.
 // This allows using the timed commit status as an active commit status gate to block promotions
 // when the current environment hasn't been stable for the required duration.
-// Returns true if any time gate transitioned from pending to success.
-func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (bool, error) {
+// Returns a list of environment branches that transitioned from pending to success.
+func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]string, error) {
 	logger := log.FromContext(ctx)
 
-	// Track if any time gate transitioned to success
-	timeGateTransitioned := false
+	// Track which environments transitioned to success
+	transitionedEnvironments := []string{}
 
 	// Save the previous status before clearing it, so we can detect transitions
 	previousStatus := tcs.Status.DeepCopy()
@@ -223,7 +222,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 			}
 		}
 		if previousPhase == string(promoterv1alpha1.CommitPhasePending) && phase == promoterv1alpha1.CommitPhaseSuccess {
-			timeGateTransitioned = true
+			transitionedEnvironments = append(transitionedEnvironments, envConfig.Branch)
 			logger.Info("Time gate transitioned to success",
 				"branch", envConfig.Branch,
 				"sha", currentActiveSha)
@@ -244,7 +243,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		// This acts as an active commit status that gates promotions from this environment
 		err := r.upsertCommitStatus(ctx, tcs, ps, envConfig.Branch, currentActiveSha, phase, message, envConfig.Branch)
 		if err != nil {
-			return false, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
+			return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
 		}
 
 		logger.Info("Processed environment time gate",
@@ -255,7 +254,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 			"required", envConfig.Duration.Duration)
 	}
 
-	return timeGateTransitioned, nil
+	return transitionedEnvironments, nil
 }
 
 // calculateCommitStatusPhase determines the commit status phase based on time elapsed since deployment
@@ -312,47 +311,46 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	return nil
 }
 
-// touchPromotionStrategyIfOpenPR adds or updates the ReconcileAtAnnotation on the PromotionStrategy
-// if there's an open PR in any environment. This triggers the PromotionStrategy controller to reconcile.
-// An open PR is indicated by the proposed dry SHA being different from the active dry SHA.
-func (r *TimedCommitStatusReconciler) touchPromotionStrategyIfOpenPR(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
+// touchChangeTransferPolicies adds or updates the ReconcileAtAnnotation on the ChangeTransferPolicies
+// for the environments that had time gates transition to success.
+// This triggers the ChangeTransferPolicy controller to reconcile and potentially merge PRs.
+func (r *TimedCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) error {
 	logger := log.FromContext(ctx)
 
-	// Check if any environment has an open PR by comparing active and proposed dry SHAs
-	hasOpenPR := false
-	for _, envStatus := range ps.Status.Environments {
-		if envStatus.Proposed.Dry.Sha != envStatus.Active.Dry.Sha {
-			hasOpenPR = true
-			logger.V(1).Info("Found open PR in environment",
-				"branch", envStatus.Branch,
-				"activeDrySha", envStatus.Active.Dry.Sha,
-				"proposedDrySha", envStatus.Proposed.Dry.Sha)
-			break
+	// For each transitioned environment, find and update the corresponding ChangeTransferPolicy
+	for _, envBranch := range transitionedEnvironments {
+		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
+		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
+
+		// Fetch the ChangeTransferPolicy
+		var ctp promoterv1alpha1.ChangeTransferPolicy
+		err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: ctpName}, &ctp)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				logger.Info("ChangeTransferPolicy not found for environment, skipping touch",
+					"branch", envBranch,
+					"ctpName", ctpName)
+				continue
+			}
+			return fmt.Errorf("failed to get ChangeTransferPolicy %q for environment %q: %w", ctpName, envBranch, err)
 		}
-	}
 
-	if !hasOpenPR {
-		logger.V(1).Info("No open PRs found, skipping PromotionStrategy annotation update")
-		return nil
-	}
+		// Update the annotation to trigger reconciliation
+		ctpUpdated := ctp.DeepCopy()
+		if ctpUpdated.Annotations == nil {
+			ctpUpdated.Annotations = make(map[string]string)
+		}
+		ctpUpdated.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339Nano)
 
-	// Touch the PromotionStrategy annotation to trigger reconciliation
-	psUpdated := ps.DeepCopy()
-	if psUpdated == nil {
-		return errors.New("failed to deep copy PromotionStrategy")
-	}
-	if psUpdated.Annotations == nil {
-		psUpdated.Annotations = make(map[string]string)
-	}
-	psUpdated.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339Nano)
+		err = r.Patch(ctx, ctpUpdated, client.MergeFrom(&ctp))
+		if err != nil {
+			return fmt.Errorf("failed to update ChangeTransferPolicy %q annotation for environment %q: %w", ctpName, envBranch, err)
+		}
 
-	err := r.Patch(ctx, psUpdated, client.MergeFrom(ps))
-	if err != nil {
-		return fmt.Errorf("failed to update PromotionStrategy annotation: %w", err)
+		logger.Info("Triggered ChangeTransferPolicy reconciliation due to time gate transition",
+			"changeTransferPolicy", ctpName,
+			"branch", envBranch)
 	}
-
-	logger.Info("Triggered PromotionStrategy reconciliation due to open PR and time gate",
-		"promotionStrategy", ps.Name)
 
 	return nil
 }
