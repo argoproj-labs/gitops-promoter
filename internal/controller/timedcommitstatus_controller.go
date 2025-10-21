@@ -211,7 +211,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		// This status will be reported for the current environment's active SHA
 		// When a new commit is merged, the active SHA and commit time automatically update,
 		// which naturally resets the timer to 0 and reports pending until the duration is met
-		phase, message := r.calculateCommitStatusPhase(currentActiveCommitTime, envConfig.Duration.Duration, elapsed, envConfig.Branch)
+		phase, message := r.calculateCommitStatusPhase(envConfig.Duration.Duration, elapsed, envConfig.Branch)
 
 		// Check if this time gate transitioned to success
 		// Find the previous status for this environment
@@ -259,7 +259,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 }
 
 // calculateCommitStatusPhase determines the commit status phase based on time elapsed since deployment
-func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(commitTime time.Time, requiredDuration time.Duration, elapsed time.Duration, envBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
+func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuration time.Duration, elapsed time.Duration, envBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
 	if elapsed >= requiredDuration {
 		// Sufficient time has passed
 		return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met for %s environment", envBranch)
