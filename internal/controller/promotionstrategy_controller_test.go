@@ -1183,6 +1183,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the staging environment to success")
+			Eventually(func(g Gomega) {
 
 				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
@@ -1375,6 +1376,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the staging environment to success")
+			Eventually(func(g Gomega) {
 
 				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
