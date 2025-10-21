@@ -403,7 +403,7 @@ var _ = Describe("CommitStatus Controller", func() {
 			By("Verifying the create operation fails due to CEL validation")
 			err := k8sClient.Create(ctx, commitStatus)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("must be a valid URL"))
+			Expect(err.Error()).To(ContainSubstring("URL scheme must be http or https"))
 
 			// Cleanup
 			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())

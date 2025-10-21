@@ -408,8 +408,9 @@ spec:
                           description: Url is the URL of the commit status
                           type: string
                           x-kubernetes-validations:
-                          - message: must be a valid URL
-                            rule: self == '' || isURL(self)
+                          - message: URL scheme must be http or https
+                            rule: self == '' || url(self).getScheme() in ['http',
+                              'https']
                       required:
                       - key
                       - phase
@@ -462,8 +463,9 @@ spec:
                                     where the commit is located.
                                   type: string
                                   x-kubernetes-validations:
-                                  - message: must be a valid URL
-                                    rule: self == '' || isURL(self)
+                                  - message: URL scheme must be http or https
+                                    rule: self == '' || url(self).getScheme() in ['http',
+                                      'https']
                                 sha:
                                   description: Sha is the commit hash.
                                   type: string
@@ -479,8 +481,8 @@ spec:
                           commit is located
                         type: string
                         x-kubernetes-validations:
-                        - message: must be a valid URL
-                          rule: self == '' || isURL(self)
+                        - message: URL scheme must be http or https
+                          rule: self == '' || url(self).getScheme() in ['http', 'https']
                       sha:
                         description: Sha is the SHA of the commit in the branch
                         type: string
@@ -532,8 +534,9 @@ spec:
                                     where the commit is located.
                                   type: string
                                   x-kubernetes-validations:
-                                  - message: must be a valid URL
-                                    rule: self == '' || isURL(self)
+                                  - message: URL scheme must be http or https
+                                    rule: self == '' || url(self).getScheme() in ['http',
+                                      'https']
                                 sha:
                                   description: Sha is the commit hash.
                                   type: string
@@ -549,8 +552,8 @@ spec:
                           commit is located
                         type: string
                         x-kubernetes-validations:
-                        - message: must be a valid URL
-                          rule: self == '' || isURL(self)
+                        - message: URL scheme must be http or https
+                          rule: self == '' || url(self).getScheme() in ['http', 'https']
                       sha:
                         description: Sha is the SHA of the commit in the branch
                         type: string
@@ -659,8 +662,9 @@ spec:
                                 description: Url is the URL of the commit status
                                 type: string
                                 x-kubernetes-validations:
-                                - message: must be a valid URL
-                                  rule: self == '' || isURL(self)
+                                - message: URL scheme must be http or https
+                                  rule: self == '' || url(self).getScheme() in ['http',
+                                    'https']
                             required:
                             - key
                             - phase
@@ -715,8 +719,9 @@ spec:
                                           where the commit is located.
                                         type: string
                                         x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
+                                        - message: URL scheme must be http or https
+                                          rule: self == '' || url(self).getScheme()
+                                            in ['http', 'https']
                                       sha:
                                         description: Sha is the commit hash.
                                         type: string
@@ -732,8 +737,9 @@ spec:
                                 the commit is located
                               type: string
                               x-kubernetes-validations:
-                              - message: must be a valid URL
-                                rule: self == '' || isURL(self)
+                              - message: URL scheme must be http or https
+                                rule: self == '' || url(self).getScheme() in ['http',
+                                  'https']
                             sha:
                               description: Sha is the SHA of the commit in the branch
                               type: string
@@ -788,8 +794,9 @@ spec:
                                           where the commit is located.
                                         type: string
                                         x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
+                                        - message: URL scheme must be http or https
+                                          rule: self == '' || url(self).getScheme()
+                                            in ['http', 'https']
                                       sha:
                                         description: Sha is the commit hash.
                                         type: string
@@ -805,8 +812,9 @@ spec:
                                 the commit is located
                               type: string
                               x-kubernetes-validations:
-                              - message: must be a valid URL
-                                rule: self == '' || isURL(self)
+                              - message: URL scheme must be http or https
+                                rule: self == '' || url(self).getScheme() in ['http',
+                                  'https']
                             sha:
                               description: Sha is the SHA of the commit in the branch
                               type: string
@@ -845,8 +853,9 @@ spec:
                                 description: Url is the URL of the commit status
                                 type: string
                                 x-kubernetes-validations:
-                                - message: must be a valid URL
-                                  rule: self == '' || isURL(self)
+                                - message: URL scheme must be http or https
+                                  rule: self == '' || url(self).getScheme() in ['http',
+                                    'https']
                             required:
                             - key
                             - phase
@@ -898,8 +907,9 @@ spec:
                                           where the commit is located.
                                         type: string
                                         x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
+                                        - message: URL scheme must be http or https
+                                          rule: self == '' || url(self).getScheme()
+                                            in ['http', 'https']
                                       sha:
                                         description: Sha is the commit hash.
                                         type: string
@@ -915,8 +925,9 @@ spec:
                                 the commit is located
                               type: string
                               x-kubernetes-validations:
-                              - message: must be a valid URL
-                                rule: self == '' || isURL(self)
+                              - message: URL scheme must be http or https
+                                rule: self == '' || url(self).getScheme() in ['http',
+                                  'https']
                             sha:
                               description: Sha is the SHA of the commit in the branch
                               type: string
@@ -958,8 +969,9 @@ spec:
                           description: Url is the URL of the pull request.
                           type: string
                           x-kubernetes-validations:
-                          - message: must be a valid URL
-                            rule: self == '' || isURL(self)
+                          - message: URL scheme must be http or https
+                            rule: self == '' || url(self).getScheme() in ['http',
+                              'https']
                       type: object
                   type: object
                 type: array
@@ -990,8 +1002,9 @@ spec:
                           description: Url is the URL of the commit status
                           type: string
                           x-kubernetes-validations:
-                          - message: must be a valid URL
-                            rule: self == '' || isURL(self)
+                          - message: URL scheme must be http or https
+                            rule: self == '' || url(self).getScheme() in ['http',
+                              'https']
                       required:
                       - key
                       - phase
@@ -1044,8 +1057,9 @@ spec:
                                     where the commit is located.
                                   type: string
                                   x-kubernetes-validations:
-                                  - message: must be a valid URL
-                                    rule: self == '' || isURL(self)
+                                  - message: URL scheme must be http or https
+                                    rule: self == '' || url(self).getScheme() in ['http',
+                                      'https']
                                 sha:
                                   description: Sha is the commit hash.
                                   type: string
@@ -1061,8 +1075,8 @@ spec:
                           commit is located
                         type: string
                         x-kubernetes-validations:
-                        - message: must be a valid URL
-                          rule: self == '' || isURL(self)
+                        - message: URL scheme must be http or https
+                          rule: self == '' || url(self).getScheme() in ['http', 'https']
                       sha:
                         description: Sha is the SHA of the commit in the branch
                         type: string
@@ -1114,8 +1128,9 @@ spec:
                                     where the commit is located.
                                   type: string
                                   x-kubernetes-validations:
-                                  - message: must be a valid URL
-                                    rule: self == '' || isURL(self)
+                                  - message: URL scheme must be http or https
+                                    rule: self == '' || url(self).getScheme() in ['http',
+                                      'https']
                                 sha:
                                   description: Sha is the commit hash.
                                   type: string
@@ -1131,8 +1146,8 @@ spec:
                           commit is located
                         type: string
                         x-kubernetes-validations:
-                        - message: must be a valid URL
-                          rule: self == '' || isURL(self)
+                        - message: URL scheme must be http or https
+                          rule: self == '' || url(self).getScheme() in ['http', 'https']
                       sha:
                         description: Sha is the SHA of the commit in the branch
                         type: string
@@ -1173,8 +1188,8 @@ spec:
                     description: Url is the URL of the pull request.
                     type: string
                     x-kubernetes-validations:
-                    - message: must be a valid URL
-                      rule: self == '' || isURL(self)
+                    - message: URL scheme must be http or https
+                      rule: self == '' || url(self).getScheme() in ['http', 'https']
                 type: object
             type: object
         type: object
@@ -1386,8 +1401,6 @@ spec:
                   about the status
                 type: string
                 x-kubernetes-validations:
-                - message: must be a valid URL
-                  rule: self == '' || isURL(self)
                 - message: URL scheme must be http or https
                   rule: self == '' || url(self).getScheme() in ['http', 'https']
             required:
@@ -3014,8 +3027,9 @@ spec:
                                 description: Url is the URL of the commit status
                                 type: string
                                 x-kubernetes-validations:
-                                - message: must be a valid URL
-                                  rule: self == '' || isURL(self)
+                                - message: URL scheme must be http or https
+                                  rule: self == '' || url(self).getScheme() in ['http',
+                                    'https']
                             required:
                             - key
                             - phase
@@ -3070,8 +3084,9 @@ spec:
                                           where the commit is located.
                                         type: string
                                         x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
+                                        - message: URL scheme must be http or https
+                                          rule: self == '' || url(self).getScheme()
+                                            in ['http', 'https']
                                       sha:
                                         description: Sha is the commit hash.
                                         type: string
@@ -3087,8 +3102,9 @@ spec:
                                 the commit is located
                               type: string
                               x-kubernetes-validations:
-                              - message: must be a valid URL
-                                rule: self == '' || isURL(self)
+                              - message: URL scheme must be http or https
+                                rule: self == '' || url(self).getScheme() in ['http',
+                                  'https']
                             sha:
                               description: Sha is the SHA of the commit in the branch
                               type: string
@@ -3143,8 +3159,9 @@ spec:
                                           where the commit is located.
                                         type: string
                                         x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
+                                        - message: URL scheme must be http or https
+                                          rule: self == '' || url(self).getScheme()
+                                            in ['http', 'https']
                                       sha:
                                         description: Sha is the commit hash.
                                         type: string
@@ -3160,8 +3177,9 @@ spec:
                                 the commit is located
                               type: string
                               x-kubernetes-validations:
-                              - message: must be a valid URL
-                                rule: self == '' || isURL(self)
+                              - message: URL scheme must be http or https
+                                rule: self == '' || url(self).getScheme() in ['http',
+                                  'https']
                             sha:
                               description: Sha is the SHA of the commit in the branch
                               type: string
@@ -3215,8 +3233,9 @@ spec:
                                       description: Url is the URL of the commit status
                                       type: string
                                       x-kubernetes-validations:
-                                      - message: must be a valid URL
-                                        rule: self == '' || isURL(self)
+                                      - message: URL scheme must be http or https
+                                        rule: self == '' || url(self).getScheme()
+                                          in ['http', 'https']
                                   required:
                                   - key
                                   - phase
@@ -3275,8 +3294,10 @@ spec:
                                                 repository where the commit is located.
                                               type: string
                                               x-kubernetes-validations:
-                                              - message: must be a valid URL
-                                                rule: self == '' || isURL(self)
+                                              - message: URL scheme must be http or
+                                                  https
+                                                rule: self == '' || url(self).getScheme()
+                                                  in ['http', 'https']
                                             sha:
                                               description: Sha is the commit hash.
                                               type: string
@@ -3293,8 +3314,9 @@ spec:
                                       where the commit is located
                                     type: string
                                     x-kubernetes-validations:
-                                    - message: must be a valid URL
-                                      rule: self == '' || isURL(self)
+                                    - message: URL scheme must be http or https
+                                      rule: self == '' || url(self).getScheme() in
+                                        ['http', 'https']
                                   sha:
                                     description: Sha is the SHA of the commit in the
                                       branch
@@ -3355,8 +3377,10 @@ spec:
                                                 repository where the commit is located.
                                               type: string
                                               x-kubernetes-validations:
-                                              - message: must be a valid URL
-                                                rule: self == '' || isURL(self)
+                                              - message: URL scheme must be http or
+                                                  https
+                                                rule: self == '' || url(self).getScheme()
+                                                  in ['http', 'https']
                                             sha:
                                               description: Sha is the commit hash.
                                               type: string
@@ -3373,8 +3397,9 @@ spec:
                                       where the commit is located
                                     type: string
                                     x-kubernetes-validations:
-                                    - message: must be a valid URL
-                                      rule: self == '' || isURL(self)
+                                    - message: URL scheme must be http or https
+                                      rule: self == '' || url(self).getScheme() in
+                                        ['http', 'https']
                                   sha:
                                     description: Sha is the SHA of the commit in the
                                       branch
@@ -3415,8 +3440,9 @@ spec:
                                       description: Url is the URL of the commit status
                                       type: string
                                       x-kubernetes-validations:
-                                      - message: must be a valid URL
-                                        rule: self == '' || isURL(self)
+                                      - message: URL scheme must be http or https
+                                        rule: self == '' || url(self).getScheme()
+                                          in ['http', 'https']
                                   required:
                                   - key
                                   - phase
@@ -3473,8 +3499,10 @@ spec:
                                                 repository where the commit is located.
                                               type: string
                                               x-kubernetes-validations:
-                                              - message: must be a valid URL
-                                                rule: self == '' || isURL(self)
+                                              - message: URL scheme must be http or
+                                                  https
+                                                rule: self == '' || url(self).getScheme()
+                                                  in ['http', 'https']
                                             sha:
                                               description: Sha is the commit hash.
                                               type: string
@@ -3491,8 +3519,9 @@ spec:
                                       where the commit is located
                                     type: string
                                     x-kubernetes-validations:
-                                    - message: must be a valid URL
-                                      rule: self == '' || isURL(self)
+                                    - message: URL scheme must be http or https
+                                      rule: self == '' || url(self).getScheme() in
+                                        ['http', 'https']
                                   sha:
                                     description: Sha is the SHA of the commit in the
                                       branch
@@ -3535,8 +3564,9 @@ spec:
                                 description: Url is the URL of the pull request.
                                 type: string
                                 x-kubernetes-validations:
-                                - message: must be a valid URL
-                                  rule: self == '' || isURL(self)
+                                - message: URL scheme must be http or https
+                                  rule: self == '' || url(self).getScheme() in ['http',
+                                    'https']
                             type: object
                         type: object
                       type: array
@@ -3589,8 +3619,9 @@ spec:
                                 description: Url is the URL of the commit status
                                 type: string
                                 x-kubernetes-validations:
-                                - message: must be a valid URL
-                                  rule: self == '' || isURL(self)
+                                - message: URL scheme must be http or https
+                                  rule: self == '' || url(self).getScheme() in ['http',
+                                    'https']
                             required:
                             - key
                             - phase
@@ -3645,8 +3676,9 @@ spec:
                                           where the commit is located.
                                         type: string
                                         x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
+                                        - message: URL scheme must be http or https
+                                          rule: self == '' || url(self).getScheme()
+                                            in ['http', 'https']
                                       sha:
                                         description: Sha is the commit hash.
                                         type: string
@@ -3662,8 +3694,9 @@ spec:
                                 the commit is located
                               type: string
                               x-kubernetes-validations:
-                              - message: must be a valid URL
-                                rule: self == '' || isURL(self)
+                              - message: URL scheme must be http or https
+                                rule: self == '' || url(self).getScheme() in ['http',
+                                  'https']
                             sha:
                               description: Sha is the SHA of the commit in the branch
                               type: string
@@ -3718,8 +3751,9 @@ spec:
                                           where the commit is located.
                                         type: string
                                         x-kubernetes-validations:
-                                        - message: must be a valid URL
-                                          rule: self == '' || isURL(self)
+                                        - message: URL scheme must be http or https
+                                          rule: self == '' || url(self).getScheme()
+                                            in ['http', 'https']
                                       sha:
                                         description: Sha is the commit hash.
                                         type: string
@@ -3735,8 +3769,9 @@ spec:
                                 the commit is located
                               type: string
                               x-kubernetes-validations:
-                              - message: must be a valid URL
-                                rule: self == '' || isURL(self)
+                              - message: URL scheme must be http or https
+                                rule: self == '' || url(self).getScheme() in ['http',
+                                  'https']
                             sha:
                               description: Sha is the SHA of the commit in the branch
                               type: string
@@ -3778,8 +3813,9 @@ spec:
                           description: Url is the URL of the pull request.
                           type: string
                           x-kubernetes-validations:
-                          - message: must be a valid URL
-                            rule: self == '' || isURL(self)
+                          - message: URL scheme must be http or https
+                            rule: self == '' || url(self).getScheme() in ['http',
+                              'https']
                       type: object
                   required:
                   - active
@@ -3997,8 +4033,8 @@ spec:
                 description: Url is the URL of the pull request.
                 type: string
                 x-kubernetes-validations:
-                - message: must be a valid URL
-                  rule: self == '' || isURL(self)
+                - message: URL scheme must be http or https
+                  rule: self == '' || url(self).getScheme() in ['http', 'https']
             type: object
         type: object
         x-kubernetes-validations:

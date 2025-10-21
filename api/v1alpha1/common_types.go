@@ -114,7 +114,7 @@ type CommitMetadata struct {
 	// Sha is the commit hash.
 	Sha string `json:"sha,omitempty"`
 	// RepoURL is the URL of the repository where the commit is located.
-	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
+	// +kubebuilder:validation:XValidation:rule="self == '' || url(self).getScheme() in ['http', 'https']",message="URL scheme must be http or https"
 	RepoURL string `json:"repoURL,omitempty"`
 }
 

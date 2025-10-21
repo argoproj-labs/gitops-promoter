@@ -75,8 +75,6 @@ spec:
                   about the status
                 type: string
                 x-kubernetes-validations:
-                - message: must be a valid URL
-                  rule: self == '' || isURL(self)
                 - message: URL scheme must be http or https
                   rule: self == '' || url(self).getScheme() in ['http', 'https']
             required:

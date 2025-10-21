@@ -197,8 +197,8 @@ spec:
                 description: Url is the URL of the pull request.
                 type: string
                 x-kubernetes-validations:
-                - message: must be a valid URL
-                  rule: self == '' || isURL(self)
+                - message: URL scheme must be http or https
+                  rule: self == '' || url(self).getScheme() in ['http', 'https']
             type: object
         type: object
         x-kubernetes-validations:
