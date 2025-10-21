@@ -200,7 +200,7 @@ var _ = Describe("PullRequest Controller", func() {
 
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
-	setupInitialTestGitRepoOnServer(name, name)
+	setupInitialTestGitRepoOnServer(ctx, name, name)
 
 	scmSecret := &v1.Secret{
 		TypeMeta: metav1.TypeMeta{},

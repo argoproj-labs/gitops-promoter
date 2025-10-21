@@ -158,6 +158,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 			}
 			return ctrl.Result{}, nil
+		default:
+			return ctrl.Result{}, fmt.Errorf("unknown PullRequest state %q: this should not happen, please report a bug", pr.Spec.State)
 		}
 	} else {
 		logger.Info("Updating PullRequest")
@@ -296,6 +298,7 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 	mergedTime := metav1.Now()
 
 	updatedMessage, err := git.AddTrailerToCommitMessage(
+		ctx,
 		pr.Spec.Commit.Message,
 		constants.TrailerPullRequestMergeTime,
 		mergedTime.Format(time.RFC3339),

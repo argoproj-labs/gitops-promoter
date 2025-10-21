@@ -23,7 +23,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # pin@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           # see https://github.com/actions/setup-go?tab=readme-ov-file#caching-dependency-files-and-build-outputs
           cache-dependency-path: |
             go.sum

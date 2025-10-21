@@ -173,7 +173,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
 			Eventually(func(g Gomega) {
-				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
+				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
 				g.Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -187,7 +187,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
 
-				sha, err := runGitCmd(gitPath, "rev-parse", changeTransferPolicy.Spec.ActiveBranch)
+				sha, err := runGitCmd(ctx, gitPath, "rev-parse", changeTransferPolicy.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -412,7 +412,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(pr.Spec.MergeSha).ToNot(BeEmpty())
 
 				// Get the current hydrated SHA from the proposed branch
-				currentHydratedSha, err := runGitCmd(gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ProposedBranch)
+				currentHydratedSha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ProposedBranch)
 				g.Expect(err).NotTo(HaveOccurred())
 				currentHydratedSha = strings.TrimSpace(currentHydratedSha)
 
@@ -427,7 +427,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 //nolint:unparam
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
-	setupInitialTestGitRepoOnServer(name, name)
+	setupInitialTestGitRepoOnServer(ctx, name, name)
 
 	scmSecret := &v1.Secret{
 		TypeMeta: metav1.TypeMeta{},

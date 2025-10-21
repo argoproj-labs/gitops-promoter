@@ -90,7 +90,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Creating the resources")
 
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -341,7 +341,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Creating the resources")
 
 			name, scmSecret, _, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			clusterScmProvider := &promoterv1alpha1.ClusterScmProvider{
 				TypeMeta: metav1.TypeMeta{},
@@ -770,7 +770,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			promotionStrategy.Spec.Environments[1].AutoMerge = ptr.To(false) // staging
 			promotionStrategy.Spec.Environments[2].AutoMerge = ptr.To(false) // production
 
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -899,9 +899,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
 			simulateWebhook(ctx, k8sClient, &ctpProd)
 
-			_, err = runGitCmd(gitPath, "checkout", ctpDev.Spec.ActiveBranch)
+			_, err = runGitCmd(ctx, gitPath, "checkout", ctpDev.Spec.ActiveBranch)
 			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(gitPath, "pull", "origin", ctpDev.Spec.ActiveBranch)
+			_, err = runGitCmd(ctx, gitPath, "pull", "origin", ctpDev.Spec.ActiveBranch)
 			Expect(err).NotTo(HaveOccurred())
 			f, err := os.Create(path.Join(gitPath, "manifests-fake.yaml"))
 			Expect(err).NotTo(HaveOccurred())
@@ -910,11 +910,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			err = f.Close()
 			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(gitPath, "add", "manifests-fake.yaml")
+			_, err = runGitCmd(ctx, gitPath, "add", "manifests-fake.yaml")
 			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(gitPath, "commit", "-m", "added fake manifests commit with timestamp")
+			_, err = runGitCmd(ctx, gitPath, "commit", "-m", "added fake manifests commit with timestamp")
 			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(gitPath, "push", "-u", "origin", ctpDev.Spec.ActiveBranch)
+			_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", ctpDev.Spec.ActiveBranch)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Checking that there is no previous-environment commit status created, since no active checks are configured")
@@ -1037,7 +1037,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			// Skip("Skipping test because of flakiness")
 			By("Creating the resource")
 			name, scmSecret, scmProvider, gitRepo, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-active-commit-status", "default")
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -1142,9 +1142,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				_, err = runGitCmd(gitPath, "fetch")
+				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
+				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -1187,9 +1187,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
-				_, err = runGitCmd(gitPath, "fetch")
+				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
+				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -1202,9 +1202,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpStaging.Status.Active.Hydrated.Sha).To(Equal(sha))
 
 				// Get an updated proposed commit for prod so that we can use save the sha before we update the commit status letting it merge
-				_, err = runGitCmd(gitPath, "fetch")
+				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				shaProdProposed, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpProd.Spec.ProposedBranch)
+				shaProdProposed, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpProd.Spec.ProposedBranch)
 				Expect(err).NotTo(HaveOccurred())
 				shaProdProposed = strings.TrimSpace(shaProdProposed)
 
@@ -1385,9 +1385,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
-				_, err = runGitCmd(gitPath, "fetch")
+				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
+				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -1400,9 +1400,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpStaging.Status.Active.Hydrated.Sha).To(Equal(sha))
 
 				// Get an updated proposed commit for prod so that we can use save the sha before we update the commit status letting it merge
-				_, err = runGitCmd(gitPath, "fetch")
+				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				shaProdProposed, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpProd.Spec.ProposedBranch)
+				shaProdProposed, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpProd.Spec.ProposedBranch)
 				Expect(err).NotTo(HaveOccurred())
 				shaProdProposed = strings.TrimSpace(shaProdProposed)
 
@@ -1444,7 +1444,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			// Skip("Skipping test because of flakiness")
 			By("Creating the resource")
 			name, scmSecret, scmProvider, gitRepo, proposedCommitStatusDevelopment, proposedCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-proposed-commit-status", "default")
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -1544,9 +1544,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				_, err = runGitCmd(gitPath, "fetch")
+				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
+				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -1770,9 +1770,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				_, err = runGitCmd(gitPath, "fetch")
+				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
+				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -1833,7 +1833,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Creating the resource")
 			plainName := "promotion-strategy-with-active-commit-status-argocdcommitstatus"
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, plainName, "default")
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -2070,7 +2070,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Creating the resource")
 			plainName := "mc-promo-strategy-with-active-commit-status-argocdcommitstatus"
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, plainName, "default")
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -2137,6 +2137,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						g.Expect(commitStatus.Spec.Url).To(Equal("https://staging.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
 					case "environment/production":
 						g.Expect(commitStatus.Spec.Url).To(Equal("https://prod.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
+					default:
+						Fail("Unexpected environment branch: " + environment.Branch)
 					}
 				}, constants.EventuallyTimeout).Should(Succeed())
 			}
@@ -2311,7 +2313,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			// Skip("Skipping test because of flakiness")
 			By("Creating the resource")
 			name, scmSecret, scmProvider, gitRepo, proposedCommitStatusDevelopment, proposedCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-with-proposed-commit-status", "default")
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -2420,9 +2422,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				_, err = runGitCmd(gitPath, "fetch")
+				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
+				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -2496,9 +2498,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
-				_, err = runGitCmd(gitPath, "fetch")
+				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ProposedBranch)
+				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ProposedBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -2841,7 +2843,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Creating the resource")
 			ctx := context.Background()
 			name, scmSecret, scmProvider, gitRepo, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-bug-test", "default")
-			setupInitialTestGitRepoOnServer(name, name)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			typeNamespacedName := types.NamespacedName{
 				Name:      name,
@@ -2905,9 +2907,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Marking dev's active commit status as success for first commit")
 			var firstDevActiveSha string
 			Eventually(func(g Gomega) {
-				_, err = runGitCmd(gitPath1, "fetch")
+				_, err = runGitCmd(ctx, gitPath1, "fetch")
 				Expect(err).NotTo(HaveOccurred())
-				sha, err := runGitCmd(gitPath1, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
+				sha, err := runGitCmd(ctx, gitPath1, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				firstDevActiveSha = strings.TrimSpace(sha)
 
