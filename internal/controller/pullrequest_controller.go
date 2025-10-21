@@ -159,7 +159,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 			return ctrl.Result{}, nil
 		default:
-			logger.Info("Unknown PullRequest state", "state", pr.Spec.State)
+			return ctrl.Result{}, fmt.Errorf("unknown PullRequest state %q: this should not happen, please report a bug", pr.Spec.State)
 		}
 	} else {
 		logger.Info("Updating PullRequest")
