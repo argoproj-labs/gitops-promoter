@@ -195,7 +195,11 @@ spec:
                 type: string
               url:
                 description: Url is the URL of the pull request.
+                pattern: ^(https?://.*)?$
                 type: string
+                x-kubernetes-validations:
+                - message: must be a valid URL
+                  rule: self == '' || isURL(self)
             type: object
         type: object
         x-kubernetes-validations:
