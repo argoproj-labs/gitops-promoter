@@ -42,7 +42,7 @@ spec:
               environments:
                 items:
                   description: TimedCommitStatusEnvironments defines the branch/environment
-                    and duration to wait before considering the commit status as failed.
+                    and duration to wait before reporting the gate as success.
                   properties:
                     branch:
                       description: Branch is the name of the branch/environment you
@@ -50,7 +50,7 @@ spec:
                       type: string
                     duration:
                       description: |-
-                        Duration is the time duration to wait before considering the commit status as pending.
+                        Duration is the time duration to wait before considering the commit status as success.
                         The duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
                       type: string
                   required:

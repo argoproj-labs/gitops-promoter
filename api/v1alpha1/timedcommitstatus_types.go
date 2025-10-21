@@ -38,12 +38,12 @@ type TimedCommitStatusSpec struct {
 	Environments []TimedCommitStatusEnvironments `json:"environments"`
 }
 
-// TimedCommitStatusEnvironments defines the branch/environment and duration to wait before considering the commit status as failed.
+// TimedCommitStatusEnvironments defines the branch/environment and duration to wait before reporting the gate as success.
 type TimedCommitStatusEnvironments struct {
 	// Branch is the name of the branch/environment you want to gate for the configured duration.
 	// +required
 	Branch string `json:"branch"`
-	// Duration is the time duration to wait before considering the commit status as pending.
+	// Duration is the time duration to wait before considering the commit status as success.
 	// The duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
 	// +required
 	Duration metav1.Duration `json:"duration"`
