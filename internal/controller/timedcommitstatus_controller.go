@@ -173,20 +173,19 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		previousStatus = &promoterv1alpha1.TimedCommitStatusStatus{}
 	}
 
+	// Build a map of environments from PromotionStrategy for efficient lookup
+	envStatusMap := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
+	for i := range ps.Status.Environments {
+		envStatusMap[ps.Status.Environments[i].Branch] = &ps.Status.Environments[i]
+	}
+
 	// Initialize or clear the environments status
 	tcs.Status.Environments = make([]promoterv1alpha1.TimedCommitStatusEnvironmentsStatus, 0, len(tcs.Spec.Environments))
 
 	for _, envConfig := range tcs.Spec.Environments {
-		// Find the current environment in the PromotionStrategy
-		var currentEnvStatus *promoterv1alpha1.EnvironmentStatus
-		for i := range ps.Status.Environments {
-			if ps.Status.Environments[i].Branch == envConfig.Branch {
-				currentEnvStatus = &ps.Status.Environments[i]
-				break
-			}
-		}
-
-		if currentEnvStatus == nil {
+		// Look up the environment in the map
+		currentEnvStatus, found := envStatusMap[envConfig.Branch]
+		if !found {
 			logger.Info("Environment not found in PromotionStrategy status", "branch", envConfig.Branch)
 			continue
 		}
