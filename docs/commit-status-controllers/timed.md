@@ -148,25 +148,8 @@ The TimedCommitStatus controller uses an intelligent requeue strategy to provide
 **Frequent Status Updates**: When there are pending time gates where the required duration has **not yet been met**, the controller reconciles every **1 minute** to provide regular status updates. This means:
 - The `timeElapsed` field in the status updates every minute, giving you a live view of progress toward meeting the required duration
 - You can monitor how much time remains before a gate is satisfied
-- Once all time gates have either met their required duration or are not pending, the controller uses the default reconciliation interval (typically 1 hour) to reduce overhead
-- This applies even when a time gate shows `pending` status but is waiting for an open PR to be created or merged - in this case the frequent updates aren't needed since the gate has already met its time requirement
+- Once all time gates have either met their required duration or are not pending, the controller uses the configured reconciliation interval (default is 1 hour) to reduce overhead
 
-**Automatic PromotionStrategy Triggering**: When a time gate transitions from `pending` to `success`, the controller automatically triggers a PromotionStrategy reconciliation by updating its `promoter.argoproj.io/reconcile-at` annotation. However, this only happens if there is already an open pull request for the promotion. This ensures:
-- The PromotionStrategy picks up newly satisfied time gates immediately when a PR is waiting to be merged
-- Pull requests can be auto-merged without waiting for the PromotionStrategy's next scheduled reconciliation
-- The overall promotion latency is minimized when PRs exist
-- If no PR exists yet, the normal PromotionStrategy reconciliation cycle will create one when it next runs
-
-**Example Timeline**: With a PromotionStrategy that reconciles every hour and a 15-minute time gate:
-- **0 min**: Commit deployed to development, time gate starts as `pending`
-- **1-14 min**: TimedCommitStatus reconciles every minute, updating `timeElapsed` in status
-- **15 min**: Time gate transitions to `success`, and if a PR exists, PromotionStrategy is triggered immediately
-- **15 min**: PromotionStrategy reconciles, sees satisfied gate, auto-merges PR (if configured)
-- **15+ min**: If no PR existed, TimedCommitStatus now uses default requeue interval (1 hour) since the time requirement is met
-
-Without this optimization, the PR would have to wait until the next scheduled PromotionStrategy reconciliation (potentially 45+ minutes later).
-
-This behavior is automatic and requires no configuration.
 
 ### Status Fields
 
