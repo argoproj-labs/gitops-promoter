@@ -301,10 +301,10 @@ func HandleReconciliationResult(
 		}
 		recorder.Eventf(obj, eventType, readyCondition.Reason, readyCondition.Message)
 		if updateErr := updateReadyCondition(ctx, obj, client, conditions, readyCondition.Status, readyCondition.Reason, readyCondition.Message); updateErr != nil {
-			// Ignore conflict errors when updating status. Conflicts are expected when multiple
-			// reconciliations happen concurrently (e.g., in tests or when both resource changes
-			// and webhook events trigger reconciliation). The retry logic in controller-runtime
-			// will handle these conflicts automatically in the next reconciliation loop.
+			// Ignore conflict errors when updating status. Conflicts can occur when multiple
+			// reconciliations happen concurrently (e.g., when both resource changes and webhook
+			// events trigger reconciliation). The retry logic in controller-runtime will handle
+			// these conflicts automatically in the next reconciliation loop.
 			if !k8serrors.IsConflict(updateErr) {
 				*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
 			}
