@@ -183,7 +183,7 @@ func runController(
 		panic(fmt.Errorf("unable to start manager: %w", err))
 	}
 	if mcMgr == nil {
-		panic(fmt.Errorf("unable to start manager: mcMgr is nil"))
+		panic("unable to start manager: mcMgr is nil")
 	}
 
 	localManager := mcMgr.GetLocalManager()
