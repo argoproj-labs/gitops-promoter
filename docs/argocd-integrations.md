@@ -26,7 +26,7 @@ spec:
             - name: EXTENSION_URL
               value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.15.0/gitops-promoter-argocd-extension.tar.gz
             - name: EXTENSION_CHECKSUM_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.15.0/gitops-promoter_0.12.0_checksums.txt
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.15.0/gitops-promoter_0.15.0_checksums.txt
           volumeMounts:
             - name: extensions
               mountPath: /tmp/extensions/
