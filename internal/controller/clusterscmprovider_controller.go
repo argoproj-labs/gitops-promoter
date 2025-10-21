@@ -20,39 +20,57 @@ import (
 	"context"
 	"fmt"
 
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 )
 
 // ClusterScmProviderReconciler reconciles a ClusterScmProvider object
 type ClusterScmProviderReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme      *runtime.Scheme
+	SettingsMgr *settings.Manager
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=clusterscmproviders/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitrepositories,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the ClusterScmProvider object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.2/pkg/reconcile
 func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
+	logger.Info("Reconciling ClusterScmProvider")
 
-	// TODO(user): your logic here
+	var clusterScmProvider promoterv1alpha1.ClusterScmProvider
+	if err := r.Get(ctx, req.NamespacedName, &clusterScmProvider); err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("ClusterScmProvider not found", "name", req.Name)
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("failed to get ClusterScmProvider: %w", err)
+	}
+
+	if deleted, err := r.handleFinalizer(ctx, &clusterScmProvider); err != nil || deleted {
+		return ctrl.Result{}, err
+	}
+
+	// Add finalizer to referenced Secret if it exists
+	if err := r.ensureSecretFinalizer(ctx, &clusterScmProvider); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to ensure Secret finalizer: %w", err)
+	}
 
 	return ctrl.Result{}, nil
 }
@@ -68,4 +86,163 @@ func (r *ClusterScmProviderReconciler) SetupWithManager(ctx context.Context, mgr
 	}
 
 	return nil
+}
+
+func (r *ClusterScmProviderReconciler) handleFinalizer(ctx context.Context, clusterScmProvider *promoterv1alpha1.ClusterScmProvider) (bool, error) {
+	logger := log.FromContext(ctx)
+	finalizer := "clusterscmprovider.promoter.argoproj.io/finalizer"
+
+	if clusterScmProvider.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(clusterScmProvider, finalizer) {
+			// Not being deleted and already has finalizer, nothing to do.
+			return false, nil
+		}
+
+		// Finalizer is missing, add it.
+		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
+			if err := r.Get(ctx, client.ObjectKeyFromObject(clusterScmProvider), clusterScmProvider); err != nil {
+				return err //nolint:wrapcheck
+			}
+			if controllerutil.AddFinalizer(clusterScmProvider, finalizer) {
+				return r.Update(ctx, clusterScmProvider)
+			}
+			return nil
+		})
+	}
+
+	// If we're here, the object is being deleted
+	if !controllerutil.ContainsFinalizer(clusterScmProvider, finalizer) {
+		// Finalizer already removed, nothing to do.
+		return false, nil
+	}
+
+	// Check if there are any GitRepositories referencing this ClusterScmProvider across all namespaces
+	var gitRepos promoterv1alpha1.GitRepositoryList
+	if err := r.List(ctx, &gitRepos); err != nil {
+		return false, fmt.Errorf("failed to list GitRepositories: %w", err)
+	}
+
+	for _, gitRepo := range gitRepos.Items {
+		if gitRepo.Spec.ScmProviderRef.Name == clusterScmProvider.Name &&
+			gitRepo.Spec.ScmProviderRef.Kind == promoterv1alpha1.ClusterScmProviderKind {
+			logger.Info("ClusterScmProvider still has dependent GitRepositories, cannot delete",
+				"clusterScmProvider", clusterScmProvider.Name, "gitRepository", gitRepo.Name)
+			return true, fmt.Errorf("ClusterScmProvider %s still has dependent GitRepository %s/%s",
+				clusterScmProvider.Name, gitRepo.Namespace, gitRepo.Name)
+		}
+	}
+
+	// Remove finalizer from Secret if it exists
+	if err := r.removeSecretFinalizer(ctx, clusterScmProvider); err != nil {
+		return false, fmt.Errorf("failed to remove Secret finalizer: %w", err)
+	}
+
+	// No dependent GitRepositories, remove finalizer
+	controllerutil.RemoveFinalizer(clusterScmProvider, finalizer)
+	if err := r.Update(ctx, clusterScmProvider); err != nil {
+		return true, fmt.Errorf("failed to remove finalizer: %w", err)
+	}
+	return true, nil
+}
+
+func (r *ClusterScmProviderReconciler) ensureSecretFinalizer(ctx context.Context, clusterScmProvider *promoterv1alpha1.ClusterScmProvider) error {
+	logger := log.FromContext(ctx)
+
+	if clusterScmProvider.Spec.SecretRef == nil {
+		return nil
+	}
+
+	finalizer := "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
+	secretKey := types.NamespacedName{
+		Namespace: r.SettingsMgr.GetControllerNamespace(),
+		Name:      clusterScmProvider.Spec.SecretRef.Name,
+	}
+
+	var secret v1.Secret
+	if err := r.Get(ctx, secretKey, &secret); err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("Secret not found, skipping finalizer", "secret", secretKey)
+			return nil
+		}
+		return fmt.Errorf("failed to get Secret: %w", err)
+	}
+
+	// Don't add finalizer to a Secret that's already being deleted
+	if !secret.DeletionTimestamp.IsZero() {
+		logger.Info("Secret is being deleted, skipping finalizer", "secret", secretKey)
+		return nil
+	}
+
+	if controllerutil.ContainsFinalizer(&secret, finalizer) {
+		return nil
+	}
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
+		if err := r.Get(ctx, secretKey, &secret); err != nil {
+			return err //nolint:wrapcheck
+		}
+		// Check again after getting the secret in case it was deleted during the retry
+		if !secret.DeletionTimestamp.IsZero() {
+			return nil
+		}
+		if controllerutil.AddFinalizer(&secret, finalizer) {
+			return r.Update(ctx, &secret)
+		}
+		return nil
+	})
+}
+
+func (r *ClusterScmProviderReconciler) removeSecretFinalizer(ctx context.Context, clusterScmProvider *promoterv1alpha1.ClusterScmProvider) error {
+	logger := log.FromContext(ctx)
+
+	if clusterScmProvider.Spec.SecretRef == nil {
+		return nil
+	}
+
+	finalizer := "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
+	secretKey := types.NamespacedName{
+		Namespace: r.SettingsMgr.GetControllerNamespace(),
+		Name:      clusterScmProvider.Spec.SecretRef.Name,
+	}
+
+	var secret v1.Secret
+	if err := r.Get(ctx, secretKey, &secret); err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("Secret not found, skipping finalizer removal", "secret", secretKey)
+			return nil
+		}
+		return fmt.Errorf("failed to get Secret: %w", err)
+	}
+
+	if !controllerutil.ContainsFinalizer(&secret, finalizer) {
+		return nil
+	}
+
+	// Check if there are other ClusterScmProviders using this Secret
+	var clusterScmProviders promoterv1alpha1.ClusterScmProviderList
+	if err := r.List(ctx, &clusterScmProviders); err != nil {
+		return fmt.Errorf("failed to list ClusterScmProviders: %w", err)
+	}
+
+	for _, csp := range clusterScmProviders.Items {
+		// Skip the ClusterScmProvider being deleted
+		if csp.Name == clusterScmProvider.Name {
+			continue
+		}
+		if csp.Spec.SecretRef != nil && csp.Spec.SecretRef.Name == secret.Name {
+			logger.Info("Secret still referenced by other ClusterScmProvider, keeping finalizer",
+				"secret", secretKey, "clusterScmProvider", csp.Name)
+			return nil
+		}
+	}
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
+		if err := r.Get(ctx, secretKey, &secret); err != nil {
+			return err //nolint:wrapcheck
+		}
+		if controllerutil.RemoveFinalizer(&secret, finalizer) {
+			return r.Update(ctx, &secret)
+		}
+		return nil
+	})
 }

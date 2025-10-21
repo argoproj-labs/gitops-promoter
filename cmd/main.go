@@ -260,8 +260,9 @@ func runController(
 		panic("unable to create ControllerConfiguration controller")
 	}
 	if err = (&controller.ClusterScmProviderReconciler{
-		Client: localManager.GetClient(),
-		Scheme: localManager.GetScheme(),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create ClusterScmProvider controller")
 	}
