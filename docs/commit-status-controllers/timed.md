@@ -46,7 +46,7 @@ This configuration:
 
 ### Integrating with PromotionStrategy
 
-To use time-based gating, configure your PromotionStrategy to check for the `timed` commit status key as an active commit status:
+To use time-based gating, configure your PromotionStrategy to check for the `timer` commit status key as an active commit status:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -57,7 +57,7 @@ spec:
   gitRepositoryRef:
     name: webservice-tier-1
   activeCommitStatuses:
-    - key: timed
+    - key: timer
   environments:
     - branch: environment/development
     - branch: environment/staging
@@ -83,7 +83,7 @@ spec:
     name: webservice-tier-1
   activeCommitStatuses:
     - key: argocd-health
-    - key: timed
+    - key: timer
   proposedCommitStatuses:
     - key: manual-approval
   environments:

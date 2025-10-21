@@ -48,9 +48,9 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-pending", "default")
 
-			// Configure ActiveCommitStatuses to check for timed commit status
+			// Configure ActiveCommitStatuses to check for timer commit status
 			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "timed"},
+				{Key: "timer"},
 			}
 
 			setupInitialTestGitRepoOnServer(ctx, name, name)
@@ -149,7 +149,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 
 			// Only use 2 environments for this test
 			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "timed"},
+				{Key: "timer"},
 			}
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
 				{
@@ -293,7 +293,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-time-not-met", "default")
 
 			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "timed"},
+				{Key: "timer"},
 			}
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
 				{
@@ -473,9 +473,9 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-touch-ps", "default")
 
-			// Configure ActiveCommitStatuses to check for timed commit status
+			// Configure ActiveCommitStatuses to check for timer commit status
 			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "timed"},
+				{Key: "timer"},
 			}
 
 			setupInitialTestGitRepoOnServer(ctx, name, name)
