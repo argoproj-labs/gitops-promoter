@@ -1183,12 +1183,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the staging environment to success")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      activeCommitStatusStaging.Name,
-					Namespace: activeCommitStatusStaging.Namespace,
-				}, activeCommitStatusStaging)
-				g.Expect(err).To(Succeed())
 
 				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
@@ -1381,12 +1375,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Updating the commit status for the staging environment to success")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      activeCommitStatusStaging.Name,
-					Namespace: activeCommitStatusStaging.Namespace,
-				}, activeCommitStatusStaging)
-				g.Expect(err).To(Succeed())
 
 				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
