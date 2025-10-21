@@ -18,10 +18,12 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
@@ -59,7 +61,7 @@ func (r *GitRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	defer utils.HandleReconciliationResult(ctx, startTime, &gitRepo, r.Client, r.Recorder, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &gitRepo); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("GitRepository not found", "namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -86,7 +88,7 @@ func (r *GitRepositoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 
 func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository) (bool, error) {
 	logger := log.FromContext(ctx)
-	finalizer := "gitrepository.promoter.argoproj.io/finalizer"
+	finalizer := promoterv1alpha1.GitRepositoryFinalizer
 
 	if gitRepo.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(gitRepo, finalizer) {
@@ -118,13 +120,28 @@ func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *
 		return false, fmt.Errorf("failed to list PullRequests: %w", err)
 	}
 
+	var dependentPRs []string
 	for _, pr := range pullRequests.Items {
 		if pr.Spec.RepositoryReference.Name == gitRepo.Name {
-			logger.Info("GitRepository still has dependent PullRequests, cannot delete",
-				"gitRepository", gitRepo.Name, "pullRequest", pr.Name)
-			return true, fmt.Errorf("GitRepository %s/%s still has dependent PullRequest %s",
-				gitRepo.Namespace, gitRepo.Name, pr.Name)
+			dependentPRs = append(dependentPRs, pr.Name)
 		}
+	}
+
+	if len(dependentPRs) > 0 {
+		// Sort for deterministic error messages
+		sort.Strings(dependentPRs)
+		firstPR := dependentPRs[0]
+		var errMsg string
+		if len(dependentPRs) == 1 {
+			errMsg = fmt.Sprintf("GitRepository %s/%s still has dependent PullRequest %s",
+				gitRepo.Namespace, gitRepo.Name, firstPR)
+		} else {
+			errMsg = fmt.Sprintf("GitRepository %s/%s still has dependent PullRequest %s and %d more",
+				gitRepo.Namespace, gitRepo.Name, firstPR, len(dependentPRs)-1)
+		}
+		logger.Info("GitRepository still has dependent PullRequests, cannot delete",
+			"gitRepository", gitRepo.Name, "count", len(dependentPRs), "first", firstPR)
+		return true, errors.New(errMsg)
 	}
 
 	// No dependent PullRequests, remove finalizer

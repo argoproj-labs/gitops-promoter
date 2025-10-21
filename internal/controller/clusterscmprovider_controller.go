@@ -18,11 +18,13 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -63,7 +65,7 @@ func (r *ClusterScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.R
 	defer utils.HandleReconciliationResult(ctx, startTime, &clusterScmProvider, r.Client, r.Recorder, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &clusterScmProvider); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("ClusterScmProvider not found", "name", req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -97,7 +99,7 @@ func (r *ClusterScmProviderReconciler) SetupWithManager(ctx context.Context, mgr
 
 func (r *ClusterScmProviderReconciler) handleFinalizer(ctx context.Context, clusterScmProvider *promoterv1alpha1.ClusterScmProvider) (bool, error) {
 	logger := log.FromContext(ctx)
-	finalizer := "clusterscmprovider.promoter.argoproj.io/finalizer"
+	finalizer := promoterv1alpha1.ClusterScmProviderFinalizer
 
 	if clusterScmProvider.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(clusterScmProvider, finalizer) {
@@ -129,14 +131,29 @@ func (r *ClusterScmProviderReconciler) handleFinalizer(ctx context.Context, clus
 		return false, fmt.Errorf("failed to list GitRepositories: %w", err)
 	}
 
+	var dependentRepos []string
 	for _, gitRepo := range gitRepos.Items {
 		if gitRepo.Spec.ScmProviderRef.Name == clusterScmProvider.Name &&
 			gitRepo.Spec.ScmProviderRef.Kind == promoterv1alpha1.ClusterScmProviderKind {
-			logger.Info("ClusterScmProvider still has dependent GitRepositories, cannot delete",
-				"clusterScmProvider", clusterScmProvider.Name, "gitRepository", gitRepo.Name)
-			return true, fmt.Errorf("ClusterScmProvider %s still has dependent GitRepository %s/%s",
-				clusterScmProvider.Name, gitRepo.Namespace, gitRepo.Name)
+			dependentRepos = append(dependentRepos, fmt.Sprintf("%s/%s", gitRepo.Namespace, gitRepo.Name))
 		}
+	}
+
+	if len(dependentRepos) > 0 {
+		// Sort for deterministic error messages
+		sort.Strings(dependentRepos)
+		firstRepo := dependentRepos[0]
+		var errMsg string
+		if len(dependentRepos) == 1 {
+			errMsg = fmt.Sprintf("ClusterScmProvider %s still has dependent GitRepository %s",
+				clusterScmProvider.Name, firstRepo)
+		} else {
+			errMsg = fmt.Sprintf("ClusterScmProvider %s still has dependent GitRepository %s and %d more",
+				clusterScmProvider.Name, firstRepo, len(dependentRepos)-1)
+		}
+		logger.Info("ClusterScmProvider still has dependent GitRepositories, cannot delete",
+			"clusterScmProvider", clusterScmProvider.Name, "count", len(dependentRepos), "first", firstRepo)
+		return true, errors.New(errMsg)
 	}
 
 	// Remove finalizer from Secret if it exists
@@ -159,7 +176,7 @@ func (r *ClusterScmProviderReconciler) ensureSecretFinalizer(ctx context.Context
 		return nil
 	}
 
-	finalizer := "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
+	finalizer := promoterv1alpha1.ClusterScmProviderSecretFinalizer
 	secretKey := types.NamespacedName{
 		Namespace: r.SettingsMgr.GetControllerNamespace(),
 		Name:      clusterScmProvider.Spec.SecretRef.Name,
@@ -167,7 +184,7 @@ func (r *ClusterScmProviderReconciler) ensureSecretFinalizer(ctx context.Context
 
 	var secret v1.Secret
 	if err := r.Get(ctx, secretKey, &secret); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("Secret not found, skipping finalizer", "secret", secretKey)
 			return nil
 		}
@@ -206,7 +223,7 @@ func (r *ClusterScmProviderReconciler) removeSecretFinalizer(ctx context.Context
 		return nil
 	}
 
-	finalizer := "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
+	finalizer := promoterv1alpha1.ClusterScmProviderSecretFinalizer
 	secretKey := types.NamespacedName{
 		Namespace: r.SettingsMgr.GetControllerNamespace(),
 		Name:      clusterScmProvider.Spec.SecretRef.Name,
@@ -214,7 +231,7 @@ func (r *ClusterScmProviderReconciler) removeSecretFinalizer(ctx context.Context
 
 	var secret v1.Secret
 	if err := r.Get(ctx, secretKey, &secret); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("Secret not found, skipping finalizer removal", "secret", secretKey)
 			return nil
 		}

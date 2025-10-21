@@ -18,10 +18,12 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/record"
 
 	v1 "k8s.io/api/core/v1"
@@ -63,7 +65,7 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	defer utils.HandleReconciliationResult(ctx, startTime, &scmProvider, r.Client, r.Recorder, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &scmProvider); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("ScmProvider not found", "namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -95,7 +97,7 @@ func (r *ScmProviderReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 
 func (r *ScmProviderReconciler) handleFinalizer(ctx context.Context, scmProvider *promoterv1alpha1.ScmProvider) (bool, error) {
 	logger := log.FromContext(ctx)
-	finalizer := "scmprovider.promoter.argoproj.io/finalizer"
+	finalizer := promoterv1alpha1.ScmProviderFinalizer
 
 	if scmProvider.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(scmProvider, finalizer) {
@@ -127,14 +129,29 @@ func (r *ScmProviderReconciler) handleFinalizer(ctx context.Context, scmProvider
 		return false, fmt.Errorf("failed to list GitRepositories: %w", err)
 	}
 
+	var dependentRepos []string
 	for _, gitRepo := range gitRepos.Items {
 		if gitRepo.Spec.ScmProviderRef.Name == scmProvider.Name &&
 			gitRepo.Spec.ScmProviderRef.Kind == promoterv1alpha1.ScmProviderKind {
-			logger.Info("ScmProvider still has dependent GitRepositories, cannot delete",
-				"scmProvider", scmProvider.Name, "gitRepository", gitRepo.Name)
-			return true, fmt.Errorf("ScmProvider %s/%s still has dependent GitRepository %s",
-				scmProvider.Namespace, scmProvider.Name, gitRepo.Name)
+			dependentRepos = append(dependentRepos, gitRepo.Name)
 		}
+	}
+
+	if len(dependentRepos) > 0 {
+		// Sort for deterministic error messages
+		sort.Strings(dependentRepos)
+		firstRepo := dependentRepos[0]
+		var errMsg string
+		if len(dependentRepos) == 1 {
+			errMsg = fmt.Sprintf("ScmProvider %s/%s still has dependent GitRepository %s",
+				scmProvider.Namespace, scmProvider.Name, firstRepo)
+		} else {
+			errMsg = fmt.Sprintf("ScmProvider %s/%s still has dependent GitRepository %s and %d more",
+				scmProvider.Namespace, scmProvider.Name, firstRepo, len(dependentRepos)-1)
+		}
+		logger.Info("ScmProvider still has dependent GitRepositories, cannot delete",
+			"scmProvider", scmProvider.Name, "count", len(dependentRepos), "first", firstRepo)
+		return true, errors.New(errMsg)
 	}
 
 	// Remove finalizer from Secret if it exists
@@ -157,7 +174,7 @@ func (r *ScmProviderReconciler) ensureSecretFinalizer(ctx context.Context, scmPr
 		return nil
 	}
 
-	finalizer := "scmprovider.promoter.argoproj.io/secret-finalizer"
+	finalizer := promoterv1alpha1.ScmProviderSecretFinalizer
 	secretKey := types.NamespacedName{
 		Namespace: scmProvider.Namespace,
 		Name:      scmProvider.Spec.SecretRef.Name,
@@ -165,7 +182,7 @@ func (r *ScmProviderReconciler) ensureSecretFinalizer(ctx context.Context, scmPr
 
 	var secret v1.Secret
 	if err := r.Get(ctx, secretKey, &secret); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("Secret not found, skipping finalizer", "secret", secretKey)
 			return nil
 		}
@@ -204,7 +221,7 @@ func (r *ScmProviderReconciler) removeSecretFinalizer(ctx context.Context, scmPr
 		return nil
 	}
 
-	finalizer := "scmprovider.promoter.argoproj.io/secret-finalizer"
+	finalizer := promoterv1alpha1.ScmProviderSecretFinalizer
 	secretKey := types.NamespacedName{
 		Namespace: scmProvider.Namespace,
 		Name:      scmProvider.Spec.SecretRef.Name,
@@ -212,7 +229,7 @@ func (r *ScmProviderReconciler) removeSecretFinalizer(ctx context.Context, scmPr
 
 	var secret v1.Secret
 	if err := r.Get(ctx, secretKey, &secret); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("Secret not found, skipping finalizer removal", "secret", secretKey)
 			return nil
 		}
