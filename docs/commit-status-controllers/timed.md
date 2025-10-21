@@ -148,7 +148,7 @@ The TimedCommitStatus controller uses an intelligent requeue strategy to provide
 **Frequent Status Updates**: When there are pending time gates where the required duration has **not yet been met**, the controller reconciles every **1 minute** to provide regular status updates. This means:
 - The `timeElapsed` field in the status updates every minute, giving you a live view of progress toward meeting the required duration
 - You can monitor how much time remains before a gate is satisfied
-- Once all time gates have either met their required duration or are not pending, the controller uses the configured reconciliation interval (default is 1 hour) to reduce overhead
+- Once all time gates have either met their required duration, the controller uses the configured reconciliation interval (default is 1 hour) to reduce overhead
 
 
 ### Status Fields
