@@ -25,7 +25,7 @@ func TestGit(t *testing.T) {
 
 // Helper function to run git commands
 func runGitCmd(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	cmd := exec.CommandContext(context.Background(), "git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	output, err := cmd.CombinedOutput()

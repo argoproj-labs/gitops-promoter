@@ -765,6 +765,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prName = utils.GetPullRequestName(gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.Fake != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	default:
+		return nil, errors.New("unsupported git repository type")
 	}
 
 	prName = utils.KubeSafeUniqueName(ctx, prName)
@@ -845,6 +847,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		logger.V(4).Info("Pull request already exists and is up to date", "pullRequest", pr)
 	case controllerutil.OperationResultUpdated:
 		logger.V(4).Info("Updated pull request", "pullRequest", pr)
+	default:
+		logger.V(4).Info("Unexpected operation result", "result", res)
 	}
 
 	return &pr, nil
