@@ -82,6 +82,8 @@ type TimedCommitStatusEnvironmentsStatus struct {
 	CommitTime metav1.Time `json:"commitTime"`
 
 	// RequiredDuration is the duration that must elapse before promotion is allowed.
+	// If this is updated in the spec with a pending time. The new duration will be calculated from the original CommitTime.
+	// Allowing you to extend the duration of an already deployed commit, if the time has not yet elapsed.
 	// +required
 	RequiredDuration metav1.Duration `json:"requiredDuration"`
 

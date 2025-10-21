@@ -159,8 +159,10 @@ spec:
                       - success
                       type: string
                     requiredDuration:
-                      description: RequiredDuration is the duration that must elapse
-                        before promotion is allowed.
+                      description: |-
+                        RequiredDuration is the duration that must elapse before promotion is allowed.
+                        If this is updated in the spec with a pending time. The new duration will be calculated from the original CommitTime.
+                        Allowing you to extend the duration of an already deployed commit, if the time has not yet elapsed.
                       type: string
                     sha:
                       description: Sha is the commit SHA being tracked for this environment.
