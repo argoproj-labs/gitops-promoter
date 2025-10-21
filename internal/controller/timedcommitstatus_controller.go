@@ -349,7 +349,7 @@ func (r *TimedCommitStatusReconciler) touchPromotionStrategyIfOpenPR(ctx context
 	// Touch the PromotionStrategy annotation to trigger reconciliation
 	psUpdated := ps.DeepCopy()
 	if psUpdated == nil {
-		return fmt.Errorf("failed to deep copy PromotionStrategy")
+		return errors.New("failed to deep copy PromotionStrategy")
 	}
 	if psUpdated.Annotations == nil {
 		psUpdated.Annotations = make(map[string]string)
