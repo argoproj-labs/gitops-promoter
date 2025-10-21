@@ -166,9 +166,9 @@ provider.
 When you delete a PromotionStrategy and its associated resources, the finalizers ensure deletion happens in this order:
 
 1. **PullRequest** - Closes the PR on the SCM
-2. **GitRepository** - Can be deleted once all PullRequests are gone
-3. **ScmProvider/ClusterScmProvider** - Can be deleted once all GitRepositories are gone
-4. **Secret** - Can be deleted once all ScmProviders/ClusterScmProviders are gone
+2. **GitRepository** - Can be deleted once all PullRequests referencing the GitRepository are gone
+3. **ScmProvider/ClusterScmProvider** - Can be deleted once all GitRepositories referencing the Provider are gone
+4. **Secret** - Can be deleted once all ScmProviders/ClusterScmProviders referencing the Secret are gone
 
 If you attempt to delete resources out of order, Kubernetes will mark them for deletion but they will remain in a 
 "Terminating" state until their dependent resources are removed. This is normal and expected behavior.
