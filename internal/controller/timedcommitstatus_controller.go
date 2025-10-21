@@ -200,11 +200,13 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 			continue
 		}
 
-		// Calculate timing information based on current environment's active commit
-		var elapsed time.Duration
-		if !currentActiveCommitTime.IsZero() {
-			elapsed = time.Since(currentActiveCommitTime)
+		if currentActiveCommitTime.IsZero() {
+			logger.Info("No active hydrated commit time in current environment", "branch", envConfig.Branch)
+			continue
 		}
+
+		// Calculate timing information based on current environment's active commit
+		elapsed := time.Since(currentActiveCommitTime)
 
 		// Determine commit status phase based on time elapsed in current environment
 		// This status will be reported for the current environment's active SHA
@@ -259,11 +261,6 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 // calculateCommitStatusPhase determines the commit status phase based on time elapsed since deployment
 func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(commitTime time.Time, requiredDuration time.Duration, elapsed time.Duration, envBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
-	if commitTime.IsZero() {
-		// If we don't have a commit time, we can't make a decision
-		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for commit time to be available in %s environment", envBranch)
-	}
-
 	if elapsed >= requiredDuration {
 		// Sufficient time has passed
 		return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met for %s environment", envBranch)
