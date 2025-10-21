@@ -1061,8 +1061,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ChangeTransferPolicies
@@ -1159,7 +1157,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(sha).To(Not(BeEmpty()))
 				activeCommitStatusDevelopment.Spec.Sha = sha
 				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
+				err = k8sClient.Create(ctx, activeCommitStatusDevelopment)
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
 				g.Expect(err).To(Succeed())
 
@@ -1229,7 +1227,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				activeCommitStatusStaging.Spec.Sha = sha
 				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, activeCommitStatusStaging)
+				err = k8sClient.Create(ctx, activeCommitStatusStaging)
 				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -1275,8 +1273,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ChangeTransferPolicies
@@ -1357,24 +1353,18 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      activeCommitStatusDevelopment.Name,
-					Namespace: activeCommitStatusDevelopment.Namespace,
-				}, activeCommitStatusDevelopment)
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
 				g.Expect(err).To(Succeed())
 
 				sha := ctpDev.Status.Active.Hydrated.Sha
 				activeCommitStatusDevelopment.Spec.Sha = sha
 				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
+				err = k8sClient.Create(ctx, activeCommitStatusDevelopment)
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
 				g.Expect(err).To(Succeed())
 
-				// Check that the proposed commit has the correct sha, aka it has reconciled at least once since adding new commits
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
-					Namespace: typeNamespacedName.Namespace,
-				}, &ctpDev)
-				g.Expect(err).To(Succeed())
 				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(sha))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -1435,7 +1425,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				activeCommitStatusStaging.Spec.Sha = sha
 				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, activeCommitStatusStaging)
+				err = k8sClient.Create(ctx, activeCommitStatusStaging)
 				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -1491,8 +1481,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ProposedCommits
@@ -1585,7 +1573,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(sha).To(Not(BeEmpty()))
 				proposedCommitStatusDevelopment.Spec.Sha = sha
 				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
+				err = k8sClient.Create(ctx, proposedCommitStatusDevelopment)
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())
 
@@ -1734,8 +1722,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ProposedCommits
@@ -1816,7 +1802,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(sha).To(Not(BeEmpty()))
 				proposedCommitStatusDevelopment.Spec.Sha = sha
 				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
+				err = k8sClient.Create(ctx, proposedCommitStatusDevelopment)
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -2368,8 +2354,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ProposedCommits
@@ -2471,7 +2455,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(sha).To(Not(BeEmpty()))
 				proposedCommitStatusDevelopment.Spec.Sha = sha
 				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
+				err = k8sClient.Create(ctx, proposedCommitStatusDevelopment)
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())
 
@@ -2550,7 +2534,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(sha).To(Not(BeEmpty()))
 				proposedCommitStatusStaging.Spec.Sha = sha
 				proposedCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, proposedCommitStatusStaging)
+				err = k8sClient.Create(ctx, proposedCommitStatusStaging)
 				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 				g.Expect(err).To(Succeed())
 
@@ -2899,8 +2883,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			ctpDev := promoterv1alpha1.ChangeTransferPolicy{}
@@ -2947,15 +2929,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(err).NotTo(HaveOccurred())
 				firstDevActiveSha = strings.TrimSpace(sha)
 
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      activeCommitStatusDevelopment.Name,
-					Namespace: activeCommitStatusDevelopment.Namespace,
-				}, activeCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
-
 				activeCommitStatusDevelopment.Spec.Sha = firstDevActiveSha
 				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
+				err = k8sClient.Create(ctx, activeCommitStatusDevelopment)
 				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
