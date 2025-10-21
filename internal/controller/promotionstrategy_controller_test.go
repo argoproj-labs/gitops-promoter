@@ -1184,7 +1184,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
-
 				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
@@ -1377,7 +1376,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
-
 				_, err = runGitCmd(gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
