@@ -73,10 +73,11 @@ spec:
               url:
                 description: Url is a URL that the user can follow to see more details
                   about the status
+                pattern: ^(https?://.*)?$
                 type: string
                 x-kubernetes-validations:
-                - message: URL scheme must be http or https
-                  rule: self == '' || url(self).getScheme() in ['http', 'https']
+                - message: must be a valid URL
+                  rule: self == '' || isURL(self)
             required:
             - description
             - gitRepositoryRef

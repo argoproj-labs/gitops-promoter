@@ -49,7 +49,8 @@ type CommitStatusSpec struct {
 
 	// Url is a URL that the user can follow to see more details about the status
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:XValidation:rule="self == '' || url(self).getScheme() in ['http', 'https']",message="URL scheme must be http or https"
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
+	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
 }
 

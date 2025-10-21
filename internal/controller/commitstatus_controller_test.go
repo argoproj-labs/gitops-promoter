@@ -403,7 +403,7 @@ var _ = Describe("CommitStatus Controller", func() {
 			By("Verifying the create operation fails due to CEL validation")
 			err := k8sClient.Create(ctx, commitStatus)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("URL scheme must be http or https"))
+			Expect(err.Error()).To(ContainSubstring("must be a valid URL"))
 
 			// Cleanup
 			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
@@ -471,10 +471,13 @@ var _ = Describe("CommitStatus Controller", func() {
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 
-			By("Verifying the create operation fails due to CEL scheme validation")
+			By("Verifying the create operation fails due to pattern validation")
 			err := k8sClient.Create(ctx, commitStatus)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("URL scheme must be http or https"))
+			Expect(err.Error()).To(Or(
+				ContainSubstring("must be a valid URL"),
+				ContainSubstring("in body should match"),
+			))
 
 			// Cleanup
 			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())

@@ -195,10 +195,11 @@ spec:
                 type: string
               url:
                 description: Url is the URL of the pull request.
+                pattern: ^(https?://.*)?$
                 type: string
                 x-kubernetes-validations:
-                - message: URL scheme must be http or https
-                  rule: self == '' || url(self).getScheme() in ['http', 'https']
+                - message: must be a valid URL
+                  rule: self == '' || isURL(self)
             type: object
         type: object
         x-kubernetes-validations:
