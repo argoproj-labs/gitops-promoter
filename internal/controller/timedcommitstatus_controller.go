@@ -100,19 +100,22 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// 3. Process each environment defined in the TimedCommitStatus
-	// Returns the list of environments that transitioned to success
-	transitionedEnvironments, err := r.processEnvironments(ctx, &tcs, &ps)
+	// Returns the list of environments that transitioned to success and the CommitStatus objects
+	transitionedEnvironments, commitStatuses, err := r.processEnvironments(ctx, &tcs, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
 
-	// 4. Update status
+	// 4. Inherit conditions from CommitStatus objects
+	utils.InheritNotReadyConditionFromObjects(&tcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
+
+	// 5. Update status
 	err = r.Status().Update(ctx, &tcs)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update TimedCommitStatus status: %w", err)
 	}
 
-	// 5. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
+	// 6. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
 	if len(transitionedEnvironments) > 0 {
 		err = r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
 		if err != nil {
@@ -159,12 +162,14 @@ func (r *TimedCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr 
 // has been running for the required duration. If so, report success for the current environment's active SHA.
 // This allows using the timed commit status as an active commit status gate to block promotions
 // when the current environment hasn't been stable for the required duration.
-// Returns a list of environment branches that transitioned from pending to success.
-func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]string, error) {
+// Returns a list of environment branches that transitioned from pending to success and the CommitStatus objects created/updated.
+func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]string, []*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
 	// Track which environments transitioned to success
 	transitionedEnvironments := []string{}
+	// Track all CommitStatus objects created/updated
+	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(tcs.Spec.Environments))
 
 	// Save the previous status before clearing it, so we can detect transitions
 	previousStatus := tcs.Status.DeepCopy()
@@ -241,10 +246,11 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 		// Create or update the CommitStatus for the current environment's active SHA
 		// This acts as an active commit status that gates promotions from this environment
-		err := r.upsertCommitStatus(ctx, tcs, ps, envConfig.Branch, currentActiveSha, phase, message, envConfig.Branch)
+		cs, err := r.upsertCommitStatus(ctx, tcs, ps, envConfig.Branch, currentActiveSha, phase, message, envConfig.Branch)
 		if err != nil {
-			return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
+			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
 		}
+		commitStatuses = append(commitStatuses, cs)
 
 		logger.Info("Processed environment time gate",
 			"branch", envConfig.Branch,
@@ -254,7 +260,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 			"required", envConfig.Duration.Duration)
 	}
 
-	return transitionedEnvironments, nil
+	return transitionedEnvironments, commitStatuses, nil
 }
 
 // calculateCommitStatusPhase determines the commit status phase based on time elapsed since deployment
@@ -268,7 +274,7 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for time-based gate on %s environment", envBranch)
 }
 
-func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) error {
+func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-timed", tcs.Name, branch))
 
@@ -305,10 +311,10 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create or update CommitStatus: %w", err)
+		return nil, fmt.Errorf("failed to create or update CommitStatus: %w", err)
 	}
 
-	return nil
+	return &commitStatus, nil
 }
 
 // touchChangeTransferPolicies adds or updates the ReconcileAtAnnotation on the ChangeTransferPolicies
