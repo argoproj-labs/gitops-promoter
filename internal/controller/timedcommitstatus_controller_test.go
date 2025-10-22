@@ -987,55 +987,18 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 	})
 
 	Context("When using invalid cron expression", func() {
-		ctx := context.Background()
+		It("should be rejected by API validation", func() {
+			ctx := context.Background()
 
-		var name string
-		var promotionStrategy *promoterv1alpha1.PromotionStrategy
-		var timedCommitStatus *promoterv1alpha1.TimedCommitStatus
-
-		BeforeEach(func() {
-			By("Creating the test resources")
-			var scmSecret *v1.Secret
-			var scmProvider *promoterv1alpha1.ScmProvider
-			var gitRepo *promoterv1alpha1.GitRepository
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-invalid-cron", "default")
-
-			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "timer"},
-			}
-			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
-				{
-					Branch: "environment/development",
-				},
-			}
-
-			setupInitialTestGitRepoOnServer(ctx, name, name)
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-			By("Waiting for PromotionStrategy to be reconciled")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(1))
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Creating a TimedCommitStatus with invalid cron expression")
-			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
+			By("Attempting to create a TimedCommitStatus with invalid cron expression")
+			timedCommitStatus := &promoterv1alpha1.TimedCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
+					Name:      "test-invalid-cron",
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.TimedCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
-						Name: name,
+						Name: "some-strategy",
 					},
 					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
@@ -1048,39 +1011,12 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, timedCommitStatus)).To(Succeed())
-		})
 
-		AfterEach(func() {
-			By("Cleaning up resources")
-			_ = k8sClient.Delete(ctx, timedCommitStatus)
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		})
-
-		It("should report pending with error message for invalid cron", func() {
-			By("Verifying TimedCommitStatus reports pending with error message")
-			Eventually(func(g Gomega) {
-				var tcs promoterv1alpha1.TimedCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, &tcs)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				g.Expect(tcs.Status.Environments).To(HaveLen(1))
-				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
-
-				// Verify CommitStatus has error message
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-environment/development-timed")
-				var cs promoterv1alpha1.CommitStatus
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      commitStatusName,
-					Namespace: "default",
-				}, &cs)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(cs.Spec.Description).To(ContainSubstring("Invalid cron expression"))
-			}, constants.EventuallyTimeout).Should(Succeed())
+			By("Verifying the API rejects the invalid cron expression")
+			err := k8sClient.Create(ctx, timedCommitStatus)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("Invalid value"))
+			Expect(err.Error()).To(ContainSubstring("schedule.cron"))
 		})
 	})
 

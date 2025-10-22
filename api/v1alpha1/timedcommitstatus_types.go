@@ -58,7 +58,11 @@ type TimedCommitStatusEnvironments struct {
 // Schedule is the cron schedule to wait before considering the commit status as success.
 type Schedule struct {
 	// Cron is the cron expression to check before considering the commit status a success.
+	// Standard 5-field cron format: minute (0-59), hour (0-23), day of month (1-31), month (1-12), day of week (0-6).
+	// Examples: "0 9 * * 1-5" (9 AM weekdays), "0 2 * * 0" (2 AM Sunday), "*/30 * * * *" (every 30 minutes).
 	// +required
+	// +kubebuilder:validation:MinLength=9
+	// +kubebuilder:validation:Pattern=`^[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+$`
 	Cron string `json:"cron"`
 
 	// Window is how long after the cron schedule triggers that we are allowed to consider the commit status as success.
