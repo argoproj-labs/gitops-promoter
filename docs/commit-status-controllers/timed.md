@@ -114,6 +114,62 @@ This configuration requires:
 - 24-hour soak time in production (just informational does not block any promotion, because no next environment)
 - Manual approval before any promotion (proposed commit status)
 
+### Complete Example with Schedule-Based Gates
+
+Here's a realistic production configuration using schedule-based gating:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: webservice-tier-1
+spec:
+  gitRepositoryRef:
+    name: webservice-tier-1
+  activeCommitStatuses:
+    - key: argocd-health
+    - key: timer
+  proposedCommitStatuses:
+    - key: ci-tests
+  environments:
+    - branch: environment/development
+    - branch: environment/staging
+    - branch: environment/production
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: TimedCommitStatus
+metadata:
+  name: webservice-tier-1
+spec:
+  promotionStrategyRef:
+    name: webservice-tier-1
+  environments:
+    # Development: Deploy anytime after 30 minutes
+    - branch: environment/development
+      duration: 30m
+    
+    # Staging: Deploy during business hours after 4-hour soak
+    - branch: environment/staging
+      duration: 4h
+      schedule:
+        cron: "0 9-17 * * 1-5"    # Hourly from 9 AM-5 PM weekdays
+        windowDuration: "30m"      # 30-minute window each hour
+    
+    # Production: Deploy only during afternoon window after 24-hour soak
+    - branch: environment/production
+      duration: 24h
+      schedule:
+        cron: "0 14 * * 1-5"      # 2 PM Monday-Friday
+        windowDuration: "2h"       # 2 PM - 4 PM deployment window
+```
+
+This configuration ensures:
+- Development can deploy anytime after a 30-minute soak
+- Staging deploys only during business hours (every hour from 9 AM-5 PM weekdays) after a 4-hour soak
+- Production deploys only in the afternoon window (2 PM-4 PM weekdays) after a full 24-hour soak
+- All environments require passing Argo CD health checks
+- All promotions require passing CI tests
+
 ## Duration Formats
 
 The `duration` field accepts standard Go duration strings:
@@ -123,6 +179,86 @@ The `duration` field accepts standard Go duration strings:
 - `1h` - 1 hour
 - `2h30m` - 2 hours and 30 minutes
 - `24h` - 24 hours
+
+## Schedule-Based Gating
+
+In addition to duration-based gating, you can configure schedule-based gating using cron expressions. This allows you to restrict promotions to specific time windows, such as business hours or maintenance windows.
+
+### Basic Schedule Configuration
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: TimedCommitStatus
+metadata:
+  name: webservice-tier-1
+spec:
+  promotionStrategyRef:
+    name: webservice-tier-1
+  environments:
+    - branch: environment/production
+      schedule:
+        cron: "0 9 * * 1-5"       # 9 AM Monday-Friday
+        windowDuration: "4h"       # 4-hour deployment window
+```
+
+This configuration allows promotions to production only during business hours (9 AM - 1 PM on weekdays).
+
+### Schedule Fields
+
+- **`cron`** (required): A cron expression defining when deployment windows begin. Uses standard 5-field cron format:
+  - Minute (0-59)
+  - Hour (0-23)
+  - Day of month (1-31)
+  - Month (1-12)
+  - Day of week (0-6, Sunday = 0)
+
+- **`windowDuration`** (required): How long after the cron trigger the deployment window remains open. Accepts Go duration format (e.g., `30m`, `2h`, `4h`).
+
+### Cron Expression Examples
+
+```yaml
+# Every day at 2 AM (maintenance window)
+cron: "0 2 * * *"
+windowDuration: "2h"
+
+# Weekdays at 9 AM (business hours start)
+cron: "0 9 * * 1-5"
+windowDuration: "8h"
+
+# Every 4 hours
+cron: "0 */4 * * *"
+windowDuration: "1h"
+
+# First day of every month at midnight
+cron: "0 0 1 * *"
+windowDuration: "6h"
+```
+
+### Combining Duration and Schedule
+
+You can combine both duration and schedule requirements. When both are specified, **BOTH** conditions must be satisfied for the promotion to proceed:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: TimedCommitStatus
+metadata:
+  name: webservice-tier-1
+spec:
+  promotionStrategyRef:
+    name: webservice-tier-1
+  environments:
+    - branch: environment/production
+      duration: 24h                # Must soak for 24 hours
+      schedule:
+        cron: "0 14 * * *"         # 2 PM daily
+        windowDuration: "2h"        # 2-hour window (2 PM - 4 PM)
+```
+
+This ensures:
+1. Changes have been running in the previous environment for at least 24 hours
+2. The promotion happens during the approved time window (2 PM - 4 PM daily)
+
+If the duration is met but it's outside the schedule window, the gate remains pending. If it's within the schedule window but the duration hasn't been met, the gate also remains pending.
 
 ## Behavior Details
 
@@ -200,16 +336,104 @@ environments:
     duration: 24h
 ```
 
+### Business Hours Only Deployments
+
+Restrict production deployments to business hours to ensure teams are available to respond to issues:
+
+```yaml
+environments:
+  - branch: environment/production
+    schedule:
+      cron: "0 9 * * 1-5"      # 9 AM Monday-Friday
+      windowDuration: "8h"      # 9 AM - 5 PM window
+```
+
+### Maintenance Window Deployments
+
+Schedule deployments during off-peak hours or maintenance windows:
+
+```yaml
+environments:
+  - branch: environment/production
+    schedule:
+      cron: "0 2 * * 0"        # 2 AM Sunday
+      windowDuration: "4h"      # 2 AM - 6 AM window
+```
+
+### Combined Soak Time and Schedule
+
+Require both adequate soak time and deployment during approved windows:
+
+```yaml
+environments:
+  - branch: environment/staging
+    duration: 4h                # 4 hour soak in previous env
+    schedule:
+      cron: "0 9-17 * * 1-5"   # Every hour from 9 AM-5 PM weekdays
+      windowDuration: "30m"     # 30 minute window after each hour
+  - branch: environment/production
+    duration: 24h               # 24 hour soak in staging
+    schedule:
+      cron: "0 14 * * 1-5"     # 2 PM Monday-Friday
+      windowDuration: "2h"      # 2 PM - 4 PM window
+```
+
+This ensures staging deploys only during business hours after a 4-hour soak, and production deploys only in the afternoon after a full 24-hour soak in staging.
+
 ## Troubleshooting
 
 ### Gate Stuck in Pending
 
 If a time-based gate remains in pending status:
 
-1. Check if there's a pending promotion in the lower environment
-2. Verify the commit time is being tracked correctly in the PromotionStrategy status
-3. Ensure the duration hasn't been recently increased
-4. Check the TimedCommitStatus status for detailed timing information
+1. **Duration-based gates:**
+   - Check if there's a pending promotion in the lower environment
+   - Verify the commit time is being tracked correctly in the PromotionStrategy status
+   - Ensure the duration hasn't been recently increased
+   - Check the TimedCommitStatus status for detailed timing information
+
+2. **Schedule-based gates:**
+   - Verify you're within the configured schedule window
+   - Check if the cron expression is correct using a cron validator
+   - Ensure the `windowDuration` is long enough for your deployment process
+   - Review the CommitStatus description field for schedule-specific error messages
+
+3. **Combined duration and schedule:**
+   - Both conditions must be satisfied - check each independently
+   - Verify the schedule window aligns with when your duration requirement is typically met
+
+### Invalid Cron Expression
+
+If you see "Invalid cron expression" in the CommitStatus description:
+
+1. Validate your cron expression using a cron validator tool
+2. Ensure you're using the 5-field format (minute, hour, day-of-month, month, day-of-week)
+3. Common mistakes:
+   - Using 6 fields (seconds are not supported)
+   - Invalid ranges (e.g., hour 24, minute 60)
+   - Syntax errors in the expression
+
+Valid cron examples:
+```yaml
+# Good
+cron: "0 9 * * 1-5"      # 9 AM weekdays
+cron: "*/30 * * * *"     # Every 30 minutes
+cron: "0 0,12 * * *"     # Midnight and noon
+
+# Bad
+cron: "0 0 9 * * 1-5"    # 6 fields (has seconds)
+cron: "60 9 * * *"       # Invalid minute (60)
+cron: "9am * * *"        # Text instead of numbers
+```
+
+### Deployment Window Missed
+
+If promotions are blocked because the schedule window was missed:
+
+1. Check when the next window opens using the cron expression
+2. Consider widening the `windowDuration` if windows are too narrow
+3. Add more frequent cron triggers if needed (e.g., hourly instead of daily)
+4. Review if the schedule aligns with your team's workflow
 
 ### Gate Not Created
 
@@ -229,4 +453,12 @@ kubectl get timedcommitstatus webservice-tier-1 -o yaml
 ```
 
 Check the `status.environments` section for detailed information about each environment's timing.
+
+To check the CommitStatus for schedule-specific information:
+
+```bash
+kubectl get commitstatus -l promoter.argoproj.io/commit-status=timer -o yaml
+```
+
+Look at the `spec.description` field for details about why a schedule-based gate is pending.
 
