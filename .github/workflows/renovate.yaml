@@ -49,8 +49,3 @@ jobs:
         env:
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
           RENOVATE_DRY_RUN: ${{ inputs.dryRun == 'true' }}
-          # Enable post-upgrade tasks (only works with self-hosted Renovate)
-          RENOVATE_ALLOWED_POST_UPGRADE_COMMANDS: >-
-            ["^go mod tidy$", "^make lint-fix"]
-          # Ensure Renovate uses the proper Git author
-          RENOVATE_GIT_AUTHOR: 'Renovate Bot <bot@renovateapp.com>'
