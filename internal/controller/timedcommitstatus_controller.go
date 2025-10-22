@@ -475,23 +475,20 @@ func (r *TimedCommitStatusReconciler) calculateRequeueDuration(ctx context.Conte
 
 	minRequeueTime := defaultDuration
 
-	// Check each environment configuration for duration and schedule requirements
-	for _, envConfig := range tcs.Spec.Environments {
-		// Check for duration-based gates that are still pending
-		for _, envStatus := range tcs.Status.Environments {
-			if envStatus.Branch == envConfig.Branch &&
-				envStatus.Phase == string(promoterv1alpha1.CommitPhasePending) &&
-				envStatus.AtMostDurationRemaining.Duration > 0 {
-				// Duration-based gate not met yet - requeue every minute for regular updates
-				if time.Minute < minRequeueTime {
-					minRequeueTime = time.Minute
-					logger.V(4).Info("Requeuing in 1 minute due to pending duration-based gate",
-						"branch", envConfig.Branch)
-				}
-			}
+	// First, check status for any pending duration-based gates
+	// If any are still waiting on duration, requeue every minute for regular updates
+	for _, envStatus := range tcs.Status.Environments {
+		if envStatus.Phase == string(promoterv1alpha1.CommitPhasePending) &&
+			envStatus.AtMostDurationRemaining.Duration > 0 {
+			// Duration-based gate not met yet - requeue every minute for regular updates
+			logger.V(4).Info("Requeuing in 1 minute due to pending duration-based gate",
+				"branch", envStatus.Branch)
+			return time.Minute
 		}
+	}
 
-		// Check for schedule-based gates
+	// Check each environment spec for schedule-based gates
+	for _, envConfig := range tcs.Spec.Environments {
 		if envConfig.Schedule.Cron != "" {
 			nextTrigger, err := r.getNextCronTrigger(envConfig.Schedule.Cron)
 			if err != nil {
@@ -502,11 +499,9 @@ func (r *TimedCommitStatusReconciler) calculateRequeueDuration(ctx context.Conte
 				continue
 			}
 
-			timeUntilTrigger := time.Until(nextTrigger)
-			// Add a small buffer (5 seconds) after the trigger to ensure we requeue shortly after
-			timeUntilRequeue := timeUntilTrigger + (5 * time.Second)
+			timeUntilRequeue := time.Until(nextTrigger)
 
-			// Only consider if it's sooner than current minimum and less than default duration
+			// Only consider if it's sooner than current minimum and positive
 			if timeUntilRequeue > 0 && timeUntilRequeue < minRequeueTime {
 				minRequeueTime = timeUntilRequeue
 				logger.V(4).Info("Requeuing at next cron trigger",
