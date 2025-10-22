@@ -404,7 +404,7 @@ If a time-based gate remains in pending status:
 
 ### Invalid Cron Expression
 
-If you see "Invalid cron expression" in the CommitStatus description:
+Invalid cron expressions are rejected at the API level with immediate validation errors. If you receive a validation error when creating or updating a TimedCommitStatus:
 
 1. Validate your cron expression using a cron validator tool
 2. Ensure you're using the 5-field format (minute, hour, day-of-month, month, day-of-week)
@@ -412,6 +412,7 @@ If you see "Invalid cron expression" in the CommitStatus description:
    - Using 6 fields (seconds are not supported)
    - Invalid ranges (e.g., hour 24, minute 60)
    - Syntax errors in the expression
+   - Cron expression too short (minimum 9 characters)
 
 Valid cron examples:
 ```yaml
@@ -420,10 +421,11 @@ cron: "0 9 * * 1-5"      # 9 AM weekdays
 cron: "*/30 * * * *"     # Every 30 minutes
 cron: "0 0,12 * * *"     # Midnight and noon
 
-# Bad
+# Bad - These will be rejected by the API
 cron: "0 0 9 * * 1-5"    # 6 fields (has seconds)
 cron: "60 9 * * *"       # Invalid minute (60)
 cron: "9am * * *"        # Text instead of numbers
+cron: "* * *"            # Too few fields
 ```
 
 ### Deployment Window Missed
