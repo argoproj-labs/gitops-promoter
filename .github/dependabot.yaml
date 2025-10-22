@@ -1,5 +1,7 @@
 version: 2
 updates:
+  # Note: Go version and golangci-lint version updates are handled by Renovate
+  # See renovate.json5 for configuration
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
