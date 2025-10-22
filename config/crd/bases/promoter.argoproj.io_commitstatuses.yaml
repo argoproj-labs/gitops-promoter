@@ -69,6 +69,7 @@ spec:
                 - failure
                 type: string
               sha:
+                minLength: 1
                 type: string
               url:
                 description: Url is a URL that the user can follow to see more details

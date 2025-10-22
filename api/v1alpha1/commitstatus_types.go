@@ -32,6 +32,7 @@ type CommitStatusSpec struct {
 	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Sha string `json:"sha"`
 
 	// +kubebuilder:validation:Required
