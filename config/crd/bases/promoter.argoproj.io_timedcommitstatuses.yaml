@@ -67,8 +67,12 @@ spec:
                         If just a schedule is provided, the duration will be ignored and the schedule will be used to determine the success of the commit status.
                       properties:
                         cron:
-                          description: Cron is the cron expression to check before
-                            considering the commit status a success.
+                          description: |-
+                            Cron is the cron expression to check before considering the commit status a success.
+                            Standard 5-field cron format: minute (0-59), hour (0-23), day of month (1-31), month (1-12), day of week (0-6).
+                            Examples: "0 9 * * 1-5" (9 AM weekdays), "0 2 * * 0" (2 AM Sunday), "*/30 * * * *" (every 30 minutes).
+                          minLength: 9
+                          pattern: ^[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+$
                           type: string
                         window:
                           description: |-
