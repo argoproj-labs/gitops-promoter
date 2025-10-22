@@ -24,6 +24,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/robfig/cron/v3"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -219,7 +220,11 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		// This status will be reported for the current environment's active SHA
 		// When a new commit is merged, the active SHA and commit time automatically update,
 		// which naturally resets the timer to 0 and reports pending until the duration is met
-		phase, message := r.calculateCommitStatusPhase(envConfig.Duration.Duration, elapsed, envConfig.Branch)
+		var schedule *promoterv1alpha1.Schedule
+		if envConfig.Schedule.Cron != "" {
+			schedule = &envConfig.Schedule
+		}
+		phase, message := r.calculateCommitStatusPhase(envConfig.Duration.Duration, elapsed, schedule, currentActiveCommitTime, envConfig.Branch)
 
 		// Check if this time gate transitioned to success
 		// Find the previous status for this environment
@@ -268,14 +273,96 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 }
 
 // calculateCommitStatusPhase determines the commit status phase based on time elapsed since deployment
-func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuration time.Duration, elapsed time.Duration, envBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
-	if elapsed >= requiredDuration {
-		// Sufficient time has passed
-		return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met for %s environment", envBranch)
+// and optionally schedule constraints.
+// Behavior:
+// - If only duration is provided: check if elapsed >= requiredDuration
+// - If only schedule is provided: check if current time is within schedule window
+// - If both are provided: BOTH conditions must be satisfied
+func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuration time.Duration, elapsed time.Duration, schedule *promoterv1alpha1.Schedule, commitTime time.Time, envBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
+	hasDuration := requiredDuration > 0
+	hasSchedule := schedule != nil && schedule.Cron != ""
+
+	durationMet := false
+	scheduleMet := false
+	var scheduleErr error
+
+	// Check duration requirement if provided
+	if hasDuration {
+		durationMet = elapsed >= requiredDuration
 	}
 
-	// Not enough time has passed yet
-	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for time-based gate on %s environment", envBranch)
+	// Check schedule requirement if provided
+	if hasSchedule {
+		scheduleMet, scheduleErr = r.isWithinScheduleWindow(schedule.Cron, schedule.WindowDuration.Duration, commitTime)
+		if scheduleErr != nil {
+			// Invalid cron expression
+			return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Invalid cron expression for %s environment: %v", envBranch, scheduleErr)
+		}
+	}
+
+	// Determine phase based on what's configured
+	if hasDuration && hasSchedule {
+		// Both must be satisfied
+		if durationMet && scheduleMet {
+			return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met (duration and schedule) for %s environment", envBranch)
+		}
+		if !durationMet && !scheduleMet {
+			return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for time-based gate (duration and schedule) on %s environment", envBranch)
+		}
+		if !durationMet {
+			return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for duration requirement on %s environment", envBranch)
+		}
+		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for schedule window on %s environment", envBranch)
+	} else if hasSchedule {
+		// Only schedule matters
+		if scheduleMet {
+			return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met (schedule) for %s environment", envBranch)
+		}
+		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for schedule window on %s environment", envBranch)
+	} else if hasDuration {
+		// Only duration matters (existing behavior)
+		if durationMet {
+			return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met for %s environment", envBranch)
+		}
+		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for time-based gate on %s environment", envBranch)
+	}
+
+	// No duration or schedule configured - should not happen but default to pending
+	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("No time-based gate configured for %s environment", envBranch)
+}
+
+// isWithinScheduleWindow checks if the current time is within an allowed deployment window
+// based on a cron schedule. It finds the most recent cron trigger before or at the current time
+// and checks if we're within windowDuration from that trigger.
+func (r *TimedCommitStatusReconciler) isWithinScheduleWindow(cronExpr string, windowDuration time.Duration, commitTime time.Time) (bool, error) {
+	// Parse the cron expression
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	schedule, err := parser.Parse(cronExpr)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse cron expression %q: %w", cronExpr, err)
+	}
+
+	now := time.Now()
+
+	// Find the most recent schedule trigger before or at current time
+	// We look back from current time to find when the schedule last triggered
+	// We'll check up to 7 days back to find a trigger
+	searchStart := now.Add(-7 * 24 * time.Hour)
+	lastTrigger := schedule.Next(searchStart)
+
+	// Keep finding next triggers until we pass current time
+	for lastTrigger.Before(now) {
+		nextTrigger := schedule.Next(lastTrigger)
+		if nextTrigger.After(now) {
+			// We've found the most recent trigger before current time
+			break
+		}
+		lastTrigger = nextTrigger
+	}
+
+	// Check if we're within the window from the last trigger
+	windowEnd := lastTrigger.Add(windowDuration)
+	return now.After(lastTrigger) && now.Before(windowEnd), nil
 }
 
 func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) (*promoterv1alpha1.CommitStatus, error) {
