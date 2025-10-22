@@ -1130,4 +1130,96 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
+
+	Context("When schedule triggers require smart requeue timing", func() {
+		ctx := context.Background()
+
+		var name string
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+		var timedCommitStatus *promoterv1alpha1.TimedCommitStatus
+
+		BeforeEach(func() {
+			By("Creating the test resources")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-smart-requeue", "default")
+
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "timer"},
+			}
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{
+					Branch: "environment/development",
+				},
+			}
+
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			By("Waiting for PromotionStrategy to be reconciled")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, promotionStrategy)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(1))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a TimedCommitStatus with hourly schedule")
+			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.TimedCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+						{
+							Branch: "environment/development",
+							Schedule: promoterv1alpha1.Schedule{
+								Cron:   "0 * * * *", // Every hour on the hour
+								Window: metav1.Duration{Duration: 10 * time.Minute},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, timedCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			_ = k8sClient.Delete(ctx, timedCommitStatus)
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		It("should reconcile and handle schedule-based requeuing", func() {
+			By("Verifying TimedCommitStatus is created and reconciled")
+			Eventually(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &tcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(tcs.Status.Environments).To(HaveLen(1))
+				g.Expect(tcs.Status.Environments[0].Branch).To(Equal("environment/development"))
+
+				// Phase depends on whether we're within the current hour's 10-minute window
+				g.Expect(tcs.Status.Environments[0].Phase).To(BeElementOf(
+					string(promoterv1alpha1.CommitPhaseSuccess),
+					string(promoterv1alpha1.CommitPhasePending),
+				), "Phase should be either success (if within window) or pending (if outside)")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
 })
