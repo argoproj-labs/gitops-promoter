@@ -53,9 +53,28 @@ spec:
                         Duration is the time duration to wait before considering the commit status as success.
                         The duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
                       type: string
+                    schedule:
+                      description: |-
+                        Schedule is the cron schedule to wait before considering the commit status as success.
+                        If a schedule is provided with a duration both will be used to determine the success of the commit status.
+                        If just a schedule is provided, the duration will be ignored and the schedule will be used to determine the success of the commit status.
+                      properties:
+                        cron:
+                          description: Cron is the cron expression to check before
+                            considering the commit status a success.
+                          type: string
+                        windowDuration:
+                          description: |-
+                            WindowDuration is how long after the cron schedule triggers that we are allowed to consider the commit status as success.
+                            The window duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
+                            Example: "5m" means 5 minutes after the cron schedule triggers that we are allowed to consider the commit status as success.
+                          type: string
+                      required:
+                      - cron
+                      - windowDuration
+                      type: object
                   required:
                   - branch
-                  - duration
                   type: object
                 type: array
               promotionStrategyRef:

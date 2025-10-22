@@ -45,8 +45,27 @@ type TimedCommitStatusEnvironments struct {
 	Branch string `json:"branch"`
 	// Duration is the time duration to wait before considering the commit status as success.
 	// The duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
+	// +optional
+	Duration metav1.Duration `json:"duration,omitempty"`
+
+	// Schedule is the cron schedule to wait before considering the commit status as success.
+	// If a schedule is provided with a duration both will be used to determine the success of the commit status.
+	// If just a schedule is provided, the duration will be ignored and the schedule will be used to determine the success of the commit status.
+	// +optional
+	Schedule Schedule `json:"schedule,omitempty"`
+}
+
+// Schedule is the cron schedule to wait before considering the commit status as success.
+type Schedule struct {
+	// Cron is the cron expression to check before considering the commit status a success.
 	// +required
-	Duration metav1.Duration `json:"duration"`
+	Cron string `json:"cron"`
+
+	// WindowDuration is how long after the cron schedule triggers that we are allowed to consider the commit status as success.
+	// The window duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
+	// Example: "5m" means 5 minutes after the cron schedule triggers that we are allowed to consider the commit status as success.
+	// +required
+	WindowDuration metav1.Duration `json:"windowDuration"`
 }
 
 // TimedCommitStatusStatus defines the observed state of TimedCommitStatus.
