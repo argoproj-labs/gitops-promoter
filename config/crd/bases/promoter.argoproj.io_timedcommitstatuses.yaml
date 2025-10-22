@@ -63,15 +63,15 @@ spec:
                           description: Cron is the cron expression to check before
                             considering the commit status a success.
                           type: string
-                        windowDuration:
+                        window:
                           description: |-
-                            WindowDuration is how long after the cron schedule triggers that we are allowed to consider the commit status as success.
+                            Window is how long after the cron schedule triggers that we are allowed to consider the commit status as success.
                             The window duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
                             Example: "5m" means 5 minutes after the cron schedule triggers that we are allowed to consider the commit status as success.
                           type: string
                       required:
                       - cron
-                      - windowDuration
+                      - window
                       type: object
                   required:
                   - branch
