@@ -224,7 +224,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 		if envConfig.Schedule.Cron != "" {
 			schedule = &envConfig.Schedule
 		}
-		phase, message := r.calculateCommitStatusPhase(envConfig.Duration.Duration, elapsed, schedule, currentActiveCommitTime, envConfig.Branch)
+		phase, message := r.calculateCommitStatusPhase(envConfig.Duration.Duration, elapsed, schedule, envConfig.Branch)
 
 		// Check if this time gate transitioned to success
 		// Find the previous status for this environment
@@ -278,7 +278,7 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 // - If only duration is provided: check if elapsed >= requiredDuration
 // - If only schedule is provided: check if current time is within schedule window
 // - If both are provided: BOTH conditions must be satisfied
-func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuration time.Duration, elapsed time.Duration, schedule *promoterv1alpha1.Schedule, commitTime time.Time, envBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
+func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuration time.Duration, elapsed time.Duration, schedule *promoterv1alpha1.Schedule, envBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
 	hasDuration := requiredDuration > 0
 	hasSchedule := schedule != nil && schedule.Cron != ""
 
@@ -293,7 +293,7 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 
 	// Check schedule requirement if provided
 	if hasSchedule {
-		scheduleMet, scheduleErr = r.isWithinScheduleWindow(schedule.Cron, schedule.Window.Duration, commitTime)
+		scheduleMet, scheduleErr = r.isWithinScheduleWindow(schedule.Cron, schedule.Window.Duration)
 		if scheduleErr != nil {
 			// Invalid cron expression
 			return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Invalid cron expression for %s environment: %v", envBranch, scheduleErr)
@@ -301,25 +301,13 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 	}
 
 	// Determine phase based on what's configured
-	if hasDuration && hasSchedule {
-		// Both must be satisfied
-		if durationMet && scheduleMet {
-			return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met (duration and schedule) for %s environment", envBranch)
-		}
-		if !durationMet && !scheduleMet {
-			return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for time-based gate (duration and schedule) on %s environment", envBranch)
-		}
-		if !durationMet {
-			return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for duration requirement on %s environment", envBranch)
-		}
-		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for schedule window on %s environment", envBranch)
-	} else if hasSchedule {
-		// Only schedule matters
-		if scheduleMet {
-			return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met (schedule) for %s environment", envBranch)
-		}
-		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for schedule window on %s environment", envBranch)
-	} else if hasDuration {
+	// Return early for simple cases to reduce nesting
+	if !hasDuration && !hasSchedule {
+		// No duration or schedule configured - should not happen but default to pending
+		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("No time-based gate configured for %s environment", envBranch)
+	}
+
+	if hasDuration && !hasSchedule {
 		// Only duration matters (existing behavior)
 		if durationMet {
 			return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met for %s environment", envBranch)
@@ -327,14 +315,33 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for time-based gate on %s environment", envBranch)
 	}
 
-	// No duration or schedule configured - should not happen but default to pending
-	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("No time-based gate configured for %s environment", envBranch)
+	if !hasDuration && hasSchedule {
+		// Only schedule matters
+		if scheduleMet {
+			return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met (schedule) for %s environment", envBranch)
+		}
+		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for schedule window on %s environment", envBranch)
+	}
+
+	// Both duration and schedule are configured - both must be satisfied
+	if durationMet && scheduleMet {
+		return promoterv1alpha1.CommitPhaseSuccess, fmt.Sprintf("Time-based gate requirement met (duration and schedule) for %s environment", envBranch)
+	}
+
+	// At least one requirement is not met
+	if !durationMet && !scheduleMet {
+		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for time-based gate (duration and schedule) on %s environment", envBranch)
+	}
+	if !durationMet {
+		return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for duration requirement on %s environment", envBranch)
+	}
+	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for schedule window on %s environment", envBranch)
 }
 
 // isWithinScheduleWindow checks if the current time is within an allowed deployment window
 // based on a cron schedule. It finds the most recent cron trigger before or at the current time
 // and checks if we're within windowDuration from that trigger.
-func (r *TimedCommitStatusReconciler) isWithinScheduleWindow(cronExpr string, windowDuration time.Duration, commitTime time.Time) (bool, error) {
+func (r *TimedCommitStatusReconciler) isWithinScheduleWindow(cronExpr string, windowDuration time.Duration) (bool, error) {
 	// Parse the cron expression
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	schedule, err := parser.Parse(cronExpr)
@@ -453,39 +460,75 @@ func (r *TimedCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Co
 }
 
 // calculateRequeueDuration determines when to requeue based on whether there are pending time gates.
-// If there are pending time gates where the duration has not been met, requeue every 1 minute for regular status updates.
-// If there are pending time gates where the duration has been met (waiting for open PR to merge), use the default duration.
+// For duration-based gates: requeue every 1 minute for regular status updates.
+// For schedule-based gates: requeue at the next cron trigger if it's sooner than the default.
 // Otherwise, use the default requeue duration from settings.
 func (r *TimedCommitStatusReconciler) calculateRequeueDuration(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus) time.Duration {
 	logger := log.FromContext(ctx)
 
-	// Check if there are any pending time gates and whether their duration has been met
-	hasPendingGatesNotMet := false
+	// Get the default requeue duration first
+	defaultDuration, err := settings.GetRequeueDuration[promoterv1alpha1.TimedCommitStatusConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		logger.Error(err, "failed to get default requeue duration, using 1 hour")
+		defaultDuration = time.Hour
+	}
 
-	for _, envStatus := range tcs.Status.Environments {
-		if envStatus.Phase == string(promoterv1alpha1.CommitPhasePending) {
-			// Check if there is still time remaining before the gate is satisfied
-			if envStatus.AtMostDurationRemaining.Duration > 0 {
-				hasPendingGatesNotMet = true
-				break
+	minRequeueTime := defaultDuration
+
+	// Check each environment configuration for duration and schedule requirements
+	for _, envConfig := range tcs.Spec.Environments {
+		// Check for duration-based gates that are still pending
+		for _, envStatus := range tcs.Status.Environments {
+			if envStatus.Branch == envConfig.Branch &&
+				envStatus.Phase == string(promoterv1alpha1.CommitPhasePending) &&
+				envStatus.AtMostDurationRemaining.Duration > 0 {
+				// Duration-based gate not met yet - requeue every minute for regular updates
+				if time.Minute < minRequeueTime {
+					minRequeueTime = time.Minute
+					logger.V(4).Info("Requeuing in 1 minute due to pending duration-based gate",
+						"branch", envConfig.Branch)
+				}
+			}
+		}
+
+		// Check for schedule-based gates
+		if envConfig.Schedule.Cron != "" {
+			nextTrigger, err := r.getNextCronTrigger(envConfig.Schedule.Cron)
+			if err != nil {
+				logger.V(4).Info("Failed to parse cron schedule for requeue calculation",
+					"branch", envConfig.Branch,
+					"cron", envConfig.Schedule.Cron,
+					"error", err)
+				continue
+			}
+
+			timeUntilTrigger := time.Until(nextTrigger)
+			// Add a small buffer (5 seconds) after the trigger to ensure we requeue shortly after
+			timeUntilRequeue := timeUntilTrigger + (5 * time.Second)
+
+			// Only consider if it's sooner than current minimum and less than default duration
+			if timeUntilRequeue > 0 && timeUntilRequeue < minRequeueTime {
+				minRequeueTime = timeUntilRequeue
+				logger.V(4).Info("Requeuing at next cron trigger",
+					"branch", envConfig.Branch,
+					"nextTrigger", nextTrigger.Format(time.RFC3339),
+					"requeueIn", timeUntilRequeue.Round(time.Second))
 			}
 		}
 	}
 
-	// If there are pending gates where duration hasn't been met, requeue every minute for regular status updates
-	if hasPendingGatesNotMet {
-		logger.V(4).Info("Requeuing in 1 minute due to pending time gates with unmet duration")
-		return time.Minute
-	}
+	return minRequeueTime
+}
 
-	// Otherwise use the default requeue duration
-	defaultDuration, err := settings.GetRequeueDuration[promoterv1alpha1.TimedCommitStatusConfiguration](ctx, r.SettingsMgr)
+// getNextCronTrigger calculates when the cron schedule will next trigger
+func (r *TimedCommitStatusReconciler) getNextCronTrigger(cronExpr string) (time.Time, error) {
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	schedule, err := parser.Parse(cronExpr)
 	if err != nil {
-		logger.Error(err, "failed to get default requeue duration, using 1 hour")
-		return time.Hour
+		return time.Time{}, fmt.Errorf("failed to parse cron expression %q: %w", cronExpr, err)
 	}
 
-	return defaultDuration
+	return schedule.Next(time.Now()), nil
 }
 
 // enqueueTimedCommitStatusForPromotionStrategy returns a handler that enqueues all TimedCommitStatus resources
