@@ -293,7 +293,7 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 
 	// Check schedule requirement if provided
 	if hasSchedule {
-		scheduleMet, scheduleErr = r.isWithinScheduleWindow(schedule.Cron, schedule.WindowDuration.Duration, commitTime)
+		scheduleMet, scheduleErr = r.isWithinScheduleWindow(schedule.Cron, schedule.Window.Duration, commitTime)
 		if scheduleErr != nil {
 			// Invalid cron expression
 			return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Invalid cron expression for %s environment: %v", envBranch, scheduleErr)

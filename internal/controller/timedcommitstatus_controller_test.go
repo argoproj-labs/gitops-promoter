@@ -723,8 +723,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 						{
 							Branch: "environment/development",
 							Schedule: promoterv1alpha1.Schedule{
-								Cron:           "* * * * *", // Every minute
-								WindowDuration: metav1.Duration{Duration: 30 * time.Second},
+								Cron:   "* * * * *", // Every minute
+								Window: metav1.Duration{Duration: 30 * time.Second},
 							},
 						},
 					},
@@ -826,8 +826,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 						{
 							Branch: "environment/development",
 							Schedule: promoterv1alpha1.Schedule{
-								Cron:           "0 3 * * *", // 3 AM daily - unlikely to be within window
-								WindowDuration: metav1.Duration{Duration: 1 * time.Minute},
+								Cron:   "0 3 * * *", // 3 AM daily - unlikely to be within window
+								Window: metav1.Duration{Duration: 1 * time.Minute},
 							},
 						},
 					},
@@ -936,8 +936,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 							Branch:   "environment/development",
 							Duration: metav1.Duration{Duration: 5 * time.Second}, // Short duration
 							Schedule: promoterv1alpha1.Schedule{
-								Cron:           "* * * * *", // Every minute
-								WindowDuration: metav1.Duration{Duration: 30 * time.Second},
+								Cron:   "* * * * *", // Every minute
+								Window: metav1.Duration{Duration: 30 * time.Second},
 							},
 						},
 					},
@@ -1040,8 +1040,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 						{
 							Branch: "environment/development",
 							Schedule: promoterv1alpha1.Schedule{
-								Cron:           "invalid cron expression",
-								WindowDuration: metav1.Duration{Duration: 30 * time.Second},
+								Cron:   "invalid cron expression",
+								Window: metav1.Duration{Duration: 30 * time.Second},
 							},
 						},
 					},
@@ -1139,8 +1139,8 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 							Branch:   "environment/development",
 							Duration: metav1.Duration{Duration: 1 * time.Second}, // Very short
 							Schedule: promoterv1alpha1.Schedule{
-								Cron:           "0 2 * * *", // 2 AM daily
-								WindowDuration: metav1.Duration{Duration: 1 * time.Minute},
+								Cron:   "0 2 * * *", // 2 AM daily
+								Window: metav1.Duration{Duration: 1 * time.Minute},
 							},
 						},
 					},
