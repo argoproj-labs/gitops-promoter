@@ -60,16 +60,18 @@ type Schedule struct {
 	// Cron is the cron expression to check before considering the commit status a success.
 	// Standard 5-field cron format: minute (0-59), hour (0-23), day of month (1-31), month (1-12), day of week (0-6).
 	// Examples: "0 9 * * 1-5" (9 AM weekdays), "0 2 * * 0" (2 AM Sunday), "*/30 * * * *" (every 30 minutes).
-	// +required
+	// When provided, window is also required.
+	// +optional
 	// +kubebuilder:validation:MinLength=9
 	// +kubebuilder:validation:Pattern=`^[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+$`
-	Cron string `json:"cron"`
+	Cron string `json:"cron,omitempty"`
 
 	// Window is how long after the cron schedule triggers that we are allowed to consider the commit status as success.
 	// The window duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
 	// Example: "5m" means 5 minutes after the cron schedule triggers that we are allowed to consider the commit status as success.
-	// +required
-	Window metav1.Duration `json:"window"`
+	// Required when cron is provided.
+	// +optional
+	Window metav1.Duration `json:"window,omitempty"`
 }
 
 // TimedCommitStatusStatus defines the observed state of TimedCommitStatus.
