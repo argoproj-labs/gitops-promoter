@@ -3,12 +3,7 @@
   "extends": [
     "config:recommended"
   ],
-  "repositories": ["argoproj-labs/gitops-promoter"],
   "gitAuthor": "Renovate Bot <bot@renovateapp.com>",
-  "allowedPostUpgradeCommands": [
-    "^go mod tidy$",
-    "^make lint-fix"
-  ],
   "timezone": "UTC",
   "schedule": [
     "every weekend"
