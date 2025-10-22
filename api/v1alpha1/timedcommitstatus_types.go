@@ -61,11 +61,11 @@ type Schedule struct {
 	// +required
 	Cron string `json:"cron"`
 
-	// WindowDuration is how long after the cron schedule triggers that we are allowed to consider the commit status as success.
+	// Window is how long after the cron schedule triggers that we are allowed to consider the commit status as success.
 	// The window duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
 	// Example: "5m" means 5 minutes after the cron schedule triggers that we are allowed to consider the commit status as success.
 	// +required
-	WindowDuration metav1.Duration `json:"windowDuration"`
+	Window metav1.Duration `json:"window"`
 }
 
 // TimedCommitStatusStatus defines the observed state of TimedCommitStatus.
