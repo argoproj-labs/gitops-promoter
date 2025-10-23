@@ -1359,6 +1359,11 @@ func (in *PullRequestSpec) DeepCopy() *PullRequestSpec {
 func (in *PullRequestStatus) DeepCopyInto(out *PullRequestStatus) {
 	*out = *in
 	in.PRCreationTime.DeepCopyInto(&out.PRCreationTime)
+	if in.BranchWillBeDeletedOnMerge != nil {
+		in, out := &in.BranchWillBeDeletedOnMerge, &out.BranchWillBeDeletedOnMerge
+		*out = new(bool)
+		**out = **in
+	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
 		*out = make([]v1.Condition, len(*in))

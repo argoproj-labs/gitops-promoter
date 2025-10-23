@@ -39,7 +39,7 @@ func NewGithubPullRequestProvider(ctx context.Context, k8sClient client.Client, 
 }
 
 // Create creates a new pull request with the specified title, head, base, and description.
-func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (string, error) {
+func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (string, *bool, error) {
 	logger := log.FromContext(ctx)
 
 	newPR := &github.NewPullRequest{
@@ -51,7 +51,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
-		return "", fmt.Errorf("failed to get GitRepository: %w", err)
+		return "", nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	start := time.Now()
@@ -60,7 +60,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return "", fmt.Errorf("failed to create pull request: %w", err)
+		return "", nil, fmt.Errorf("failed to create pull request: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -69,7 +69,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		"url", response.Request.URL)
 	logger.Info("github response status", "status", response.Status)
 
-	return strconv.Itoa(*githubPullRequest.Number), nil
+	return strconv.Itoa(*githubPullRequest.Number), githubPullRequest.Head.Repo.DeleteBranchOnMerge, nil
 }
 
 // Update updates an existing pull request with the specified title and description.
@@ -190,13 +190,13 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, *bool, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil || gitRepo == nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to get GitRepository: %w", err)
+		return false, "", time.Time{}, nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	start := time.Now()
@@ -208,7 +208,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
+		return false, "", time.Time{}, nil, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -218,10 +218,10 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	logger.V(4).Info("github response status",
 		"status", response.Status)
 	if len(pullRequests) > 0 {
-		return true, strconv.Itoa(*pullRequests[0].Number), pullRequests[0].CreatedAt.Time, nil
+		return true, strconv.Itoa(*pullRequests[0].Number), pullRequests[0].CreatedAt.Time, pullRequests[0].Head.Repo.DeleteBranchOnMerge, nil
 	}
 
-	return false, "", time.Time{}, nil
+	return false, "", time.Time{}, nil, nil
 }
 
 // GetUrl returns the URL of the pull request.

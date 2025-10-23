@@ -84,6 +84,10 @@ type PullRequestStatus struct {
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
 
+	// BranchWillBeDeletedOnMerge indicates whether the source branch will be deleted upon merging the pull request.
+	// This field may be nil if the information is not available.
+	BranchWillBeDeletedOnMerge *bool `json:"branchWillBeDeletedOnMerge,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge

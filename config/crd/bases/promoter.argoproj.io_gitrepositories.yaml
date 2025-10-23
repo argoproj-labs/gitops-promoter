@@ -43,6 +43,13 @@ spec:
                 description: FakeRepo is a placeholder for a repository in the fake
                   SCM provider, used for testing purposes.
                 properties:
+                  branchWillBeDeletedOnMerge:
+                    default: false
+                    description: |-
+                      BranchWillBeDeletedOnMerge indicates whether the branch will be deleted upon merging a pull request. This is
+                      helpful for testing how the controller will behave when the SCM provider is configured to delete branches on
+                      merge.
+                    type: boolean
                   name:
                     description: Name is the name of the repository.
                     type: string

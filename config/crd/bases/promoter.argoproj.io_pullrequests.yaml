@@ -117,6 +117,11 @@ spec:
           status:
             description: PullRequestStatus defines the observed state of PullRequest
             properties:
+              branchWillBeDeletedOnMerge:
+                description: |-
+                  BranchWillBeDeletedOnMerge indicates whether the source branch will be deleted upon merging the pull request.
+                  This field may be nil if the information is not available.
+                type: boolean
               conditions:
                 description: Conditions Represents the observations of the current
                   state.

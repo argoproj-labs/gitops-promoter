@@ -8,6 +8,7 @@ import (
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -39,22 +40,22 @@ func NewGitlabPullRequestProvider(k8sClient client.Client, secret v1.Secret, dom
 }
 
 // Create creates a new pull request with the specified title, head, base, and description.
-func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc string, prObj v1alpha1.PullRequest) (string, error) {
+func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (string, *bool, error) {
 	logger := log.FromContext(ctx)
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
-		Namespace: prObj.Namespace,
-		Name:      prObj.Spec.RepositoryReference.Name,
+		Namespace: pullRequest.Namespace,
+		Name:      pullRequest.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to get GitRepository: %w", err)
+		return "", nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	options := &gitlab.CreateMergeRequestOptions{
 		Title:        gitlab.Ptr(title),
 		SourceBranch: gitlab.Ptr(head),
 		TargetBranch: gitlab.Ptr(base),
-		Description:  gitlab.Ptr(desc),
+		Description:  gitlab.Ptr(description),
 	}
 
 	start := time.Now()
@@ -66,18 +67,18 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return "", fmt.Errorf("failed to create pull request: %w", err)
+		return "", nil, fmt.Errorf("failed to create pull request: %w", err)
 	}
 
 	logGitLabRateLimitsIfAvailable(
 		logger,
-		prObj.Spec.RepositoryReference.Name,
+		pullRequest.Spec.RepositoryReference.Name,
 		resp,
 	)
 	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
-	return strconv.Itoa(mr.IID), nil
+	return strconv.Itoa(mr.IID), ptr.To(mr.ShouldRemoveSourceBranch), nil
 }
 
 // Update updates an existing pull request with the specified title and description.
@@ -227,7 +228,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, *bool, error) {
 	logger := log.FromContext(ctx)
 	logger.V(4).Info("Finding Open Pull Request")
 
@@ -236,7 +237,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		Name:      pullRequest.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to get repo: %w", err)
+		return false, "", time.Time{}, nil, fmt.Errorf("failed to get repo: %w", err)
 	}
 
 	options := &gitlab.ListMergeRequestsOptions{
@@ -251,7 +252,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
+		return false, "", time.Time{}, nil, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
 	logGitLabRateLimitsIfAvailable(
@@ -263,10 +264,10 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		"status", resp.Status)
 
 	if len(mrs) > 0 {
-		return true, strconv.Itoa(mrs[0].IID), *mrs[0].CreatedAt, nil
+		return true, strconv.Itoa(mrs[0].IID), *mrs[0].CreatedAt, ptr.To(mrs[0].ShouldRemoveSourceBranch), nil
 	}
 
-	return false, "", time.Time{}, nil
+	return false, "", time.Time{}, nil, nil
 }
 
 // GetUrl retrieves the URL of the pull request.

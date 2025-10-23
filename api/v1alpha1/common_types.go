@@ -99,6 +99,12 @@ type FakeRepo struct {
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
+	// BranchWillBeDeletedOnMerge indicates whether the branch will be deleted upon merging a pull request. This is
+	// helpful for testing how the controller will behave when the SCM provider is configured to delete branches on
+	// merge.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default:=false
+	BranchWillBeDeletedOnMerge bool `json:"branchWillBeDeletedOnMerge"`
 }
 
 // CommitMetadata contains metadata about a commit that is related in some way to another commit.

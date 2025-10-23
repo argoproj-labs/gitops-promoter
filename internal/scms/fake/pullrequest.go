@@ -46,7 +46,7 @@ func NewFakePullRequestProvider(k8sClient client.Client) *PullRequest {
 }
 
 // Create creates a new pull request with the specified title, head, base, and description.
-func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (id string, err error) {
+func (pr *PullRequest) Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (id string, b *bool, err error) {
 	logger := log.FromContext(ctx)
 	mutexPR.Lock()
 	defer mutexPR.Unlock()
@@ -56,18 +56,18 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
-		return "", fmt.Errorf("failed to get GitRepository: %w", err)
+		return "", nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
 	pullRequestCopy := pullRequest.DeepCopy()
 	if p, ok := pullRequests[pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)]; ok {
 		logger.Info("Pull request already exists", "id", p.id, "pullRequestSpec", pullRequest.Spec, "pullRequestStatus", pullRequest.Status)
 		if p.state == v1alpha1.PullRequestOpen {
-			return id, errors.New("pull request already exists and is open")
+			return id, nil, errors.New("pull request already exists and is open")
 		}
 	}
 	if pullRequestCopy == nil {
-		return "", errors.New("pull request is nil")
+		return "", nil, errors.New("pull request is nil")
 	}
 
 	id = strconv.Itoa(len(pullRequests) + 1)
@@ -76,7 +76,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		state: v1alpha1.PullRequestOpen,
 	}
 
-	return id, nil
+	return id, nil, nil
 }
 
 // Update updates an existing pull request with the specified title and description.
@@ -192,12 +192,12 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 }
 
 // FindOpen checks if a pull request is open and returns its status.
-func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, error) {
+func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string, time.Time, *bool, error) {
 	mutexPR.RLock()
 	found, id := pr.findOpen(ctx, pullRequest)
 	mutexPR.RUnlock()
 
-	return found, id, time.Now(), nil
+	return found, id, time.Now(), nil, nil
 }
 
 func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, string) {

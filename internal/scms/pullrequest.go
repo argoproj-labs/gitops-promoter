@@ -9,8 +9,9 @@ import (
 
 // PullRequestProvider defines the interface for managing pull requests in a source control management system.
 type PullRequestProvider interface {
-	// Create creates a new pull request with the specified title, head, base, and description.
-	Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (string, error)
+	// Create creates a new pull request with the specified title, head, base, and description. Returns the PR ID and
+	// a bool indicating whether the source branch will be deleted on merge (if available).
+	Create(ctx context.Context, title, head, base, description string, pullRequest v1alpha1.PullRequest) (string, *bool, error)
 	// Close closes an existing pull request.
 	// pullRequest.Status.ID is guaranteed to be set when this is called.
 	Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error
@@ -21,8 +22,9 @@ type PullRequestProvider interface {
 	// pullRequest.Status.ID is guaranteed to be set when this is called.
 	Merge(ctx context.Context, pullRequest v1alpha1.PullRequest) error
 	// FindOpen checks if a pull request is open and returns its status. The returned PullRequestCommonStatus should
-	// contain a populated ID and PRCreationTime. All other fields are ignored.
-	FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (found bool, id string, creationTime time.Time, err error)
+	// contain a populated ID and PRCreationTime. All other fields are ignored. Also returns a bool indicating whether
+	// the source branch will be deleted on merge (if available).
+	FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (found bool, id string, creationTime time.Time, willDelete *bool, err error)
 	// GetUrl retrieves the URL of the pull request.
 	GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error)
 }

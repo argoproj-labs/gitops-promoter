@@ -104,7 +104,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	logger.Info("Checking for open PR on provider")
-	found, prID, prCreationTime, err := provider.FindOpen(ctx, pr)
+	found, prID, prCreationTime, willDelete, err := provider.FindOpen(ctx, pr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
 	}
@@ -114,6 +114,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		pr.Status.State = promoterv1alpha1.PullRequestOpen
 		pr.Status.ID = prID
 		pr.Status.PRCreationTime = metav1.NewTime(prCreationTime)
+		pr.Status.BranchWillBeDeletedOnMerge = willDelete
 		url, err := provider.GetUrl(ctx, pr)
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to get pull request URL: %w", err)
@@ -269,13 +270,14 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 }
 
 func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
-	id, err := provider.Create(ctx, pr.Spec.Title, pr.Spec.SourceBranch, pr.Spec.TargetBranch, pr.Spec.Description, *pr)
+	id, willDelete, err := provider.Create(ctx, pr.Spec.Title, pr.Spec.SourceBranch, pr.Spec.TargetBranch, pr.Spec.Description, *pr)
 	if err != nil {
 		return fmt.Errorf("failed to create pull request: %w", err)
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestOpen
 	pr.Status.PRCreationTime = metav1.Now()
 	pr.Status.ID = id
+	pr.Status.BranchWillBeDeletedOnMerge = willDelete
 
 	url, err := provider.GetUrl(ctx, *pr)
 	if err != nil {
@@ -295,6 +297,17 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	if pr.Status.BranchWillBeDeletedOnMerge != nil && *pr.Status.BranchWillBeDeletedOnMerge {
+		// If the SCM provider is GitHub, expand the error message to suggest disabling branch deletion on the repo or
+		// adding a branch protection rule.
+		if _, ok := provider.(*github.PullRequest); ok {
+			return fmt.Errorf("cannot merge pull request: source branch is set to be deleted on merge - " +
+				"please disable 'Delete branch' on merge in the repository settings or add a branch protection rule to prevent branch deletion")
+		}
+
+		return fmt.Errorf("cannot merge pull request: source branch is set to be deleted on merge")
+	}
+
 	mergedTime := metav1.Now()
 
 	updatedMessage, err := git.AddTrailerToCommitMessage(
