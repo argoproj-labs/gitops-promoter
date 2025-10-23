@@ -284,6 +284,7 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 }
 
 // HasAutoBranchDeletionEnabled checks if the GitLab project has automatic branch deletion on merge enabled.
+// It also checks if the source branch is protected, as protected branches cannot be automatically deleted.
 func (pr *PullRequest) HasAutoBranchDeletionEnabled(ctx context.Context, prObj v1alpha1.PullRequest) (bool, error) {
 	logger := log.FromContext(ctx)
 
@@ -315,6 +316,45 @@ func (pr *PullRequest) HasAutoBranchDeletionEnabled(ctx context.Context, prObj v
 	)
 	logger.V(4).Info("gitlab response status", "status", resp.Status)
 
-	// GitLab's remove_source_branch_after_merge field indicates if branches are automatically deleted on merge
-	return project.RemoveSourceBranchAfterMerge, nil
+	// If remove_source_branch_after_merge is disabled, we're safe
+	if !project.RemoveSourceBranchAfterMerge {
+		return false, nil
+	}
+
+	// remove_source_branch_after_merge is enabled, but check if the source branch is protected
+	// Protected branches cannot be automatically deleted in GitLab
+	start = time.Now()
+	protectedBranch, resp, err := pr.client.ProtectedBranches.GetProtectedBranch(
+		repo.Spec.GitLab.ProjectID,
+		prObj.Spec.SourceBranch,
+		gitlab.WithContext(ctx),
+	)
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, "get_protected_branch", resp.StatusCode, time.Since(start), nil)
+	}
+
+	// If we get a 404, the branch is not protected, so auto-deletion will happen
+	if err != nil {
+		if resp != nil && resp.StatusCode == 404 {
+			logger.V(4).Info("source branch is not protected, auto-deletion will occur", "branch", prObj.Spec.SourceBranch)
+			return true, nil
+		}
+		return false, fmt.Errorf("failed to get protected branch status: %w", err)
+	}
+
+	logGitLabRateLimitsIfAvailable(
+		logger,
+		prObj.Spec.RepositoryReference.Name,
+		resp,
+	)
+	logger.V(4).Info("gitlab response status", "status", resp.Status)
+
+	// Branch is protected - it cannot be auto-deleted in GitLab
+	if protectedBranch != nil {
+		logger.V(4).Info("source branch is protected from deletion", "branch", prObj.Spec.SourceBranch)
+		return false, nil
+	}
+
+	// Shouldn't reach here, but default to blocking merge if uncertain
+	return true, nil
 }
