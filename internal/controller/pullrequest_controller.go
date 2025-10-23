@@ -295,6 +295,21 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	logger := log.FromContext(ctx)
+
+	// Check if the repository has automatic branch deletion enabled
+	hasAutoDeletion, err := provider.HasAutoBranchDeletionEnabled(ctx, *pr)
+	if err != nil {
+		return fmt.Errorf("failed to check auto branch deletion setting: %w", err)
+	}
+
+	if hasAutoDeletion {
+		eventMessage := fmt.Sprintf(constants.PullRequestMergeBlockedAutoDeletionMessage, pr.Name)
+		logger.Error(fmt.Errorf("merge blocked due to auto branch deletion"), eventMessage)
+		r.Recorder.Event(pr, "Warning", constants.PullRequestMergeBlockedReason, eventMessage)
+		return fmt.Errorf("merge blocked: %s", eventMessage)
+	}
+
 	mergedTime := metav1.Now()
 
 	updatedMessage, err := git.AddTrailerToCommitMessage(

@@ -242,3 +242,36 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 
 	return fmt.Sprintf("https://%s/%s/%s/pull/%d", pr.client.BaseURL.Host, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
 }
+
+// HasAutoBranchDeletionEnabled checks if the GitHub repository has automatic branch deletion on merge enabled.
+func (pr *PullRequest) HasAutoBranchDeletionEnabled(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil || gitRepo == nil {
+		return false, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	start := time.Now()
+	repo, response, err := pr.client.Repositories.Get(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name)
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, "get_repository", response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to get repository settings: %w", err)
+	}
+
+	logger.Info("github rate limit",
+		"limit", response.Rate.Limit,
+		"remaining", response.Rate.Remaining,
+		"reset", response.Rate.Reset,
+		"url", response.Request.URL)
+	logger.V(4).Info("github response status", "status", response.Status)
+
+	// GitHub's delete_branch_on_merge field indicates if branches are automatically deleted on merge
+	if repo.DeleteBranchOnMerge != nil {
+		return *repo.DeleteBranchOnMerge, nil
+	}
+
+	return false, nil
+}

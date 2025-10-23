@@ -25,4 +25,8 @@ type PullRequestProvider interface {
 	FindOpen(ctx context.Context, pullRequest v1alpha1.PullRequest) (found bool, id string, creationTime time.Time, err error)
 	// GetUrl retrieves the URL of the pull request.
 	GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequest) (string, error)
+	// HasAutoBranchDeletionEnabled checks if the repository has automatic branch deletion on merge enabled.
+	// This is used to prevent merges when automatic branch deletion is configured, as it would interfere
+	// with the promoter's branch lifecycle management.
+	HasAutoBranchDeletionEnabled(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, error)
 }

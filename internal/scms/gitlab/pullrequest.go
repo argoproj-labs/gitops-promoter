@@ -282,3 +282,39 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 
 	return fmt.Sprintf("https://%s/%s/%s/-/merge_requests/%s", pr.client.BaseURL(), repo.Spec.GitLab.Namespace, repo.Spec.GitLab.Name, prObj.Status.ID), nil
 }
+
+// HasAutoBranchDeletionEnabled checks if the GitLab project has automatic branch deletion on merge enabled.
+func (pr *PullRequest) HasAutoBranchDeletionEnabled(ctx context.Context, prObj v1alpha1.PullRequest) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
+		Namespace: prObj.Namespace,
+		Name:      prObj.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to get repo: %w", err)
+	}
+
+	start := time.Now()
+	project, resp, err := pr.client.Projects.GetProject(
+		repo.Spec.GitLab.ProjectID,
+		&gitlab.GetProjectOptions{},
+		gitlab.WithContext(ctx),
+	)
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, "get_project", resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to get project settings: %w", err)
+	}
+
+	logGitLabRateLimitsIfAvailable(
+		logger,
+		prObj.Spec.RepositoryReference.Name,
+		resp,
+	)
+	logger.V(4).Info("gitlab response status", "status", resp.Status)
+
+	// GitLab's remove_source_branch_after_merge field indicates if branches are automatically deleted on merge
+	return project.RemoveSourceBranchAfterMerge, nil
+}

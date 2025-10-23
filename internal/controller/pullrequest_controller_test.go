@@ -196,6 +196,46 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(err.Error()).To(ContainSubstring("Cannot transition to 'closed' or 'merged' state when status.id is empty"))
 		})
 	})
+
+	Context("When reconciling a PullRequest merge with auto-deletion enabled", Ordered, func() {
+		ctx := context.Background()
+
+		It("should verify the fake provider returns false for HasAutoBranchDeletionEnabled", func() {
+			By("Creating the necessary resources")
+
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "auto-deletion-check")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Verifying the PullRequest is created and open")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the fake provider allows merge (auto-deletion returns false)")
+			Eventually(func(g Gomega) {
+				_ = k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				pullRequest.Spec.State = "merged"
+				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the PullRequest is successfully merged")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
 })
 
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {

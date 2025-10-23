@@ -249,3 +249,14 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest promoterv1alpha1.
 
 	return fmt.Sprintf("https://%s/%s/%s/pulls/%s", pr.domain, gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, pullRequest.Status.ID), nil
 }
+
+// HasAutoBranchDeletionEnabled checks if the Forgejo repository has automatic branch deletion on merge enabled.
+// Note: As of the current Forgejo SDK version, the AutoDeleteBranchAfterMerge field is not exposed in the API.
+// This function returns false until the SDK is updated to support this feature.
+// See: https://forgejo.org/docs/latest/user/automatic-branch-deletion/
+func (pr *PullRequest) HasAutoBranchDeletionEnabled(ctx context.Context, pullRequest promoterv1alpha1.PullRequest) (bool, error) {
+	// TODO: Once the Forgejo SDK exposes the AutoDeleteBranchAfterMerge field,
+	// implement the actual check by calling GetRepo and checking the repository settings.
+	// For now, we return false as a safe default.
+	return false, nil
+}
