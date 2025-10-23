@@ -2236,8 +2236,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// err = k8sClient.Get(ctx, types.NamespacedName{
 				//	Name:      prName,
 				//	Namespace: typeNamespacedName.Namespace,
-				// }, &pullRequestProd)
-				// g.Expect(err).To(Succeed())
+				//}, &pullRequestProd)
+				//g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -2283,8 +2283,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// err = k8sClient.Get(ctx, types.NamespacedName{
 				//	Name:      prName,
 				//	Namespace: typeNamespacedName.Namespace,
-				// }, &pullRequestProd)
-				// g.Expect(err).To(Succeed())
+				//}, &pullRequestProd)
+				//g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -2324,9 +2324,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// err = k8sClient.Get(ctx, types.NamespacedName{
 				//	Name:      prName,
 				//	Namespace: typeNamespacedName.Namespace,
-				// }, &pullRequestProd)
-				// g.Expect(err).To(HaveOccurred())
-				// g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				//}, &pullRequestProd)
+				//g.Expect(err).To(HaveOccurred())
+				//g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 			// Expect(time.Since(lastTransitionTime.Time) >= lastTransitionTimeThreshold).To(BeTrue(), fmt.Sprintf("Last transition time should be at least %s ago, but was %s ago", lastTransitionTimeThreshold, time.Since(lastTransitionTime.Time)))
 
