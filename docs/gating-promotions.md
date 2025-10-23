@@ -142,3 +142,31 @@ is nontrivial to determine what URL to use for the aggreate CommitStatus.
 For now, the previous environment CommitStatus will only be set if there is only one active commit status. Its URL will
 be set to the URL of the previous environment's active commit status. If there are multiple active commit statuses, no
 URL will be set. This behavior may change in the future.
+
+## Built-in CommitStatus Controllers
+
+GitOps Promoter provides several built-in controllers that automatically create and manage CommitStatus resources based on various criteria:
+
+### Argo CD Health Status
+
+The [ArgoCDCommitStatus](commit-status-controllers/argocd.md) controller monitors Argo CD Applications and creates CommitStatus resources based on application health. This enables gating promotions based on whether applications are healthy in their current environment.
+
+Key features:
+- Monitors Argo CD Applications with specific labels
+- Creates CommitStatus resources with key `argocd-health`
+- Reports application health status (Healthy, Progressing, Degraded, etc.)
+
+### Time-Based Gating
+
+The [TimedCommitStatus](commit-status-controllers/timed.md) controller implements "soak time" or "bake time" requirements, ensuring changes run in lower environments for a minimum duration before being promoted.
+
+Key features:
+- Monitors how long commits have been running in each environment
+- Creates CommitStatus resources with key `timer`
+- Reports pending until the required duration is met
+- Prevents promotions when there are pending changes in lower environments
+
+### Custom Controllers
+
+You can also create your own controllers that manage CommitStatus resources. Any system that can create Kubernetes resources can participate in the gating logic by creating CommitStatus resources with the appropriate SHAs and phases.
+

@@ -81,6 +81,19 @@ to check the status of the Argo CD Applications that are being used in the promo
 ```yaml
 {!internal/controller/testdata/ArgoCDCommitStatus.yaml!}
 ```
+
+### TimedCommitStatus
+
+A TimedCommitStatus provides time-based gating for environment promotions. It monitors how long commits have been running
+in specified environments and creates CommitStatus resources (as active commit statuses) based on configured duration requirements.
+
+This enables "soak time" or "bake time" policies where changes must run successfully in environments for a minimum
+duration before being promoted.
+
+```yaml
+{!internal/controller/testdata/TimedCommitStatus.yaml!}
+```
+
 ### ControllerConfiguration
 
 A ControllerConfiguration is used to configure the behavior of the promoter.
