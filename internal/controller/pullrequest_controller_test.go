@@ -196,6 +196,47 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(err.Error()).To(ContainSubstring("Cannot transition to 'closed' or 'merged' state when status.id is empty"))
 		})
 	})
+
+	Context("When deleting a PullRequest that never created a PR on SCM", func() {
+		ctx := context.Background()
+
+		It("should successfully delete a PullRequest with empty status.id without getting stuck", func() {
+			By("Creating a PullRequest but preventing it from creating a PR on SCM")
+
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "delete-without-scm-pr")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			// Create a bad SCM provider configuration to prevent PR creation
+			scmProvider.Spec.SecretRef = &v1.LocalObjectReference{Name: "non-existing-secret"}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be reconciled but not create a PR on SCM")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				// Should have an error condition but no status.id
+				g.Expect(pullRequest.Status.ID).To(BeEmpty())
+				g.Expect(pullRequest.Status.Conditions).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting the PullRequest")
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+
+			By("Verifying the PullRequest is deleted successfully without getting stuck")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
 })
 
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {

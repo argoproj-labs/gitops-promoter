@@ -85,6 +85,18 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Remove any existing Ready condition. We want to start fresh.
 	meta.RemoveStatusCondition(pr.GetConditions(), string(promoterConditions.Ready))
 
+	// Handle deletion early - if being deleted and status.ID is empty, we can skip provider setup
+	if !pr.DeletionTimestamp.IsZero() && pr.Status.ID == "" {
+		finalizer := "pullrequest.promoter.argoporoj.io/finalizer"
+		if controllerutil.ContainsFinalizer(&pr, finalizer) {
+			controllerutil.RemoveFinalizer(&pr, finalizer)
+			if err := r.Update(ctx, &pr); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
 	provider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
@@ -258,9 +270,14 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 		return false, nil
 	}
 
-	if err := r.closePullRequest(ctx, pr, provider); err != nil {
-		return false, fmt.Errorf("failed to close pull request: %w", err)
+	// If status.ID is empty, it means the PullRequest never took control of any PR on the SCM.
+	// In this case, we can just remove the finalizer without attempting to close the PR.
+	if pr.Status.ID != "" {
+		if err := r.closePullRequest(ctx, pr, provider); err != nil {
+			return false, fmt.Errorf("failed to close pull request: %w", err)
+		}
 	}
+
 	controllerutil.RemoveFinalizer(pr, finalizer)
 	if err := r.Update(ctx, pr); err != nil {
 		return true, fmt.Errorf("failed to remove finalizer: %w", err)
