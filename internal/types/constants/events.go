@@ -28,6 +28,11 @@ const (
 	// PullRequestUpdatedReason indicates that a pull request has been updated.
 	PullRequestUpdatedReason = "PullRequestUpdated"
 
+	// PullRequestMergeBlockedReason indicates that a pull request merge was blocked.
+	PullRequestMergeBlockedReason = "PullRequestMergeBlocked"
+	// PullRequestMergeBlockedAutoDeletionMessage is the message for a blocked merge due to auto branch deletion.
+	PullRequestMergeBlockedAutoDeletionMessage = "Pull Request %s merge blocked: repository has automatic branch deletion enabled. This setting must be disabled to allow gitops-promoter to manage branch lifecycle"
+
 	// CommitStatusSetReason indicates that a commit status has been set.
 	CommitStatusSetReason = "CommitStatusSet"
 )

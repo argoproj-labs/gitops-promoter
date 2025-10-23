@@ -264,3 +264,9 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 	logger.Info("Pull request not found", "pullRequest", pullRequest)
 	return "", errors.New("pull request not found")
 }
+
+// HasAutoBranchDeletionEnabled always returns false for the fake provider.
+// This is used for testing purposes and assumes no automatic branch deletion is configured.
+func (pr *PullRequest) HasAutoBranchDeletionEnabled(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, error) {
+	return false, nil
+}

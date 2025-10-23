@@ -170,9 +170,10 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 	}
 
 	options := forgejo.MergePullRequestOption{
-		Style:        forgejo.MergeStyleMerge, // TODO: make the merge style configurable
-		Message:      prObj.Spec.Commit.Message,
-		HeadCommitId: prObj.Spec.MergeSha,
+		Style:                  forgejo.MergeStyleMerge, // TODO: make the merge style configurable
+		Message:                prObj.Spec.Commit.Message,
+		HeadCommitId:           prObj.Spec.MergeSha,
+		DeleteBranchAfterMerge: false,
 	}
 
 	start := time.Now()
@@ -248,4 +249,14 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest promoterv1alpha1.
 	}
 
 	return fmt.Sprintf("https://%s/%s/%s/pulls/%s", pr.domain, gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, pullRequest.Status.ID), nil
+}
+
+// HasAutoBranchDeletionEnabled checks if the Forgejo repository has automatic branch deletion on merge enabled.
+// Note: Forgejo allows setting DeleteBranchAfterMerge on a per-PR basis via the merge options.
+// We always set DeleteBranchAfterMerge to false in the Merge() method to ensure gitops-promoter
+// manages the branch lifecycle. Therefore, this function always returns false.
+func (pr *PullRequest) HasAutoBranchDeletionEnabled(ctx context.Context, pullRequest promoterv1alpha1.PullRequest) (bool, error) {
+	// Forgejo doesn't have a repository-level auto-delete setting that would block our merge.
+	// We control branch deletion at merge time by setting DeleteBranchAfterMerge: false in MergePullRequestOption.
+	return false, nil
 }

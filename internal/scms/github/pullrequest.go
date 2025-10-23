@@ -242,3 +242,73 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 
 	return fmt.Sprintf("https://%s/%s/%s/pull/%d", pr.client.BaseURL.Host, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, prNumber), nil
 }
+
+// HasAutoBranchDeletionEnabled checks if the GitHub repository has automatic branch deletion on merge enabled.
+// It also checks if the source branch is protected, as protected branches are not auto-deleted even when the
+// repository setting is enabled.
+func (pr *PullRequest) HasAutoBranchDeletionEnabled(ctx context.Context, pullRequest v1alpha1.PullRequest) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil || gitRepo == nil {
+		return false, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	start := time.Now()
+	repo, response, err := pr.client.Repositories.Get(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name)
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, "get_repository", response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to get repository settings: %w", err)
+	}
+
+	logger.Info("github rate limit",
+		"limit", response.Rate.Limit,
+		"remaining", response.Rate.Remaining,
+		"reset", response.Rate.Reset,
+		"url", response.Request.URL)
+	logger.V(4).Info("github response status", "status", response.Status)
+
+	// If delete_branch_on_merge is disabled, we're safe
+	if repo.DeleteBranchOnMerge == nil || !*repo.DeleteBranchOnMerge {
+		return false, nil
+	}
+
+	// delete_branch_on_merge is enabled, but check if the source branch is protected
+	// Protected branches are not auto-deleted even when the repository setting is enabled
+	start = time.Now()
+	protection, response, err := pr.client.Repositories.GetBranchProtection(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, pullRequest.Spec.SourceBranch)
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, "get_branch_protection", response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+
+	// If we get a 404, the branch is not protected, so auto-deletion will happen
+	if err != nil {
+		if response != nil && response.StatusCode == 404 {
+			logger.V(4).Info("source branch is not protected, auto-deletion will occur", "branch", pullRequest.Spec.SourceBranch)
+			return true, nil
+		}
+		return false, fmt.Errorf("failed to get branch protection for source branch: %w", err)
+	}
+
+	logger.Info("github rate limit",
+		"limit", response.Rate.Limit,
+		"remaining", response.Rate.Remaining,
+		"reset", response.Rate.Reset,
+		"url", response.Request.URL)
+	logger.V(4).Info("github response status", "status", response.Status)
+
+	// Branch is protected - check if deletions are allowed
+	if protection != nil && protection.AllowDeletions != nil {
+		if protection.AllowDeletions.Enabled {
+			// Deletions are allowed on this protected branch, so auto-deletion could occur
+			logger.V(4).Info("source branch is protected but allows deletions", "branch", pullRequest.Spec.SourceBranch)
+			return true, nil
+		}
+	}
+
+	// Branch is protected and deletions are not allowed, so it's safe
+	logger.V(4).Info("source branch is protected from deletion", "branch", pullRequest.Spec.SourceBranch)
+	return false, nil
+}

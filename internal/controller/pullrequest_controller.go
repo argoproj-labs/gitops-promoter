@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -36,7 +37,7 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -75,7 +76,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
-		if errors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
 			logger.Info("PullRequest not found", "namespace", req.Namespace, "name", req.Name)
 			return ctrl.Result{}, nil
 		}
@@ -96,7 +97,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if pr.Status.State == promoterv1alpha1.PullRequestMerged || pr.Status.State == promoterv1alpha1.PullRequestClosed {
 		logger.Info("Cleaning up close and merged pull request", "pullRequestID", pr.Status.ID)
-		if err := r.Delete(ctx, &pr); err != nil && !errors.IsNotFound(err) {
+		if err := r.Delete(ctx, &pr); err != nil && !k8serrors.IsNotFound(err) {
 			logger.Error(err, "Failed to delete PullRequest")
 			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 		}
@@ -295,6 +296,21 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	logger := log.FromContext(ctx)
+
+	// Check if the repository has automatic branch deletion enabled
+	hasAutoDeletion, err := provider.HasAutoBranchDeletionEnabled(ctx, *pr)
+	if err != nil {
+		return fmt.Errorf("failed to check auto branch deletion setting: %w", err)
+	}
+
+	if hasAutoDeletion {
+		eventMessage := fmt.Sprintf(constants.PullRequestMergeBlockedAutoDeletionMessage, pr.Name)
+		logger.Error(errors.New("merge blocked due to auto branch deletion"), eventMessage)
+		r.Recorder.Event(pr, "Warning", constants.PullRequestMergeBlockedReason, eventMessage)
+		return fmt.Errorf("merge blocked: %s", eventMessage)
+	}
+
 	mergedTime := metav1.Now()
 
 	updatedMessage, err := git.AddTrailerToCommitMessage(
