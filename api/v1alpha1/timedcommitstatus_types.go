@@ -45,8 +45,33 @@ type TimedCommitStatusEnvironments struct {
 	Branch string `json:"branch"`
 	// Duration is the time duration to wait before considering the commit status as success.
 	// The duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
-	// +required
-	Duration metav1.Duration `json:"duration"`
+	// +optional
+	Duration metav1.Duration `json:"duration,omitempty"`
+
+	// Schedule is the cron schedule to wait before considering the commit status as success.
+	// If a schedule is provided with a duration both will be used to determine the success of the commit status.
+	// If just a schedule is provided, the duration will be ignored and the schedule will be used to determine the success of the commit status.
+	// +optional
+	Schedule Schedule `json:"schedule,omitempty"`
+}
+
+// Schedule is the cron schedule to wait before considering the commit status as success.
+type Schedule struct {
+	// Cron is the cron expression to check before considering the commit status a success.
+	// Standard 5-field cron format: minute (0-59), hour (0-23), day of month (1-31), month (1-12), day of week (0-6).
+	// Examples: "0 9 * * 1-5" (9 AM weekdays), "0 2 * * 0" (2 AM Sunday), "*/30 * * * *" (every 30 minutes).
+	// When provided, window is also required.
+	// +optional
+	// +kubebuilder:validation:MinLength=9
+	// +kubebuilder:validation:Pattern=`^[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+\s+[\d\*\-,/]+$`
+	Cron string `json:"cron,omitempty"`
+
+	// Window is how long after the cron schedule triggers that we are allowed to consider the commit status as success.
+	// The window duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
+	// Example: "5m" means 5 minutes after the cron schedule triggers that we are allowed to consider the commit status as success.
+	// Required when cron is provided.
+	// +optional
+	Window metav1.Duration `json:"window,omitempty"`
 }
 
 // TimedCommitStatusStatus defines the observed state of TimedCommitStatus.
