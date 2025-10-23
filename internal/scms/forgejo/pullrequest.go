@@ -173,7 +173,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 		Style:                  forgejo.MergeStyleMerge, // TODO: make the merge style configurable
 		Message:                prObj.Spec.Commit.Message,
 		HeadCommitId:           prObj.Spec.MergeSha,
-		DeleteBranchAfterMerge: false, // We need the branch to stick around for the PR to keep pushing to.
+		DeleteBranchAfterMerge: false, // We need the branch to stick around for the hydrator to keep pushing to.
 	}
 
 	start := time.Now()
