@@ -86,6 +86,11 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pu
 
 // Close closes an existing pull request.
 func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
+	// Simulate real SCM provider behavior: require status.id to close a PR
+	if pullRequest.Status.ID == "" {
+		return errors.New("cannot close pull request: status.id is empty")
+	}
+
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository: %w", err)

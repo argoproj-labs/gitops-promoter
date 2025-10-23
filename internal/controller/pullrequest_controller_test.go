@@ -236,6 +236,58 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("should successfully delete a PullRequest with finalizer but empty status.id", func() {
+			By("Creating a PullRequest with a valid provider to allow finalizer addition")
+
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "delete-with-finalizer-no-id")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for the finalizer to be added")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Finalizers).To(ContainElement("pullrequest.promoter.argoporoj.io/finalizer"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Simulating a scenario where status.id is empty despite having a finalizer")
+			// This simulates the case where:
+			// 1. Finalizer was added successfully
+			// 2. But PR creation on SCM failed, leaving status.id empty
+			// 3. User now wants to delete the resource
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				// Clear status.id to simulate PR creation failure
+				pullRequest.Status.ID = ""
+				pullRequest.Status.State = ""
+				g.Expect(k8sClient.Status().Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying status.id is empty but finalizer exists")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.ID).To(BeEmpty())
+				g.Expect(pullRequest.Finalizers).To(ContainElement("pullrequest.promoter.argoporoj.io/finalizer"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting the PullRequest with finalizer but empty status.id")
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+
+			By("Verifying the PullRequest is deleted successfully without getting stuck")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 })
 
