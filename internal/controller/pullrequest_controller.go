@@ -305,7 +305,7 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 
 	if hasAutoDeletion {
 		eventMessage := fmt.Sprintf(constants.PullRequestMergeBlockedAutoDeletionMessage, pr.Name)
-		logger.Error(fmt.Errorf("merge blocked due to auto branch deletion"), eventMessage)
+		logger.Error(errors.New("merge blocked due to auto branch deletion"), eventMessage)
 		r.Recorder.Event(pr, "Warning", constants.PullRequestMergeBlockedReason, eventMessage)
 		return fmt.Errorf("merge blocked: %s", eventMessage)
 	}
