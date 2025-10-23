@@ -18,19 +18,15 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"sort"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -87,67 +83,33 @@ func (r *GitRepositoryReconciler) SetupWithManager(ctx context.Context, mgr ctrl
 }
 
 func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *promoterv1alpha1.GitRepository) (bool, error) {
-	logger := log.FromContext(ctx)
-	finalizer := promoterv1alpha1.GitRepositoryFinalizer
-
-	if gitRepo.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(gitRepo, finalizer) {
-			// Not being deleted and already has finalizer, nothing to do.
-			return false, nil
+	// Check for dependent PullRequests before allowing deletion
+	checkDependencies := func() ([]string, error) {
+		var pullRequests promoterv1alpha1.PullRequestList
+		if err := r.List(ctx, &pullRequests, client.InNamespace(gitRepo.Namespace)); err != nil {
+			return nil, fmt.Errorf("failed to list PullRequests: %w", err)
 		}
 
-		// Finalizer is missing, add it.
-		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
-			if err := r.Get(ctx, client.ObjectKeyFromObject(gitRepo), gitRepo); err != nil {
-				return err //nolint:wrapcheck
+		var dependentPRs []string
+		for _, pr := range pullRequests.Items {
+			// Skip PullRequests that are also being deleted (allows cascade deletion)
+			if !pr.DeletionTimestamp.IsZero() {
+				continue
 			}
-			if controllerutil.AddFinalizer(gitRepo, finalizer) {
-				return r.Update(ctx, gitRepo)
+			if pr.Spec.RepositoryReference.Name == gitRepo.Name {
+				dependentPRs = append(dependentPRs, pr.Name)
 			}
-			return nil
-		})
-	}
-
-	// If we're here, the object is being deleted
-	if !controllerutil.ContainsFinalizer(gitRepo, finalizer) {
-		// Finalizer already removed, nothing to do.
-		return false, nil
-	}
-
-	// Check if there are any PullRequests referencing this GitRepository
-	var pullRequests promoterv1alpha1.PullRequestList
-	if err := r.List(ctx, &pullRequests, client.InNamespace(gitRepo.Namespace)); err != nil {
-		return false, fmt.Errorf("failed to list PullRequests: %w", err)
-	}
-
-	var dependentPRs []string
-	for _, pr := range pullRequests.Items {
-		if pr.Spec.RepositoryReference.Name == gitRepo.Name {
-			dependentPRs = append(dependentPRs, pr.Name)
 		}
+		return dependentPRs, nil
 	}
 
-	if len(dependentPRs) > 0 {
-		// Sort for deterministic error messages
-		sort.Strings(dependentPRs)
-		firstPR := dependentPRs[0]
-		var errMsg string
-		if len(dependentPRs) == 1 {
-			errMsg = fmt.Sprintf("GitRepository %s/%s still has dependent PullRequest %s",
-				gitRepo.Namespace, gitRepo.Name, firstPR)
-		} else {
-			errMsg = fmt.Sprintf("GitRepository %s/%s still has dependent PullRequest %s and %d more",
-				gitRepo.Namespace, gitRepo.Name, firstPR, len(dependentPRs)-1)
-		}
-		logger.Info("GitRepository still has dependent PullRequests, cannot delete",
-			"gitRepository", gitRepo.Name, "count", len(dependentPRs), "first", firstPR)
-		return true, errors.New(errMsg)
-	}
-
-	// No dependent PullRequests, remove finalizer
-	controllerutil.RemoveFinalizer(gitRepo, finalizer)
-	if err := r.Update(ctx, gitRepo); err != nil {
-		return true, fmt.Errorf("failed to remove finalizer: %w", err)
-	}
-	return true, nil
+	return handleResourceFinalizerWithDependencies(
+		ctx,
+		r.Client,
+		r.Recorder,
+		gitRepo,
+		promoterv1alpha1.GitRepositoryFinalizer,
+		"GitRepository",
+		checkDependencies,
+	)
 }
