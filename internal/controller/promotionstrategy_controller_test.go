@@ -1855,7 +1855,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 		const namespace = "default"
 
 		It("should successfully reconcile the resource", func() {
-			Skip("Skipping test because we temporarily don't have the Application CRD on the local cluster")
+			// Skip("Skipping test because of flakiness")
 			By("Creating the resource")
 			plainName := "promotion-strategy-with-active-commit-status-argocdcommitstatus"
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, plainName, "default")
@@ -2096,10 +2096,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Creating the resource")
 			plainName := "mc-promo-strategy-with-active-commit-status-argocdcommitstatus"
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, plainName, "default")
-
-			// Remove the production env from the promotion strategy since we haven't installed the Application CRD on the prod cluster in the test
-			promotionStrategy.Spec.Environments = promotionStrategy.Spec.Environments[:2]
-
 			setupInitialTestGitRepoOnServer(ctx, name, name)
 
 			typeNamespacedName := types.NamespacedName{
@@ -2136,7 +2132,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				},
 			}
 
-			argoCDAppDev, argoCDAppStaging, _ := argocdApplications(namespace, plainName)
+			argoCDAppDev, argoCDAppStaging, argoCDAppProduction := argocdApplications(namespace, plainName)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -2145,7 +2141,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, &argocdCommitStatus)).To(Succeed())
 			Expect(k8sClientDev.Create(ctx, &argoCDAppDev)).To(Succeed())
 			Expect(k8sClientStaging.Create(ctx, &argoCDAppStaging)).To(Succeed())
-			// Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &argoCDAppProduction)).To(Succeed())
 
 			By("Checking that the CommitStatus for each environment is created from ArgoCDCommitStatus")
 
@@ -2177,7 +2173,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			// Check that ProposedCommit are created
 			ctpDev := promoterv1alpha1.ChangeTransferPolicy{}
 			ctpStaging := promoterv1alpha1.ChangeTransferPolicy{}
-			// ctpProd := promoterv1alpha1.ChangeTransferPolicy{}
+			ctpProd := promoterv1alpha1.ChangeTransferPolicy{}
 
 			By("Checking that all the ChangeTransferPolicies and PRs are created and in their proper state")
 			Eventually(func(g Gomega) {
@@ -2196,12 +2192,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpStaging.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch))))
 
-				// err = k8sClient.Get(ctx, types.NamespacedName{
-				//	Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
-				//	Namespace: typeNamespacedName.Namespace,
-				// }, &ctpProd)
-				// g.Expect(err).To(Succeed())
-				// g.Expect(ctpProd.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch))))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Name).To(Equal(utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch))))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding a pending commit")
@@ -2210,11 +2206,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			drySha, _ := makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 			simulateWebhook(ctx, k8sClient, &ctpDev)
 			simulateWebhook(ctx, k8sClient, &ctpStaging)
-			// simulateWebhook(ctx, k8sClient, &ctpProd)
+			simulateWebhook(ctx, k8sClient, &ctpProd)
 
 			pullRequestDev := promoterv1alpha1.PullRequest{}
 			pullRequestStaging := promoterv1alpha1.PullRequest{}
-			// pullRequestProd := promoterv1alpha1.PullRequest{}
+			pullRequestProd := promoterv1alpha1.PullRequest{}
 			Eventually(func(g Gomega) {
 				// Dev PR should be closed because it is the lowest level environment
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
@@ -2232,12 +2228,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &pullRequestStaging)
 				g.Expect(err).To(Succeed())
 
-				// prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
-				// err = k8sClient.Get(ctx, types.NamespacedName{
-				//	Name:      prName,
-				//	Namespace: typeNamespacedName.Namespace,
-				//}, &pullRequestProd)
-				//g.Expect(err).To(Succeed())
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -2279,12 +2275,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 
-				// prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
-				// err = k8sClient.Get(ctx, types.NamespacedName{
-				//	Name:      prName,
-				//	Namespace: typeNamespacedName.Namespace,
-				//}, &pullRequestProd)
-				//g.Expect(err).To(Succeed())
+				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -2320,21 +2316,21 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					Expect(err).To(Succeed())
 				}
 
-				// prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
-				// err = k8sClient.Get(ctx, types.NamespacedName{
-				//	Name:      prName,
-				//	Namespace: typeNamespacedName.Namespace,
-				//}, &pullRequestProd)
-				//g.Expect(err).To(HaveOccurred())
-				//g.Expect(errors.IsNotFound(err)).To(BeTrue())
+				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prName,
+					Namespace: typeNamespacedName.Namespace,
+				}, &pullRequestProd)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
-			// Expect(time.Since(lastTransitionTime.Time) >= lastTransitionTimeThreshold).To(BeTrue(), fmt.Sprintf("Last transition time should be at least %s ago, but was %s ago", lastTransitionTimeThreshold, time.Since(lastTransitionTime.Time)))
+			Expect(time.Since(lastTransitionTime.Time) >= lastTransitionTimeThreshold).To(BeTrue(), fmt.Sprintf("Last transition time should be at least %s ago, but was %s ago", lastTransitionTimeThreshold, time.Since(lastTransitionTime.Time)))
 
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, &argocdCommitStatus)).To(Succeed())
 			Expect(k8sClientDev.Delete(ctx, &argoCDAppDev)).To(Succeed())
 			Expect(k8sClientStaging.Delete(ctx, &argoCDAppStaging)).To(Succeed())
-			// Expect(k8sClient.Delete(ctx, &argoCDAppProduction)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, &argoCDAppProduction)).To(Succeed())
 		})
 	})
 

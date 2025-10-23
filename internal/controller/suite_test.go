@@ -122,12 +122,12 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environments")
 	// Create a local test environment to test the single cluster functionality
-	testEnv, cfg, k8sClient = createAndStartTestEnv(false)
+	testEnv, cfg, k8sClient = createAndStartTestEnv()
 
 	// Create a dev and staging test environment to test the multi cluster functionality
 	// for watching argocd applications in the other clusters
-	testEnvDev, cfgDev, k8sClientDev = createAndStartTestEnv(true)
-	testEnvStaging, cfgStaging, k8sClientStaging = createAndStartTestEnv(true)
+	testEnvDev, cfgDev, k8sClientDev = createAndStartTestEnv()
+	testEnvStaging, cfgStaging, k8sClientStaging = createAndStartTestEnv()
 
 	// kubeconfig provider
 	kubeconfigProvider := kubeconfigprovider.New(kubeconfigprovider.Options{
@@ -261,7 +261,7 @@ var _ = BeforeSuite(func() {
 				},
 			},
 			ArgoCDCommitStatus: promoterv1alpha1.ArgoCDCommitStatusConfiguration{
-				WatchLocalApplications: false,
+				WatchLocalApplications: true,
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
 					MaxConcurrentReconciles: 10,
@@ -919,17 +919,13 @@ func createKubeconfigSecret(ctx context.Context, name string, namespace string, 
 	return nil
 }
 
-func createAndStartTestEnv(includeExternalCRDs bool) (*envtest.Environment, *rest.Config, client.Client) {
-	crdDirectoryPaths := []string{
-		filepath.Join("..", "..", "config", "crd", "bases"),
-	}
-	if includeExternalCRDs {
-		crdDirectoryPaths = append(crdDirectoryPaths, filepath.Join("..", "..", "test", "external_crds"))
-	}
-
+func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client) {
 	env := &envtest.Environment{
-		UseExistingCluster:       ptr.To(false),
-		CRDDirectoryPaths:        crdDirectoryPaths,
+		UseExistingCluster: ptr.To(false),
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("..", "..", "test", "external_crds"),
+		},
 		ErrorIfCRDPathMissing:    true,
 		ControlPlaneStopTimeout:  1 * time.Minute,
 		AttachControlPlaneOutput: false,
