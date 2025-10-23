@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"sort"
 	"time"
@@ -301,11 +302,11 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 		// If the SCM provider is GitHub, expand the error message to suggest disabling branch deletion on the repo or
 		// adding a branch protection rule.
 		if _, ok := provider.(*github.PullRequest); ok {
-			return fmt.Errorf("cannot merge pull request: source branch is set to be deleted on merge - " +
+			return stderrors.New("cannot merge pull request: source branch is set to be deleted on merge - " +
 				"please disable 'Delete branch' on merge in the repository settings or add a branch protection rule to prevent branch deletion")
 		}
 
-		return fmt.Errorf("cannot merge pull request: source branch is set to be deleted on merge")
+		return stderrors.New("cannot merge pull request: source branch is set to be deleted on merge")
 	}
 
 	mergedTime := metav1.Now()

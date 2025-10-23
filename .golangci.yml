@@ -63,7 +63,7 @@ linters:
         - name: function-result-limit
           exclude:
             - "**/*_test.go" # Tests often have utility functions with a lot of return values.
-          arguments: [4] # Default is 3, but we sometimes have functions that return 4 values
+          arguments: [5] # Default is 3, but we sometimes have functions that return 5 values
         - name: max-public-structs
           exclude:
             - "**/*_types.go" # For CRD types.
