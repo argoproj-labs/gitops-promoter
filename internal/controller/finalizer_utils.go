@@ -193,8 +193,7 @@ func handleResourceFinalizerWithDependencies(
 		// Emit Kubernetes event for better UX
 		recorder.Event(obj, "Warning", "DeletionBlocked", errMsg)
 
-		// Update metrics
-		metrics.FinalizerBlockedDeletions.WithLabelValues(resourceType, obj.GetNamespace()).Inc()
+		// Update gauge metric with current count of dependents
 		metrics.FinalizerDependentCount.WithLabelValues(
 			resourceType,
 			obj.GetName(),

@@ -165,15 +165,6 @@ var (
 		[]string{"ctp_found", "response_code"},
 	)
 
-	// FinalizerBlockedDeletions counts the number of times a resource deletion was blocked by finalizers
-	FinalizerBlockedDeletions = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "promoter_finalizer_blocked_deletions_total",
-			Help: "Number of resource deletions blocked by finalizers due to dependent resources",
-		},
-		[]string{"resource_type", "namespace"},
-	)
-
 	// FinalizerDependentCount tracks the current number of dependent resources blocking deletion
 	FinalizerDependentCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -197,7 +188,6 @@ func init() {
 		scmCallsRateLimitRemaining,
 		scmCallsRateLimitResetRemainingSeconds,
 		webhookProcessingDurationSeconds,
-		FinalizerBlockedDeletions,
 		FinalizerDependentCount,
 	)
 }
