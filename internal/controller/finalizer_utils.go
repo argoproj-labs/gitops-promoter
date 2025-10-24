@@ -200,7 +200,7 @@ func handleResourceFinalizerWithDependencies(
 			obj.GetNamespace(),
 		).Set(float64(len(dependents)))
 
-		logger.Info(fmt.Sprintf("%s still has dependent resources, cannot delete", resourceType),
+		logger.Info(resourceType+" still has dependent resources, cannot delete",
 			"resource", obj.GetName(),
 			"namespace", obj.GetNamespace(),
 			"count", len(dependents),
@@ -210,7 +210,7 @@ func handleResourceFinalizerWithDependencies(
 	}
 
 	// No dependencies, remove finalizer with retry logic
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
 			return err //nolint:wrapcheck
 		}
