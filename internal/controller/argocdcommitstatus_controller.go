@@ -445,6 +445,16 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 
 			// fetch the ArgoCDApplication from the cluster
 			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
+				if k8s_errors.IsNotFound(err) {
+					rwMutex.Lock()
+					delete(revMap, appRevisionKey{
+						clusterName: clusterName,
+						namespace:   argoCDApplication.GetNamespace(),
+						name:        argoCDApplication.GetName(),
+					})
+					rwMutex.Unlock()
+					return nil
+				}
 				logger.Error(err, "failed to get ArgoCDApplication")
 				return nil
 			}
