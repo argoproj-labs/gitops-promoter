@@ -18,19 +18,15 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"sort"
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -96,75 +92,46 @@ func (r *ClusterScmProviderReconciler) SetupWithManager(ctx context.Context, mgr
 }
 
 func (r *ClusterScmProviderReconciler) handleFinalizer(ctx context.Context, clusterScmProvider *promoterv1alpha1.ClusterScmProvider) (bool, error) {
-	logger := log.FromContext(ctx)
-	finalizer := promoterv1alpha1.ClusterScmProviderFinalizer
-
-	if clusterScmProvider.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(clusterScmProvider, finalizer) {
-			// Not being deleted and already has finalizer, nothing to do.
-			return false, nil
+	// Check for dependent GitRepositories across all namespaces before allowing deletion
+	checkDependencies := func() ([]string, error) {
+		var gitRepos promoterv1alpha1.GitRepositoryList
+		if err := r.List(ctx, &gitRepos); err != nil {
+			return nil, fmt.Errorf("failed to list GitRepositories: %w", err)
 		}
 
-		// Finalizer is missing, add it.
-		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
-			if err := r.Get(ctx, client.ObjectKeyFromObject(clusterScmProvider), clusterScmProvider); err != nil {
-				return err //nolint:wrapcheck
+		var dependentRepos []string
+		for _, gitRepo := range gitRepos.Items {
+			// Skip GitRepositories that are also being deleted (allows cascade deletion)
+			if !gitRepo.DeletionTimestamp.IsZero() {
+				continue
 			}
-			if controllerutil.AddFinalizer(clusterScmProvider, finalizer) {
-				return r.Update(ctx, clusterScmProvider)
+			if gitRepo.Spec.ScmProviderRef.Name == clusterScmProvider.Name &&
+				gitRepo.Spec.ScmProviderRef.Kind == promoterv1alpha1.ClusterScmProviderKind {
+				// Include namespace in identifier since this is cluster-scoped
+				dependentRepos = append(dependentRepos, fmt.Sprintf("%s/%s", gitRepo.Namespace, gitRepo.Name))
 			}
-			return nil
-		})
+		}
+		return dependentRepos, nil
 	}
 
-	// If we're here, the object is being deleted
-	if !controllerutil.ContainsFinalizer(clusterScmProvider, finalizer) {
-		// Finalizer already removed, nothing to do.
-		return false, nil
-	}
+	deleted, err := handleResourceFinalizerWithDependencies(
+		ctx,
+		r.Client,
+		r.Recorder,
+		clusterScmProvider,
+		promoterv1alpha1.ClusterScmProviderFinalizer,
+		"ClusterScmProvider",
+		checkDependencies,
+	)
 
-	// Check if there are any GitRepositories referencing this ClusterScmProvider across all namespaces
-	var gitRepos promoterv1alpha1.GitRepositoryList
-	if err := r.List(ctx, &gitRepos); err != nil {
-		return false, fmt.Errorf("failed to list GitRepositories: %w", err)
-	}
-
-	var dependentRepos []string
-	for _, gitRepo := range gitRepos.Items {
-		if gitRepo.Spec.ScmProviderRef.Name == clusterScmProvider.Name &&
-			gitRepo.Spec.ScmProviderRef.Kind == promoterv1alpha1.ClusterScmProviderKind {
-			dependentRepos = append(dependentRepos, fmt.Sprintf("%s/%s", gitRepo.Namespace, gitRepo.Name))
+	// If we're being deleted and finalizer was removed, also remove Secret finalizer
+	if deleted && err == nil {
+		if err := r.removeSecretFinalizer(ctx, clusterScmProvider); err != nil {
+			return false, fmt.Errorf("failed to remove Secret finalizer: %w", err)
 		}
 	}
 
-	if len(dependentRepos) > 0 {
-		// Sort for deterministic error messages
-		sort.Strings(dependentRepos)
-		firstRepo := dependentRepos[0]
-		var errMsg string
-		if len(dependentRepos) == 1 {
-			errMsg = fmt.Sprintf("ClusterScmProvider %s still has dependent GitRepository %s",
-				clusterScmProvider.Name, firstRepo)
-		} else {
-			errMsg = fmt.Sprintf("ClusterScmProvider %s still has dependent GitRepository %s and %d more",
-				clusterScmProvider.Name, firstRepo, len(dependentRepos)-1)
-		}
-		logger.Info("ClusterScmProvider still has dependent GitRepositories, cannot delete",
-			"clusterScmProvider", clusterScmProvider.Name, "count", len(dependentRepos), "first", firstRepo)
-		return true, errors.New(errMsg)
-	}
-
-	// Remove finalizer from Secret if it exists
-	if err := r.removeSecretFinalizer(ctx, clusterScmProvider); err != nil {
-		return false, fmt.Errorf("failed to remove Secret finalizer: %w", err)
-	}
-
-	// No dependent GitRepositories, remove finalizer
-	controllerutil.RemoveFinalizer(clusterScmProvider, finalizer)
-	if err := r.Update(ctx, clusterScmProvider); err != nil {
-		return true, fmt.Errorf("failed to remove finalizer: %w", err)
-	}
-	return true, nil
+	return deleted, err
 }
 
 func (r *ClusterScmProviderReconciler) ensureSecretFinalizer(ctx context.Context, clusterScmProvider *promoterv1alpha1.ClusterScmProvider) error {
