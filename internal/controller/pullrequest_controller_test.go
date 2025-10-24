@@ -197,6 +197,47 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 	})
 
+	Context("When deleting a PullRequest that never created a PR on SCM", func() {
+		ctx := context.Background()
+
+		It("should successfully delete a PullRequest with empty status.id without getting stuck", func() {
+			By("Creating a PullRequest but preventing it from creating a PR on SCM")
+
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "delete-without-scm-pr")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			// Create a bad SCM provider configuration to prevent PR creation
+			scmProvider.Spec.SecretRef = &v1.LocalObjectReference{Name: "non-existing-secret"}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be reconciled but not create a PR on SCM")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				// Should have an error condition but no status.id
+				g.Expect(pullRequest.Status.ID).To(BeEmpty())
+				g.Expect(pullRequest.Status.Conditions).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting the PullRequest")
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+
+			By("Verifying the PullRequest is deleted successfully without getting stuck")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Context("When deleting resources with finalizers", func() {
 		ctx := context.Background()
 
@@ -307,13 +348,13 @@ var _ = Describe("PullRequest Controller", func() {
 			By("Waiting for ScmProvider to add finalizer to Secret")
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmSecret)).To(Succeed())
-				g.Expect(scmSecret.Finalizers).To(ContainElement("scmprovider.promoter.argoproj.io/secret-finalizer"))
+				g.Expect(scmSecret.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
 			}, constants.EventuallyTimeout)
 
 			By("Verifying ScmProvider has its own finalizer")
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmProvider)).To(Succeed())
-				g.Expect(scmProvider.Finalizers).To(ContainElement("scmprovider.promoter.argoproj.io/finalizer"))
+				g.Expect(scmProvider.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer))
 			}, constants.EventuallyTimeout)
 
 			By("Deleting the ScmProvider")
@@ -328,7 +369,7 @@ var _ = Describe("PullRequest Controller", func() {
 
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmSecret)).To(Succeed())
-				g.Expect(scmSecret.Finalizers).ToNot(ContainElement("scmprovider.promoter.argoproj.io/secret-finalizer"))
+				g.Expect(scmSecret.Finalizers).ToNot(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
 			}, constants.EventuallyTimeout)
 
 			By("Cleaning up Secret")

@@ -85,6 +85,11 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Remove any existing Ready condition. We want to start fresh.
 	meta.RemoveStatusCondition(pr.GetConditions(), string(promoterConditions.Ready))
 
+	// Handle deletion early - if being deleted and status.ID is empty, we can skip provider setup
+	if handled, err := r.handleEmptyIDDeletion(ctx, &pr); handled || err != nil {
+		return ctrl.Result{}, err
+	}
+
 	provider, err := r.getPullRequestProvider(ctx, pr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
@@ -94,78 +99,19 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if pr.Status.State == promoterv1alpha1.PullRequestMerged || pr.Status.State == promoterv1alpha1.PullRequestClosed {
-		logger.Info("Cleaning up close and merged pull request", "pullRequestID", pr.Status.ID)
-		if err := r.Delete(ctx, &pr); err != nil && !errors.IsNotFound(err) {
-			logger.Error(err, "Failed to delete PullRequest")
-			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
-		}
-		return ctrl.Result{}, nil
+	// Clean up already closed/merged PRs
+	if cleaned, err := r.cleanupTerminalStates(ctx, &pr); cleaned || err != nil {
+		return ctrl.Result{}, err
 	}
 
-	logger.Info("Checking for open PR on provider")
-	found, prID, prCreationTime, err := provider.FindOpen(ctx, pr)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
+	// Sync state from provider
+	if deleted, err := r.syncStateFromProvider(ctx, &pr, provider); deleted || err != nil {
+		return ctrl.Result{}, err
 	}
 
-	// Calculate the state of the PR based on the provider, if found we have to be open
-	if found {
-		pr.Status.State = promoterv1alpha1.PullRequestOpen
-		pr.Status.ID = prID
-		pr.Status.PRCreationTime = metav1.NewTime(prCreationTime)
-		url, err := provider.GetUrl(ctx, pr)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to get pull request URL: %w", err)
-		}
-		pr.Status.Url = url
-	} else if pr.Status.ID != "" {
-		// If we don't find the PR, but we have an ID, it means it was deleted on the provider side
-		if err := r.Delete(ctx, &pr); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest resource due to SCM not found: %w", err)
-		}
-		return ctrl.Result{}, nil
-	}
-
-	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
-
-	//nolint:nestif // There's not a great way to simplify this section.
-	if pr.Status.State != pr.Spec.State {
-		switch pr.Spec.State {
-		case promoterv1alpha1.PullRequestOpen:
-			if pr.Status.ID == "" {
-				// Because status id is empty, we need to create a new pull request
-				logger.Info("Creating PullRequest")
-				if err := r.createPullRequest(ctx, &pr, provider); err != nil {
-					return ctrl.Result{}, fmt.Errorf("failed to create pull request: %w", err)
-				}
-			}
-		case promoterv1alpha1.PullRequestMerged:
-			logger.Info("Merging PullRequest")
-			if err := r.mergePullRequest(ctx, &pr, provider); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to merge pull request: %w", err)
-			}
-			if err := r.Delete(ctx, &pr); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
-			}
-			return ctrl.Result{}, nil
-		case promoterv1alpha1.PullRequestClosed:
-			logger.Info("Closing PullRequest")
-			if err := r.closePullRequest(ctx, &pr, provider); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to close pull request: %w", err)
-			}
-			if err := r.Delete(ctx, &pr); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
-			}
-			return ctrl.Result{}, nil
-		default:
-			return ctrl.Result{}, fmt.Errorf("unknown PullRequest state %q: this should not happen, please report a bug", pr.Spec.State)
-		}
-	} else {
-		logger.Info("Updating PullRequest")
-		if err := r.updatePullRequest(ctx, pr, provider); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to update pull request: %w", err)
-		}
+	// Handle state transitions
+	if done, err := r.handleStateTransitions(ctx, &pr, provider); done || err != nil {
+		return ctrl.Result{}, err
 	}
 
 	if err := r.Status().Update(ctx, &pr); err != nil {
@@ -180,6 +126,123 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	return ctrl.Result{RequeueAfter: requeueDuration}, nil
+}
+
+// handleEmptyIDDeletion handles the case where a PullRequest is being deleted but never created a PR on the SCM.
+// Returns (handled=true, nil) if deletion was handled, (false, nil) if not applicable, or (false, err) on error.
+func (r *PullRequestReconciler) handleEmptyIDDeletion(ctx context.Context, pr *promoterv1alpha1.PullRequest) (bool, error) {
+	if pr.DeletionTimestamp.IsZero() || pr.Status.ID != "" {
+		return false, nil
+	}
+
+	if controllerutil.ContainsFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
+		controllerutil.RemoveFinalizer(pr, promoterv1alpha1.PullRequestFinalizer)
+		if err := r.Update(ctx, pr); err != nil {
+			return true, fmt.Errorf("failed to remove finalizer: %w", err)
+		}
+	}
+	return true, nil
+}
+
+// cleanupTerminalStates deletes PullRequests that have reached terminal states (merged/closed).
+// Returns (cleaned=true, nil) if cleaned up, (false, nil) if not applicable, or (false, err) on error.
+func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *promoterv1alpha1.PullRequest) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	if pr.Status.State != promoterv1alpha1.PullRequestMerged && pr.Status.State != promoterv1alpha1.PullRequestClosed {
+		return false, nil
+	}
+
+	logger.Info("Cleaning up close and merged pull request", "pullRequestID", pr.Status.ID)
+	if err := r.Delete(ctx, pr); err != nil && !errors.IsNotFound(err) {
+		logger.Error(err, "Failed to delete PullRequest")
+		return false, fmt.Errorf("failed to delete PullRequest: %w", err)
+	}
+	return true, nil
+}
+
+// syncStateFromProvider syncs the PullRequest state from the SCM provider.
+// Returns (deleted=true, nil) if PR was deleted, (false, nil) if not deleted, or (false, err) on error.
+func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	logger.Info("Checking for open PR on provider")
+	found, prID, prCreationTime, err := provider.FindOpen(ctx, *pr)
+	if err != nil {
+		return false, fmt.Errorf("failed to check for open PR: %w", err)
+	}
+
+	// Calculate the state of the PR based on the provider, if found we have to be open
+	if found {
+		pr.Status.State = promoterv1alpha1.PullRequestOpen
+		pr.Status.ID = prID
+		pr.Status.PRCreationTime = metav1.NewTime(prCreationTime)
+		url, err := provider.GetUrl(ctx, *pr)
+		if err != nil {
+			return false, fmt.Errorf("failed to get pull request URL: %w", err)
+		}
+		pr.Status.Url = url
+		return false, nil
+	}
+
+	// If we don't find the PR, but we have an ID, it means it was deleted on the provider side
+	if pr.Status.ID != "" {
+		if err := r.Delete(ctx, pr); err != nil {
+			return false, fmt.Errorf("failed to delete PullRequest resource due to SCM not found: %w", err)
+		}
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// handleStateTransitions handles transitions between PullRequest states.
+// Returns (done=true, nil) if a terminal state was reached, (false, nil) otherwise, or (false, err) on error.
+func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	logger.Info("Reconciling PullRequest state", "desired", pr.Spec.State, "current", pr.Status.State)
+
+	if pr.Status.State == pr.Spec.State {
+		logger.Info("Updating PullRequest")
+		if err := r.updatePullRequest(ctx, *pr, provider); err != nil {
+			return false, fmt.Errorf("failed to update pull request: %w", err)
+		}
+		return false, nil
+	}
+
+	switch pr.Spec.State {
+	case promoterv1alpha1.PullRequestOpen:
+		if pr.Status.ID == "" {
+			// Because status id is empty, we need to create a new pull request
+			logger.Info("Creating PullRequest")
+			if err := r.createPullRequest(ctx, pr, provider); err != nil {
+				return false, fmt.Errorf("failed to create pull request: %w", err)
+			}
+		}
+	case promoterv1alpha1.PullRequestMerged:
+		logger.Info("Merging PullRequest")
+		if err := r.mergePullRequest(ctx, pr, provider); err != nil {
+			return false, fmt.Errorf("failed to merge pull request: %w", err)
+		}
+		if err := r.Delete(ctx, pr); err != nil {
+			return false, fmt.Errorf("failed to delete PullRequest: %w", err)
+		}
+		return true, nil
+	case promoterv1alpha1.PullRequestClosed:
+		logger.Info("Closing PullRequest")
+		if err := r.closePullRequest(ctx, pr, provider); err != nil {
+			return false, fmt.Errorf("failed to close pull request: %w", err)
+		}
+		if err := r.Delete(ctx, pr); err != nil {
+			return false, fmt.Errorf("failed to delete PullRequest: %w", err)
+		}
+		return true, nil
+	default:
+		return false, fmt.Errorf("unknown PullRequest state %q: this should not happen, please report a bug", pr.Spec.State)
+	}
+
+	return false, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -258,9 +321,14 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 		return false, nil
 	}
 
-	if err := r.closePullRequest(ctx, pr, provider); err != nil {
-		return false, fmt.Errorf("failed to close pull request: %w", err)
+	// If status.ID is empty, it means the PullRequest never took control of any PR on the SCM.
+	// In this case, we can just remove the finalizer without attempting to close the PR.
+	if pr.Status.ID != "" {
+		if err := r.closePullRequest(ctx, pr, provider); err != nil {
+			return false, fmt.Errorf("failed to close pull request: %w", err)
+		}
 	}
+
 	controllerutil.RemoveFinalizer(pr, finalizer)
 	if err := r.Update(ctx, pr); err != nil {
 		return true, fmt.Errorf("failed to remove finalizer: %w", err)
