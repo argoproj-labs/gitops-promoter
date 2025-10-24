@@ -3133,12 +3133,6 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.environments[0].active.dry.sha
-      name: Active Dry Sha
-      type: string
-    - jsonPath: .status.environments[0].proposed.dry.sha
-      name: Proposed Dry Sha
-      type: string
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
