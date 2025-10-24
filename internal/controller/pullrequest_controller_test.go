@@ -348,13 +348,13 @@ var _ = Describe("PullRequest Controller", func() {
 			By("Waiting for ScmProvider to add finalizer to Secret")
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmSecret)).To(Succeed())
-				g.Expect(scmSecret.Finalizers).To(ContainElement("scmprovider.promoter.argoproj.io/secret-finalizer"))
+				g.Expect(scmSecret.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
 			}, constants.EventuallyTimeout)
 
 			By("Verifying ScmProvider has its own finalizer")
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmProvider)).To(Succeed())
-				g.Expect(scmProvider.Finalizers).To(ContainElement("scmprovider.promoter.argoproj.io/finalizer"))
+				g.Expect(scmProvider.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer))
 			}, constants.EventuallyTimeout)
 
 			By("Deleting the ScmProvider")
@@ -369,7 +369,7 @@ var _ = Describe("PullRequest Controller", func() {
 
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmSecret)).To(Succeed())
-				g.Expect(scmSecret.Finalizers).ToNot(ContainElement("scmprovider.promoter.argoproj.io/secret-finalizer"))
+				g.Expect(scmSecret.Finalizers).ToNot(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
 			}, constants.EventuallyTimeout)
 
 			By("Cleaning up Secret")

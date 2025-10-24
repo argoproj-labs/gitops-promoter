@@ -135,8 +135,8 @@ func (r *PullRequestReconciler) handleEmptyIDDeletion(ctx context.Context, pr *p
 		return false, nil
 	}
 
-	if controllerutil.ContainsFinalizer(pr, constants.PullRequestFinalizer) {
-		controllerutil.RemoveFinalizer(pr, constants.PullRequestFinalizer)
+	if controllerutil.ContainsFinalizer(pr, promoterv1alpha1.PullRequestFinalizer) {
+		controllerutil.RemoveFinalizer(pr, promoterv1alpha1.PullRequestFinalizer)
 		if err := r.Update(ctx, pr); err != nil {
 			return true, fmt.Errorf("failed to remove finalizer: %w", err)
 		}
