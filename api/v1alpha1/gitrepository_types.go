@@ -26,10 +26,11 @@ import (
 // GitRepositorySpec defines the desired state of GitRepository
 // +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;fake
 type GitRepositorySpec struct {
-	GitHub  *GitHubRepo  `json:"github,omitempty"`
-	GitLab  *GitLabRepo  `json:"gitlab,omitempty"`
-	Forgejo *ForgejoRepo `json:"forgejo,omitempty"`
-	Fake    *FakeRepo    `json:"fake,omitempty"`
+	GitHub      *GitHubRepo      `json:"github,omitempty"`
+	GitLab      *GitLabRepo      `json:"gitlab,omitempty"`
+	Forgejo     *ForgejoRepo     `json:"forgejo,omitempty"`
+	AzureDevOps *AzureDevOpsRepo `json:"azureDevOps,omitempty"`
+	Fake        *FakeRepo        `json:"fake,omitempty"`
 	// +kubebuilder:validation:Required
 	ScmProviderRef ScmProviderObjectReference `json:"scmProviderRef"`
 }
