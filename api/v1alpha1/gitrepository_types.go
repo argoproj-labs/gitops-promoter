@@ -50,6 +50,13 @@ type ScmProviderObjectReference struct {
 type GitRepositoryStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// Conditions Represents the observations of the current state.
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 //+kubebuilder:object:root=true
@@ -62,6 +69,11 @@ type GitRepository struct {
 
 	Spec   GitRepositorySpec   `json:"spec,omitempty"`
 	Status GitRepositoryStatus `json:"status,omitempty"`
+}
+
+// GetConditions returns the conditions of the GitRepository.
+func (gr *GitRepository) GetConditions() *[]metav1.Condition {
+	return &gr.Status.Conditions
 }
 
 //+kubebuilder:object:root=true

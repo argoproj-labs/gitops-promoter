@@ -295,8 +295,10 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 }
 
 func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
+	finalizer := promoterv1alpha1.PullRequestFinalizer
+
 	if pr.DeletionTimestamp.IsZero() {
-		if controllerutil.ContainsFinalizer(pr, constants.PullRequestFinalizer) {
+		if controllerutil.ContainsFinalizer(pr, finalizer) {
 			// Not being deleted and already has finalizer, nothing to do.
 			return false, nil
 		}
@@ -306,7 +308,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 			if err := r.Get(ctx, client.ObjectKeyFromObject(pr), pr); err != nil {
 				return err //nolint:wrapcheck
 			}
-			if controllerutil.AddFinalizer(pr, constants.PullRequestFinalizer) {
+			if controllerutil.AddFinalizer(pr, finalizer) {
 				return r.Update(ctx, pr)
 			}
 			return nil
@@ -314,7 +316,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 	}
 
 	// If we're here, the object is being deleted
-	if !controllerutil.ContainsFinalizer(pr, constants.PullRequestFinalizer) {
+	if !controllerutil.ContainsFinalizer(pr, finalizer) {
 		// Finalizer already removed, nothing to do.
 		return false, nil
 	}
@@ -327,7 +329,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 		}
 	}
 
-	controllerutil.RemoveFinalizer(pr, constants.PullRequestFinalizer)
+	controllerutil.RemoveFinalizer(pr, finalizer)
 	if err := r.Update(ctx, pr); err != nil {
 		return true, fmt.Errorf("failed to remove finalizer: %w", err)
 	}

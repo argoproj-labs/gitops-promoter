@@ -47,3 +47,27 @@ All resources may produce the following events:
 |------------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | Warning    | ChangeTransferPolicyNotReady            | One or more of the [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) resources managed by this PromotionStrategy is not Ready. |
 | Warning    | PreviousEnvironmentCommitStatusNotReady | One or more of the active [CommitStatus](../crd-specs.md#commitstatus) resources for the previous environment is not Ready.               |
+
+## GitRepository
+
+[GitRepositories](../crd-specs.md#gitrepository) may produce the following events:
+
+| Event Type | Event Reason    | Description                                                                                                                                 |
+|------------|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| Warning    | DeletionBlocked | The GitRepository cannot be deleted because it still has dependent [PullRequests](../crd-specs.md#pullrequest). Delete the PullRequests first. |
+
+## ScmProvider
+
+[ScmProviders](../crd-specs.md#scmprovider) may produce the following events:
+
+| Event Type | Event Reason    | Description                                                                                                                                          |
+|------------|-----------------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Warning    | DeletionBlocked | The ScmProvider cannot be deleted because it still has dependent [GitRepositories](../crd-specs.md#gitrepository). Delete the GitRepositories first. |
+
+## ClusterScmProvider
+
+[ClusterScmProviders](../crd-specs.md#clusterscmprovider) may produce the following events:
+
+| Event Type | Event Reason    | Description                                                                                                                                                   |
+|------------|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Warning    | DeletionBlocked | The ClusterScmProvider cannot be deleted because it still has dependent [GitRepositories](../crd-specs.md#gitrepository). Delete the GitRepositories first. |

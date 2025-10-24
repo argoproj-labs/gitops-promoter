@@ -41,6 +41,11 @@ type ClusterScmProvider struct {
 	Status ScmProviderStatus `json:"status,omitempty"`
 }
 
+// GetConditions returns the conditions of the ClusterScmProvider.
+func (s *ClusterScmProvider) GetConditions() *[]metav1.Condition {
+	return &s.Status.Conditions
+}
+
 // +kubebuilder:object:root=true
 
 // ClusterScmProviderList contains a list of ClusterScmProvider.
