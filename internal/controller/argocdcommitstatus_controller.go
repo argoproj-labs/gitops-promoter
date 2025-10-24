@@ -443,27 +443,23 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 
 			application := &argocd.Application{}
 
-			// fetch the ArgoCDApplication from the cluster
-			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
-				if k8s_errors.IsNotFound(err) {
-					rwMutex.Lock()
-					delete(revMap, appRevisionKey{
-						clusterName: clusterName,
-						namespace:   argoCDApplication.GetNamespace(),
-						name:        argoCDApplication.GetName(),
-					})
-					rwMutex.Unlock()
-					return nil
-				}
-				logger.Error(err, "failed to get ArgoCDApplication")
-				return nil
-			}
-
 			// if clusterName is empty, then cluster == local cluster
 			appKey := appRevisionKey{
 				clusterName: clusterName,
 				namespace:   application.GetNamespace(),
 				name:        application.GetName(),
+			}
+
+			// fetch the ArgoCDApplication from the cluster
+			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
+				if k8s_errors.IsNotFound(err) {
+					rwMutex.Lock()
+					delete(revMap, appKey)
+					rwMutex.Unlock()
+					return nil
+				}
+				logger.Error(err, "failed to get ArgoCDApplication")
+				return nil
 			}
 
 			rwMutex.RLock()
