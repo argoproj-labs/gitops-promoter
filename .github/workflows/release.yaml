@@ -25,7 +25,7 @@ jobs:
     name: Release
     steps:
       - name: Checkout
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493 # v5.0.0
         with:
           fetch-depth: 0
 
@@ -46,7 +46,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
-          go-version: "1.24"
+          go-version: "1.25"
 
       - name: Docker Login in quay.io
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0

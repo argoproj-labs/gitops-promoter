@@ -26,7 +26,7 @@ jobs:
         run: |
           chmod +x hack/bump-docs-manifests.sh
           ./hack/bump-docs-manifests.sh ${{ github.event.inputs.new_version }}
-          git add docs/getting-started.md docs/tutorial-argocd-apps.md
+          git add docs/getting-started.md docs/tutorial-argocd-apps.md docs/argocd-integrations.md
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7
         with:

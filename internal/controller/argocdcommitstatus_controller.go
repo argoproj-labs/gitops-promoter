@@ -89,11 +89,12 @@ type appRevisionKey struct {
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
-	Manager            mcmanager.Manager
-	Recorder           record.EventRecorder
-	SettingsMgr        *settings.Manager
-	KubeConfigProvider *kubeconfig.Provider
-	localClient        client.Client
+	Manager                mcmanager.Manager
+	Recorder               record.EventRecorder
+	SettingsMgr            *settings.Manager
+	KubeConfigProvider     *kubeconfig.Provider
+	localClient            client.Client
+	watchLocalApplications bool
 }
 
 // URLTemplateData is the data passed to the URLTemplate in the ArgoCDCommitStatus.
@@ -153,7 +154,10 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 	// list clusters so we can query argocd applications from all clusters
 	clusters := r.KubeConfigProvider.ListClusters()
-	clusters = append(clusters, "") // add the local cluster
+	if r.watchLocalApplications {
+		// The provider doesn't know about the local cluster, so we need to add it ourselves.
+		clusters = append(clusters, mcmanager.LocalCluster)
+	}
 	for _, clusterName := range clusters {
 		logger.Info("Fetching Argo CD applications from cluster", "cluster", clusterName)
 		cluster, err := r.Manager.GetCluster(ctx, clusterName)
@@ -167,7 +171,11 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 			LabelSelector: ls,
 		})
 		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to list ArgoCDApplications: %w", err)
+			clusterNameMsg := "on the local cluster"
+			if clusterName != "" {
+				clusterNameMsg = "on cluster " + clusterName
+			}
+			return ctrl.Result{}, fmt.Errorf("failed to list ArgoCDApplications %s: %w", clusterNameMsg, err)
 		}
 
 		apps = append(apps, ApplicationsInEnvironment{
@@ -390,13 +398,15 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(ap
 	healthy := 0
 	degraded := 0
 	for _, s := range appsInEnvironment {
-		if s.commitStatus.Spec.Sha != resolvedSha {
+		switch {
+		case s.commitStatus.Spec.Sha != resolvedSha:
 			pending++
-		} else if s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess {
+		case s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess:
 			healthy++
-		} else if s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseFailure {
+		case s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseFailure:
 			degraded++
-		} else {
+		default:
+			// Count other phases (pending, unknown, etc.) as pending
 			pending++
 		}
 	}
@@ -518,6 +528,8 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		return fmt.Errorf("failed to get controller configuration: %w", err)
 	}
 
+	r.watchLocalApplications = watchLocalApplications
+
 	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
@@ -554,6 +566,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			Namespace: argoCDCommitStatus.Namespace, // Applications could come from multiple namespaces have to put this somewhere and avoid collisions
 			Labels: map[string]string{
 				promoterv1alpha1.CommitStatusLabel: "argocd-health",
+				promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(targetBranch),
 			},
 			OwnerReferences: []metav1.OwnerReference{*controllerRef},
 		},

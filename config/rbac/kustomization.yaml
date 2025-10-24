@@ -33,3 +33,10 @@ resources:
 - controllerconfiguration_admin_role.yaml
 - controllerconfiguration_editor_role.yaml
 - controllerconfiguration_viewer_role.yaml
+# For each CRD, "Admin", "Editor" and "Viewer" roles are scaffolded by
+# default, aiding admins in cluster management. Those roles are
+# not used by the promoter itself. You can comment the following lines
+# if you do not want those helpers be installed with your Project.
+- timedcommitstatus_admin_role.yaml
+- timedcommitstatus_editor_role.yaml
+- timedcommitstatus_viewer_role.yaml

@@ -103,7 +103,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     activeCommitUrl: getCommitUrl(activeCommitInfo.repoURL ?? '', activeCommitInfo.sha ?? ''),
     activeSha: activeCommitInfo.sha ? activeCommitInfo.sha.slice(0, 7) : '-',
     activeReferenceCommit: activeReferenceData,
-    activeReferenceCommitUrl: activeReferenceData ? getCommitUrl(activeCommitInfo.repoURL ?? '', activeReferenceData.sha ?? '') : null,
+    activeReferenceCommitUrl: activeReferenceData ? (activeReferenceData.url ?? null) : null,
     activeChecks: historicalChecks,
     activeChecksSummary,
 
@@ -118,7 +118,7 @@ function getEnvDetails(environment: Environment, index: number = 0): EnrichedEnv
     proposedDryCommitUrl: getCommitUrl(proposedDry.repoURL ?? '', proposedDry.sha ?? ''),
     proposedSha: proposedDry.sha ? proposedDry.sha.slice(0, 7) : '-',
     proposedReferenceCommit: proposedReferenceData,
-    proposedReferenceCommitUrl: proposedReferenceData ? getCommitUrl(proposedDry.repoURL ?? '', proposedReferenceData.sha ?? '') : null,
+    proposedReferenceCommitUrl: proposedReferenceData ? (proposedReferenceData.url ?? null) : null,
     proposedChecks,
     proposedChecksSummary,
   };

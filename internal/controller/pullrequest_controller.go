@@ -105,7 +105,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	logger.Info("Checking for open PR on provider")
-	found, foundState, err := provider.FindOpen(ctx, pr)
+	found, prID, prCreationTime, err := provider.FindOpen(ctx, pr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
 	}
@@ -113,9 +113,13 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Calculate the state of the PR based on the provider, if found we have to be open
 	if found {
 		pr.Status.State = promoterv1alpha1.PullRequestOpen
-		pr.Status.ID = foundState.ID
-		pr.Status.PRCreationTime = foundState.PRCreationTime
-		pr.Status.Url = foundState.Url
+		pr.Status.ID = prID
+		pr.Status.PRCreationTime = metav1.NewTime(prCreationTime)
+		url, err := provider.GetUrl(ctx, pr)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to get pull request URL: %w", err)
+		}
+		pr.Status.Url = url
 	} else if pr.Status.ID != "" {
 		// If we don't find the PR, but we have an ID, it means it was deleted on the provider side
 		if err := r.Delete(ctx, &pr); err != nil {
@@ -155,6 +159,8 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				return ctrl.Result{}, fmt.Errorf("failed to delete PullRequest: %w", err)
 			}
 			return ctrl.Result{}, nil
+		default:
+			return ctrl.Result{}, fmt.Errorf("unknown PullRequest state %q: this should not happen, please report a bug", pr.Spec.State)
 		}
 	} else {
 		logger.Info("Updating PullRequest")
@@ -295,6 +301,7 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 	mergedTime := metav1.Now()
 
 	updatedMessage, err := git.AddTrailerToCommitMessage(
+		ctx,
 		pr.Spec.Commit.Message,
 		constants.TrailerPullRequestMergeTime,
 		mergedTime.Format(time.RFC3339),

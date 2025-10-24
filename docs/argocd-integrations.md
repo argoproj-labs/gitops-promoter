@@ -24,9 +24,9 @@ spec:
             - name: EXTENSION_NAME
               value: gitops-promoter
             - name: EXTENSION_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.14.0/gitops-promoter-argocd-extension.tar.gz
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.16.0/gitops-promoter-argocd-extension.tar.gz
             - name: EXTENSION_CHECKSUM_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.14.0/gitops-promoter_0.12.0_checksums.txt
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.16.0/gitops-promoter_0.16.0_checksums.txt
           volumeMounts:
             - name: extensions
               mountPath: /tmp/extensions/
@@ -55,11 +55,11 @@ To enable these deep links, add the following to your `argocd-cm` ConfigMap:
     - url: '{{.resource.status.url}}'
       title: Pull Request
       icon.class: fa-code-pull-request
-      if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "PullRequest" && resource.status.url != ""
+      if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "PullRequest" && resource.status.url != nil && resource.status.url != ""
     - url: '{{.resource.status.pullRequest.url}}'
       title: Pull Request
       icon.class: fa-code-pull-request
-      if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "ChangeTransferPolicy" && resource.status.pullRequest != nil && resource.status.pullRequest.url != ""
+      if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "ChangeTransferPolicy" && resource.status.pullRequest != nil && resource.status.pullRequest.url != nil && resource.status.pullRequest.url != ""
 ```
 
 ## Commit Status Keys in Resource Tree

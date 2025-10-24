@@ -1,0 +1,188 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+  ],
+  gitAuthor: 'Renovate Bot <bot@renovateapp.com>',
+  timezone: 'UTC',
+  schedule: [
+    'every weekend',
+  ],
+  labels: [
+    'dependencies',
+  ],
+  prConcurrentLimit: 3,
+  packageRules: [
+    {
+      description: 'Automatically update Go version across all files',
+      matchManagers: [
+        'gomod',
+        'custom.regex',
+      ],
+      matchPackageNames: [
+        'go',
+        'golang',
+      ],
+      matchDepTypes: [
+        'golang-version',
+      ],
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      commitMessageTopic: 'Go',
+      groupName: 'Go version',
+      automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'go mod tidy',
+          'make lint-fix || true',
+        ],
+        fileFilters: [
+          '**/*.go',
+          'go.mod',
+          'go.sum',
+        ],
+        executionMode: 'branch',
+      },
+    },
+    {
+      description: 'Automatically update golangci-lint version',
+      matchManagers: [
+        'custom.regex',
+      ],
+      matchDepTypes: [
+        'golangci-lint',
+      ],
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      commitMessageTopic: 'golangci-lint',
+      groupName: 'golangci-lint version',
+      automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'make lint-fix || true',
+        ],
+        fileFilters: [
+          '**/*.go',
+        ],
+        executionMode: 'branch',
+      },
+    },
+    {
+      description: 'Group Go and golangci-lint updates together',
+      matchManagers: [
+        'gomod',
+        'custom.regex',
+      ],
+      matchPackageNames: [
+        'go',
+        'golang',
+        'golangci-lint',
+      ],
+      matchDepTypes: [
+        'golang-version',
+        'golangci-lint',
+      ],
+      groupName: 'Go and linter tooling',
+      semanticCommits: 'enabled',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'deps',
+      automerge: false,
+      postUpgradeTasks: {
+        commands: [
+          'go mod tidy',
+          'make lint-fix || true',
+        ],
+        fileFilters: [
+          '**/*.go',
+          'go.mod',
+          'go.sum',
+        ],
+        executionMode: 'branch',
+      },
+    },
+    {
+      description: 'Disable Go module dependency updates (keep using Dependabot for those)',
+      matchManagers: [
+        'gomod',
+      ],
+      matchDepTypes: [
+        'require',
+      ],
+      enabled: false,
+    },
+  ],
+  customManagers: [
+    {
+      customType: 'regex',
+      description: 'Update Go version in go.mod',
+      managerFilePatterns: [
+        '/^go\\.mod$/',
+      ],
+      matchStrings: [
+        'go (?<currentValue>\\d+\\.\\d+(\\.\\d+)?)',
+      ],
+      depNameTemplate: 'go',
+      datasourceTemplate: 'golang-version',
+      versioningTemplate: 'semver',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Go version in GitHub Actions workflows',
+      managerFilePatterns: [
+        '/^\\.github/workflows/.*\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'go-version:\\s*[\'"]?(?<currentValue>\\d+\\.\\d+)[\'"]?',
+      ],
+      depNameTemplate: 'go',
+      datasourceTemplate: 'golang-version',
+      versioningTemplate: 'semver',
+    },
+    {
+      customType: 'regex',
+      description: 'Update Go version in Dockerfiles',
+      managerFilePatterns: [
+        '/(^|/)Dockerfile$/',
+        '/(^|/)Dockerfile\\.[^/]*$/',
+      ],
+      matchStrings: [
+        'FROM\\s+golang:(?<currentValue>\\d+\\.\\d+(\\.\\d+)?)',
+      ],
+      depNameTemplate: 'golang',
+      datasourceTemplate: 'docker',
+      versioningTemplate: 'docker',
+    },
+    {
+      customType: 'regex',
+      description: 'Update golangci-lint version in Makefile',
+      managerFilePatterns: [
+        '/^Makefile$/',
+      ],
+      matchStrings: [
+        'GOLANGCI_LINT_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'golangci-lint',
+      packageNameTemplate: 'golangci/golangci-lint',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+    {
+      customType: 'regex',
+      description: 'Update golangci-lint version in GitHub Actions',
+      managerFilePatterns: [
+        '/^\\.github/workflows/.*\\.ya?ml$/',
+      ],
+      matchStrings: [
+        'uses:\\s+golangci/golangci-lint-action@v\\d+[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
+      ],
+      depNameTemplate: 'golangci-lint',
+      packageNameTemplate: 'golangci/golangci-lint',
+      datasourceTemplate: 'github-releases',
+      versioningTemplate: 'semver',
+      extractVersionTemplate: '^v(?<version>.*)$',
+    },
+  ],
+}

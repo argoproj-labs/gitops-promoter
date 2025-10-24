@@ -177,7 +177,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
 				g.Expect(err).To(Succeed())
 
-				sha, err := runGitCmd(gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
+				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
 				g.Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -191,7 +191,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
 
-				sha, err := runGitCmd(gitPath, "rev-parse", changeTransferPolicy.Spec.ActiveBranch)
+				sha, err := runGitCmd(ctx, gitPath, "rev-parse", changeTransferPolicy.Spec.ActiveBranch)
 				Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
@@ -378,13 +378,60 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				g.Expect(errors.IsNotFound(err)).To(BeTrue())
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("should set mergeSha field to proposed hydrated SHA", func() {
+			_, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy := changeTransferPolicyResources(ctx, "ctp-merge-sha", "default")
+
+			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
+			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Adding a pending commit")
+			_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+
+			By("Reconciling and waiting for PR creation")
+			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
+
+			var pr promoterv1alpha1.PullRequest
+			prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+
+			// Verify mergeSha is set and matches the current proposed hydrated SHA
+			Eventually(func(g Gomega) {
+				typeNamespacedNamePR := types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, prName),
+					Namespace: "default",
+				}
+				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
+				g.Expect(err).To(Succeed())
+				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				// Verify mergeSha is set (not empty)
+				g.Expect(pr.Spec.MergeSha).ToNot(BeEmpty())
+
+				// Get the current hydrated SHA from the proposed branch
+				currentHydratedSha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ProposedBranch)
+				g.Expect(err).NotTo(HaveOccurred())
+				currentHydratedSha = strings.TrimSpace(currentHydratedSha)
+
+				// Verify mergeSha matches the current HEAD of the proposed branch
+				// This ensures that the PR will only merge if the branch head hasn't changed
+				g.Expect(pr.Spec.MergeSha).To(Equal(currentHydratedSha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 })
 
 //nolint:unparam
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
-	setupInitialTestGitRepoOnServer(name, name)
+	setupInitialTestGitRepoOnServer(ctx, name, name)
 
 	scmSecret := &v1.Secret{
 		TypeMeta: metav1.TypeMeta{},

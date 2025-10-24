@@ -46,7 +46,15 @@ type PullRequestSpec struct {
 	Description string `json:"description,omitempty"`
 	// Commit contains configuration for how we will merge/squash/etc the pull request.
 	Commit CommitConfiguration `json:"commit,omitempty"`
-	// State of the merge request closed/merged/open
+	// MergeSha is the commit SHA that the head branch must match before the PR can be merged.
+	// This prevents a race condition where a PR is merged with a different commit than intended.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^[a-fA-F0-9]+$`
+	MergeSha string `json:"mergeSha"`
+	// State of the pull request (closed, merged, or open). Must always be "open" when creating a new pull request.
+	// This value may not be changed to "closed" or "merged" unless the pull request status.id is set.
 	// +kubebuilder:default:=open
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=closed;merged;open
@@ -72,6 +80,8 @@ type PullRequestStatus struct {
 	// PRCreationTime the time the PR was created
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
 	// Url is the URL of the pull request.
+	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
+	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
 
 	// Conditions Represents the observations of the current state.
@@ -93,6 +103,7 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 // PullRequest is the Schema for the pullrequests API
 // +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.id`
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
+// +kubebuilder:validation:XValidation:rule=`self.spec.state == 'open' || has(self.status.id) && self.status.id != ""`,message="Cannot transition to 'closed' or 'merged' state when status.id is empty"
 type PullRequest struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
