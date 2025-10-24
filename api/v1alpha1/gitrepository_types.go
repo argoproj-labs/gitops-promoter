@@ -63,6 +63,8 @@ type GitRepositoryStatus struct {
 //+kubebuilder:subresource:status
 
 // GitRepository is the Schema for the gitrepositories API
+// +kubebuilder:printcolumn:name="Provider",type=string,JSONPath=`.spec.scmProviderRef.name`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type GitRepository struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

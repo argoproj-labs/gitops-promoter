@@ -198,6 +198,8 @@ func (ps *ChangeTransferPolicy) GetConditions() *[]metav1.Condition {
 // ChangeTransferPolicy is the Schema for the changetransferpolicies API
 // +kubebuilder:printcolumn:name="Active Dry Sha",type=string,JSONPath=`.status.active.dry.sha`
 // +kubebuilder:printcolumn:name="Proposed Dry Sha",type=string,JSONPath=`.status.proposed.dry.sha`
+// +kubebuilder:printcolumn:name="PR State",type=string,JSONPath=`.status.pullRequest.state`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type ChangeTransferPolicy struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

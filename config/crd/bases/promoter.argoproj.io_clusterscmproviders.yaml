@@ -14,7 +14,11 @@ spec:
     singular: clusterscmprovider
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ClusterScmProvider is the Schema for the clusterscmproviders

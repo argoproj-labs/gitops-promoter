@@ -69,6 +69,7 @@ type ScmProviderStatus struct {
 //+kubebuilder:subresource:status
 
 // ScmProvider is the Schema for the scmproviders API
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type ScmProvider struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
