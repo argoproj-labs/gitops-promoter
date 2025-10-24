@@ -26,7 +26,15 @@ spec:
     singular: argocdcommitstatus
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: Strategy
+      priority: 1
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ArgoCDCommitStatus is the Schema for the argocdcommitstatuses
@@ -289,6 +297,12 @@ spec:
       type: string
     - jsonPath: .status.proposed.dry.sha
       name: Proposed Dry Sha
+      type: string
+    - jsonPath: .status.pullRequest.state
+      name: PR State
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
       type: string
     name: v1alpha1
     schema:
@@ -1218,7 +1232,11 @@ spec:
     singular: clusterscmprovider
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ClusterScmProvider is the Schema for the clusterscmproviders
@@ -1408,11 +1426,22 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.sha
-      name: Sha
+    - jsonPath: .metadata.labels['promoter\.argoproj\.io/commit-status']
+      name: Key
       type: string
     - jsonPath: .status.phase
       name: Phase
+      type: string
+    - jsonPath: .status.sha
+      name: Sha
+      type: string
+    - jsonPath: .spec.name
+      name: Name
+      priority: 1
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      priority: 1
       type: string
     name: v1alpha1
     schema:
@@ -2891,7 +2920,14 @@ spec:
     singular: gitrepository
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.scmProviderRef.name
+      name: Provider
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: GitRepository is the Schema for the gitrepositories API
@@ -3097,11 +3133,14 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.active.dry.sha
+    - jsonPath: .status.environments[0].active.dry.sha
       name: Active Dry Sha
       type: string
-    - jsonPath: .status.proposed.dry.sha
+    - jsonPath: .status.environments[0].proposed.dry.sha
       name: Proposed Dry Sha
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
       type: string
     name: v1alpha1
     schema:
@@ -4181,11 +4220,26 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.id
-      name: ID
-      type: string
     - jsonPath: .status.state
       name: State
+      type: string
+    - jsonPath: .status.ID
+      name: ID
+      type: string
+    - jsonPath: .spec.sourceBranch
+      name: Source
+      priority: 1
+      type: string
+    - jsonPath: .spec.targetBranch
+      name: Target
+      priority: 1
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.url
+      name: URL
+      priority: 1
       type: string
     name: v1alpha1
     schema:
@@ -4447,7 +4501,11 @@ spec:
     singular: scmprovider
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ScmProvider is the Schema for the scmproviders API
@@ -4635,7 +4693,14 @@ spec:
     singular: timedcommitstatus
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: Strategy
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: TimedCommitStatus is the Schema for the timedcommitstatuses API

@@ -15,11 +15,22 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.sha
-      name: Sha
+    - jsonPath: .metadata.labels['promoter\.argoproj\.io/commit-status']
+      name: Key
       type: string
     - jsonPath: .status.phase
       name: Phase
+      type: string
+    - jsonPath: .status.sha
+      name: Sha
+      type: string
+    - jsonPath: .spec.name
+      name: Name
+      priority: 1
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      priority: 1
       type: string
     name: v1alpha1
     schema:
