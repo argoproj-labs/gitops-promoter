@@ -97,3 +97,15 @@ Labels:
 
 * `ctp_found`: Whether a ChangeTransferPolicy was found for the webhook (true, false). May be false for error conditions, so check the response code.
 * `response_code`: The HTTP response code of the webhook processing. 204 is the success code, which may be returned even if no ChangeTransferPolicy was found.
+
+## promoter_finalizer_dependent_resources
+
+A gauge of the current number of dependent resources preventing deletion of a resource.
+
+This metric is set when a deletion is blocked and shows how many dependent resources are preventing the deletion. The gauge is automatically cleared (deleted) when the finalizer is successfully removed.
+
+Labels:
+
+* `resource_type`: The type of resource being deleted (GitRepository, ScmProvider, ClusterScmProvider).
+* `resource_name`: The name of the resource being deleted.
+* `namespace`: The namespace of the resource being deleted (empty for cluster-scoped resources).

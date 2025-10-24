@@ -791,6 +791,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
 		gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 		controllerRef := metav1.NewControllerRef(ctp, gvk)
+		blockOwnerDeletion := true
+		controllerRef.BlockOwnerDeletion = &blockOwnerDeletion
 
 		pr.OwnerReferences = []metav1.OwnerReference{*controllerRef}
 		pr.Labels = map[string]string{

@@ -232,7 +232,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 }
 
 func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
-	finalizer := "pullrequest.promoter.argoporoj.io/finalizer"
+	finalizer := promoterv1alpha1.PullRequestFinalizer
 
 	if pr.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(pr, finalizer) {

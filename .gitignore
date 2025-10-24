@@ -88,3 +88,5 @@ ui/web/static/
 mkdocs-lint.log
 # MkDocs build site directory
 site/
+# Go build output (prevent accidentally committing the manager binary)
+main

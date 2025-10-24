@@ -24,3 +24,23 @@ const ReconcileAtAnnotation = "promoter.argoproj.io/reconcile-at"
 
 // CommitStatusPreviousEnvironmentStatusesAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
 const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/previous-environment-statuses"
+
+// Finalizer constants for preventing premature resource deletion
+
+// PullRequestFinalizer prevents deletion of PullRequest until the PR is closed in the SCM
+const PullRequestFinalizer = "pullrequest.promoter.argoproj.io/finalizer"
+
+// GitRepositoryFinalizer prevents deletion of GitRepository while PullRequests reference it
+const GitRepositoryFinalizer = "gitrepository.promoter.argoproj.io/finalizer"
+
+// ScmProviderFinalizer prevents deletion of ScmProvider while GitRepositories reference it
+const ScmProviderFinalizer = "scmprovider.promoter.argoproj.io/finalizer"
+
+// ClusterScmProviderFinalizer prevents deletion of ClusterScmProvider while GitRepositories reference it
+const ClusterScmProviderFinalizer = "clusterscmprovider.promoter.argoproj.io/finalizer"
+
+// ScmProviderSecretFinalizer prevents deletion of Secret while ScmProvider references it
+const ScmProviderSecretFinalizer = "scmprovider.promoter.argoproj.io/secret-finalizer"
+
+// ClusterScmProviderSecretFinalizer prevents deletion of Secret while ClusterScmProvider references it
+const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.io/secret-finalizer"

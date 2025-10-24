@@ -165,6 +165,15 @@ var (
 		[]string{"ctp_found", "response_code"},
 	)
 
+	// FinalizerDependentCount tracks the current number of dependent resources blocking deletion
+	FinalizerDependentCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "promoter_finalizer_dependent_resources",
+			Help: "Current number of dependent resources preventing deletion (gauge is cleared when finalizer is removed)",
+		},
+		[]string{"resource_type", "resource_name", "namespace"},
+	)
+
 	// If you add metrics here, document them in docs/monitoring/metrics.md.
 )
 
@@ -179,6 +188,7 @@ func init() {
 		scmCallsRateLimitRemaining,
 		scmCallsRateLimitResetRemainingSeconds,
 		webhookProcessingDurationSeconds,
+		FinalizerDependentCount,
 	)
 }
 
