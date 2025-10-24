@@ -101,8 +101,12 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 //+kubebuilder:subresource:status
 
 // PullRequest is the Schema for the pullrequests API
-// +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.id`
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
+// +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.ID`
+// +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.spec.sourceBranch`,priority=1
+// +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.targetBranch`,priority=1
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.url`,priority=1
 // +kubebuilder:validation:XValidation:rule=`self.spec.state == 'open' || has(self.status.id) && self.status.id != ""`,message="Cannot transition to 'closed' or 'merged' state when status.id is empty"
 type PullRequest struct {
 	metav1.TypeMeta   `json:",inline"`

@@ -303,6 +303,7 @@ func HandleReconciliationResult(
 		recorder.Eventf(obj, "Warning", string(promoterConditions.ReconciliationError), "Reconciliation failed: %v", *err)
 	}
 	if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionFalse, string(promoterConditions.ReconciliationError), fmt.Sprintf("Reconciliation failed: %s", *err)); updateErr != nil {
+		// Ignore conflict errors when updating status (see comment above).
 		//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
 		*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
 	}

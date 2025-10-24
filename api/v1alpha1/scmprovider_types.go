@@ -56,18 +56,31 @@ type ScmProviderSpec struct {
 type ScmProviderStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	// Conditions Represents the observations of the current state.
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
 // ScmProvider is the Schema for the scmproviders API
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type ScmProvider struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   ScmProviderSpec   `json:"spec,omitempty"`
 	Status ScmProviderStatus `json:"status,omitempty"`
+}
+
+// GetConditions returns the conditions of the ScmProvider.
+func (s *ScmProvider) GetConditions() *[]metav1.Condition {
+	return &s.Status.Conditions
 }
 
 //+kubebuilder:object:root=true

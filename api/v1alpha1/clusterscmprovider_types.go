@@ -33,12 +33,18 @@ var ClusterScmProviderKind = reflect.TypeOf(ClusterScmProvider{}).Name()
 // +kubebuilder:resource:scope=Cluster
 
 // ClusterScmProvider is the Schema for the clusterscmproviders API.
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type ClusterScmProvider struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   ScmProviderSpec   `json:"spec,omitempty"`
 	Status ScmProviderStatus `json:"status,omitempty"`
+}
+
+// GetConditions returns the conditions of the ClusterScmProvider.
+func (s *ClusterScmProvider) GetConditions() *[]metav1.Condition {
+	return &s.Status.Conditions
 }
 
 // +kubebuilder:object:root=true

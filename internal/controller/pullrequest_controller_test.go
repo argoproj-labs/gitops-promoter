@@ -196,6 +196,249 @@ var _ = Describe("PullRequest Controller", func() {
 			Expect(err.Error()).To(ContainSubstring("Cannot transition to 'closed' or 'merged' state when status.id is empty"))
 		})
 	})
+
+	Context("When deleting a PullRequest that never created a PR on SCM", func() {
+		ctx := context.Background()
+
+		It("should successfully delete a PullRequest with empty status.id without getting stuck", func() {
+			By("Creating a PullRequest but preventing it from creating a PR on SCM")
+
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "delete-without-scm-pr")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			// Create a bad SCM provider configuration to prevent PR creation
+			scmProvider.Spec.SecretRef = &v1.LocalObjectReference{Name: "non-existing-secret"}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be reconciled but not create a PR on SCM")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				// Should have an error condition but no status.id
+				g.Expect(pullRequest.Status.ID).To(BeEmpty())
+				g.Expect(pullRequest.Status.Conditions).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting the PullRequest")
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+
+			By("Verifying the PullRequest is deleted successfully without getting stuck")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("When deleting resources with finalizers", func() {
+		ctx := context.Background()
+
+		It("should prevent deletion of GitRepository while PullRequest exists", func() {
+			By("Creating the resource hierarchy")
+
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "finalizer-test-gitrepo")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be ready")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			}, constants.EventuallyTimeout)
+
+			By("Attempting to delete GitRepository while PullRequest exists")
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+
+			By("Verifying GitRepository is not deleted while PullRequest exists")
+			Consistently(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(gitRepo.DeletionTimestamp).ToNot(BeNil())
+			}, "5s", "1s").Should(Succeed())
+
+			By("Deleting the PullRequest")
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+
+			By("Verifying PullRequest is deleted")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("not found"))
+			}, constants.EventuallyTimeout)
+
+			By("Verifying GitRepository is now deleted")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("not found"))
+			}, constants.EventuallyTimeout)
+		})
+
+		It("should prevent deletion of ScmProvider while GitRepository exists", func() {
+			By("Creating the resource hierarchy")
+
+			name, scmSecret, scmProvider, gitRepo, _ := pullRequestResources(ctx, "finalizer-test-scmprovider")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+			By("Attempting to delete ScmProvider while GitRepository exists")
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+
+			By("Verifying ScmProvider is not deleted while GitRepository exists")
+			Consistently(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, scmProvider)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(scmProvider.DeletionTimestamp).ToNot(BeNil())
+			}, "5s", "1s").Should(Succeed())
+
+			By("Deleting the GitRepository")
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+
+			By("Verifying GitRepository is deleted")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("not found"))
+			}, constants.EventuallyTimeout)
+
+			By("Verifying ScmProvider is now deleted")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, scmProvider)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("not found"))
+			}, constants.EventuallyTimeout)
+		})
+
+		It("should add finalizer to Secret when ScmProvider is created", func() {
+			By("Creating the resource hierarchy")
+
+			name, scmSecret, scmProvider, _, _ := pullRequestResources(ctx, "finalizer-test-secret")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+
+			By("Waiting for ScmProvider to add finalizer to Secret")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmSecret)).To(Succeed())
+				g.Expect(scmSecret.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
+			}, constants.EventuallyTimeout)
+
+			By("Verifying ScmProvider has its own finalizer")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmProvider)).To(Succeed())
+				g.Expect(scmProvider.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer))
+			}, constants.EventuallyTimeout)
+
+			By("Deleting the ScmProvider")
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+
+			By("Verifying ScmProvider is deleted and Secret finalizer is removed")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, scmProvider)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("not found"))
+			}, constants.EventuallyTimeout)
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmSecret)).To(Succeed())
+				g.Expect(scmSecret.Finalizers).ToNot(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
+			}, constants.EventuallyTimeout)
+
+			By("Cleaning up Secret")
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+		})
+
+		It("should allow deletion of entire resource hierarchy when deleting from top down", func() {
+			By("Creating the complete resource hierarchy")
+
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "finalizer-test-complete")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for finalizers to be added")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmSecret)).To(Succeed())
+				g.Expect(scmSecret.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderSecretFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, scmProvider)).To(Succeed())
+				g.Expect(scmProvider.Finalizers).To(ContainElement(promoterv1alpha1.ScmProviderFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, gitRepo)).To(Succeed())
+				g.Expect(gitRepo.Finalizers).To(ContainElement(promoterv1alpha1.GitRepositoryFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Waiting for PullRequest to be ready")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			}, constants.EventuallyTimeout)
+
+			By("Deleting from top down: PullRequest, GitRepository, ScmProvider, Secret")
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+			}, constants.EventuallyTimeout)
+
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, gitRepo)
+				g.Expect(err).To(HaveOccurred())
+			}, constants.EventuallyTimeout)
+
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, scmProvider)
+				g.Expect(err).To(HaveOccurred())
+			}, constants.EventuallyTimeout)
+
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, scmSecret)
+				g.Expect(err).To(HaveOccurred())
+			}, constants.EventuallyTimeout)
+		})
+	})
 })
 
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
