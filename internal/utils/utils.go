@@ -267,15 +267,9 @@ func HandleReconciliationResult(
 	logger := log.FromContext(ctx)
 
 	logger.Info(fmt.Sprintf("Reconciling %s End", obj.GetObjectKind().GroupVersionKind().Kind), "duration", time.Since(startTime))
-
-	// Check for empty object first before accessing GetObjectKind() to avoid nil pointer dereference.
-	// This check was moved before the GetObjectKind() call because newly created controller objects
-	// (e.g., var gitRepo promoterv1alpha1.GitRepository) don't have TypeMeta populated until they're
-	// fetched from the API server. When a "not found" error occurs in Reconcile, the object is still
-	// empty, so GetObjectKind() would return an empty struct and cause issues.
 	if obj.GetName() == "" && obj.GetNamespace() == "" {
 		// This happens when the Get in the Reconcile function returns "not found." It's expected and safe to skip.
-		logger.V(4).Info(" not found, skipping reconciliation")
+		logger.V(4).Info(obj.GetObjectKind().GroupVersionKind().Kind + " not found, skipping reconciliation")
 		return
 	}
 
