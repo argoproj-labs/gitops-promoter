@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"go.uber.org/zap/zapcore"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -134,7 +135,11 @@ var _ = BeforeSuite(func() {
 		Namespace:             constants.KubeconfigSecretNamespace,
 		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
 		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
-		Scheme:                scheme,
+		ClusterOptions: []cluster.Option{
+			func(clusterOptions *cluster.Options) {
+				clusterOptions.Scheme = scheme
+			},
+		},
 	})
 
 	//nolint:fatcontext
