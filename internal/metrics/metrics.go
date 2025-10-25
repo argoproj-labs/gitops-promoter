@@ -177,7 +177,7 @@ var (
 	// ApplicationWatchEventsHandled tracks the number of times the ArgoCD application event handler is called
 	ApplicationWatchEventsHandled = prometheus.NewCounter(
 		prometheus.CounterOpts{
-			Name: "application_watch_events_handled",
+			Name: "application_watch_events_handled_total",
 			Help: "Number of times the ArgoCD application event handler is called.",
 		},
 	)

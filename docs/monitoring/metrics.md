@@ -110,7 +110,7 @@ Labels:
 * `resource_name`: The name of the resource being deleted.
 * `namespace`: The namespace of the resource being deleted (empty for cluster-scoped resources).
 
-## application_watch_events_handled
+## application_watch_events_handled_total
 
 A counter for the number of times the ArgoCD application watch event handler is called. This metric increments each time the controller processes an Argo CD application event.
 
