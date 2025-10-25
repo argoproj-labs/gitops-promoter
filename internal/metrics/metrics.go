@@ -174,6 +174,14 @@ var (
 		[]string{"resource_type", "resource_name", "namespace"},
 	)
 
+	// ApplicationWatchEventsHandled tracks the number of times the ArgoCD application event handler is called
+	ApplicationWatchEventsHandled = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "application_watch_events_handled",
+			Help: "Number of times the ArgoCD application event handler is called.",
+		},
+	)
+
 	// If you add metrics here, document them in docs/monitoring/metrics.md.
 )
 
@@ -189,6 +197,7 @@ func init() {
 		scmCallsRateLimitResetRemainingSeconds,
 		webhookProcessingDurationSeconds,
 		FinalizerDependentCount,
+		ApplicationWatchEventsHandled,
 	)
 }
 

@@ -109,3 +109,9 @@ Labels:
 * `resource_type`: The type of resource being deleted (GitRepository, ScmProvider, ClusterScmProvider).
 * `resource_name`: The name of the resource being deleted.
 * `namespace`: The namespace of the resource being deleted (empty for cluster-scoped resources).
+
+## application_watch_events_handled
+
+A counter for the number of times the ArgoCD application watch event handler is called. This metric increments each time the controller processes an Argo CD application event.
+
+No labels.
