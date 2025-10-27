@@ -29,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/multicluster-runtime/pkg/controller"
 
@@ -439,6 +440,8 @@ func getMostRecentLastTransitionTime(aggregateItem []*aggregate) *metav1.Time {
 func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
 	return func(clusterName string, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
 		return handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, argoCDApplication client.Object) []mcreconcile.Request {
+			metrics.ApplicationWatchEventsHandled.Inc()
+
 			logger := log.FromContext(ctx)
 
 			application := &argocd.Application{}
