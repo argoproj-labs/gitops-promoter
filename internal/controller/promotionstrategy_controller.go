@@ -331,6 +331,19 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			continue
 		}
 
+		// Check if the CTP has a proposed hydrated SHA before attempting to create a commit status.
+		// This can be empty if the git repo is missing hydrator.metadata or if the CTP hasn't been
+		// fully reconciled yet. There's no point in calculating the pending state if we don't have
+		// a SHA to associate with the commit status.
+		if ctp.Status.Proposed.Hydrated.Sha == "" {
+			// Check if the CTP has a Ready condition with False status to provide more context
+			readyCondition := meta.FindStatusCondition(ctp.Status.Conditions, string(promoterConditions.Ready))
+			if readyCondition != nil && readyCondition.Status == metav1.ConditionFalse {
+				return fmt.Errorf("cannot create previous environment CommitStatus: proposed hydrated SHA is empty for ChangeTransferPolicy %s (CTP Ready condition: %s - %s)", ctp.Name, readyCondition.Reason, readyCondition.Message)
+			}
+			return fmt.Errorf("cannot create previous environment CommitStatus: proposed hydrated SHA is empty for ChangeTransferPolicy %s", ctp.Name)
+		}
+
 		previousEnvironmentStatus := ps.Status.Environments[i-1]
 		currentEnvironmentStatus := ps.Status.Environments[i]
 
@@ -365,7 +378,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch)
 
 		// Since there is at least one configured active check, and since this is not the first environment,
-		// we should not create a commit status for the previous environment.
+		// we should create a commit status for the previous environment.
 		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
 		if err != nil {
 			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", ctp.Spec.ActiveBranch, err)
