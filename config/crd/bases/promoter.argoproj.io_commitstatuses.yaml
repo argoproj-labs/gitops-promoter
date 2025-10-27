@@ -80,6 +80,9 @@ spec:
                 - failure
                 type: string
               sha:
+                maxLength: 64
+                minLength: 1
+                pattern: ^[a-fA-F0-9]+$
                 type: string
               url:
                 description: Url is a URL that the user can follow to see more details

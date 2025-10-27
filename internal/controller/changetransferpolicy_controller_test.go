@@ -164,7 +164,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
 			Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
 
 			gitPath, err := os.MkdirTemp("", "*")
@@ -174,16 +173,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, typeNamespacedName, commitStatus)
-				g.Expect(err).To(Succeed())
-
 				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
 				g.Expect(err).NotTo(HaveOccurred())
 				sha = strings.TrimSpace(sha)
 
 				commitStatus.Spec.Sha = sha
 				commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, commitStatus)
+				err = k8sClient.Create(ctx, commitStatus)
 				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 

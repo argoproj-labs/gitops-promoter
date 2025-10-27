@@ -40,6 +40,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -1061,8 +1062,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ChangeTransferPolicies
@@ -1144,12 +1143,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      activeCommitStatusDevelopment.Name,
-					Namespace: activeCommitStatusDevelopment.Namespace,
-				}, activeCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
@@ -1157,9 +1150,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				sha = strings.TrimSpace(sha)
 
 				g.Expect(sha).To(Not(BeEmpty()))
-				activeCommitStatusDevelopment.Spec.Sha = sha
-				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+					activeCommitStatusDevelopment.Spec.Sha = sha
+					activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
 				g.Expect(err).To(Succeed())
 
@@ -1192,12 +1187,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      activeCommitStatusStaging.Name,
-					Namespace: activeCommitStatusStaging.Namespace,
-				}, activeCommitStatusStaging)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
@@ -1227,9 +1216,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpProd.Status.Proposed.Hydrated.Sha).To(Equal(shaProdProposed))
 
-				activeCommitStatusStaging.Spec.Sha = sha
-				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, activeCommitStatusStaging)
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+					activeCommitStatusDevelopment.Spec.Sha = sha
+					activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
 				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -1275,8 +1267,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ChangeTransferPolicies
@@ -1357,24 +1347,21 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      activeCommitStatusDevelopment.Name,
-					Namespace: activeCommitStatusDevelopment.Namespace,
-				}, activeCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
-
-				sha := ctpDev.Status.Active.Hydrated.Sha
-				activeCommitStatusDevelopment.Spec.Sha = sha
-				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
-				GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
-				g.Expect(err).To(Succeed())
-
-				// Check that the proposed commit has the correct sha, aka it has reconciled at least once since adding new commits
-				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
 					Namespace: typeNamespacedName.Namespace,
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
+
+				sha := ctpDev.Status.Active.Hydrated.Sha
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+					activeCommitStatusDevelopment.Spec.Sha = sha
+					activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
+				GinkgoLogr.Info("Updated commit status for development to sha: " + sha + " for branch " + ctpDev.Spec.ActiveBranch)
+				g.Expect(err).To(Succeed())
+
 				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Equal(sha))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
@@ -1398,12 +1385,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      activeCommitStatusStaging.Name,
-					Namespace: activeCommitStatusStaging.Namespace,
-				}, activeCommitStatusStaging)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
@@ -1433,9 +1414,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed())
 				g.Expect(ctpProd.Status.Proposed.Hydrated.Sha).To(Equal(shaProdProposed))
 
-				activeCommitStatusStaging.Spec.Sha = sha
-				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, activeCommitStatusStaging)
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusStaging, func() error {
+					activeCommitStatusStaging.Spec.Sha = sha
+					activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
 				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -1491,8 +1475,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ProposedCommits
@@ -1562,12 +1544,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      proposedCommitStatusDevelopment.Name,
-					Namespace: proposedCommitStatusDevelopment.Namespace,
-				}, proposedCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
@@ -1583,9 +1559,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
 				g.Expect(sha).To(Not(BeEmpty()))
-				proposedCommitStatusDevelopment.Spec.Sha = sha
-				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, proposedCommitStatusDevelopment, func() error {
+					proposedCommitStatusDevelopment.Spec.Sha = sha
+					proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())
 
@@ -1734,8 +1713,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ProposedCommits
@@ -1793,12 +1770,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      proposedCommitStatusDevelopment.Name,
-					Namespace: proposedCommitStatusDevelopment.Namespace,
-				}, proposedCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
@@ -1814,9 +1785,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
 				g.Expect(sha).To(Not(BeEmpty()))
-				proposedCommitStatusDevelopment.Spec.Sha = sha
-				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, proposedCommitStatusDevelopment, func() error {
+					proposedCommitStatusDevelopment.Spec.Sha = sha
+					proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -2370,8 +2344,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, proposedCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			// We should now get PRs created for the ProposedCommits
@@ -2450,12 +2422,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the development environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      proposedCommitStatusDevelopment.Name,
-					Namespace: proposedCommitStatusDevelopment.Namespace,
-				}, proposedCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpDev.Spec.ProposedBranch)
@@ -2471,9 +2437,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpDev.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
 				g.Expect(sha).To(Not(BeEmpty()))
-				proposedCommitStatusDevelopment.Spec.Sha = sha
-				proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, proposedCommitStatusDevelopment)
+				// Only create if it doesn't exist yet (to handle Eventually retries)
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, proposedCommitStatusDevelopment, func() error {
+					proposedCommitStatusDevelopment.Spec.Sha = sha
+					proposedCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
 				GinkgoLogr.Info("Updated commit status for development to sha: " + sha)
 				g.Expect(err).To(Succeed())
 
@@ -2529,12 +2498,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("Updating the commit status for the staging environment to success")
 			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      proposedCommitStatusStaging.Name,
-					Namespace: proposedCommitStatusStaging.Namespace,
-				}, proposedCommitStatusStaging)
-				g.Expect(err).To(Succeed())
-
 				_, err = runGitCmd(ctx, gitPath, "fetch")
 				Expect(err).NotTo(HaveOccurred())
 				sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpStaging.Spec.ProposedBranch)
@@ -2550,9 +2513,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpStaging.Status.Proposed.Hydrated.Sha).To(Equal(sha))
 
 				g.Expect(sha).To(Not(BeEmpty()))
-				proposedCommitStatusStaging.Spec.Sha = sha
-				proposedCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, proposedCommitStatusStaging)
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, proposedCommitStatusStaging, func() error {
+					proposedCommitStatusStaging.Spec.Sha = sha
+					proposedCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
 				GinkgoLogr.Info("Updated commit status for staging to sha: " + sha)
 				g.Expect(err).To(Succeed())
 
@@ -2901,8 +2866,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusDevelopment)).To(Succeed())
-			Expect(k8sClient.Create(ctx, activeCommitStatusStaging)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
 			ctpDev := promoterv1alpha1.ChangeTransferPolicy{}
@@ -2949,15 +2912,11 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(err).NotTo(HaveOccurred())
 				firstDevActiveSha = strings.TrimSpace(sha)
 
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      activeCommitStatusDevelopment.Name,
-					Namespace: activeCommitStatusDevelopment.Namespace,
-				}, activeCommitStatusDevelopment)
-				g.Expect(err).To(Succeed())
-
-				activeCommitStatusDevelopment.Spec.Sha = firstDevActiveSha
-				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-				err = k8sClient.Update(ctx, activeCommitStatusDevelopment)
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+					activeCommitStatusDevelopment.Spec.Sha = firstDevActiveSha
+					activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					return nil
+				})
 				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 

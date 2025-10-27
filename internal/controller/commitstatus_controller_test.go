@@ -41,6 +41,95 @@ var _ = Describe("CommitStatus Controller", func() {
 		})
 	})
 
+	Context("When validating the CommitStatus spec", func() {
+		ctx := context.Background()
+
+		It("should reject a CommitStatus with an empty sha", func() {
+			invalidCommitStatus := &promoterv1alpha1.CommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invalid-commit-status",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase: promoterv1alpha1.CommitPhasePending,
+					RepositoryReference: promoterv1alpha1.ObjectReference{
+						Name: "test-repo",
+					},
+					Sha:         "",
+					Name:        "test-commit-status",
+					Description: "Test commit status",
+				},
+			}
+			err := k8sClient.Create(ctx, invalidCommitStatus)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("should be at least 1 chars long"))
+		})
+
+		It("should reject a CommitStatus with a sha that is too long", func() {
+			invalidCommitStatus := &promoterv1alpha1.CommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invalid-commit-status-long",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase: promoterv1alpha1.CommitPhasePending,
+					RepositoryReference: promoterv1alpha1.ObjectReference{
+						Name: "test-repo",
+					},
+					Sha:         "abcdef1234567890abcdef1234567890abcdef1234567890abcdef12345678901",
+					Name:        "test-commit-status",
+					Description: "Test commit status",
+				},
+			}
+			err := k8sClient.Create(ctx, invalidCommitStatus)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("may not be longer than 64"))
+		})
+
+		It("should reject a CommitStatus with a sha that contains invalid characters", func() {
+			invalidCommitStatus := &promoterv1alpha1.CommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invalid-commit-status-chars",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase: promoterv1alpha1.CommitPhasePending,
+					RepositoryReference: promoterv1alpha1.ObjectReference{
+						Name: "test-repo",
+					},
+					Sha:         "xyz123",
+					Name:        "test-commit-status",
+					Description: "Test commit status",
+				},
+			}
+			err := k8sClient.Create(ctx, invalidCommitStatus)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec.sha"))
+		})
+
+		It("should accept a CommitStatus with a valid sha", func() {
+			validCommitStatus := &promoterv1alpha1.CommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "valid-commit-status",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.CommitStatusSpec{
+					Phase: promoterv1alpha1.CommitPhasePending,
+					RepositoryReference: promoterv1alpha1.ObjectReference{
+						Name: "test-repo",
+					},
+					Sha:         "abcdef1234567890",
+					Name:        "test-commit-status",
+					Description: "Test commit status",
+				},
+			}
+			err := k8sClient.Create(ctx, validCommitStatus)
+			Expect(err).ToNot(HaveOccurred())
+			// Clean up
+			_ = k8sClient.Delete(ctx, validCommitStatus)
+		})
+	})
+
 	var gitRepo *promoterv1alpha1.GitRepository
 	var scmProvider *promoterv1alpha1.ScmProvider
 	var scmSecret *v1.Secret
@@ -108,8 +197,10 @@ var _ = Describe("CommitStatus Controller", func() {
 					RepositoryReference: promoterv1alpha1.ObjectReference{
 						Name: typeNamespacedName.Name,
 					},
+					Sha:         "abcdef1234567890abcdef1234567890abcdef12",
+					Name:        "test-commit-status",
+					Description: "Test commit status",
 				},
-				// TODO(user): Specify other spec details if needed.
 			}
 		})
 
