@@ -446,17 +446,23 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 
 			application := &argocd.Application{}
 
-			// fetch the ArgoCDApplication from the cluster
-			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
-				logger.Error(err, "failed to get ArgoCDApplication")
-				return nil
-			}
-
 			// if clusterName is empty, then cluster == local cluster
 			appKey := appRevisionKey{
 				clusterName: clusterName,
 				namespace:   application.GetNamespace(),
 				name:        application.GetName(),
+			}
+
+			// fetch the ArgoCDApplication from the cluster
+			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
+				if k8s_errors.IsNotFound(err) {
+					rwMutex.Lock()
+					delete(revMap, appKey)
+					rwMutex.Unlock()
+					return nil
+				}
+				logger.Error(err, "failed to get ArgoCDApplication")
+				return nil
 			}
 
 			rwMutex.RLock()
@@ -468,9 +474,11 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 				return nil
 			}
 
-			rwMutex.Lock()
-			revMap[appKey] = application.Status.Sync.Revision
-			rwMutex.Unlock()
+			if appRef != application.Status.Sync.Revision {
+				rwMutex.Lock()
+				revMap[appKey] = application.Status.Sync.Revision
+				rwMutex.Unlock()
+			}
 
 			// lookup the ArgoCDCommitStatus objects in the local cluster
 			var argoCDCommitStatusList promoterv1alpha1.ArgoCDCommitStatusList
