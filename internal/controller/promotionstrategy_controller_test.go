@@ -1217,7 +1217,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpProd.Status.Proposed.Hydrated.Sha).To(Equal(shaProdProposed))
 
 				// Only create if it doesn't exist yet (to handle Eventually retries)
-				_, err = controllerutil.CreateOrPatch(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
 					activeCommitStatusDevelopment.Spec.Sha = sha
 					activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 					return nil
@@ -1354,7 +1354,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 				sha := ctpDev.Status.Active.Hydrated.Sha
 				// Only create if it doesn't exist yet (to handle Eventually retries)
-				_, err = controllerutil.CreateOrPatch(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
 					activeCommitStatusDevelopment.Spec.Sha = sha
 					activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 					return nil
@@ -1415,7 +1415,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpProd.Status.Proposed.Hydrated.Sha).To(Equal(shaProdProposed))
 
 				// Only create if it doesn't exist yet (to handle Eventually retries)
-				_, err = controllerutil.CreateOrPatch(ctx, k8sClient, activeCommitStatusStaging, func() error {
+				_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusStaging, func() error {
 					activeCommitStatusStaging.Spec.Sha = sha
 					activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 					return nil
