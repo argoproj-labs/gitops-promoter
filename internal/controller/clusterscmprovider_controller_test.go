@@ -25,11 +25,11 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
 
 //go:embed testdata/ClusterScmProvider.yaml
@@ -82,18 +82,13 @@ var _ = Describe("ClusterScmProvider Controller", func() {
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &ClusterScmProviderReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-			}
-
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: typeNamespacedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+			By("Waiting for the controller to reconcile the resource")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, clusterscmprovider)
+				g.Expect(err).NotTo(HaveOccurred())
+				// Verify that the controller has added the finalizer
+				g.Expect(clusterscmprovider.Finalizers).To(ContainElement(promoterv1alpha1.ClusterScmProviderFinalizer))
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 })

@@ -164,6 +164,8 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 	controllerRef := metav1.NewControllerRef(ps, gvk)
+	blockOwnerDeletion := true
+	controllerRef.BlockOwnerDeletion = &blockOwnerDeletion
 
 	ctp := promoterv1alpha1.ChangeTransferPolicy{
 		ObjectMeta: metav1.ObjectMeta{

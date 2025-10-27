@@ -4,38 +4,27 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: commitstatuses.promoter.argoproj.io
+  name: timedcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: CommitStatus
-    listKind: CommitStatusList
-    plural: commitstatuses
-    singular: commitstatus
+    kind: TimedCommitStatus
+    listKind: TimedCommitStatusList
+    plural: timedcommitstatuses
+    singular: timedcommitstatus
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .metadata.labels['promoter\.argoproj\.io/commit-status']
-      name: Key
-      type: string
-    - jsonPath: .status.phase
-      name: Phase
-      type: string
-    - jsonPath: .status.sha
-      name: Sha
-      type: string
-    - jsonPath: .spec.name
-      name: Name
-      priority: 1
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: Strategy
       type: string
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
-      priority: 1
       type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: CommitStatus is the Schema for the commitstatuses API
+        description: TimedCommitStatus is the Schema for the timedcommitstatuses API
         properties:
           apiVersion:
             description: |-
@@ -55,13 +44,30 @@ spec:
           metadata:
             type: object
           spec:
-            description: CommitStatusSpec defines the desired state of CommitStatus
+            description: spec defines the desired state of TimedCommitStatus
             properties:
-              description:
-                type: string
-              gitRepositoryRef:
-                description: ObjectReference is a reference to an object by name.
-                  It is used to refer to objects in the same namespace.
+              environments:
+                items:
+                  description: TimedCommitStatusEnvironments defines the branch/environment
+                    and duration to wait before reporting the gate as success.
+                  properties:
+                    branch:
+                      description: Branch is the name of the branch/environment you
+                        want to gate for the configured duration.
+                      type: string
+                    duration:
+                      description: |-
+                        Duration is the time duration to wait before considering the commit status as success.
+                        The duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
+                      type: string
+                  required:
+                  - branch
+                  - duration
+                  type: object
+                type: array
+              promotionStrategyRef:
+                description: PromotionStrategyRef is a reference to the promotion
+                  strategy that this timed commit status applies to.
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
@@ -69,42 +75,16 @@ spec:
                 required:
                 - name
                 type: object
-              name:
-                type: string
-              phase:
-                default: pending
-                description: CommitStatusPhase represents the phase of a commit status.
-                enum:
-                - pending
-                - success
-                - failure
-                type: string
-              sha:
-                maxLength: 64
-                minLength: 1
-                pattern: ^[a-fA-F0-9]+$
-                type: string
-              url:
-                description: Url is a URL that the user can follow to see more details
-                  about the status
-                pattern: ^(https?://.*)?$
-                type: string
-                x-kubernetes-validations:
-                - message: must be a valid URL
-                  rule: self == '' || isURL(self)
             required:
-            - description
-            - gitRepositoryRef
-            - name
-            - phase
-            - sha
+            - environments
+            - promotionStrategyRef
             type: object
           status:
-            description: CommitStatusStatus defines the observed state of CommitStatus
+            description: status defines the observed state of TimedCommitStatus
             properties:
               conditions:
-                description: Conditions Represents the observations of the current
-                  state.
+                description: Conditions represent the latest available observations
+                  of an object's state
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -163,24 +143,57 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              id:
-                description: Id is the unique identifier of the commit status, set
-                  by the SCM
-                type: string
-              phase:
-                default: pending
-                description: CommitStatusPhase represents the phase of a commit status.
-                enum:
-                - pending
-                - success
-                - failure
-                type: string
-              sha:
-                type: string
-            required:
-            - id
-            - sha
+              environments:
+                description: Environments holds the status of each environment being
+                  tracked.
+                items:
+                  description: TimedCommitStatusEnvironmentsStatus defines the observed
+                    timing status for a specific environment.
+                  properties:
+                    atMostDurationRemaining:
+                      description: |-
+                        AtMostDurationRemaining is the maximum amount of time remaining until the gate is satisfied.
+                        This is calculated at reconciliation time. When the gate is satisfied (phase=success), this will be 0.
+                      type: string
+                    branch:
+                      description: Branch is the name of the branch/environment.
+                      type: string
+                    commitTime:
+                      description: CommitTime is when the commit was deployed to the
+                        active environment.
+                      format: date-time
+                      type: string
+                    phase:
+                      description: Phase represents the current phase of the timed
+                        gate.
+                      enum:
+                      - pending
+                      - success
+                      type: string
+                    requiredDuration:
+                      description: |-
+                        RequiredDuration is the duration that must elapse before promotion is allowed.
+                        If this is updated in the spec with a pending time. The new duration will be calculated from the original CommitTime.
+                        Allowing you to extend the duration of an already deployed commit, if the time has not yet elapsed.
+                      type: string
+                    sha:
+                      description: Sha is the commit SHA being tracked for this environment.
+                      type: string
+                  required:
+                  - atMostDurationRemaining
+                  - branch
+                  - commitTime
+                  - phase
+                  - requiredDuration
+                  - sha
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
+                x-kubernetes-list-type: map
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

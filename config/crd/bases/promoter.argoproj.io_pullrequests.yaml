@@ -15,11 +15,26 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.id
-      name: ID
-      type: string
     - jsonPath: .status.state
       name: State
+      type: string
+    - jsonPath: .status.ID
+      name: ID
+      type: string
+    - jsonPath: .spec.sourceBranch
+      name: Source
+      priority: 1
+      type: string
+    - jsonPath: .spec.targetBranch
+      name: Target
+      priority: 1
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .status.url
+      name: URL
+      priority: 1
       type: string
     name: v1alpha1
     schema:

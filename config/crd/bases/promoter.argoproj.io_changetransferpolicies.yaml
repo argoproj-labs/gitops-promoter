@@ -21,6 +21,12 @@ spec:
     - jsonPath: .status.proposed.dry.sha
       name: Proposed Dry Sha
       type: string
+    - jsonPath: .status.pullRequest.state
+      name: PR State
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:

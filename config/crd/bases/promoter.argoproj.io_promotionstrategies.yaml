@@ -15,11 +15,8 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.active.dry.sha
-      name: Active Dry Sha
-      type: string
-    - jsonPath: .status.proposed.dry.sha
-      name: Proposed Dry Sha
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
       type: string
     name: v1alpha1
     schema:

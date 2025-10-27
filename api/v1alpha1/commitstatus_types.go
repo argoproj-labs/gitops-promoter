@@ -87,8 +87,11 @@ func (cs *CommitStatus) GetConditions() *[]metav1.Condition {
 //+kubebuilder:subresource:status
 
 // CommitStatus is the Schema for the commitstatuses API
-// +kubebuilder:printcolumn:name="Sha",type=string,JSONPath=`.status.sha`
+// +kubebuilder:printcolumn:name="Key",type=string,JSONPath=`.metadata.labels['promoter\.argoproj\.io/commit-status']`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Sha",type=string,JSONPath=`.status.sha`
+// +kubebuilder:printcolumn:name="Name",type=string,JSONPath=`.spec.name`,priority=1
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`,priority=1
 type CommitStatus struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

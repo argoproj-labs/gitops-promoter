@@ -27,6 +27,7 @@ import (
 	"syscall"
 
 	"go.uber.org/zap/zapcore"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -149,7 +150,11 @@ func runController(
 		Namespace:             controllerNamespace,
 		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
 		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
-		Scheme:                scheme,
+		ClusterOptions: []cluster.Option{
+			func(clusterOptions *cluster.Options) {
+				clusterOptions.Scheme = scheme
+			},
+		},
 	}
 
 	// Create the provider first, then the manager with the provider
@@ -179,8 +184,11 @@ func runController(
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
 	})
-	if err != nil || mcMgr == nil {
-		panic("unable to start manager")
+	if err != nil {
+		panic(fmt.Errorf("unable to start manager: %w", err))
+	}
+	if mcMgr == nil {
+		panic("unable to start manager: mcMgr is nil")
 	}
 
 	localManager := mcMgr.GetLocalManager()
@@ -197,7 +205,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorderFor("PullRequest"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic("unable to create PullRequest controller")
+		panic(fmt.Errorf("unable to create PullRequest controller: %w", err))
 	}
 	if err = (&controller.CommitStatusReconciler{
 		Client:      localManager.GetClient(),
@@ -205,14 +213,14 @@ func runController(
 		Recorder:    localManager.GetEventRecorderFor("CommitStatus"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic("unable to create CommitStatus controller")
+		panic(fmt.Errorf("unable to create CommitStatus controller: %w", err))
 	}
 	if err = (&controller.RevertCommitReconciler{
 		Client:   localManager.GetClient(),
 		Scheme:   localManager.GetScheme(),
 		Recorder: localManager.GetEventRecorderFor("RevertCommit"),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic("unable to create RevertCommit controller")
+		panic(fmt.Errorf("unable to create RevertCommit controller: %w", err))
 	}
 
 	if err = (&controller.PromotionStrategyReconciler{
@@ -221,20 +229,21 @@ func runController(
 		Recorder:    localManager.GetEventRecorderFor("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic("unable to create PromotionStrategy controller")
+		panic(fmt.Errorf("unable to create PromotionStrategy controller: %w", err))
 	}
 	if err = (&controller.ScmProviderReconciler{
 		Client:   localManager.GetClient(),
 		Scheme:   localManager.GetScheme(),
 		Recorder: localManager.GetEventRecorderFor("ScmProvider"),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic("unable to create ScmProvider controller")
+		panic(fmt.Errorf("unable to create ScmProvider controller: %w", err))
 	}
 	if err = (&controller.GitRepositoryReconciler{
-		Client: localManager.GetClient(),
-		Scheme: localManager.GetScheme(),
+		Client:   localManager.GetClient(),
+		Scheme:   localManager.GetScheme(),
+		Recorder: localManager.GetEventRecorderFor("GitRepository"),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic("unable to create GitRepository controller")
+		panic(fmt.Errorf("unable to create GitRepository controller: %w", err))
 	}
 	if err = (&controller.ChangeTransferPolicyReconciler{
 		Client:      localManager.GetClient(),
@@ -242,7 +251,7 @@ func runController(
 		Recorder:    localManager.GetEventRecorderFor("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic("unable to create ChangeTransferPolicy controller")
+		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))
 	}
 
 	if err = (&controller.ArgoCDCommitStatusReconciler{
@@ -251,27 +260,37 @@ func runController(
 		KubeConfigProvider: provider,
 		Recorder:           localManager.GetEventRecorderFor("ArgoCDCommitStatus"),
 	}).SetupWithManager(processSignalsCtx, mcMgr); err != nil {
-		panic("unable to create ArgoCDCommitStatus controller")
+		panic(fmt.Errorf("unable to create ArgoCDCommitStatus controller: %w", err))
 	}
 	if err = (&controller.ControllerConfigurationReconciler{
 		Client: localManager.GetClient(),
 		Scheme: localManager.GetScheme(),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic("unable to create ControllerConfiguration controller")
+		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
 	}
 	if err = (&controller.ClusterScmProviderReconciler{
-		Client: localManager.GetClient(),
-		Scheme: localManager.GetScheme(),
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("ClusterScmProvider"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic("unable to create ClusterScmProvider controller")
+		panic(fmt.Errorf("unable to create ClusterScmProvider controller: %w", err))
+	}
+	if err := (&controller.TimedCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("TimedCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		panic("unable to create TimedCommitStatus controller")
 	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		panic("unable to set up health check")
+		panic(fmt.Errorf("unable to set up health check: %w", err))
 	}
 	if err := localManager.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		panic("unable to set up ready check")
+		panic(fmt.Errorf("unable to set up ready check: %w", err))
 	}
 
 	whr := webhookreceiver.NewWebhookReceiver(localManager)
