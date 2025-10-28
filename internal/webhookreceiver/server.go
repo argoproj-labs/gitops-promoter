@@ -232,7 +232,7 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 		return id
 	}
 	// GitLab - prefer Event UUID, fall back to Delivery
-	if id := r.Header.Get("X-Gitlab-Event-UUID"); id != "" {
+	if id := r.Header.Get("X-Gitlab-Event-Uuid"); id != "" {
 		return id
 	}
 	if id := r.Header.Get("X-Gitlab-Delivery"); id != "" {
