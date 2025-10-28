@@ -207,6 +207,18 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 	}
 
 	if len(ctpLists.Items) == 0 {
+		// List again, this time checking the active sha. This lets us catch cases where
+		err = wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
+			FieldSelector: fields.SelectorFromSet(map[string]string{
+				".status.active.hydrated.sha": beforeSha,
+			}),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to list changetransferpolicies for webhook receiver: %w", err)
+		}
+	}
+
+	if len(ctpLists.Items) == 0 {
 		return nil, fmt.Errorf("no changetransferpolicies found from webhook receiver sha: %s, ref: %s", beforeSha, ref)
 	}
 	if len(ctpLists.Items) > 1 {
