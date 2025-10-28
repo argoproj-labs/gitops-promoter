@@ -119,8 +119,11 @@ type ApplicationsSelected struct {
 	// +kubebuilder:validation:Optional
 	LastTransitionTime *metav1.Time `json:"lastTransitionTime"`
 	// Environment is the syncSource.targetBranch of the Argo CD application (in effect, its environment).
+	// +required
+	// +kubebuilder:validation:MinLength=1
 	Environment string `json:"environment,omitempty"`
-	// ClusterName is the name of the cluster that the application manifest is deployed to.
+	// ClusterName is the name of the cluster that the application manifest is deployed to. An empty string indicates
+	// the local cluster.
 	ClusterName string `json:"clusterName"`
 }
 
