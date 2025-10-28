@@ -330,6 +330,11 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotio
 				return map[string][]*aggregate{}, errors.New("all applications must have the same repo configured")
 			}
 
+			// Check that TargetBranch is not empty
+			if application.Spec.SourceHydrator.SyncSource.TargetBranch == "" {
+				return map[string][]*aggregate{}, fmt.Errorf("application %s/%s spec.sourceHydrator.syncSource.targetBranch must not be empty", application.GetNamespace(), application.GetName())
+			}
+
 			aggregateItem := &aggregate{
 				application: &application,
 			}
