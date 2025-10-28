@@ -207,7 +207,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 	}
 
 	if len(ctpLists.Items) == 0 {
-		// List again, this time checking the active sha. This lets us catch cases where
+		// List again, this time checking the active sha. This lets us catch cases where someone manually merged a PR in the SCM.
 		err = wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
 			FieldSelector: fields.SelectorFromSet(map[string]string{
 				".status.active.hydrated.sha": beforeSha,
