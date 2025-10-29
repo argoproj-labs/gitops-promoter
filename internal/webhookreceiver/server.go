@@ -119,12 +119,10 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	// Extract and log a single delivery ID from common webhook headers (GitHub, GitLab, Forgejo/Gitea).
 	deliveryID := wr.extractDeliveryID(r)
-	if deliveryID != "" {
-		logger.Info("webhook delivery id detected", "deliveryID", deliveryID)
-	}
+	logger := logger.WithValues("provider", provider, "deliveryID", deliveryID)
 
 	if provider == ProviderUnknown {
-		logger.V(4).Info("unable to detect provider from headers", "deliveryID", deliveryID)
+		logger.V(4).Info("unable to detect provider from headers")
 		responseCode = http.StatusBadRequest
 		http.Error(w, "unable to detect SCM provider from headers", responseCode)
 		return
@@ -140,13 +138,13 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	ctp, err := wr.findChangeTransferPolicy(r.Context(), provider, jsonBytes)
 	if err != nil {
-		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err, "provider", provider, "deliveryID", deliveryID)
+		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err)
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
 		return
 	}
 	if ctp == nil {
-		logger.Info("no ChangeTransferPolicy found for webhook delivery", "deliveryID", deliveryID, "provider", provider)
+		logger.Info("no ChangeTransferPolicy found for webhook delivery")
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
 		return
@@ -170,7 +168,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not cause reconcile of ChangeTransferPolicy", responseCode)
 		return
 	}
-	logger.Info("Triggered reconcile of ChangeTransferPolicy via webhook", "namespace", ctp.Namespace, "name", ctp.Name, "deliveryID", deliveryID)
+	logger.Info("Triggered reconcile of ChangeTransferPolicy via webhook", "namespace", ctp.Namespace, "name", ctp.Name)
 
 	responseCode = http.StatusNoContent
 	w.WriteHeader(responseCode)
