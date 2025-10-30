@@ -649,7 +649,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				}, &ps)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, "environment/development"))
+				ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, testEnvironmentDevelopment))
 				var ctp promoterv1alpha1.ChangeTransferPolicy
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      ctpName,
