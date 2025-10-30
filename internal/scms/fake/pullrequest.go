@@ -182,6 +182,9 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		return err
 	}
 
+	// Note: Webhooks are sent automatically by makeChangeAndHydrateRepo after pushes
+	// No need to send webhook here as it would be redundant
+
 	mutexPR.Lock()
 	defer mutexPR.Unlock()
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)

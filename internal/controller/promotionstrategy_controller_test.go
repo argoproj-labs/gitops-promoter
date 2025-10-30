@@ -222,10 +222,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			makeChangeAndHydrateRepo(gitPath, name, name, "this is a change to bump image\n\nThis is the body\nThis is a newline", "added pending commit from dry sha")
 
-			triggerWebhook(ctx, k8sClient, &ctpDev)
-			triggerWebhook(ctx, k8sClient, &ctpStaging)
-			triggerWebhook(ctx, k8sClient, &ctpProd)
-
 			By("Checking that the pull request for the development environment is created")
 			Eventually(func(g Gomega) {
 				// Dev PR should exist
@@ -490,10 +486,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 
-			triggerWebhook(ctx, k8sClient, &ctpDev)
-			triggerWebhook(ctx, k8sClient, &ctpStaging)
-			triggerWebhook(ctx, k8sClient, &ctpProd)
-
 			By("Checking that the pull request for the development environment is closed because it is the lowest level env")
 			Eventually(func(g Gomega) {
 				// Dev PR should exist
@@ -688,10 +680,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
-
-			triggerWebhook(ctx, k8sClient, &ctpDev)
-			triggerWebhook(ctx, k8sClient, &ctpStaging)
-			triggerWebhook(ctx, k8sClient, &ctpProd)
 
 			By("Checking that the pull request for the development environment is created")
 			Eventually(func(g Gomega) {
@@ -902,10 +890,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 
-			triggerWebhook(ctx, k8sClient, &ctpDev)
-			triggerWebhook(ctx, k8sClient, &ctpStaging)
-			triggerWebhook(ctx, k8sClient, &ctpProd)
-
 			_, err = runGitCmd(ctx, gitPath, "checkout", ctpDev.Spec.ActiveBranch)
 			Expect(err).NotTo(HaveOccurred())
 			_, err = runGitCmd(ctx, gitPath, "pull", "origin", ctpDev.Spec.ActiveBranch)
@@ -1108,9 +1092,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 			drySha, _ := makeChangeAndHydrateRepo(gitPath, name, name, "", "")
-			triggerWebhook(ctx, k8sClient, &ctpDev)
-			triggerWebhook(ctx, k8sClient, &ctpStaging)
-			triggerWebhook(ctx, k8sClient, &ctpProd)
 
 			Eventually(func(g Gomega) {
 				// Dev PR should be closed because it is the lowest level environment
@@ -1313,9 +1294,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 			drySha, _ := makeChangeAndHydrateRepo(gitPath, name, name, "", "")
-			triggerWebhook(ctx, k8sClient, &ctpDev)
-			triggerWebhook(ctx, k8sClient, &ctpStaging)
-			triggerWebhook(ctx, k8sClient, &ctpProd)
 
 			Eventually(func(g Gomega) {
 				// Dev PR should be closed because it is the lowest level environment
@@ -1943,9 +1921,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 			drySha, _ := makeChangeAndHydrateRepo(gitPath, name, name, "", "")
-			triggerWebhook(ctx, k8sClient, &ctpDev)
-			triggerWebhook(ctx, k8sClient, &ctpStaging)
-			triggerWebhook(ctx, k8sClient, &ctpProd)
 
 			pullRequestDev := promoterv1alpha1.PullRequest{}
 			pullRequestStaging := promoterv1alpha1.PullRequest{}
@@ -2184,9 +2159,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 			drySha, _ := makeChangeAndHydrateRepo(gitPath, name, name, "", "")
-			triggerWebhook(ctx, k8sClient, &ctpDev)
-			triggerWebhook(ctx, k8sClient, &ctpStaging)
-			triggerWebhook(ctx, k8sClient, &ctpProd)
 
 			pullRequestDev := promoterv1alpha1.PullRequest{}
 			pullRequestStaging := promoterv1alpha1.PullRequest{}
@@ -2640,9 +2612,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			By("By making a no-op commit and checking that the promotion strategy status reflects it")
 			makeChangeAndHydrateRepoNoOp(gitPath, name, name, "", "")
-			triggerWebhook(ctx, k8sClient, &ctpDev)
-			triggerWebhook(ctx, k8sClient, &ctpStaging)
-			triggerWebhook(ctx, k8sClient, &ctpProd)
 
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -2896,8 +2865,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			gitPath1, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
 			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, name, name, "first commit", "")
-			triggerWebhook(ctx, k8sClient, &ctpDev)
-			triggerWebhook(ctx, k8sClient, &ctpStaging)
 
 			By("Waiting for dev PR to be auto-merged (first commit)")
 			Eventually(func(g Gomega) {

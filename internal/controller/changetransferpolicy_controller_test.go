@@ -80,7 +80,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			By("Reconciling the created resource")
 
-			triggerWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
@@ -106,7 +105,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			By("Adding another pending commit")
 			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
-			triggerWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
@@ -244,7 +242,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			By("Adding a pending commit")
 			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
-			triggerWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
@@ -318,7 +315,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			By("Reconciling the created resource")
 
-			triggerWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
@@ -344,7 +340,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			By("Adding another pending commit")
 			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
-			triggerWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
@@ -394,7 +389,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
 			By("Reconciling and waiting for PR creation")
-			triggerWebhook(ctx, k8sClient, changeTransferPolicy)
 
 			var pr promoterv1alpha1.PullRequest
 			prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
