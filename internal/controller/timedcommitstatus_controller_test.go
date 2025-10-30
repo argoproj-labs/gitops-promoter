@@ -510,7 +510,7 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				}, &ctpStaging)
 				g.Expect(err).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
-			simulateWebhook(ctx, k8sClient, &ctpStaging)
+			triggerWebhook(ctx, k8sClient, &ctpStaging)
 
 			By("Waiting for staging environment to have a pending promotion (proposed != active)")
 			Eventually(func(g Gomega) {

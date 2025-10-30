@@ -39,6 +39,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
@@ -72,21 +73,22 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
-	cfg              *rest.Config
-	cfgDev           *rest.Config
-	cfgStaging       *rest.Config
-	k8sClient        client.Client
-	k8sClientDev     client.Client
-	k8sClientStaging client.Client
-	testEnv          *envtest.Environment
-	testEnvDev       *envtest.Environment
-	testEnvStaging   *envtest.Environment
-	gitServer        *http.Server
-	gitStoragePath   string
-	cancel           context.CancelFunc
-	ctx              context.Context
-	gitServerPort    string
-	scheme           = utils.GetScheme()
+	cfg                 *rest.Config
+	cfgDev              *rest.Config
+	cfgStaging          *rest.Config
+	k8sClient           client.Client
+	k8sClientDev        client.Client
+	k8sClientStaging    client.Client
+	testEnv             *envtest.Environment
+	testEnvDev          *envtest.Environment
+	testEnvStaging      *envtest.Environment
+	gitServer           *http.Server
+	gitStoragePath      string
+	cancel              context.CancelFunc
+	ctx                 context.Context
+	gitServerPort       string
+	webhookReceiverPort int
+	scheme              = utils.GetScheme()
 )
 
 func TestControllers(t *testing.T) {
@@ -395,7 +397,7 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, multiClusterManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	webhookReceiverPort := constants.WebhookReceiverPort + GinkgoParallelProcess()
+	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
 	whr := webhookreceiver.NewWebhookReceiver(k8sManager)
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
@@ -864,16 +866,55 @@ func randomString(length int) string {
 	return string(result)
 }
 
-func simulateWebhook(ctx context.Context, k8sClient client.Client, ctp *promoterv1alpha1.ChangeTransferPolicy) {
-	Eventually(func(g Gomega) {
-		orig := ctp.DeepCopy()
-		if ctp.Annotations == nil {
-			ctp.Annotations = make(map[string]string)
-		}
-		ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = metav1.Now().Format(time.RFC3339)
-		err := k8sClient.Patch(ctx, ctp, client.MergeFrom(orig))
-		Expect(err).To(Succeed())
-	}, constants.EventuallyTimeout).Should(Succeed())
+// buildGitHubWebhookPayload constructs a GitHub webhook payload for push events
+func buildGitHubWebhookPayload(beforeSha, ref string) string {
+	payload := map[string]interface{}{
+		"before": beforeSha,
+		"ref":    ref,
+		"pusher": map[string]interface{}{
+			"name":  "test-user",
+			"email": "test@example.com",
+		},
+	}
+	payloadBytes, _ := json.Marshal(payload)
+	return string(payloadBytes)
+}
+
+// triggerWebhook triggers a CTP reconciliation by sending an actual webhook request to the webhook receiver server.
+// If the CTP doesn't have a proposed SHA yet (e.g., on first reconciliation), it falls back to annotation-based triggering.
+func triggerWebhook(ctx context.Context, k8sClient client.Client, ctp *promoterv1alpha1.ChangeTransferPolicy) {
+	// Refresh the CTP to get the latest status with the proposed SHA
+	err := k8sClient.Get(ctx, types.NamespacedName{
+		Name:      ctp.Name,
+		Namespace: ctp.Namespace,
+	}, ctp)
+	Expect(err).To(Succeed())
+
+	// Get the SHA from the CTP status that the webhook receiver will look for
+	beforeSha := ctp.Status.Proposed.Hydrated.Sha
+
+	// Build the webhook payload
+	ref := fmt.Sprintf("refs/heads/%s", ctp.Spec.ProposedBranch)
+	payload := buildGitHubWebhookPayload(beforeSha, ref)
+
+	// Send the webhook request
+	webhookURL := fmt.Sprintf("http://localhost:%d/", webhookReceiverPort)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewBufferString(payload))
+	Expect(err).To(Succeed())
+
+	// Set GitHub webhook headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Github-Event", "push")
+	req.Header.Set("X-Github-Delivery", "test-delivery-id")
+
+	// Send the request
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := httpClient.Do(req)
+	Expect(err).To(Succeed())
+	defer resp.Body.Close()
+
+	// The webhook receiver should return 204 No Content on success
+	Expect(resp.StatusCode).To(Equal(http.StatusNoContent), "webhook request should succeed")
 }
 
 func createKubeConfig(cfg *rest.Config) ([]byte, error) {
