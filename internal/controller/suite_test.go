@@ -512,7 +512,7 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{"environment/development", "environment/staging", "environment/production"} {
+	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "--orphan", environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "rm", "-rf", "--ignore-unmatch", ".")
@@ -634,7 +634,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	_, err = runGitCmd(ctx, gitPath, "config", "pull.rebase", "false")
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{"environment/development", "environment/staging", "environment/production", "environment/development-next", "environment/staging-next", "environment/production-next"} {
+	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction, "environment/development-next", "environment/staging-next", "environment/production-next"} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "pull")
@@ -744,7 +744,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 func makeChangeAndHydrateRepoNoOp(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
 	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
 
-	for _, environment := range []string{"environment/development", "environment/staging", "environment/production", "environment/development-next", "environment/staging-next", "environment/production-next"} {
+	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction, "environment/development-next", "environment/staging-next", "environment/production-next"} {
 		_, err := runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "pull")
@@ -868,15 +868,16 @@ func randomString(length int) string {
 
 // buildGitHubWebhookPayload constructs a GitHub webhook payload for push events
 func buildGitHubWebhookPayload(beforeSha, ref string) string {
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"before": beforeSha,
 		"ref":    ref,
-		"pusher": map[string]interface{}{
+		"pusher": map[string]any{
 			"name":  "test-user",
 			"email": "test@example.com",
 		},
 	}
-	payloadBytes, _ := json.Marshal(payload)
+	payloadBytes, err := json.Marshal(payload)
+	Expect(err).NotTo(HaveOccurred())
 	return string(payloadBytes)
 }
 
@@ -894,7 +895,7 @@ func triggerWebhook(ctx context.Context, k8sClient client.Client, ctp *promoterv
 	beforeSha := ctp.Status.Proposed.Hydrated.Sha
 
 	// Build the webhook payload
-	ref := fmt.Sprintf("refs/heads/%s", ctp.Spec.ProposedBranch)
+	ref := "refs/heads/" + ctp.Spec.ProposedBranch
 	payload := buildGitHubWebhookPayload(beforeSha, ref)
 
 	// Send the webhook request
@@ -911,7 +912,9 @@ func triggerWebhook(ctx context.Context, k8sClient client.Client, ctp *promoterv
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 	resp, err := httpClient.Do(req)
 	Expect(err).To(Succeed())
-	defer resp.Body.Close()
+	defer func() {
+		Expect(resp.Body.Close()).To(Succeed())
+	}()
 
 	// The webhook receiver should return 204 No Content on success
 	Expect(resp.StatusCode).To(Equal(http.StatusNoContent), "webhook request should succeed")

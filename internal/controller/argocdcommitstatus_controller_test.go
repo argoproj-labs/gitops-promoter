@@ -89,7 +89,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 					},
 					Environments: []promoterv1alpha1.Environment{
 						{
-							Branch: "environment/staging",
+							Branch: testEnvironmentStaging,
 						},
 					},
 				},
