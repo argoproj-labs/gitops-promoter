@@ -89,7 +89,7 @@ stringData:
 > [!NOTE]
 > This Secret will need to be installed to the same namespace that you plan on creating PromotionStrategy resources in.
 
-We also need a GitRepository and ScmProvider, which is are custom resources that represents a git repository and a provider. 
+We also need a GitRepository and ScmProvider, which are custom resources that represent a git repository and a provider. 
 Here is an example of both resources:
 
 ```yaml
@@ -115,6 +115,12 @@ spec:
   scmProviderRef:
     name: <your-scmprovider-name>
 ```
+
+> [!IMPORTANT]
+> Make sure your staging branches (`environment/development-next`, `environment/staging-next`, etc.) are not auto-deleted
+> when PRs are merged. You can do this either by disabling auto-deletion of branches in the repository settings (in
+> Settings > Automatically delete head branches) or by adding a branch protection rule for a matching pattern such as 
+> `environment/*-next` (`/` characters are separators in GitHub's glob implementation, so `*-next` will not work).
 
 > [!NOTE]
 > The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy 
