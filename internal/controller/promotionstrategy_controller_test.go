@@ -715,6 +715,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
 
+		// This test validates the conflict resolution flow:
+		// 1. Creates initial changes via makeChangeAndHydrateRepo (adds manifests-fake.yaml with {"time": ...} to proposed branches)
+		// 2. Creates a conflicting commit on the development active branch (adds manifests-fake.yaml with {"conflict": ...})
+		// 3. Verifies that the CTP detects the merge conflict between proposed and active branches
+		// 4. Verifies that the CTP auto-resolves the conflict using 'git merge -s ours' strategy (keeping active branch content)
+		// 5. Verifies that PRs are created for environments with auto-merge disabled
+		// 6. Re-enables auto-merge and verifies all PRs get merged and deleted
 		It("should successfully reconcile the resource with a git conflict", func() {
 			By("Creating the resources")
 
@@ -869,6 +876,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", ctpDev.Spec.ActiveBranch)
 			Expect(err).NotTo(HaveOccurred())
 
+			By("Verifying the conflicting commit was pushed to the active branch")
+			// Get the SHA of the conflicting commit we just pushed
+			conflictingSha, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
+			Expect(err).NotTo(HaveOccurred())
+			conflictingSha = strings.TrimSpace(conflictingSha)
+			Expect(conflictingSha).NotTo(BeEmpty())
+
 			By("Checking that there is no previous-environment commit status created, since no active checks are configured")
 			csList := promoterv1alpha1.CommitStatusList{}
 			err = k8sClient.List(ctx, &csList, client.MatchingLabels{
@@ -877,7 +891,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(csList.Items)).To(Equal(0))
 
-			By("Waiting for CTPs to reconcile after the conflict and checking PR state")
+			By("Waiting for CTPs to reconcile after the conflict and verifying conflict resolution")
 			Eventually(func(g Gomega) {
 				// Get the latest CTP states
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -898,9 +912,20 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				}, &ctpProd)
 				g.Expect(err).To(Succeed())
 
-				// Dev should have reconciled with conflict resolution - check it has newer dry SHA from merge
+				// Dev should have reconciled with conflict resolution
+				// The conflict resolution uses 'git merge -s ours' which creates a merge commit
+				// that resolves the conflict by keeping the active branch content.
+				// This merge commit will have a different SHA than the original conflicting commit,
+				// proving that the conflict was detected and resolved.
 				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Not(BeEmpty()))
 				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Not(Equal(ctpDev.Status.Proposed.Dry.Sha)), "Dev active should have been updated by conflict resolution merge")
+
+				// Verify the active branch SHA is different from the conflicting commit we pushed
+				// This proves a new merge commit was created by the conflict resolution
+				g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(Not(Equal(conflictingSha)), "Active branch should have a new merge commit from conflict resolution, not the conflicting commit")
+
+				// Verify the active branch has a merge commit (subject should indicate it's a merge or promotion)
+				g.Expect(ctpDev.Status.Active.Hydrated.Subject).To(Not(ContainSubstring("added fake manifests commit")), "Active branch should have a merge commit, not the conflicting commit message")
 
 				// Staging should have different proposed vs active (ready for PR)
 				g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
