@@ -116,6 +116,11 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	// Determine provider from headers
 	provider := wr.DetectProvider(r)
+
+	// Extract and log a single delivery ID from common webhook headers (GitHub, GitLab, Forgejo/Gitea).
+	deliveryID := wr.extractDeliveryID(r)
+	logger := logger.WithValues("provider", provider, "deliveryID", deliveryID)
+
 	if provider == ProviderUnknown {
 		logger.V(4).Info("unable to detect provider from headers")
 		responseCode = http.StatusBadRequest
@@ -133,12 +138,13 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	ctp, err := wr.findChangeTransferPolicy(r.Context(), provider, jsonBytes)
 	if err != nil {
-		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err, "provider", provider)
+		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err)
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
 		return
 	}
 	if ctp == nil {
+		logger.Info("no ChangeTransferPolicy found for webhook delivery")
 		responseCode = http.StatusNoContent
 		w.WriteHeader(responseCode)
 		return
@@ -214,4 +220,28 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 	}
 
 	return &ctpLists.Items[0], nil
+}
+
+// extractDeliveryID inspects common webhook headers and returns the first non-empty delivery ID string found (provider-agnostic).
+func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
+	// Check common headers in a sensible order and return the first non-empty value.
+	// GitHub
+	if id := r.Header.Get("X-Github-Delivery"); id != "" {
+		return id
+	}
+	// GitLab - prefer Event UUID, fall back to Delivery
+	if id := r.Header.Get("X-Gitlab-Event-Uuid"); id != "" {
+		return id
+	}
+	if id := r.Header.Get("X-Gitlab-Delivery"); id != "" {
+		return id
+	}
+	// Forgejo/Gitea
+	if id := r.Header.Get("X-Forgejo-Delivery"); id != "" {
+		return id
+	}
+	if id := r.Header.Get("X-Gitea-Delivery"); id != "" {
+		return id
+	}
+	return ""
 }
