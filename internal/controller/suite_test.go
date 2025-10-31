@@ -948,18 +948,6 @@ func sendWebhookForPush(ctx context.Context, sha, branch string) {
 	}
 }
 
-func simulateWebhook(ctx context.Context, k8sClient client.Client, ctp *promoterv1alpha1.ChangeTransferPolicy) {
-	Eventually(func(g Gomega) {
-		orig := ctp.DeepCopy()
-		if ctp.Annotations == nil {
-			ctp.Annotations = make(map[string]string)
-		}
-		ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = metav1.Now().Format(time.RFC3339)
-		err := k8sClient.Patch(ctx, ctp, client.MergeFrom(orig))
-		Expect(err).To(Succeed())
-	}, constants.EventuallyTimeout).Should(Succeed())
-}
-
 func createKubeConfig(cfg *rest.Config) ([]byte, error) {
 	name := "cluster"
 	apiConfig := api.Config{
