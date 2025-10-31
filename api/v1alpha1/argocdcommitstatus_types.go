@@ -98,6 +98,22 @@ type ArgoCDCommitStatusStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+
+	// NoAppsRetryCount tracks the number of retry attempts when no applications are found.
+	// This is used to implement exponential backoff when the application list cache might not be synced yet.
+	// The counter resets to 0 when applications are successfully found.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum=0
+	NoAppsRetryCount int `json:"noAppsRetryCount,omitempty"`
+
+	// NoAppsRetryGeneration tracks which spec generation we are retrying for.
+	// This ensures the retry counter resets when the spec changes (e.g., applicationSelector is updated).
+	// +kubebuilder:validation:Optional
+	NoAppsRetryGeneration int64 `json:"noAppsRetryGeneration,omitempty"`
+
+	// ObservedGeneration is the generation most recently observed by the controller.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 }
 
 // GetConditions returns the conditions of the ArgoCDCommitStatus.

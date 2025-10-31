@@ -70,11 +70,34 @@ import (
 // This helps avoid premature acceptance of a transitive healthy state.
 const lastTransitionTimeThreshold = 5 * time.Second
 
+const (
+	// Retry configuration for handling cache sync delays when no applications are found
+	MaxNoAppsRetries        = 5               // Maximum retry attempts before concluding no apps exist
+	InitialRetryDelay       = 2 * time.Second // Initial retry delay (exponential backoff starts here)
+	MaxRetryDelay           = 1 * time.Minute // Maximum retry delay (cap for exponential backoff)
+	NoAppsFoundRequeueDelay = 5 * time.Minute // Requeue delay when genuinely no applications found
+)
+
 // var syncMap sync.Map
 var (
 	rwMutex sync.RWMutex
 	revMap  = make(map[appRevisionKey]string)
 )
+
+// calculateRetryDelay calculates exponential backoff delay based on retry count.
+// Returns: 2s, 4s, 8s, 16s, 32s, 60s (capped at MaxRetryDelay)
+func calculateRetryDelay(retryCount int) time.Duration {
+	if retryCount <= 0 {
+		return InitialRetryDelay
+	}
+
+	// Exponential backoff: InitialRetryDelay * 2^retryCount
+	delay := InitialRetryDelay * time.Duration(1<<uint(retryCount))
+	if delay > MaxRetryDelay {
+		return MaxRetryDelay
+	}
+	return delay
+}
 
 type aggregate struct {
 	application  *argocd.Application
@@ -190,6 +213,76 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 	logger.V(4).Info("Found Applications", "appCount", appCount)
 
+	// Handle "no applications found" with retry logic
+	if appCount == 0 {
+		// Check if spec has changed since we started retrying
+		if argoCDCommitStatus.Status.NoAppsRetryGeneration != 0 &&
+			argoCDCommitStatus.Status.NoAppsRetryGeneration != argoCDCommitStatus.Generation {
+			// Spec changed (e.g., applicationSelector updated), reset retry counter
+			logger.Info("Spec changed, resetting retry counter",
+				"oldGeneration", argoCDCommitStatus.Status.NoAppsRetryGeneration,
+				"newGeneration", argoCDCommitStatus.Generation)
+			argoCDCommitStatus.Status.NoAppsRetryCount = 0
+			argoCDCommitStatus.Status.NoAppsRetryGeneration = 0
+		}
+
+		retryCount := argoCDCommitStatus.Status.NoAppsRetryCount
+
+		logger.Info("No applications found matching selector",
+			"retryCount", retryCount,
+			"maxRetries", MaxNoAppsRetries)
+
+		if retryCount < MaxNoAppsRetries {
+			// Still retrying - might be cache sync delay
+			argoCDCommitStatus.Status.NoAppsRetryCount++
+			argoCDCommitStatus.Status.NoAppsRetryGeneration = argoCDCommitStatus.Generation
+			retryDelay := calculateRetryDelay(retryCount)
+
+			logger.Info("No applications found, will retry after backoff",
+				"newRetryCount", argoCDCommitStatus.Status.NoAppsRetryCount,
+				"retryDelay", retryDelay)
+
+			// Update status before returning (status fields won't be saved by defer)
+			if updateErr := r.localClient.Status().Update(ctx, &argoCDCommitStatus); updateErr != nil {
+				logger.Error(updateErr, "Failed to update retry count in status")
+				// Continue anyway - retry will happen but counter might not persist
+			}
+
+			// Requeue with exponential backoff
+			return ctrl.Result{RequeueAfter: retryDelay}, nil
+		}
+
+		// Max retries exceeded - genuinely no applications found
+		logger.Info("Max retries exceeded, no applications match selector",
+			"maxRetries", MaxNoAppsRetries)
+
+		meta.SetStatusCondition(argoCDCommitStatus.GetConditions(), metav1.Condition{
+			Type:    string(promoterConditions.Ready),
+			Status:  metav1.ConditionFalse,
+			Reason:  "NoApplicationsFound",
+			Message: fmt.Sprintf("No applications match the applicationSelector %v after %d retry attempts", argoCDCommitStatus.Spec.ApplicationSelector, MaxNoAppsRetries),
+		})
+		argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
+		argoCDCommitStatus.Status.ObservedGeneration = argoCDCommitStatus.Generation
+
+		// Update status before returning (status fields won't be saved by defer)
+		if updateErr := r.localClient.Status().Update(ctx, &argoCDCommitStatus); updateErr != nil {
+			logger.Error(updateErr, "Failed to update retry count in status")
+			// Continue anyway - retry will happen but counter might not persist
+		}
+
+		// Requeue with longer delay since there's genuinely nothing to do
+		return ctrl.Result{RequeueAfter: NoAppsFoundRequeueDelay}, nil
+	}
+
+	// Applications found! Reset retry counter if it was set
+	if argoCDCommitStatus.Status.NoAppsRetryCount > 0 {
+		logger.Info("Applications found, resetting retry counter",
+			"previousRetryCount", argoCDCommitStatus.Status.NoAppsRetryCount)
+		argoCDCommitStatus.Status.NoAppsRetryCount = 0
+		argoCDCommitStatus.Status.NoAppsRetryGeneration = 0
+	}
+
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
 	err = r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy)
 	if err != nil {
@@ -226,6 +319,8 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	utils.InheritNotReadyConditionFromObjects(&argoCDCommitStatus, promoterConditions.CommitStatusesNotReady, commitStatuses...)
+
+	argoCDCommitStatus.Status.ObservedGeneration = argoCDCommitStatus.Generation
 
 	err = r.localClient.Status().Update(ctx, &argoCDCommitStatus)
 	if err != nil {

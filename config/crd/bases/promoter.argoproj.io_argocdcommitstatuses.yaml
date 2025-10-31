@@ -260,6 +260,24 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              noAppsRetryCount:
+                description: |-
+                  NoAppsRetryCount tracks the number of retry attempts when no applications are found.
+                  This is used to implement exponential backoff when the application list cache might not be synced yet.
+                  The counter resets to 0 when applications are successfully found.
+                minimum: 0
+                type: integer
+              noAppsRetryGeneration:
+                description: |-
+                  NoAppsRetryGeneration tracks which spec generation we are retrying for.
+                  This ensures the retry counter resets when the spec changes (e.g., applicationSelector is updated).
+                format: int64
+                type: integer
+              observedGeneration:
+                description: ObservedGeneration is the generation most recently observed
+                  by the controller.
+                format: int64
+                type: integer
             type: object
         type: object
     served: true
