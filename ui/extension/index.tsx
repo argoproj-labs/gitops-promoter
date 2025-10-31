@@ -12,7 +12,7 @@ const hasOnePromotionStrategy = (application: Application) => {
 // Register app view extension
 window.extensionsAPI?.registerAppViewExtension(
   AppViewExtension,
-  "App View Extension",
+  "PromotionStrategy",
   "fa-code-branch",
   hasOnePromotionStrategy
 );
