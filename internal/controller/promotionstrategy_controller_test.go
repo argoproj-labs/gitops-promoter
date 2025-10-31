@@ -222,17 +222,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			makeChangeAndHydrateRepo(gitPath, name, name, "this is a change to bump image\n\nThis is the body\nThis is a newline", "added pending commit from dry sha")
 
-			By("Checking that the pull request for the development environment is created")
-			Eventually(func(g Gomega) {
-				// Dev PR should exist
-				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      prName,
-					Namespace: typeNamespacedName.Namespace,
-				}, &pullRequestDev)
-				g.Expect(err).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
+			By("Checking that the CTPs have reconciled and picked up the new commits")
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
@@ -681,38 +671,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			makeChangeAndHydrateRepo(gitPath, name, name, "", "")
 
-			By("Checking that the pull request for the development environment is created")
-			Eventually(func(g Gomega) {
-				// Dev PR should exist
-				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      prName,
-					Namespace: typeNamespacedName.Namespace,
-				}, &pullRequestDev)
-				g.Expect(err).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			Eventually(func(g Gomega) {
-				// Staging PR should exist
-				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      prName,
-					Namespace: typeNamespacedName.Namespace,
-				}, &pullRequestStaging)
-				g.Expect(err).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			Eventually(func(g Gomega) {
-				// Production PR should exist
-				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      prName,
-					Namespace: typeNamespacedName.Namespace,
-				}, &pullRequestProd)
-				g.Expect(err).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
 			By("Checking that the pull request for the development, staging, and production environments are closed")
+			// With automatic webhooks, PRs may be created and auto-merged too fast to observe in open state
 			Eventually(func(g Gomega) {
 				// The PRs should eventually close because of no commit status checks configured
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
@@ -760,8 +720,9 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-no-commit-status-conflict", "default")
 
-			// Disable auto-merge for staging and production to prevent them from auto-merging
+			// Disable auto-merge for all environments to prevent them from auto-merging
 			// while we're asserting on their PR states. We'll re-enable it after assertions.
+			promotionStrategy.Spec.Environments[0].AutoMerge = ptr.To(false) // development
 			promotionStrategy.Spec.Environments[1].AutoMerge = ptr.To(false) // staging
 			promotionStrategy.Spec.Environments[2].AutoMerge = ptr.To(false) // production
 
@@ -952,13 +913,13 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(ctpProd.Status.Proposed.Dry.Sha).To(Not(Equal(ctpProd.Status.Active.Dry.Sha)), "Production should have different commits")
 
 				// Now check PR states based on CTP reconciliation state
-				// Dev PR should not exist (conflict was auto-merged)
+				// Dev PR should exist (auto-merge is disabled)
 				prName := utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpDev.Spec.ProposedBranch, ctpDev.Spec.ActiveBranch))
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      prName,
 					Namespace: typeNamespacedName.Namespace,
 				}, &pullRequestDev)
-				g.Expect(errors.IsNotFound(err)).To(BeTrue(), "Dev PR should not exist after conflict resolution")
+				g.Expect(err).To(Succeed(), "Dev PR should exist before auto-merge is re-enabled")
 
 				// Staging PR should exist (yaml changes require PR)
 				prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
@@ -977,13 +938,14 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				g.Expect(err).To(Succeed(), "Production PR should exist")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Re-enabling auto-merge for staging and production to allow PRs to merge")
+			By("Re-enabling auto-merge for all environments to allow PRs to merge")
 			// Now that we've asserted on PR states, re-enable auto-merge so PRs can merge
 			Eventually(func(g Gomega) {
 				var ps promoterv1alpha1.PromotionStrategy
 				err := k8sClient.Get(ctx, typeNamespacedName, &ps)
 				g.Expect(err).To(Succeed())
 
+				ps.Spec.Environments[0].AutoMerge = ptr.To(true) // development
 				ps.Spec.Environments[1].AutoMerge = ptr.To(true) // staging
 				ps.Spec.Environments[2].AutoMerge = ptr.To(true) // production
 
