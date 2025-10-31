@@ -117,9 +117,9 @@ spec:
 ```
 
 > [!IMPORTANT]
-> Make sure your staging branches (`environment/development-`, `environment/staging-next`, etc.) are not auto-deleted
+> Make sure your staging branches (`environment/development-next`, `environment/staging-next`, etc.) are not auto-deleted
 > when PRs are merged. You can do this either by disabling auto-deletion of branches in the repository settings (in
-> Settings > Automatically delete head branchs) or by adding a branch protection rule for a matching pattern such as 
+> Settings > Automatically delete head branches) or by adding a branch protection rule for a matching pattern such as 
 > `environment/*-next` (`/` characters are separators in GitHub's glob implementation, so `*-next` will not work).
 
 > [!NOTE]
