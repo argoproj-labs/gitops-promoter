@@ -63,7 +63,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next" //nolint:goconst
-			changeTransferPolicy.Spec.ActiveBranch = "environment/development"        //nolint:goconst
+			changeTransferPolicy.Spec.ActiveBranch = testEnvironmentDevelopment
 			// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
@@ -80,7 +80,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			By("Reconciling the created resource")
 
-			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
@@ -98,7 +97,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 				g.Expect(err).To(Succeed())
-				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testEnvironmentDevelopment)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -106,14 +105,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			By("Adding another pending commit")
 			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
-			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
 					Namespace: "default",
 				}, &pr)
 				g.Expect(err).To(Succeed())
-				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testEnvironmentDevelopment)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -146,7 +144,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
-			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			changeTransferPolicy.Spec.ActiveBranch = testEnvironmentDevelopment
 			// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
@@ -229,7 +227,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
-			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			changeTransferPolicy.Spec.ActiveBranch = testEnvironmentDevelopment
 			// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
@@ -244,7 +242,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			By("Adding a pending commit")
 			fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
-			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
@@ -262,7 +259,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 				g.Expect(err).To(Succeed())
-				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testEnvironmentDevelopment)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -301,7 +298,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			}
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
-			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			changeTransferPolicy.Spec.ActiveBranch = testEnvironmentDevelopment
 			// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
@@ -318,7 +315,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			By("Reconciling the created resource")
 
-			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 				g.Expect(err).To(Succeed())
@@ -336,7 +332,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 				err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 				g.Expect(err).To(Succeed())
-				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testEnvironmentDevelopment)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -344,14 +340,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			By("Adding another pending commit")
 			_, shortSha = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
-			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      utils.KubeSafeUniqueName(ctx, prName),
 					Namespace: "default",
 				}, &pr)
 				g.Expect(err).To(Succeed())
-				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `environment/development`", shortSha)))
+				g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testEnvironmentDevelopment)))
 				g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -379,7 +374,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			_, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy := changeTransferPolicyResources(ctx, "ctp-merge-sha", "default")
 
 			changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
-			changeTransferPolicy.Spec.ActiveBranch = "environment/development"
+			changeTransferPolicy.Spec.ActiveBranch = testEnvironmentDevelopment
 			changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -394,7 +389,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
 			By("Reconciling and waiting for PR creation")
-			simulateWebhook(ctx, k8sClient, changeTransferPolicy)
 
 			var pr promoterv1alpha1.PullRequest
 			prName := utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)

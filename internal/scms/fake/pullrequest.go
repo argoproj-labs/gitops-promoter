@@ -182,6 +182,9 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		return err
 	}
 
+	// Trigger reconciliation after merge to simulate SCM provider webhook behavior
+	pr.triggerReconciliationAfterMerge(ctx, pullRequest)
+
 	mutexPR.Lock()
 	defer mutexPR.Unlock()
 	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
@@ -223,6 +226,34 @@ func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 
 func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name string) string {
 	return fmt.Sprintf("%s/%s/%s/%s", owner, name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
+}
+
+// triggerReconciliationAfterMerge triggers CTP reconciliation after a PR merge to simulate SCM provider webhook behavior
+func (pr *PullRequest) triggerReconciliationAfterMerge(ctx context.Context, pullRequest v1alpha1.PullRequest) {
+	// Find the CTP that owns this PR and trigger its reconciliation
+	ctpList := &v1alpha1.ChangeTransferPolicyList{}
+	err := pr.k8sClient.List(ctx, ctpList, client.InNamespace(pullRequest.Namespace))
+	if err != nil {
+		fmt.Printf("Failed to list CTPs after PR merge: %v\n", err)
+		return
+	}
+
+	// Find the CTP that has this PR's target branch as its active branch
+	for i := range ctpList.Items {
+		ctp := &ctpList.Items[i]
+		if ctp.Spec.ActiveBranch == pullRequest.Spec.TargetBranch {
+			// Trigger reconciliation via annotation
+			orig := ctp.DeepCopy()
+			if ctp.Annotations == nil {
+				ctp.Annotations = make(map[string]string)
+			}
+			ctp.Annotations["promoter.argoproj.io/reconcile-at"] = time.Now().Format(time.RFC3339)
+			err := pr.k8sClient.Patch(ctx, ctp, client.MergeFrom(orig))
+			if err != nil {
+				fmt.Printf("Failed to trigger CTP reconciliation after PR merge: %v\n", err)
+			}
+		}
+	}
 }
 
 func (pr *PullRequest) runGitCmd(ctx context.Context, gitPath string, args ...string) (string, error) {
