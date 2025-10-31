@@ -3,8 +3,10 @@ package fake
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
@@ -172,6 +174,13 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		return fmt.Errorf("source branch HEAD SHA %q does not match expected merge SHA %q", actualSha, pullRequest.Spec.MergeSha)
 	}
 
+	// Get the SHA of the target branch before merging - this is the "before" SHA for the webhook
+	beforeSha, err := pr.runGitCmd(ctx, gitPath, "rev-parse", "origin/"+pullRequest.Spec.TargetBranch)
+	if err != nil {
+		return fmt.Errorf("failed to get SHA of target branch before merge: %w", err)
+	}
+	beforeSha = strings.TrimSpace(beforeSha)
+
 	_, err = pr.runGitCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
 	if err != nil {
 		return fmt.Errorf("failed to merge branch: %w", err)
@@ -182,8 +191,10 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		return err
 	}
 
-	// Trigger reconciliation after merge to simulate SCM provider webhook behavior
-	pr.triggerReconciliationAfterMerge(ctx, pullRequest)
+	// Send webhook after merge to simulate SCM provider webhook behavior
+	// The webhook uses the "before" SHA (target branch SHA before the merge)
+	// The new findChangeTransferPolicy code will search by active.hydrated.sha as fallback
+	pr.triggerReconciliationAfterMerge(ctx, pullRequest, beforeSha)
 
 	mutexPR.Lock()
 	defer mutexPR.Unlock()
@@ -228,32 +239,61 @@ func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name s
 	return fmt.Sprintf("%s/%s/%s/%s", owner, name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
 }
 
-// triggerReconciliationAfterMerge triggers CTP reconciliation after a PR merge to simulate SCM provider webhook behavior
-func (pr *PullRequest) triggerReconciliationAfterMerge(ctx context.Context, pullRequest v1alpha1.PullRequest) {
-	// Find the CTP that owns this PR and trigger its reconciliation
-	ctpList := &v1alpha1.ChangeTransferPolicyList{}
-	err := pr.k8sClient.List(ctx, ctpList, client.InNamespace(pullRequest.Namespace))
+// triggerReconciliationAfterMerge sends a webhook after a PR merge to simulate SCM provider webhook behavior
+func (pr *PullRequest) triggerReconciliationAfterMerge(ctx context.Context, pullRequest v1alpha1.PullRequest, beforeSha string) {
+	// Get the webhook receiver port from the test environment
+	// This matches the port calculation in suite_test.go
+	webhookReceiverPort := 8082 + ginkgov2.GinkgoParallelProcess()
+
+	// Build GitHub-style webhook payload with the beforeSha (SHA before the merge)
+	payload := pr.buildGitHubWebhookPayload(beforeSha, "refs/heads/"+pullRequest.Spec.TargetBranch)
+
+	// Send the webhook request
+	webhookURL := fmt.Sprintf("http://localhost:%d/", webhookReceiverPort)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewBufferString(payload))
 	if err != nil {
-		fmt.Printf("Failed to list CTPs after PR merge: %v\n", err)
+		// Don't fail the merge if webhook fails - log it instead
+		fmt.Printf("Failed to create webhook request after PR merge: %v\n", err)
 		return
 	}
 
-	// Find the CTP that has this PR's target branch as its active branch
-	for i := range ctpList.Items {
-		ctp := &ctpList.Items[i]
-		if ctp.Spec.ActiveBranch == pullRequest.Spec.TargetBranch {
-			// Trigger reconciliation via annotation
-			orig := ctp.DeepCopy()
-			if ctp.Annotations == nil {
-				ctp.Annotations = make(map[string]string)
-			}
-			ctp.Annotations["promoter.argoproj.io/reconcile-at"] = time.Now().Format(time.RFC3339)
-			err := pr.k8sClient.Patch(ctx, ctp, client.MergeFrom(orig))
-			if err != nil {
-				fmt.Printf("Failed to trigger CTP reconciliation after PR merge: %v\n", err)
-			}
-		}
+	// Set GitHub webhook headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Github-Event", "push")
+	req.Header.Set("X-Github-Delivery", fmt.Sprintf("pr-merge-delivery-%d", time.Now().Unix()))
+
+	// Send the request
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		// Don't fail the merge if webhook fails - log it instead
+		fmt.Printf("Failed to send webhook request after PR merge: %v\n", err)
+		return
 	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusNoContent {
+		fmt.Printf("Webhook receiver returned unexpected status code after PR merge: %d\n", resp.StatusCode)
+	}
+}
+
+// buildGitHubWebhookPayload builds a GitHub-style push webhook payload
+func (pr *PullRequest) buildGitHubWebhookPayload(beforeSha, ref string) string {
+	payload := map[string]any{
+		"before": beforeSha,
+		"ref":    ref,
+		"pusher": map[string]any{
+			"name": "fake-scm",
+		},
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Printf("Failed to marshal webhook payload: %v\n", err)
+		return "{}"
+	}
+	return string(payloadBytes)
 }
 
 func (pr *PullRequest) runGitCmd(ctx context.Context, gitPath string, args ...string) (string, error) {
