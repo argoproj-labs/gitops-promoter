@@ -194,7 +194,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 	// Send webhook after merge to simulate SCM provider webhook behavior
 	// The webhook uses the "before" SHA (target branch SHA before the merge)
 	// The new findChangeTransferPolicy code will search by active.hydrated.sha as fallback
-	pr.triggerReconciliationAfterMerge(ctx, pullRequest, beforeSha)
+	pr.sendWebhook(ctx, pullRequest, beforeSha)
 
 	mutexPR.Lock()
 	defer mutexPR.Unlock()
@@ -239,8 +239,8 @@ func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name s
 	return fmt.Sprintf("%s/%s/%s/%s", owner, name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
 }
 
-// triggerReconciliationAfterMerge sends a webhook after a PR merge to simulate SCM provider webhook behavior
-func (pr *PullRequest) triggerReconciliationAfterMerge(ctx context.Context, pullRequest v1alpha1.PullRequest, beforeSha string) {
+// sendWebhook sends a webhook after a PR merge to simulate SCM provider webhook behavior
+func (pr *PullRequest) sendWebhook(ctx context.Context, pullRequest v1alpha1.PullRequest, beforeSha string) {
 	// Get the webhook receiver port from the test environment
 	// This matches the port calculation in suite_test.go
 	webhookReceiverPort := 8082 + ginkgov2.GinkgoParallelProcess()

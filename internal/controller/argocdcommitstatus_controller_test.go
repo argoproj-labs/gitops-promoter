@@ -96,6 +96,39 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
+			// Create a fake ScmProvider for the GitRepository
+			scmProvider := &promoterv1alpha1.ScmProvider{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "example-scm",
+				},
+				Spec: promoterv1alpha1.ScmProviderSpec{
+					Fake: &promoterv1alpha1.Fake{
+						Domain: "example.com",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+
+			// Create the GitRepository that the PromotionStrategy references
+			gitRepo := &promoterv1alpha1.GitRepository{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "example-repo",
+				},
+				Spec: promoterv1alpha1.GitRepositorySpec{
+					Fake: &promoterv1alpha1.FakeRepo{
+						Owner: "example",
+						Name:  "repo",
+					},
+					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
+						Kind: "ScmProvider",
+						Name: "example-scm",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
 			// Create a minimal ArgoCDCommitStatus referencing the app
 			commitStatus := &promoterv1alpha1.ArgoCDCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
@@ -124,6 +157,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Clean up
 			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
 		})
