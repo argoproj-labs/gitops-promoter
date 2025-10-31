@@ -409,7 +409,26 @@ var _ = BeforeSuite(func() {
 		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
 	}()
 
+	// Wait for the manager's cache to sync before running tests
+	// This ensures that watch handlers are ready and won't miss early resource creation events
+	By("waiting for cache to sync")
+	cache := multiClusterManager.GetLocalManager().GetCache()
+	Eventually(func() bool {
+		return cache.WaitForCacheSync(ctx)
+	}, constants.EventuallyTimeout).Should(BeTrue(), "local cache should sync")
+
+	// Wait for kubeconfig provider to discover remote clusters
 	Eventually(kubeconfigProvider.ListClusters, constants.EventuallyTimeout).Should(HaveLen(2))
+
+	// Wait for remote cluster caches to sync as well
+	By("waiting for remote cluster caches to sync")
+	for _, clusterName := range kubeconfigProvider.ListClusters() {
+		cluster, err := multiClusterManager.GetCluster(ctx, clusterName)
+		Expect(err).ToNot(HaveOccurred(), "should be able to get cluster %s", clusterName)
+		Eventually(func() bool {
+			return cluster.GetCache().WaitForCacheSync(ctx)
+		}, constants.EventuallyTimeout).Should(BeTrue(), "cache for cluster %s should sync", clusterName)
+	}
 })
 
 var _ = AfterSuite(func() {
