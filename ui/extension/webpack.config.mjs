@@ -1,5 +1,5 @@
 import path from 'path';
-const { codecovWebpackPlugin } = require("@codecov/webpack-plugin");
+import {codecovWebpackPlugin} from "@codecov/webpack-plugin";
 
 export default {
   entry: './index.tsx',
