@@ -133,12 +133,13 @@ build-extension: ## Build ArgoCD extension.
 	cd ui/components-lib && npm install
 	cd ui/extension && npm install && npm run build
 
-.PHONY: build-extension-local
-build-extension-local: ## Build ArgoCD extension and output to /tmp/extensions/promoter directory.
-	cd ui/components-lib && npm install
-	cd ui/extension && npm install && npm run build
+.PHONY: install-extension-local
+install-extension-local: ## Install ArgoCD extension to /tmp/extensions/promoter directory.
 	mkdir -p /tmp/extensions/promoter
 	cp ui/extension/dist/extension-promoter.js /tmp/extensions/promoter/
+
+.PHONY: build-extension-local
+build-extension-local: build-extension install-extension-local ## Build ArgoCD extension and install it locally to /tmp/extensions/promoter directory.
 
 .PHONY: build-all
 build-all: build-dashboard build-extension build ## Build dashboard UI, extension, and then the manager binary.
