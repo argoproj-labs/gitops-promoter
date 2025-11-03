@@ -29,6 +29,9 @@ jobs:
         run: |
           make build-dashboard
           make build-extension
+        env:
+          # If this is a build for a push to main, set the codecov token.
+          CODECOV_TOKEN: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.CODECOV_TOKEN || '' }}
       - name: UI Checks
         run: make lint-ui
       - name: Set up Python and venv for docs
