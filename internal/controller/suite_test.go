@@ -1050,8 +1050,7 @@ func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client)
 		ControlPlane: envtest.ControlPlane{
 			Etcd: &envtest.Etcd{
 				Args: []string{
-					"--auto-compaction-mode=periodic",
-					"--auto-compaction-retention=5m", // Longer retention to prevent watches from becoming too old
+					"--auto-compaction-retention=25m", // Longer retention to prevent watches from becoming too old
 				},
 			},
 		},
