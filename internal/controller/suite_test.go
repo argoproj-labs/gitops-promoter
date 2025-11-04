@@ -131,12 +131,6 @@ var _ = BeforeSuite(func() {
 	testEnvDev, cfgDev, k8sClientDev = createAndStartTestEnv()
 	testEnvStaging, cfgStaging, k8sClientStaging = createAndStartTestEnv()
 
-	// Increase QPS and Burst for remote cluster configs to prevent watch issues
-	cfgDev.QPS = 100
-	cfgDev.Burst = 200
-	cfgStaging.QPS = 100
-	cfgStaging.Burst = 200
-
 	// kubeconfig provider
 	kubeconfigProvider := kubeconfigprovider.New(kubeconfigprovider.Options{
 		Namespace:             constants.KubeconfigSecretNamespace,
@@ -159,11 +153,6 @@ var _ = BeforeSuite(func() {
 
 	err = createKubeconfigSecret(ctx, "testenv-staging", constants.KubeconfigSecretNamespace, cfgStaging, k8sClient)
 	Expect(err).NotTo(HaveOccurred())
-
-	// Increase client QPS and Burst to handle high-concurrency test environments
-	// This prevents "too old resource version" errors when watches fall behind
-	cfg.QPS = 100
-	cfg.Burst = 200
 
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
 		Scheme: scheme,
