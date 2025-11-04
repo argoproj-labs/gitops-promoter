@@ -1045,16 +1045,6 @@ func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client)
 		ControlPlaneStopTimeout:  1 * time.Minute,
 		AttachControlPlaneOutput: false,
 
-		// Configure etcd to reduce compaction frequency and prevent "too old resource version" errors
-		// in high-concurrency test environments
-		ControlPlane: envtest.ControlPlane{
-			Etcd: &envtest.Etcd{
-				Args: []string{
-					"--auto-compaction-retention=25m", // Longer retention to prevent watches from becoming too old
-				},
-			},
-		},
-
 		// The BinaryAssetsDirectory is only required if you want to run the tests directly
 		// without call the makefile target test. If not informed it will look for the
 		// default path defined in controller-runtime which is /usr/local/kubebuilder/.
