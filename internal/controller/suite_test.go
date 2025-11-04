@@ -131,6 +131,12 @@ var _ = BeforeSuite(func() {
 	testEnvDev, cfgDev, k8sClientDev = createAndStartTestEnv()
 	testEnvStaging, cfgStaging, k8sClientStaging = createAndStartTestEnv()
 
+	// Increase QPS and Burst for remote cluster configs to prevent watch issues
+	cfgDev.QPS = 100
+	cfgDev.Burst = 200
+	cfgStaging.QPS = 100
+	cfgStaging.Burst = 200
+
 	// kubeconfig provider
 	kubeconfigProvider := kubeconfigprovider.New(kubeconfigprovider.Options{
 		Namespace:             constants.KubeconfigSecretNamespace,
@@ -153,6 +159,11 @@ var _ = BeforeSuite(func() {
 
 	err = createKubeconfigSecret(ctx, "testenv-staging", constants.KubeconfigSecretNamespace, cfgStaging, k8sClient)
 	Expect(err).NotTo(HaveOccurred())
+
+	// Increase client QPS and Burst to handle high-concurrency test environments
+	// This prevents "too old resource version" errors when watches fall behind
+	cfg.QPS = 100
+	cfg.Burst = 200
 
 	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
 		Scheme: scheme,
@@ -1034,6 +1045,17 @@ func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client)
 		ControlPlaneStopTimeout:  1 * time.Minute,
 		AttachControlPlaneOutput: false,
 
+		// Configure etcd to reduce compaction frequency and prevent "too old resource version" errors
+		// in high-concurrency test environments
+		ControlPlane: envtest.ControlPlane{
+			Etcd: &envtest.Etcd{
+				Args: []string{
+					"--auto-compaction-mode=periodic",
+					"--auto-compaction-retention=5m", // Longer retention to prevent watches from becoming too old
+				},
+			},
+		},
+
 		// The BinaryAssetsDirectory is only required if you want to run the tests directly
 		// without call the makefile target test. If not informed it will look for the
 		// default path defined in controller-runtime which is /usr/local/kubebuilder/.
@@ -1046,6 +1068,11 @@ func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client)
 	cfg, err := env.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
+
+	// Increase QPS and Burst to prevent "too old resource version" errors
+	// when watches fall behind in high-concurrency test environments
+	cfg.QPS = 100
+	cfg.Burst = 200
 
 	cl, err := client.New(cfg, client.Options{Scheme: scheme})
 	Expect(err).NotTo(HaveOccurred())
