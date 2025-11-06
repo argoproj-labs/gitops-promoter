@@ -66,7 +66,7 @@ type CommitStatusStatus struct {
 	Id  string `json:"id"`
 	Sha string `json:"sha"`
 	// +kubebuilder:default:=pending
-	// +kubebuilder:validation:Enum:=pending;success;failure;
+	// +kubebuilder:validation:Enum:=pending;success;failure;""
 	// +kubebuilder:validation:Optional
 	Phase CommitStatusPhase `json:"phase,omitempty"`
 
