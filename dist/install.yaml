@@ -1588,6 +1588,7 @@ spec:
                 - pending
                 - success
                 - failure
+                - ""
                 type: string
               sha:
                 type: string
