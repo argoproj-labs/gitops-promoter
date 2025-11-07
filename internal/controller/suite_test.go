@@ -412,7 +412,12 @@ var _ = BeforeSuite(func() {
 	// Wait for the manager's cache to sync before running tests
 	// This ensures that watch handlers are ready and won't miss early resource creation events
 	By("waiting for cache to sync")
-	cache := multiClusterManager.GetLocalManager().GetCache()
+	cache := k8sManager.GetCache()
+	Eventually(func() bool {
+		return cache.WaitForCacheSync(ctx)
+	}, constants.EventuallyTimeout).Should(BeTrue(), "k8sManager cache should sync")
+
+	cache = multiClusterManager.GetLocalManager().GetCache()
 	Eventually(func() bool {
 		return cache.WaitForCacheSync(ctx)
 	}, constants.EventuallyTimeout).Should(BeTrue(), "local cache should sync")
@@ -1046,11 +1051,6 @@ func createAndStartTestEnv() (*envtest.Environment, *rest.Config, client.Client)
 	cfg, err := env.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
-
-	// Increase QPS and Burst to prevent "too old resource version" errors
-	// when watches fall behind in high-concurrency test environments
-	cfg.QPS = 100
-	cfg.Burst = 200
 
 	cl, err := client.New(cfg, client.Options{Scheme: scheme})
 	Expect(err).NotTo(HaveOccurred())
