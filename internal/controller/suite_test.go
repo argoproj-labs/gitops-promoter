@@ -434,6 +434,24 @@ var _ = BeforeSuite(func() {
 			return cluster.GetCache().WaitForCacheSync(ctx)
 		}, constants.EventuallyTimeout).Should(BeTrue(), "cache for cluster %s should sync", clusterName)
 	}
+
+	// Wait for ArgoCDCommitStatus informer to be ready
+	// The general cache sync above only ensures Application informers are ready (from Watches()).
+	// We need to explicitly verify the ArgoCDCommitStatus informer (from For()) is ready.
+	// This informer is created during mgr.Engage(), which happens AFTER setCluster() adds
+	// the cluster to ListClusters(). There's a small window where ListClusters() shows the
+	// cluster but Engage() hasn't completed yet, meaning the ArgoCDCommitStatus informer
+	// doesn't exist. This wait ensures Engage() has completed and the informer is usable.
+	//
+	// IMPORTANT: We must use the multiClusterManager's cached client here, not k8sClient.
+	// k8sClient is a direct API client (created via client.New()) that bypasses caches entirely.
+	// Using the cached client ensures List() only succeeds when the informer actually exists.
+	By("waiting for ArgoCDCommitStatus informer to be ready")
+	Eventually(func() error {
+		list := &promoterv1alpha1.ArgoCDCommitStatusList{}
+		return multiClusterManager.GetLocalManager().GetClient().List(ctx, list)
+	}, constants.EventuallyTimeout, 100*time.Millisecond).Should(Succeed(),
+		"ArgoCDCommitStatus informer should be ready before tests run")
 })
 
 var _ = AfterSuite(func() {
