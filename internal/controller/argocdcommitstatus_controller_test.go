@@ -45,7 +45,44 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 	Context("When reconciling a resource", func() {
 		It("should fail if the application's SyncSource.TargetBranch is empty", func() {
-			// Create an Application resource with empty TargetBranch
+			ctx := context.TODO()
+
+			// Create a PromotionStrategy resource FIRST (dependency)
+			promotionStrategy := &promoterv1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "example-promotion-strategy",
+				},
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{
+						Name: "example-repo",
+					},
+					Environments: []promoterv1alpha1.Environment{
+						{
+							Branch: testEnvironmentStaging,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			// Create ArgoCDCommitStatus SECOND (before Application!)
+			// This ensures the controller's secondary watch on Applications will find this resource
+			commitStatus := &promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-status",
+				},
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "example-promotion-strategy"},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "demo"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+
+			// Create Application LAST (with empty TargetBranch to trigger validation error)
 			app := &argocd.Application{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "default",
@@ -74,42 +111,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 					},
 				},
 			}
-			ctx := context.TODO()
 			Expect(k8sClient.Create(ctx, app)).To(Succeed())
-
-			// Create a PromotionStrategy resource for the ArgoCDCommitStatus to reference
-			promotionStrategy := &promoterv1alpha1.PromotionStrategy{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      "example-promotion-strategy",
-				},
-				Spec: promoterv1alpha1.PromotionStrategySpec{
-					RepositoryReference: promoterv1alpha1.ObjectReference{
-						Name: "example-repo",
-					},
-					Environments: []promoterv1alpha1.Environment{
-						{
-							Branch: testEnvironmentStaging,
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-			// Create a minimal ArgoCDCommitStatus referencing the app
-			commitStatus := &promoterv1alpha1.ArgoCDCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: "default",
-					Name:      "test-status",
-				},
-				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
-					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: "example-promotion-strategy"},
-					ApplicationSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{"app": "demo"},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
 
 			// Wait for reconciliation and check status condition
 			Eventually(func(g Gomega) {
