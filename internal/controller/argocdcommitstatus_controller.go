@@ -91,12 +91,11 @@ type appRevisionKey struct {
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
-	Manager                mcmanager.Manager
-	Recorder               record.EventRecorder
-	SettingsMgr            *settings.Manager
-	KubeConfigProvider     *kubeconfig.Provider
-	localClient            client.Client
-	watchLocalApplications bool
+	Manager            mcmanager.Manager
+	Recorder           record.EventRecorder
+	SettingsMgr        *settings.Manager
+	KubeConfigProvider *kubeconfig.Provider
+	localClient        client.Client
 }
 
 // URLTemplateData is the data passed to the URLTemplate in the ArgoCDCommitStatus.
@@ -154,9 +153,15 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
 	apps := []ApplicationsInEnvironment{}
 
+	// Get the current watchLocalApplications setting (hot-reloadable)
+	watchLocalApplications, err := r.SettingsMgr.GetArgoCDCommitStatusControllersWatchLocalApplications(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get watchLocalApplications setting: %w", err)
+	}
+
 	// list clusters so we can query argocd applications from all clusters
 	clusters := r.KubeConfigProvider.ListClusters()
-	if r.watchLocalApplications {
+	if watchLocalApplications {
 		// The provider doesn't know about the local cluster, so we need to add it ourselves.
 		clusters = append(clusters, mcmanager.LocalCluster)
 	}
@@ -444,12 +449,36 @@ func getMostRecentLastTransitionTime(aggregateItem []*aggregate) *metav1.Time {
 	return mostRecentLastTransitionTime
 }
 
-func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
+// filterAndLookupArgoCDCommitStatusFromApplication creates a handler that:
+// 1. Filters events based on whether they come from local or provider clusters (hot-reloadable)
+// 2. Maps Argo CD Application events to ArgoCDCommitStatus reconciliation requests
+func filterAndLookupArgoCDCommitStatusFromApplication(mgr mcmanager.Manager, settingsMgr *settings.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
 	return func(clusterName string, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
 		return handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, argoCDApplication client.Object) []mcreconcile.Request {
-			metrics.ApplicationWatchEventsHandled.Inc()
-
 			logger := log.FromContext(ctx)
+			isLocal := clusterName == ""
+
+			// Hot-reload the watchLocalApplications setting
+			// If we can't read it (e.g., during startup before cache is ready), default to true
+			// to be safe and process the event rather than silently drop it.
+			watchLocal := true // safe default
+			if val, err := settingsMgr.GetArgoCDCommitStatusControllersWatchLocalApplications(ctx); err != nil {
+				logger.V(4).Info("failed to get watchLocalApplications setting, using default true", "error", err.Error())
+			} else {
+				watchLocal = val
+			}
+
+			// Filter based on cluster type
+			if isLocal && !watchLocal {
+				return nil
+			}
+			// Always watch provider clusters
+			watchProviders := true
+			if !isLocal && !watchProviders {
+				return nil
+			}
+
+			metrics.ApplicationWatchEventsHandled.Inc()
 
 			application := &argocd.Application{}
 
@@ -539,15 +568,9 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		return fmt.Errorf("failed to get ArgoCDCommitStatus max concurrent reconciles: %w", err)
 	}
 
-	// Get the controller configuration to check if local Applications should be watched
-	watchLocalApplications, err := r.SettingsMgr.GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get controller configuration: %w", err)
-	}
-
-	r.watchLocalApplications = watchLocalApplications
-
 	err = mcbuilder.ControllerManagedBy(mcMgr).
+		Named("argocdcommitstatus").
+		// Watch ArgoCDCommitStatus resources only in the local cluster
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithLocalCluster(true),
 			mcbuilder.WithEngageWithProviderClusters(false),
@@ -558,8 +581,12 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 			RateLimiter:             rateLimiter,
 			UsePriorityQueue:        ptr.To(true),
 		}).
-		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
-			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
+		// Watch Applications using a custom handler that dynamically filters by cluster.
+		// We engage with ONLY provider clusters (not local), then the handler
+		// hot-reloads the watchLocalApplications setting and filters accordingly.
+		// This allows the configuration to be changed without restarting the controller.
+		Watches(&argocd.Application{},
+			filterAndLookupArgoCDCommitStatusFromApplication(mcMgr, r.SettingsMgr),
 			mcbuilder.WithEngageWithProviderClusters(true),
 			mcbuilder.WithPredicates(applicationPredicate())).
 		Complete(r)

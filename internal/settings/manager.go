@@ -123,6 +123,23 @@ func (m *Manager) GetControllerNamespace() string {
 	return m.config.ControllerNamespace
 }
 
+// GetArgoCDCommitStatusControllersWatchLocalApplications retrieves the WatchLocalApplications setting from the ArgoCDCommitStatus configuration.
+//
+// This function uses the cached client and should be called during normal reconciliation operations.
+// For setup-time configuration before the cache is started, use GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect instead.
+//
+// Parameters:
+//   - ctx: Context for the request, used for cancellation and deadlines
+//
+// Returns the configured WatchLocalApplications value, or an error if the configuration cannot be retrieved.
+func (m *Manager) GetArgoCDCommitStatusControllersWatchLocalApplications(ctx context.Context) (bool, error) {
+	config, err := m.getControllerConfiguration(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+	return config.Spec.ArgoCDCommitStatus.WatchLocalApplications, nil
+}
+
 // GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect retrieves the WatchLocalApplications setting from the ArgoCDCommitStatus configuration
 // using a non-cached read.
 //
