@@ -570,17 +570,19 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 	err = mcbuilder.ControllerManagedBy(mcMgr).
 		Named("argocdcommitstatus").
-		// Watch ArgoCDCommitStatus resources only in the local cluster
-		For(&promoterv1alpha1.ArgoCDCommitStatus{},
-			mcbuilder.WithEngageWithLocalCluster(true),
-			mcbuilder.WithEngageWithProviderClusters(false),
-			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
-		).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxConcurrentReconciles,
 			RateLimiter:             rateLimiter,
 			UsePriorityQueue:        ptr.To(true),
 		}).
+		// Watch ArgoCDCommitStatus resources only in the local cluster.
+		// We use Watches() with OnlyLocalCluster() instead of For() due to a bug in
+		// multicluster-runtime that prevents setting both WithEngageWithLocalCluster(true)
+		// and WithEngageWithProviderClusters(false) on For().
+		// See: https://github.com/kubernetes-sigs/multicluster-runtime/issues/93
+		Watches(&promoterv1alpha1.ArgoCDCommitStatus{},
+			OnlyLocalCluster(),
+			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		// Watch Applications using a custom handler that dynamically filters by cluster.
 		// We engage with ONLY provider clusters (not local), then the handler
 		// hot-reloads the watchLocalApplications setting and filters accordingly.
