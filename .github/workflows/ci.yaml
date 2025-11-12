@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493 # pin@v4
+        uses: actions/checkout@71cf2267d89c5cb81562390fa70a37fa40b1305e # pin@v4
       - name: Set up Go
         uses: actions/setup-go@faf52423ec0d44c58f68e83b614bfcd99dded66f # pin@v5
         with:
@@ -62,7 +62,7 @@ jobs:
           fi
           echo "ui/web/static directory exists ✓"
       - name: Lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.1.0
           args: --timeout=5m
@@ -100,7 +100,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@ff7abcd0c3c05ccf6adc123a8cd1fd4fb30fb493 # pin@v4
+        uses: actions/checkout@71cf2267d89c5cb81562390fa70a37fa40b1305e # pin@v4
       - name: Set up Go
         uses: actions/setup-go@faf52423ec0d44c58f68e83b614bfcd99dded66f # pin@v5
         with:
