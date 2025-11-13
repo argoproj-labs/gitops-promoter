@@ -97,7 +97,7 @@ Fill up the form with the following (leave non specified to defaults):
 | GitHub App name                                        | A unique name of your choice (unique across the whole world) |
 | Homepage URL                                           | The URL of your profile                                      |
 | Webhook > Active                                       | False                                                        |
-| Permissions > Repository Permissions > Commit statuses | Read and write                                               |
+| Permissions > Repository Permissions > Checks          | Read and write                                               |
 | Permissions > Repository Permissions > Content         | Read and write                                               |
 | Permissions > Repository Permissions > Pull requests   | Read and write                                               |
 
