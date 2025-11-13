@@ -31,6 +31,12 @@ const (
 	checkRunStatusCompleted  = "completed"
 )
 
+// checkRunState represents the status and optional conclusion of a GitHub check run
+type checkRunState struct {
+	status     string
+	conclusion string // only set when status is "completed"
+}
+
 // NewGithubCommitStatusProvider creates a new instance of CommitStatus for GitHub.
 func NewGithubCommitStatusProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string) (*CommitStatus, error) {
 	client, _, err := GetClient(ctx, scmProvider, secret, org)
@@ -55,13 +61,13 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	}
 
 	// Map CommitStatusPhase to check run status and conclusion
-	status, conclusion := phaseToCheckRunStatusAndConclusion(commitStatus.Spec.Phase)
+	state := phaseToCheckRunState(commitStatus.Spec.Phase)
 
 	// Create check run options
 	checkRunOpts := github.CreateCheckRunOptions{
 		Name:    commitStatus.Spec.Name,
 		HeadSHA: commitStatus.Spec.Sha,
-		Status:  github.Ptr(status),
+		Status:  github.Ptr(state.status),
 	}
 
 	// Add details URL if provided
@@ -78,15 +84,15 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	}
 
 	// If the status is completed, set the conclusion
-	if status == checkRunStatusCompleted {
-		checkRunOpts.Conclusion = github.Ptr(conclusion)
+	if state.status == checkRunStatusCompleted {
+		checkRunOpts.Conclusion = github.Ptr(state.conclusion)
 		// Set completed_at timestamp
 		now := github.Timestamp{Time: time.Now()}
 		checkRunOpts.CompletedAt = &now
 	}
 
 	// Set started_at timestamp for in_progress status
-	if status == checkRunStatusInProgress {
+	if state.status == checkRunStatusInProgress {
 		now := github.Timestamp{Time: time.Now()}
 		checkRunOpts.StartedAt = &now
 	}
@@ -113,14 +119,28 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	return commitStatus, nil
 }
 
-// phaseToCheckRunStatusAndConclusion maps CommitStatusPhase to GitHub check run status and conclusion
-func phaseToCheckRunStatusAndConclusion(phase promoterv1alpha1.CommitStatusPhase) (status string, conclusion string) {
+// phaseToCheckRunState maps CommitStatusPhase to GitHub check run state
+func phaseToCheckRunState(phase promoterv1alpha1.CommitStatusPhase) checkRunState {
 	switch phase {
 	case promoterv1alpha1.CommitPhaseSuccess:
-		return checkRunStatusCompleted, string(promoterv1alpha1.CommitPhaseSuccess)
+		return checkRunState{
+			status:     checkRunStatusCompleted,
+			conclusion: string(promoterv1alpha1.CommitPhaseSuccess),
+		}
 	case promoterv1alpha1.CommitPhaseFailure:
-		return checkRunStatusCompleted, string(promoterv1alpha1.CommitPhaseFailure)
+		return checkRunState{
+			status:     checkRunStatusCompleted,
+			conclusion: string(promoterv1alpha1.CommitPhaseFailure),
+		}
+	case promoterv1alpha1.CommitPhasePending:
+		return checkRunState{
+			status:     checkRunStatusInProgress,
+			conclusion: "", // no conclusion for non-completed states
+		}
 	default:
-		return checkRunStatusQueued, ""
+		return checkRunState{
+			status:     checkRunStatusQueued,
+			conclusion: "", // no conclusion for non-completed states
+		}
 	}
 }
