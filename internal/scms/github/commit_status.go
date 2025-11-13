@@ -125,7 +125,10 @@ func (cs *CommitStatus) createCheckRun(ctx context.Context, commitStatus *promot
 
 	start := time.Now()
 	checkRun, response, err := cs.client.Checks.CreateCheckRun(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, checkRunOpts)
-	return cs.handleCheckRunResponse(ctx, metrics.SCMOperationCreate, start, commitStatus, gitRepo, checkRun, response, err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create check run: %w", err)
+	}
+	return cs.handleCheckRunResponse(ctx, metrics.SCMOperationCreate, start, commitStatus, gitRepo, checkRun, response)
 }
 
 // updateCheckRun updates an existing GitHub check run
@@ -165,7 +168,10 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 
 	start := time.Now()
 	checkRun, response, err := cs.client.Checks.UpdateCheckRun(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, checkRunID, updateOpts)
-	return cs.handleCheckRunResponse(ctx, metrics.SCMOperationUpdate, start, commitStatus, gitRepo, checkRun, response, err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update check run: %w", err)
+	}
+	return cs.handleCheckRunResponse(ctx, metrics.SCMOperationUpdate, start, commitStatus, gitRepo, checkRun, response)
 }
 
 // handleCheckRunResponse handles the response from GitHub check run API calls
@@ -178,14 +184,8 @@ func (cs *CommitStatus) handleCheckRunResponse(
 	gitRepo *promoterv1alpha1.GitRepository,
 	checkRun *github.CheckRun,
 	response *github.Response,
-	err error,
 ) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
-
-	// Handle error first
-	if err != nil {
-		return nil, fmt.Errorf("failed to %s check run: %w", operation, err)
-	}
 
 	// Record metrics and log rate limit info if response is available
 	if response != nil {
