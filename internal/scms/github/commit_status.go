@@ -103,18 +103,19 @@ func (cs *CommitStatus) createCheckRun(ctx context.Context, commitStatus *promot
 		checkRunOpts.DetailsURL = github.Ptr(commitStatus.Spec.Url)
 	}
 
-	// If the status is completed, set the conclusion and timestamp
+	now := github.Timestamp{Time: time.Now()}
+
+	// If the status is completed, set the conclusion and timestamps
 	// The conclusion is the final result: "success" or "failure"
 	// This maps directly from the CommitStatus phase (success/failure)
 	if status == checkRunStatusCompleted {
 		checkRunOpts.Conclusion = github.Ptr(string(commitStatus.Spec.Phase)) // "success" or "failure"
-		now := github.Timestamp{Time: time.Now()}
+		checkRunOpts.StartedAt = &now
 		checkRunOpts.CompletedAt = &now
 	}
 
 	// Set started_at timestamp for in_progress status
 	if status == checkRunStatusInProgress {
-		now := github.Timestamp{Time: time.Now()}
 		checkRunOpts.StartedAt = &now
 	}
 
