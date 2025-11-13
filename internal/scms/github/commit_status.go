@@ -25,6 +25,12 @@ type CommitStatus struct {
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
+const (
+	checkRunStatusQueued     = "queued"
+	checkRunStatusInProgress = "in_progress"
+	checkRunStatusCompleted  = "completed"
+)
+
 // NewGithubCommitStatusProvider creates a new instance of CommitStatus for GitHub.
 func NewGithubCommitStatusProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string) (*CommitStatus, error) {
 	client, _, err := GetClient(ctx, scmProvider, secret, org)
@@ -72,7 +78,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	}
 
 	// If the status is completed, set the conclusion
-	if status == "completed" {
+	if status == checkRunStatusCompleted {
 		checkRunOpts.Conclusion = github.Ptr(conclusion)
 		// Set completed_at timestamp
 		now := github.Timestamp{Time: time.Now()}
@@ -80,7 +86,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	}
 
 	// Set started_at timestamp for in_progress status
-	if status == "in_progress" {
+	if status == checkRunStatusInProgress {
 		now := github.Timestamp{Time: time.Now()}
 		checkRunOpts.StartedAt = &now
 	}
@@ -110,14 +116,11 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 // phaseToCheckRunStatusAndConclusion maps CommitStatusPhase to GitHub check run status and conclusion
 func phaseToCheckRunStatusAndConclusion(phase promoterv1alpha1.CommitStatusPhase) (status string, conclusion string) {
 	switch phase {
-	case promoterv1alpha1.CommitPhasePending:
-		// Map pending to queued status (could also be "in_progress")
-		return "queued", ""
 	case promoterv1alpha1.CommitPhaseSuccess:
-		return "completed", "success"
+		return checkRunStatusCompleted, string(promoterv1alpha1.CommitPhaseSuccess)
 	case promoterv1alpha1.CommitPhaseFailure:
-		return "completed", "failure"
+		return checkRunStatusCompleted, string(promoterv1alpha1.CommitPhaseFailure)
 	default:
-		return "queued", ""
+		return checkRunStatusQueued, ""
 	}
 }

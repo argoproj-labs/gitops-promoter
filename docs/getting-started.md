@@ -28,11 +28,16 @@ During the creation the GitHub App, you will need to configure the following set
 
 ### Permissions
 
-| Action            | Permission     |
-| ----------------- | -------------- |
-| `Commit statuses` | Read and write |
-| `Contents`        | Read and write |
-| `Pull requests`   | Read and write |
+| Action         | Permission     | Notes                                            |
+| -------------- | -------------- | ------------------------------------------------ |
+| `Checks`       | Read and write | Required for creating check runs on commits      |
+| `Contents`     | Read and write | Required for reading and writing repository code |
+| `Pull requests`| Read and write | Required for creating and managing pull requests |
+
+> [!NOTE]
+> GitOps Promoter uses the GitHub [Checks API](https://docs.github.com/en/rest/checks/runs) to report commit status.
+> The older Commit Status API is no longer used. If you previously configured `Commit statuses` permissions, you can
+> remove them and replace with `Checks` permissions instead.
 
 ### Webhooks (Optional - but highly recommended)
 
