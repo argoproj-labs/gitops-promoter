@@ -17,13 +17,15 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
+// Compile-time check to ensure CommitStatus implements scms.CommitStatusProvider
+var _ scms.CommitStatusProvider = (*CommitStatus)(nil)
+
 // CommitStatus implements the scms.CommitStatusProvider interface for GitHub.
+// It uses the GitHub Checks API to create and update commit status checks.
 type CommitStatus struct {
 	client    *github.Client
 	k8sClient client.Client
 }
-
-var _ scms.CommitStatusProvider = &CommitStatus{}
 
 const (
 	checkRunStatusQueued     = "queued"
@@ -38,14 +40,15 @@ type checkRunState struct {
 }
 
 // NewGithubCommitStatusProvider creates a new instance of CommitStatus for GitHub.
+// It initializes the GitHub client using the provided SCM provider configuration and secret.
 func NewGithubCommitStatusProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string) (*CommitStatus, error) {
-	client, _, err := GetClient(ctx, scmProvider, secret, org)
+	githubClient, _, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create GitHub client: %w", err)
 	}
 
 	return &CommitStatus{
-		client:    client,
+		client:    githubClient,
 		k8sClient: k8sClient,
 	}, nil
 }
@@ -53,16 +56,16 @@ func NewGithubCommitStatusProvider(ctx context.Context, k8sClient client.Client,
 // Set sets the commit status for a given commit SHA in the specified repository using GitHub Checks API.
 // If the SHA hasn't changed and we have an existing check run ID, it will update the existing check run.
 // Otherwise, it creates a new check run.
-func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
+func (cs *CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
-	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, cs.k8sClient, client.ObjectKey{Namespace: commitStatus.Namespace, Name: commitStatus.Spec.RepositoryReference.Name})
+	gitRepo, err := cs.getGitRepository(ctx, commitStatus)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+		return nil, err
 	}
 
 	// Determine if we should update an existing check run or create a new one
-	shouldUpdate := commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != ""
+	shouldUpdate := cs.shouldUpdateCheckRun(commitStatus)
 
 	if shouldUpdate {
 		logger.Info("Updating existing check run via Checks API", "checkRunId", commitStatus.Status.Id)
@@ -73,8 +76,28 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.C
 	return cs.createCheckRun(ctx, commitStatus, gitRepo)
 }
 
+// getGitRepository retrieves the GitRepository resource for the given CommitStatus
+func (cs *CommitStatus) getGitRepository(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.GitRepository, error) {
+	objectKey := client.ObjectKey{
+		Namespace: commitStatus.Namespace,
+		Name:      commitStatus.Spec.RepositoryReference.Name,
+	}
+
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, cs.k8sClient, objectKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	return gitRepo, nil
+}
+
+// shouldUpdateCheckRun determines if we should update an existing check run or create a new one
+func (cs *CommitStatus) shouldUpdateCheckRun(commitStatus *promoterv1alpha1.CommitStatus) bool {
+	return commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != ""
+}
+
 // createCheckRun creates a new GitHub check run
-func (cs CommitStatus) createCheckRun(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus, gitRepo *promoterv1alpha1.GitRepository) (*promoterv1alpha1.CommitStatus, error) {
+func (cs *CommitStatus) createCheckRun(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus, gitRepo *promoterv1alpha1.GitRepository) (*promoterv1alpha1.CommitStatus, error) {
 	state := phaseToCheckRunState(commitStatus.Spec.Phase)
 
 	// Build create-specific options
@@ -84,9 +107,17 @@ func (cs CommitStatus) createCheckRun(ctx context.Context, commitStatus *promote
 		Status:  github.Ptr(state.status),
 	}
 
-	// Apply common options
-	cs.applyCheckRunOptions(&checkRunOpts.DetailsURL, &checkRunOpts.Output,
-		&checkRunOpts.Conclusion, &checkRunOpts.CompletedAt, commitStatus, state)
+	// Set details URL if provided
+	if commitStatus.Spec.Url != "" {
+		checkRunOpts.DetailsURL = github.Ptr(commitStatus.Spec.Url)
+	}
+
+	// If the status is completed, set the conclusion and timestamp
+	if state.status == checkRunStatusCompleted {
+		checkRunOpts.Conclusion = github.Ptr(state.conclusion)
+		now := github.Timestamp{Time: time.Now()}
+		checkRunOpts.CompletedAt = &now
+	}
 
 	// Set started_at timestamp for in_progress status
 	if state.status == checkRunStatusInProgress {
@@ -96,11 +127,11 @@ func (cs CommitStatus) createCheckRun(ctx context.Context, commitStatus *promote
 
 	start := time.Now()
 	checkRun, response, err := cs.client.Checks.CreateCheckRun(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, checkRunOpts)
-	return cs.handleCheckRunResponse(ctx, checkRun, response, err, commitStatus, gitRepo, metrics.SCMOperationCreate, start)
+	return cs.handleCheckRunResponse(ctx, metrics.SCMOperationCreate, start, commitStatus, gitRepo, checkRun, response, err)
 }
 
 // updateCheckRun updates an existing GitHub check run
-func (cs CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus, gitRepo *promoterv1alpha1.GitRepository) (*promoterv1alpha1.CommitStatus, error) {
+func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus, gitRepo *promoterv1alpha1.GitRepository) (*promoterv1alpha1.CommitStatus, error) {
 	// Parse the check run ID
 	checkRunID, err := strconv.ParseInt(commitStatus.Status.Id, 10, 64)
 	if err != nil {
@@ -115,73 +146,63 @@ func (cs CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promote
 		Status: github.Ptr(state.status),
 	}
 
-	// Apply common options
-	cs.applyCheckRunOptions(&updateOpts.DetailsURL, &updateOpts.Output,
-		&updateOpts.Conclusion, &updateOpts.CompletedAt, commitStatus, state)
-
-	start := time.Now()
-	checkRun, response, err := cs.client.Checks.UpdateCheckRun(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, checkRunID, updateOpts)
-	return cs.handleCheckRunResponse(ctx, checkRun, response, err, commitStatus, gitRepo, metrics.SCMOperationUpdate, start)
-}
-
-// applyCheckRunOptions applies common options to both create and update check run requests
-func (cs CommitStatus) applyCheckRunOptions(
-	detailsURL **string, output **github.CheckRunOutput,
-	conclusion **string, completedAt **github.Timestamp,
-	commitStatus *promoterv1alpha1.CommitStatus, state checkRunState,
-) {
-	// Add details URL if provided
+	// Set details URL if provided
 	if commitStatus.Spec.Url != "" {
-		*detailsURL = github.Ptr(commitStatus.Spec.Url)
-	}
-
-	// Add output with summary from description
-	if commitStatus.Spec.Description != "" {
-		*output = &github.CheckRunOutput{
-			Title:   github.Ptr(commitStatus.Spec.Name),
-			Summary: github.Ptr(commitStatus.Spec.Description),
-		}
+		updateOpts.DetailsURL = github.Ptr(commitStatus.Spec.Url)
 	}
 
 	// If the status is completed, set the conclusion and timestamp
 	if state.status == checkRunStatusCompleted {
-		*conclusion = github.Ptr(state.conclusion)
+		updateOpts.Conclusion = github.Ptr(state.conclusion)
 		now := github.Timestamp{Time: time.Now()}
-		*completedAt = &now
+		updateOpts.CompletedAt = &now
 	}
+
+	start := time.Now()
+	checkRun, response, err := cs.client.Checks.UpdateCheckRun(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, checkRunID, updateOpts)
+	return cs.handleCheckRunResponse(ctx, metrics.SCMOperationUpdate, start, commitStatus, gitRepo, checkRun, response, err)
 }
 
 // handleCheckRunResponse handles the response from GitHub check run API calls
-func (cs CommitStatus) handleCheckRunResponse(
+// It records metrics, logs rate limit information, and updates the commit status
+func (cs *CommitStatus) handleCheckRunResponse(
 	ctx context.Context,
+	operation metrics.SCMOperation,
+	startTime time.Time,
+	commitStatus *promoterv1alpha1.CommitStatus,
+	gitRepo *promoterv1alpha1.GitRepository,
 	checkRun *github.CheckRun,
 	response *github.Response,
 	err error,
-	commitStatus *promoterv1alpha1.CommitStatus,
-	gitRepo *promoterv1alpha1.GitRepository,
-	operation metrics.SCMOperation,
-	startTime time.Time,
 ) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
+	// Handle error first
+	if err != nil {
+		return nil, fmt.Errorf("failed to %s check run: %w", operation, err)
+	}
+
+	// Record metrics and log rate limit info if response is available
 	if response != nil {
-		metrics.RecordSCMCall(gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, time.Since(startTime), getRateLimitMetrics(response.Rate))
+		duration := time.Since(startTime)
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPICommitStatus, operation, response.StatusCode, duration, getRateLimitMetrics(response.Rate))
 
 		logger.Info("github rate limit",
 			"limit", response.Rate.Limit,
 			"remaining", response.Rate.Remaining,
 			"reset", response.Rate.Reset,
 			"url", response.Request.URL)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to %s check run: %w", operation, err)
+
+		logger.V(4).Info("github response status", "status", response.Status)
 	}
 
-	logger.V(4).Info("github response status", "status", response.Status)
+	// Update commit status with check run information
+	if checkRun != nil && checkRun.ID != nil {
+		commitStatus.Status.Id = strconv.FormatInt(*checkRun.ID, 10)
+		commitStatus.Status.Phase = commitStatus.Spec.Phase
+		commitStatus.Status.Sha = commitStatus.Spec.Sha
+	}
 
-	commitStatus.Status.Id = strconv.FormatInt(*checkRun.ID, 10)
-	commitStatus.Status.Phase = commitStatus.Spec.Phase
-	commitStatus.Status.Sha = commitStatus.Spec.Sha
 	return commitStatus, nil
 }
 
