@@ -18,7 +18,7 @@ import (
 )
 
 // Compile-time check to ensure CommitStatus implements scms.CommitStatusProvider
-var _ scms.CommitStatusProvider = (*CommitStatus)(nil)
+var _ scms.CommitStatusProvider = &CommitStatus{}
 
 // CommitStatus implements the scms.CommitStatusProvider interface for GitHub.
 // It uses GitHub's CheckRun API.
