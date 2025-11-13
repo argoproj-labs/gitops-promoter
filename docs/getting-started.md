@@ -28,11 +28,11 @@ During the creation the GitHub App, you will need to configure the following set
 
 ### Permissions
 
-| Action            | Permission     |
-| ----------------- | -------------- |
-| `Commit statuses` | Read and write |
-| `Contents`        | Read and write |
-| `Pull requests`   | Read and write |
+| Action         | Permission     |
+| -------------- | -------------- |
+| `Checks`       | Read and write |
+| `Contents`     | Read and write |
+| `Pull requests`| Read and write |
 
 ### Webhooks (Optional - but highly recommended)
 
