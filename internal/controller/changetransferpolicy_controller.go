@@ -30,6 +30,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
@@ -491,6 +492,13 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 	case scmProvider.GetSpec().Forgejo != nil:
 		logger.V(4).Info("Creating Forgejo git authentication provider")
 		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), nil
+	case scmProvider.GetSpec().Bitbucket != nil:
+		logger.V(4).Info("Creating Bitbucket git authentication provider")
+		provider, err := bitbucket.NewBitbucketGitAuthenticationProvider(scmProvider, secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Bitbucket Auth Provider: %w", err)
+		}
+		return provider, nil
 	default:
 		return nil, errors.New("no supported git authentication provider found")
 	}

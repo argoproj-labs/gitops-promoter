@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -161,6 +162,13 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		p, err = gitlab.NewGitlabCommitStatusProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get GitLab provider for domain %q with secret %q: %w", scmProvider.GetSpec().GitLab.Domain, secret.Name, err)
+		}
+		return p, nil
+	case scmProvider.GetSpec().Bitbucket != nil:
+		var p *bitbucket.CommitStatus
+		p, err = bitbucket.NewBitbucketCommitStatusProvider(r.Client, *secret, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Bitbucket provider with secret %q: %w", secret.Name, err)
 		}
 		return p, nil
 	case scmProvider.GetSpec().Forgejo != nil:
