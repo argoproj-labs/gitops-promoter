@@ -28,6 +28,9 @@ type GitLab struct {
 	Domain string `json:"domain,omitempty"`
 }
 
+// Bitbucket is a Bitbucket SCM provider configuration. It is used to configure the Bitbucket settings.
+type Bitbucket struct{}
+
 // Forgejo is a Forgejo SCM provider configuration. It is used to configure the Forgejo settings.
 type Forgejo struct {
 	// Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
@@ -89,6 +92,16 @@ type ForgejoRepo struct {
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
+}
+
+// BitbucketRepo is a repository in Bitbucket, identified by its workspace and repository.
+type BitbucketRepo struct {
+	// Workspace is the workspace of the repository.
+	// +kubebuilder:validation:Required
+	Workspace string `json:"workspace"`
+	// Repository is the repository of the repository.
+	// +kubebuilder:validation:Required
+	Repository string `json:"repository"`
 }
 
 // FakeRepo is a placeholder for a repository in the fake SCM provider, used for testing purposes.
