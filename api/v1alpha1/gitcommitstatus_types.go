@@ -25,49 +25,124 @@ import (
 
 // GitCommitStatusSpec defines the desired state of GitCommitStatus
 type GitCommitStatusSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
+	// PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
+	// The controller will validate commits from the environments defined in the referenced PromotionStrategy.
+	// +required
+	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 
-	// foo is an example field of GitCommitStatus. Edit gitcommitstatus_types.go to remove/update
+	// Environments defines which environments from the PromotionStrategy to validate
+	// and what expressions to evaluate against each environment's proposed hydrated commit.
+	// +required
+	// +kubebuilder:validation:MinItems=1
+	Environments []GitCommitStatusEnvironment `json:"environments"`
+}
+
+// GitCommitStatusEnvironment defines validation rules for a specific environment branch.
+type GitCommitStatusEnvironment struct {
+	// Branch is the environment branch name from the PromotionStrategy.
+	// This should match one of the branches defined in the PromotionStrategy's environments.
+	// The controller will validate the proposed hydrated commit for this environment.
+	// +required
+	Branch string `json:"branch"`
+
+	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data.
+	// The expression must return a boolean value where true indicates the validation passed.
+	//
+	// Available variables in the expression context:
+	//   - Commit.SHA (string): the proposed hydrated commit SHA being validated
+	//   - Commit.Message (string): full commit message including body
+	//   - Commit.Author (string): commit author email address
+	//   - Commit.Committer (string): committer email address
+	//   - Commit.Trailers (map[string][]string): git trailers parsed from commit message
+	//
+	// The expr library provides built-in functions and operators:
+	//   - String operations: contains, startsWith, endsWith, matches (regex)
+	//   - Logical operators: &&, ||, !
+	//   - Comparison: ==, !=, <, >, <=, >=
+	//   - Collections: has() to check map key existence, len() for length
+	//
+	// Example expressions:
+	//   'Commit.Author endsWith "@example.com"'
+	//   'has(Commit.Trailers["Signed-off-by"])'
+	//   'Commit.Message contains "JIRA-" && has(Commit.Trailers["Reviewed-by"])'
+	//   'len(Commit.Trailers["Reviewed-by"]) >= 2'
+	//   'Commit.Message matches "^(feat|fix|docs):"'
+	//
+	// +required
+	Expression string `json:"expression"`
+
+	// Name is an optional friendly name for this validation rule.
+	// It is used in status messages and when creating the CommitStatus resource.
+	// If not provided, defaults to "validation".
 	// +optional
-	Foo *string `json:"foo,omitempty"`
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+	Name string `json:"name,omitempty"`
 }
 
 // GitCommitStatusStatus defines the observed state of GitCommitStatus.
 type GitCommitStatusStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Environments holds the validation results for each configured environment.
+	// Each entry corresponds to an environment defined in the spec and contains
+	// the validation result for that environment's proposed hydrated commit.
+	// +listType=map
+	// +listMapKey=branch
+	// +optional
+	Environments []GitCommitStatusEnvironmentStatus `json:"environments,omitempty"`
 
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
-	// conditions represent the current state of the GitCommitStatus resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
+	// Conditions represent the latest available observations of the GitCommitStatus's state.
+	// Standard condition types include "Ready" which aggregates the status of all environments.
 	// +listType=map
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
+// GitCommitStatusEnvironmentStatus defines the observed validation status for a specific environment.
+type GitCommitStatusEnvironmentStatus struct {
+	// Branch is the environment branch name being validated.
+	// +required
+	Branch string `json:"branch"`
+
+	// Sha is the proposed hydrated commit SHA that was validated.
+	// This comes from the PromotionStrategy's environment status.
+	// +required
+	Sha string `json:"sha"`
+
+	// Phase represents the current validation state of the commit.
+	// - "pending": validation has not completed or commit data is not yet available
+	// - "success": expression evaluated to true, validation passed
+	// - "failure": expression evaluated to false, validation failed
+	// +kubebuilder:validation:Enum=pending;success;failure
+	// +required
+	Phase string `json:"phase"`
+
+	// Message provides a human-readable description of the validation result.
+	// This includes details about why validation passed or failed.
+	// +optional
+	Message string `json:"message,omitempty"`
+
+	// ExpressionResult contains the boolean result of the expression evaluation.
+	// Only set when the expression successfully evaluates to a boolean.
+	// nil indicates the expression has not yet been evaluated or failed to evaluate.
+	// +optional
+	ExpressionResult *bool `json:"expressionResult,omitempty"`
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Strategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 
-// GitCommitStatus is the Schema for the gitcommitstatuses API
+// GitCommitStatus is the Schema for the gitcommitstatuses API.
+// It validates commits from PromotionStrategy environments using configurable expressions
+// and creates CommitStatus resources with the validation results.
 type GitCommitStatus struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata
 	// +optional
-	metav1.ObjectMeta `json:"metadata,omitzero"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	// spec defines the desired state of GitCommitStatus
 	// +required
@@ -75,7 +150,7 @@ type GitCommitStatus struct {
 
 	// status defines the observed state of GitCommitStatus
 	// +optional
-	Status GitCommitStatusStatus `json:"status,omitzero"`
+	Status GitCommitStatusStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true

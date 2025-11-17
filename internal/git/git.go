@@ -637,3 +637,23 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	logger.V(4).Info("Got trailers", "sha", sha, "trailers", trailers)
 	return trailers, nil
 }
+
+// GitShow runs git show with a specific format string for a commit SHA.
+// The format parameter uses git's pretty-format placeholders (e.g., %ae for author email, %ce for committer email).
+// See https://git-scm.com/docs/git-show#_pretty_formats for available format options.
+func (g *EnvironmentOperations) GitShow(ctx context.Context, sha, format string) (string, error) {
+	logger := log.FromContext(ctx)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "show", "-s", "--format="+format, sha)
+	if err != nil {
+		logger.Error(err, "could not git show", "gitError", stderr, "sha", sha, "format", format)
+		return "", fmt.Errorf("failed to run git show for sha %q with format %q: %w", sha, format, err)
+	}
+	logger.V(4).Info("Git show completed", "sha", sha, "format", format)
+
+	return strings.TrimSpace(stdout), nil
+}

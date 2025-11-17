@@ -29,11 +29,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
@@ -469,31 +466,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 }
 
 func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context, scmProvider promoterv1alpha1.GenericScmProvider, secret *v1.Secret, namespace string, repoRef promoterv1alpha1.ObjectReference) (scms.GitOperationsProvider, error) {
-	logger := log.FromContext(ctx)
-	switch {
-	case scmProvider.GetSpec().Fake != nil:
-		logger.V(4).Info("Creating fake git authentication provider")
-		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
-	case scmProvider.GetSpec().GitHub != nil:
-		logger.V(4).Info("Creating GitHub git authentication provider")
-		p, err := github.NewGithubGitAuthenticationProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: namespace, Name: repoRef.Name})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create GitHub Auth Provider: %w", err)
-		}
-		return p, nil
-	case scmProvider.GetSpec().GitLab != nil:
-		logger.V(4).Info("Creating GitLab git authentication provider")
-		provider, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create GitLab Auth Provider: %w", err)
-		}
-		return provider, nil
-	case scmProvider.GetSpec().Forgejo != nil:
-		logger.V(4).Info("Creating Forgejo git authentication provider")
-		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), nil
-	default:
-		return nil, errors.New("no supported git authentication provider found")
-	}
+	return gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: namespace, Name: repoRef.Name})
 }
 
 func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
