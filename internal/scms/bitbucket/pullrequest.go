@@ -2,6 +2,7 @@ package bitbucket
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -70,13 +71,16 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 	statusCode := http.StatusCreated
 	if err != nil {
 		statusCode = http.StatusInternalServerError
-		if bbErr, ok := err.(*bitbucket.UnexpectedResponseStatusError); ok {
+		var bbErr *bitbucket.UnexpectedResponseStatusError
+		if errors.As(err, &bbErr) {
 			errMsg := bbErr.Error()
 			switch {
 			case strings.HasPrefix(errMsg, "400"):
 				statusCode = http.StatusBadRequest
 			case strings.HasPrefix(errMsg, "401"):
 				statusCode = http.StatusUnauthorized
+			default:
+				statusCode = http.StatusInternalServerError
 			}
 		}
 	}
@@ -88,14 +92,14 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 	}
 
 	// Extract pull request ID from response
-	respMap, ok := resp.(map[string]interface{})
+	respMap, ok := resp.(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("unexpected response type from Bitbucket API: %T", resp)
 	}
 
 	idValue, exists := respMap["id"]
 	if !exists {
-		return "", fmt.Errorf("pull request ID not found in Bitbucket API response")
+		return "", errors.New("pull request ID not found in Bitbucket API response")
 	}
 
 	idFloat, ok := idValue.(float64)
@@ -137,7 +141,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	statusCode := http.StatusOK
 	if err != nil {
 		statusCode = http.StatusInternalServerError
-		if bbErr, ok := err.(*bitbucket.UnexpectedResponseStatusError); ok {
+		var bbErr *bitbucket.UnexpectedResponseStatusError
+		if errors.As(err, &bbErr) {
 			errMsg := bbErr.Error()
 			switch {
 			case strings.HasPrefix(errMsg, "400"):
@@ -146,6 +151,8 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 				statusCode = http.StatusUnauthorized
 			case strings.HasPrefix(errMsg, "404"):
 				statusCode = http.StatusNotFound
+			default:
+				statusCode = http.StatusInternalServerError
 			}
 		}
 	}
@@ -188,10 +195,10 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 	statusCode := http.StatusOK
 	if err != nil {
 		statusCode = http.StatusInternalServerError
-		if bbErr, ok := err.(*bitbucket.UnexpectedResponseStatusError); ok {
+		var bbErr *bitbucket.UnexpectedResponseStatusError
+		if errors.As(err, &bbErr) {
 			errMsg := bbErr.Error()
-			switch {
-			case strings.HasPrefix(errMsg, "555"):
+			if strings.HasPrefix(errMsg, "555") {
 				statusCode = http.StatusInternalServerError
 			}
 		}
@@ -236,12 +243,15 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 	statusCode := http.StatusOK
 	if err != nil {
 		statusCode = http.StatusInternalServerError
-		if bbErr, ok := err.(*bitbucket.UnexpectedResponseStatusError); ok {
+		var bbErr *bitbucket.UnexpectedResponseStatusError
+		if errors.As(err, &bbErr) {
 			errMsg := bbErr.Error()
 			switch {
 			case strings.HasPrefix(errMsg, "409"):
 				statusCode = http.StatusConflict
 			case strings.HasPrefix(errMsg, "555"):
+				statusCode = http.StatusInternalServerError
+			default:
 				statusCode = http.StatusInternalServerError
 			}
 		}
@@ -292,13 +302,16 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	statusCode := http.StatusOK
 	if err != nil {
 		statusCode = http.StatusInternalServerError
-		if bbErr, ok := err.(*bitbucket.UnexpectedResponseStatusError); ok {
+		var bbErr *bitbucket.UnexpectedResponseStatusError
+		if errors.As(err, &bbErr) {
 			errMsg := bbErr.Error()
 			switch {
 			case strings.HasPrefix(errMsg, "401"):
 				statusCode = http.StatusUnauthorized
 			case strings.HasPrefix(errMsg, "404"):
 				statusCode = http.StatusNotFound
+			default:
+				statusCode = http.StatusInternalServerError
 			}
 		}
 	}
@@ -312,27 +325,30 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	logger.V(4).Info("bitbucket response status", "status", statusCode)
 
 	// Parse the paginated response
-	resultMap, ok := result.(map[string]interface{})
+	resultMap, ok := result.(map[string]any)
 	if !ok {
 		return false, "", time.Time{}, fmt.Errorf("unexpected response type from Bitbucket API: %T", result)
 	}
 
-	values, _ := resultMap["values"]
-	prs, ok := values.([]interface{})
+	values, exists := resultMap["values"]
+	if !exists {
+		return false, "", time.Time{}, nil
+	}
+	prs, ok := values.([]any)
 	if !ok || len(prs) == 0 {
 		return false, "", time.Time{}, nil
 	}
 
 	// Get the first matching PR
-	firstPR, ok := prs[0].(map[string]interface{})
+	firstPR, ok := prs[0].(map[string]any)
 	if !ok {
-		return false, "", time.Time{}, fmt.Errorf("unexpected PR format in response")
+		return false, "", time.Time{}, errors.New("unexpected PR format in response")
 	}
 
 	// Extract and validate PR ID
 	idValue, exists := firstPR["id"]
 	if !exists {
-		return false, "", time.Time{}, fmt.Errorf("PR ID not found in response")
+		return false, "", time.Time{}, errors.New("PR ID not found in response")
 	}
 	idFloat, ok := idValue.(float64)
 	if !ok {
@@ -342,7 +358,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	// Extract and validate created_on timestamp
 	createdOn, exists := firstPR["created_on"]
 	if !exists {
-		return false, "", time.Time{}, fmt.Errorf("created_on not found in response")
+		return false, "", time.Time{}, errors.New("created_on not found in response")
 	}
 	createdStr, ok := createdOn.(string)
 	if !ok {

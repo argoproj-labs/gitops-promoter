@@ -36,9 +36,8 @@ func NewBitbucketGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvid
 }
 
 // GetGitHttpsRepoUrl constructs the HTTPS URL for a Bitbucket repository based on the provided GitRepository object.
-func (_ GitAuthenticationProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string {
-	var repoUrl string
-	repoUrl = fmt.Sprintf("https://bitbucket.com/%s/%s.git", repo.Spec.Bitbucket.Workspace, repo.Spec.Bitbucket.Repository)
+func (GitAuthenticationProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string {
+	repoUrl := fmt.Sprintf("https://bitbucket.com/%s/%s.git", repo.Spec.Bitbucket.Workspace, repo.Spec.Bitbucket.Repository)
 	if _, err := url.Parse(repoUrl); err != nil {
 		return ""
 	}
@@ -51,7 +50,7 @@ func (bb GitAuthenticationProvider) GetToken(ctx context.Context) (string, error
 }
 
 // GetUser returns a placeholder user for Bitbucket authentication.
-func (_ GitAuthenticationProvider) GetUser(ctx context.Context) (string, error) {
+func (GitAuthenticationProvider) GetUser(ctx context.Context) (string, error) {
 	return "x-token-auth", nil
 }
 

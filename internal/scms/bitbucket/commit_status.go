@@ -2,6 +2,7 @@ package bitbucket
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -72,13 +73,16 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	statusCode := http.StatusCreated
 	if err != nil {
 		statusCode = http.StatusInternalServerError
-		if bbErr, ok := err.(*bitbucket.UnexpectedResponseStatusError); ok {
+		var bbErr *bitbucket.UnexpectedResponseStatusError
+		if errors.As(err, &bbErr) {
 			errMsg := bbErr.Error()
 			switch {
 			case strings.HasPrefix(errMsg, "401"):
 				statusCode = http.StatusUnauthorized
 			case strings.HasPrefix(errMsg, "404"):
 				statusCode = http.StatusNotFound
+			default:
+				statusCode = http.StatusInternalServerError
 			}
 		}
 	}
@@ -92,7 +96,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	logger.V(4).Info("bitbucket response status", "status", statusCode)
 
 	// Parse the response
-	resultMap, ok := result.(map[string]interface{})
+	resultMap, ok := result.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("unexpected response type from Bitbucket API: %T", result)
 	}
