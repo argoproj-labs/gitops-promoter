@@ -284,6 +284,15 @@ func runController(
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create TimedCommitStatus controller")
 	}
+	if err := (&controller.GitCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("GitCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "GitCommitStatus")
+		os.Exit(1)
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
