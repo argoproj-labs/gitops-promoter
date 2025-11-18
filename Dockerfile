@@ -59,7 +59,7 @@ FROM golang:1.25
 WORKDIR /
 
 # Install tini to handle process management and prevent process leaks
-RUN apt-get update && apt-get install -y tini && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y tini && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir /git
 COPY --from=builder /workspace/gitops-promoter .
