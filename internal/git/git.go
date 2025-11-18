@@ -599,50 +599,31 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 	return strings.TrimSpace(stdoutBuf.String()), nil
 }
 
-// GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
+// GetTrailers retrieves the trailers from the specified commit using git log.
 func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string]string, error) {
 	logger := log.FromContext(ctx)
-	// run git interpret-trailers to get the trailers from the last commit
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
 	if gitPath == "" {
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	// First get the commit message
-	msgStdout, stderr, err := g.runCmd(ctx, gitPath, "log", "-1", "--format=%B", sha)
+	// Use git log with --format to get only the trailers
+	// %(trailers:only,unfold) gives us just the trailers without the commit message
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "log", "-1", "--format=%(trailers:only,unfold)", sha)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get commit message for sha %q: %w", sha, err)
+		logger.Error(err, "failed to get trailers for sha", "sha", sha, "stderr", stderr)
+		return nil, fmt.Errorf("failed to get trailers for sha %q: %w", sha, err)
 	}
 	if stderr != "" {
-		logger.V(4).Info("git log returned an error", "stderr", stderr)
+		logger.V(4).Info("git log returned stderr", "stderr", stderr)
 	}
-
-	// Then pipe it to git interpret-trailers using stdin
-	cmd := exec.CommandContext(ctx, "git", "interpret-trailers", "--only-trailers")
-	cmd.Dir = gitPath
-	cmd.Stdin = strings.NewReader(msgStdout)
-
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
-
-	// Set process group to ensure child processes are properly terminated
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
-
-	err = cmd.Run()
-	stderr = stderrBuf.String()
-	if err != nil {
-		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)
-		return nil, fmt.Errorf("failed to run git interpret-trailers: %w", err)
-	}
-	stdout := stdoutBuf.String()
 
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	trailers := make(map[string]string, len(lines))
 	for _, line := range lines {
+		if line == "" {
+			continue
+		}
 		if strings.Contains(line, ":") {
 			key, value, found := strings.Cut(line, ":")
 			if found {
