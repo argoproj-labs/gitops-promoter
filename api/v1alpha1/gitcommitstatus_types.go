@@ -39,6 +39,14 @@ type GitCommitStatusSpec struct {
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	Name string `json:"name"`
 
+	// Description is a human-readable description of this validation that will be shown in the SCM provider
+	// (GitHub, GitLab, etc.) as the commit status description.
+	// If not specified, defaults to "Commit validation".
+	// Keep this concise and avoid special characters that may not be supported by all SCM providers.
+	// +optional
+	// +kubebuilder:validation:MaxLength=140
+	Description string `json:"description,omitempty"`
+
 	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data
 	// for ALL environments in the referenced PromotionStrategy.
 	// The expression must return a boolean value where true indicates the validation passed.
@@ -51,17 +59,19 @@ type GitCommitStatusSpec struct {
 	//   - Commit.Trailers (map[string][]string): git trailers parsed from commit message
 	//
 	// The expr library provides built-in functions and operators:
-	//   - String operations: contains, startsWith, endsWith, matches (regex)
+	//   - String operations: startsWith(s, prefix), endsWith(s, suffix), contains(s, substr), matches(s, regex)
 	//   - Logical operators: &&, ||, !
 	//   - Comparison: ==, !=, <, >, <=, >=
 	//   - Collections: has() to check map key existence, len() for length
 	//
 	// Example expressions:
-	//   'Commit.Author endsWith "@example.com"'
+	//   'endsWith(Commit.Author, "@example.com")'
 	//   'has(Commit.Trailers["Signed-off-by"])'
-	//   'Commit.Message contains "JIRA-" && has(Commit.Trailers["Reviewed-by"])'
+	//   'contains(Commit.Message, "JIRA-") && has(Commit.Trailers["Reviewed-by"])'
 	//   'len(Commit.Trailers["Reviewed-by"]) >= 2'
-	//   'Commit.Message matches "^(feat|fix|docs):"'
+	//   'matches(Commit.Message, "^(feat|fix|docs):")'
+	//   'startsWith(Commit.Message, "Revert")'
+	//   'Commit.Author == "user@example.com"'
 	//
 	// +required
 	Expression string `json:"expression"`

@@ -462,7 +462,7 @@ func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs 
 		// Set the spec
 		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
 		commitStatus.Spec.Name = validationName + "/" + branch
-		commitStatus.Spec.Description = message
+		commitStatus.Spec.Description = gcs.Spec.Description
 		commitStatus.Spec.Phase = commitPhase
 		commitStatus.Spec.Sha = sha
 

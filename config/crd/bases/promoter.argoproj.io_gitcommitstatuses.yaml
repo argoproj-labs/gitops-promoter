@@ -49,6 +49,14 @@ spec:
           spec:
             description: spec defines the desired state of GitCommitStatus
             properties:
+              description:
+                description: |-
+                  Description is a human-readable description of this validation that will be shown in the SCM provider
+                  (GitHub, GitLab, etc.) as the commit status description.
+                  If not specified, defaults to "Commit validation".
+                  Keep this concise and avoid special characters that may not be supported by all SCM providers.
+                maxLength: 140
+                type: string
               expression:
                 description: |-
                   Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data
@@ -63,17 +71,19 @@ spec:
                     - Commit.Trailers (map[string][]string): git trailers parsed from commit message
 
                   The expr library provides built-in functions and operators:
-                    - String operations: contains, startsWith, endsWith, matches (regex)
+                    - String operations: startsWith(s, prefix), endsWith(s, suffix), contains(s, substr), matches(s, regex)
                     - Logical operators: &&, ||, !
                     - Comparison: ==, !=, <, >, <=, >=
                     - Collections: has() to check map key existence, len() for length
 
                   Example expressions:
-                    'Commit.Author endsWith "@example.com"'
+                    'endsWith(Commit.Author, "@example.com")'
                     'has(Commit.Trailers["Signed-off-by"])'
-                    'Commit.Message contains "JIRA-" && has(Commit.Trailers["Reviewed-by"])'
+                    'contains(Commit.Message, "JIRA-") && has(Commit.Trailers["Reviewed-by"])'
                     'len(Commit.Trailers["Reviewed-by"]) >= 2'
-                    'Commit.Message matches "^(feat|fix|docs):"'
+                    'matches(Commit.Message, "^(feat|fix|docs):")'
+                    'startsWith(Commit.Message, "Revert")'
+                    'Commit.Author == "user@example.com"'
                 type: string
               name:
                 description: |-
