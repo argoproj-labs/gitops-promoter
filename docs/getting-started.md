@@ -234,6 +234,52 @@ To configure the GitOps Promoter with Bitbucket, you will need to create a repos
    * **Repositories**: Read and Write
    * **Pull requests**: Read and Write
 
+### Webhooks (Optional - but highly recommended)
+
+> [!NOTE]
+> We do support configuration of a Bitbucket webhook that triggers PR creation upon Push. However, we do not configure
+> the ingress to allow Bitbucket to reach the GitOps Promoter. You will need to configure the ingress to allow Bitbucket to reach
+> the GitOps Promoter via the service promoter-webhook-receiver which listens on port `3333`. If you do not use webhooks
+> you might want to adjust the auto reconciliation interval to a lower value using these `promotionStrategyRequeueDuration` and
+> `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
+
+To enable webhook support for automatic PR creation on push:
+
+1. Navigate to your repository URL
+2. Click on "Repository settings" in the sidebar
+3. Navigate to "Webhooks"
+4. Click "Add webhook"
+5. Configure the webhook:
+   * **Title**: GitOps Promoter
+   * **URL**: `https://argo-github-app-webhook.com/` # Replace with your domain
+   * **Triggers**: Select "Repository: Push"
+
+Here is an example Ingress configuration for the webhook receiver:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: promoter-webhook-receiver
+  namespace: promoter-system
+  annotations:
+    # Add any necessary annotations for your ingress controller
+    # For example, if using nginx-ingress:
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  rules:
+  - host: argo-github-app-webhook.com  # Replace with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: promoter-webhook-receiver
+            port:
+              number: 3333
+```
+
 ### Configuration
 
 This access token should be used in a secret as follows:

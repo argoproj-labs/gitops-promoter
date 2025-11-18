@@ -23,10 +23,11 @@ var logger = ctrl.Log.WithName("webhookReceiver")
 
 // Provider type constants
 const (
-	ProviderGitHub  = "github"
-	ProviderGitLab  = "gitlab"
-	ProviderForgejo = "forgejo"
-	ProviderUnknown = ""
+	ProviderGitHub    = "github"
+	ProviderGitLab    = "gitlab"
+	ProviderForgejo   = "forgejo"
+	ProviderBitbucket = "bitbucket"
+	ProviderUnknown   = ""
 )
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
@@ -75,7 +76,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 }
 
 // DetectProvider determines the SCM provider based on webhook headers.
-// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, or ProviderUnknown.
+// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderBitbucket, or ProviderUnknown.
 func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for GitHub webhook headers
 	if r.Header.Get("X-Github-Event") != "" || r.Header.Get("X-Github-Delivery") != "" {
@@ -90,6 +91,11 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for Forgejo/Gitea webhook headers
 	if r.Header.Get("X-Forgejo-Event") != "" || r.Header.Get("X-Gitea-Event") != "" {
 		return ProviderForgejo
+	}
+
+	// Check for Bitbucket Cloud webhook headers
+	if r.Header.Get("X-Hook-UUID") != "" {
+		return ProviderBitbucket
 	}
 
 	return ProviderUnknown
@@ -193,6 +199,20 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
 			ref = gjson.GetBytes(jsonBytes, "ref").String()
 		}
+	case ProviderBitbucket:
+		// Bitbucket Cloud webhook format
+		if gjson.GetBytes(jsonBytes, "push.changes").Exists() && gjson.GetBytes(jsonBytes, "actor").Exists() {
+			changes := gjson.GetBytes(jsonBytes, "push.changes")
+			if changes.IsArray() && len(changes.Array()) > 0 {
+				firstChange := changes.Array()[0]
+				beforeSha = firstChange.Get("old.target.hash").String()
+				if newName := firstChange.Get("new.name"); newName.Exists() {
+					ref = "refs/heads/" + newName.String()
+				} else if oldName := firstChange.Get("old.name"); oldName.Exists() {
+					ref = "refs/heads/" + oldName.String()
+				}
+			}
+		}
 	default:
 		logger.V(4).Info("unsupported provider", "provider", provider)
 		return nil, nil
@@ -253,6 +273,16 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 		return id
 	}
 	if id := r.Header.Get("X-Gitea-Delivery"); id != "" {
+		return id
+	}
+	// Bitbucket Cloud
+	// X-Request-UUID: Unique identifier for the webhook request
+	// X-Hook-UUID: Unique identifier for the webhook itself (also used for provider detection)
+	// Note: Go's http.Header.Get is case-insensitive, so this will match X-Request-UUID correctly
+	if id := r.Header.Get("X-Request-Uuid"); id != "" {
+		return id
+	}
+	if id := r.Header.Get("X-Hook-Uuid"); id != "" {
 		return id
 	}
 	return ""
