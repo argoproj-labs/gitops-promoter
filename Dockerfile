@@ -57,6 +57,10 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o gi
 #FROM gcr.io/distroless/static:nonroot #TODO: figure out smallest/safest way to get git installed
 FROM golang:1.25
 WORKDIR /
+
+# Install tini to handle process management and prevent process leaks
+RUN apt-get update && apt-get install -y tini && rm -rf /var/lib/apt/lists/*
+
 RUN mkdir /git
 COPY --from=builder /workspace/gitops-promoter .
 COPY --from=builder /workspace/hack/git/promoter_askpass.sh /git/promoter_askpass.sh
@@ -65,4 +69,5 @@ ENV PATH="${PATH}:/git"
 RUN echo "${PATH}" >> /etc/bash.bashrc
 USER 65532:65532
 
-ENTRYPOINT ["/gitops-promoter"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/gitops-promoter"]
