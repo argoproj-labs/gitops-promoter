@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -306,6 +307,11 @@ func (pr *PullRequest) runGitCmd(ctx context.Context, gitPath string, args ...st
 
 	cmd.Env = []string{
 		"GIT_TERMINAL_PROMPT=0",
+	}
+
+	// Set process group to ensure child processes are properly terminated
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
 	}
 
 	if err := cmd.Start(); err != nil {

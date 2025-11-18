@@ -31,6 +31,7 @@ import (
 	goruntime "runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -911,6 +912,11 @@ func runGitCmd(ctx context.Context, directory string, args ...string) (string, e
 
 	cmd.Env = []string{
 		"GIT_TERMINAL_PROMPT=0",
+	}
+
+	// Set process group to ensure child processes are properly terminated
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
 	}
 
 	if err := cmd.Start(); err != nil {

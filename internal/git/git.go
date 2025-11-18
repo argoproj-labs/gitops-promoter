@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -461,10 +462,17 @@ func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory strin
 	cmd.Stderr = &stderrBuf
 	cmd.Dir = directory
 
+	// Set process group so we can kill all child processes when context is canceled.
+	// This prevents orphaned git credential helper processes from becoming zombies.
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true, // Create new process group
+	}
+
 	if err = cmd.Start(); err != nil {
 		return "", "failed to start", fmt.Errorf("failed to start git command: %w", err)
 	}
 
+	// Always call Wait() to reap the process and prevent zombies, even if context is canceled
 	if err = cmd.Wait(); err != nil {
 		stdErr := stderrBuf.String()
 		if stdErr != "" {
@@ -579,6 +587,11 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
 
+	// Set process group to ensure child processes are properly terminated
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("failed to run git interpret-trailers: %w (stderr: %s)", err, stderrBuf.String())
 	}
@@ -613,6 +626,11 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	var stderrBuf bytes.Buffer
 	cmd.Stdout = &stdoutBuf
 	cmd.Stderr = &stderrBuf
+
+	// Set process group to ensure child processes are properly terminated
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
 
 	err = cmd.Run()
 	stderr = stderrBuf.String()
