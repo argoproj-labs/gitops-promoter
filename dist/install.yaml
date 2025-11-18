@@ -5491,6 +5491,8 @@ spec:
         - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
         command:
+        - /usr/bin/tini
+        - --
         - /gitops-promoter
         - controller
         image: quay.io/argoprojlabs/gitops-promoter:latest

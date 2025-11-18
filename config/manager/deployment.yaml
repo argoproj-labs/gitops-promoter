@@ -29,6 +29,8 @@ spec:
           type: RuntimeDefault
       containers:
         - command:
+            - /usr/bin/tini
+            - '--'
             - /gitops-promoter
             - controller
           args:
