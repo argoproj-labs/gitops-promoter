@@ -94,7 +94,7 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	}
 
 	// Check for Bitbucket Cloud webhook headers
-	if r.Header.Get("X-Hook-UUID") != "" {
+	if r.Header.Get("X-Hook-Uuid") != "" {
 		return ProviderBitbucket
 	}
 
