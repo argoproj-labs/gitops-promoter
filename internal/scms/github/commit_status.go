@@ -56,9 +56,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.
 	logger := log.FromContext(ctx)
 
 	// Determine if we should update an existing check run or create a new one
-	shouldUpdate := cs.shouldUpdateCheckRun(commitStatus)
-
-	if shouldUpdate {
+	if commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != "" {
 		logger.Info("Updating existing check run via Checks API", "checkRunId", commitStatus.Status.Id)
 		return cs.updateCheckRun(ctx, commitStatus)
 	}
@@ -75,11 +73,6 @@ func (cs *CommitStatus) getGitRepository(ctx context.Context, commitStatus *prom
 	}
 
 	return gitRepo, nil
-}
-
-// shouldUpdateCheckRun determines if we should update an existing check run or create a new one
-func (cs *CommitStatus) shouldUpdateCheckRun(commitStatus *promoterv1alpha1.CommitStatus) bool {
-	return commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != ""
 }
 
 // createCheckRun creates a new GitHub check run
