@@ -30,7 +30,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket"
+	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
@@ -493,10 +493,10 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 		logger.V(4).Info("Creating Forgejo git authentication provider")
 		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), nil
 	case scmProvider.GetSpec().Bitbucket != nil:
-		logger.V(4).Info("Creating Bitbucket git authentication provider")
-		provider, err := bitbucket.NewBitbucketGitAuthenticationProvider(scmProvider, secret)
+		logger.V(4).Info("Creating Bitbucket Cloud git authentication provider")
+		provider, err := bitbucket_cloud.NewBitbucketCloudGitAuthenticationProvider(scmProvider, secret)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create Bitbucket Auth Provider: %w", err)
+			return nil, fmt.Errorf("failed to create Bitbucket Cloud Auth Provider: %w", err)
 		}
 		return provider, nil
 	default:

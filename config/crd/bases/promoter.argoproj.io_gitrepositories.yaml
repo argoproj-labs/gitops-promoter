@@ -47,7 +47,7 @@ spec:
             description: GitRepositorySpec defines the desired state of GitRepository
             properties:
               bitbucket:
-                description: BitbucketRepo is a repository in Bitbucket, identified
+                description: BitbucketRepo is a repository in Bitbucket Cloud, identified
                   by its workspace and repository.
                 properties:
                   repository:

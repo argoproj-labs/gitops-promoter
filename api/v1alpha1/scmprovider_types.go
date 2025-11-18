@@ -48,7 +48,7 @@ type ScmProviderSpec struct {
 	// Forgejo required configuration for Forgejo as the SCM provider
 	Forgejo *Forgejo `json:"forgejo,omitempty"`
 
-	// Bitbucket required configuration for Bitbucket as the SCM provider
+	// Bitbucket required configuration for Bitbucket Cloud as the SCM provider
 	Bitbucket *Bitbucket `json:"bitbucket,omitempty"`
 
 	// Fake required configuration for Fake as the SCM provider

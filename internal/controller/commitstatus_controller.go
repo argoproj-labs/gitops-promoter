@@ -29,7 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket"
+	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -165,10 +165,10 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		}
 		return p, nil
 	case scmProvider.GetSpec().Bitbucket != nil:
-		var p *bitbucket.CommitStatus
-		p, err = bitbucket.NewBitbucketCommitStatusProvider(r.Client, *secret, "")
+		var p *bitbucket_cloud.CommitStatus
+		p, err = bitbucket_cloud.NewBitbucketCloudCommitStatusProvider(r.Client, *secret, "")
 		if err != nil {
-			return nil, fmt.Errorf("failed to get Bitbucket provider with secret %q: %w", secret.Name, err)
+			return nil, fmt.Errorf("failed to get Bitbucket Cloud provider with secret %q: %w", secret.Name, err)
 		}
 		return p, nil
 	case scmProvider.GetSpec().Forgejo != nil:

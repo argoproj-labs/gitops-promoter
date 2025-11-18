@@ -28,7 +28,7 @@ type GitLab struct {
 	Domain string `json:"domain,omitempty"`
 }
 
-// Bitbucket is a Bitbucket SCM provider configuration. It is used to configure the Bitbucket settings.
+// Bitbucket is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings.
 type Bitbucket struct{}
 
 // Forgejo is a Forgejo SCM provider configuration. It is used to configure the Forgejo settings.
@@ -94,7 +94,7 @@ type ForgejoRepo struct {
 	Name string `json:"name"`
 }
 
-// BitbucketRepo is a repository in Bitbucket, identified by its workspace and repository.
+// BitbucketRepo is a repository in Bitbucket Cloud, identified by its workspace and repository.
 type BitbucketRepo struct {
 	// Workspace is the workspace of the repository.
 	// +kubebuilder:validation:Required

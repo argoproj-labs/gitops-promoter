@@ -1,4 +1,4 @@
-package bitbucket
+package bitbucket_cloud
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 )
 
-// GitAuthenticationProvider implements the scms.GitOperationsProvider interface for Bitbucket.
+// GitAuthenticationProvider implements the scms.GitOperationsProvider interface for Bitbucket Cloud.
 type GitAuthenticationProvider struct {
 	scmProvider v1alpha1.GenericScmProvider
 	secret      *v1.Secret
@@ -21,11 +21,11 @@ type GitAuthenticationProvider struct {
 
 var _ scms.GitOperationsProvider = &GitAuthenticationProvider{}
 
-// NewBitbucketGitAuthenticationProvider creates a new instance of GitAuthenticationProvider for Bitbucket.
-func NewBitbucketGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider, secret *v1.Secret) (*GitAuthenticationProvider, error) {
+// NewBitbucketCloudGitAuthenticationProvider creates a new instance of GitAuthenticationProvider for Bitbucket Cloud.
+func NewBitbucketCloudGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvider, secret *v1.Secret) (*GitAuthenticationProvider, error) {
 	client, err := GetClient(*secret)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Bitbucket Client: %w", err)
+		return nil, fmt.Errorf("failed to create Bitbucket Cloud Client: %w", err)
 	}
 
 	return &GitAuthenticationProvider{
@@ -35,7 +35,7 @@ func NewBitbucketGitAuthenticationProvider(scmProvider v1alpha1.GenericScmProvid
 	}, nil
 }
 
-// GetGitHttpsRepoUrl constructs the HTTPS URL for a Bitbucket repository based on the provided GitRepository object.
+// GetGitHttpsRepoUrl constructs the HTTPS URL for a Bitbucket Cloud repository based on the provided GitRepository object.
 func (GitAuthenticationProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string {
 	repoUrl := fmt.Sprintf("https://bitbucket.com/%s/%s.git", repo.Spec.Bitbucket.Workspace, repo.Spec.Bitbucket.Repository)
 	if _, err := url.Parse(repoUrl); err != nil {
@@ -44,17 +44,17 @@ func (GitAuthenticationProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository)
 	return repoUrl
 }
 
-// GetToken retrieves the Bitbucket access token from the secret.
+// GetToken retrieves the Bitbucket Cloud access token from the secret.
 func (bb GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
 	return string(bb.secret.Data["token"]), nil
 }
 
-// GetUser returns a placeholder user for Bitbucket authentication.
+// GetUser returns a placeholder user for Bitbucket Cloud authentication.
 func (GitAuthenticationProvider) GetUser(ctx context.Context) (string, error) {
 	return "x-token-auth", nil
 }
 
-// GetClient creates a new Bitbucket client using the provided secret and domain.
+// GetClient creates a new Bitbucket Cloud client using the provided secret.
 func GetClient(secret v1.Secret) (*bitbucket.Client, error) {
 	token := string(secret.Data["token"])
 	if token == "" {

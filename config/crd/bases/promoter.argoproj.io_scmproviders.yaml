@@ -44,8 +44,8 @@ spec:
             description: ScmProviderSpec defines the desired state of ScmProvider
             properties:
               bitbucket:
-                description: Bitbucket required configuration for Bitbucket as the
-                  SCM provider
+                description: Bitbucket required configuration for Bitbucket Cloud
+                  as the SCM provider
                 type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider

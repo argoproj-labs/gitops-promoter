@@ -1,4 +1,4 @@
-package bitbucket
+package bitbucket_cloud
 
 import (
 	"context"
@@ -20,7 +20,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// PullRequest implements the scms.PullRequestProvider interface for Bitbucket.
+// PullRequest implements the scms.PullRequestProvider interface for Bitbucket Cloud.
 type PullRequest struct {
 	client    *bitbucket.Client
 	k8sClient client.Client
@@ -28,8 +28,8 @@ type PullRequest struct {
 
 var _ scms.PullRequestProvider = &PullRequest{}
 
-// NewBitbucketPullRequestProvider creates a new instance of PullRequest for Bitbucket.
-func NewBitbucketPullRequestProvider(k8sClient client.Client, secret v1.Secret) (*PullRequest, error) {
+// NewBitbucketCloudPullRequestProvider creates a new instance of PullRequest for Bitbucket Cloud.
+func NewBitbucketCloudPullRequestProvider(k8sClient client.Client, secret v1.Secret) (*PullRequest, error) {
 	client, err := GetClient(secret)
 	if err != nil {
 		return nil, err

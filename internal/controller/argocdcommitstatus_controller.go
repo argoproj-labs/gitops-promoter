@@ -45,7 +45,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket"
+	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
@@ -739,10 +739,10 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 		}
 		return gitlabClient, ps.Spec.RepositoryReference, nil
 	case scmProvider.GetSpec().Bitbucket != nil:
-		logger.V(4).Info("Creating Bitbucket git authentication provider")
-		bitbucketClient, err := bitbucket.NewBitbucketGitAuthenticationProvider(scmProvider, secret)
+		logger.V(4).Info("Creating Bitbucket Cloud git authentication provider")
+		bitbucketClient, err := bitbucket_cloud.NewBitbucketCloudGitAuthenticationProvider(scmProvider, secret)
 		if err != nil {
-			return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create Bitbucket client: %w", err)
+			return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create Bitbucket Cloud client: %w", err)
 		}
 		return bitbucketClient, ps.Spec.RepositoryReference, nil
 	case scmProvider.GetSpec().Forgejo != nil:

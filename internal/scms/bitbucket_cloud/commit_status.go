@@ -1,4 +1,4 @@
-package bitbucket
+package bitbucket_cloud
 
 import (
 	"context"
@@ -19,7 +19,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// CommitStatus implements the scms.CommitStatusProvider interface for Bitbucket.
+// CommitStatus implements the scms.CommitStatusProvider interface for Bitbucket Cloud.
 type CommitStatus struct {
 	client    *bitbucket.Client
 	k8sClient client.Client
@@ -27,8 +27,8 @@ type CommitStatus struct {
 
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
-// NewBitbucketCommitStatusProvider creates a new instance of CommitStatus for Bitbucket.
-func NewBitbucketCommitStatusProvider(k8sClient client.Client, secret v1.Secret, domain string) (*CommitStatus, error) {
+// NewBitbucketCloudCommitStatusProvider creates a new instance of CommitStatus for Bitbucket Cloud.
+func NewBitbucketCloudCommitStatusProvider(k8sClient client.Client, secret v1.Secret, domain string) (*CommitStatus, error) {
 	client, err := GetClient(secret)
 	if err != nil {
 		return nil, err

@@ -1,11 +1,11 @@
-package bitbucket
+package bitbucket_cloud
 
 import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// phaseToBuildState converts a CommitStatusPhase to a Bitbucket build state.
-// Bitbucket states: SUCCESSFUL, FAILED, INPROGRESS, STOPPED
+// phaseToBuildState converts a CommitStatusPhase to a Bitbucket Cloud build state.
+// Bitbucket Cloud states: SUCCESSFUL, FAILED, INPROGRESS, STOPPED
 // https://developer.atlassian.com/cloud/bitbucket/rest/api-group-commit-statuses/#api-repositories-workspace-repo-slug-commit-commit-statuses-build-post-request-body
 func phaseToBuildState(phase v1alpha1.CommitStatusPhase) string {
 	switch phase {
@@ -18,8 +18,8 @@ func phaseToBuildState(phase v1alpha1.CommitStatusPhase) string {
 	}
 }
 
-// buildStateToPhase converts a Bitbucket build state to a CommitStatusPhase.
-// Bitbucket states: SUCCESSFUL, FAILED, INPROGRESS, STOPPED
+// buildStateToPhase converts a Bitbucket Cloud build state to a CommitStatusPhase.
+// Bitbucket Cloud states: SUCCESSFUL, FAILED, INPROGRESS, STOPPED
 // https://developer.atlassian.com/cloud/bitbucket/rest/api-group-commit-statuses/#api-repositories-workspace-repo-slug-commit-commit-statuses-build-post-request-body
 func buildStateToPhase(buildState string) v1alpha1.CommitStatusPhase {
 	switch buildState {
