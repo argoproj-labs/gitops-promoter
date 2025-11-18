@@ -264,11 +264,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		gcs.Status.Environments = append(gcs.Status.Environments, envValidationStatus)
 
 		// Create or update the CommitStatus for the proposed hydrated SHA
-		validationName := envConfig.Name
-		if validationName == "" {
-			validationName = "validation"
-		}
-		cs, err := r.upsertCommitStatus(ctx, gcs, ps, envConfig.Branch, proposedSha, phase, message, validationName)
+		cs, err := r.upsertCommitStatus(ctx, gcs, ps, envConfig.Branch, proposedSha, phase, message, envConfig.Name)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
 		}

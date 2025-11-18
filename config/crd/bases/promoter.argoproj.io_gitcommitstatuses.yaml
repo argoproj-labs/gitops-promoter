@@ -14,10 +14,20 @@ spec:
     singular: gitcommitstatus
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: Strategy
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GitCommitStatus is the Schema for the gitcommitstatuses API
+        description: |-
+          GitCommitStatus is the Schema for the gitcommitstatuses API.
+          It validates commits from PromotionStrategy environments using configurable expressions
+          and creates CommitStatus resources with the validation results.
         properties:
           apiVersion:
             description: |-
@@ -39,25 +49,81 @@ spec:
           spec:
             description: spec defines the desired state of GitCommitStatus
             properties:
-              foo:
-                description: foo is an example field of GitCommitStatus. Edit gitcommitstatus_types.go
-                  to remove/update
-                type: string
+              environments:
+                description: |-
+                  Environments defines which environments from the PromotionStrategy to validate
+                  and what expressions to evaluate against each environment's proposed hydrated commit.
+                items:
+                  description: GitCommitStatusEnvironment defines validation rules
+                    for a specific environment branch.
+                  properties:
+                    branch:
+                      description: |-
+                        Branch is the environment branch name from the PromotionStrategy.
+                        This should match one of the branches defined in the PromotionStrategy's environments.
+                        The controller will validate the proposed hydrated commit for this environment.
+                      type: string
+                    expression:
+                      description: |-
+                        Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data.
+                        The expression must return a boolean value where true indicates the validation passed.
+
+                        Available variables in the expression context:
+                          - Commit.SHA (string): the proposed hydrated commit SHA being validated
+                          - Commit.Message (string): full commit message including body
+                          - Commit.Author (string): commit author email address
+                          - Commit.Committer (string): committer email address
+                          - Commit.Trailers (map[string][]string): git trailers parsed from commit message
+
+                        The expr library provides built-in functions and operators:
+                          - String operations: contains, startsWith, endsWith, matches (regex)
+                          - Logical operators: &&, ||, !
+                          - Comparison: ==, !=, <, >, <=, >=
+                          - Collections: has() to check map key existence, len() for length
+
+                        Example expressions:
+                          'Commit.Author endsWith "@example.com"'
+                          'has(Commit.Trailers["Signed-off-by"])'
+                          'Commit.Message contains "JIRA-" && has(Commit.Trailers["Reviewed-by"])'
+                          'len(Commit.Trailers["Reviewed-by"]) >= 2'
+                          'Commit.Message matches "^(feat|fix|docs):"'
+                      type: string
+                    name:
+                      description: |-
+                        Name is a friendly name for this validation rule.
+                        It is used in status messages and when creating the CommitStatus resource.
+                      maxLength: 63
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                  required:
+                  - branch
+                  - expression
+                  - name
+                  type: object
+                minItems: 1
+                type: array
+              promotionStrategyRef:
+                description: |-
+                  PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
+                  The controller will validate commits from the environments defined in the referenced PromotionStrategy.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - environments
+            - promotionStrategyRef
             type: object
           status:
             description: status defines the observed state of GitCommitStatus
             properties:
               conditions:
                 description: |-
-                  conditions represent the current state of the GitCommitStatus resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                  Conditions represent the latest available observations of the GitCommitStatus's state.
+                  Standard condition types include "Ready" which aggregates the status of all environments.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -115,6 +181,54 @@ spec:
                 type: array
                 x-kubernetes-list-map-keys:
                 - type
+                x-kubernetes-list-type: map
+              environments:
+                description: |-
+                  Environments holds the validation results for each configured environment.
+                  Each entry corresponds to an environment defined in the spec and contains
+                  the validation result for that environment's proposed hydrated commit.
+                items:
+                  description: GitCommitStatusEnvironmentStatus defines the observed
+                    validation status for a specific environment.
+                  properties:
+                    branch:
+                      description: Branch is the environment branch name being validated.
+                      type: string
+                    expressionResult:
+                      description: |-
+                        ExpressionResult contains the boolean result of the expression evaluation.
+                        Only set when the expression successfully evaluates to a boolean.
+                        nil indicates the expression has not yet been evaluated or failed to evaluate.
+                      type: boolean
+                    message:
+                      description: |-
+                        Message provides a human-readable description of the validation result.
+                        This includes details about why validation passed or failed.
+                      type: string
+                    phase:
+                      description: |-
+                        Phase represents the current validation state of the commit.
+                        - "pending": validation has not completed or commit data is not yet available
+                        - "success": expression evaluated to true, validation passed
+                        - "failure": expression evaluated to false, validation failed
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      type: string
+                    sha:
+                      description: |-
+                        Sha is the proposed hydrated commit SHA that was validated.
+                        This comes from the PromotionStrategy's environment status.
+                      type: string
+                  required:
+                  - branch
+                  - phase
+                  - sha
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
                 x-kubernetes-list-type: map
             type: object
         required:

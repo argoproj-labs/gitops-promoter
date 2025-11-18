@@ -71,13 +71,12 @@ type GitCommitStatusEnvironment struct {
 	// +required
 	Expression string `json:"expression"`
 
-	// Name is an optional friendly name for this validation rule.
+	// Name is a friendly name for this validation rule.
 	// It is used in status messages and when creating the CommitStatus resource.
-	// If not provided, defaults to "validation".
-	// +optional
+	// +required
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-	Name string `json:"name,omitempty"`
+	Name string `json:"name"`
 }
 
 // GitCommitStatusStatus defines the observed state of GitCommitStatus.

@@ -2264,6 +2264,208 @@ spec:
                 required:
                 - workQueue
                 type: object
+              gitCommitStatus:
+                description: |-
+                  GitCommitStatus contains the configuration for the GitCommitStatus controller,
+                  including WorkQueue settings that control reconciliation behavior.
+                properties:
+                  workQueue:
+                    description: |-
+                      WorkQueue contains the work queue configuration for the GitCommitStatus controller.
+                      This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+                    properties:
+                      maxConcurrentReconciles:
+                        description: |-
+                          MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
+                          that can run for this controller. Higher values increase throughput but consume more
+                          resources. Must be at least 1.
+                        type: integer
+                      rateLimiter:
+                        description: |-
+                          RateLimiter defines the rate limiting strategy for the controller's work queue.
+                          Rate limiting controls how quickly failed reconciliations are retried and helps
+                          prevent overwhelming external APIs or systems.
+                        properties:
+                          bucket:
+                            description: |-
+                              Bucket rate limiter uses a token bucket algorithm to control request rate.
+                              Allows bursts while maintaining an average rate limit.
+                            properties:
+                              bucket:
+                                description: |-
+                                  Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                  This defines the maximum burst size - how many operations can occur in rapid
+                                  succession before rate limiting takes effect. Must be non-negative.
+                                type: integer
+                              qps:
+                                description: |-
+                                  Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                  This defines the sustained rate limit for operations. Must be non-negative.
+                                type: integer
+                            required:
+                            - bucket
+                            - qps
+                            type: object
+                          exponentialFailure:
+                            description: |-
+                              ExponentialFailure rate limiter increases delay exponentially with each failure.
+                              Standard approach for backing off when operations fail repeatedly.
+                            properties:
+                              baseDelay:
+                                description: |-
+                                  BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                  increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                  Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                type: string
+                              maxDelay:
+                                description: |-
+                                  MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                  this value, all subsequent retries will use this delay.
+                                  Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                type: string
+                            required:
+                            - baseDelay
+                            - maxDelay
+                            type: object
+                          fastSlow:
+                            description: |-
+                              FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                              Useful for quickly retrying transient errors while backing off for persistent failures.
+                            properties:
+                              fastDelay:
+                                description: |-
+                                  FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                  Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                type: string
+                              maxFastAttempts:
+                                description: |-
+                                  MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                  Must be at least 1.
+                                type: integer
+                              slowDelay:
+                                description: |-
+                                  SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                  Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                type: string
+                            required:
+                            - fastDelay
+                            - maxFastAttempts
+                            - slowDelay
+                            type: object
+                          maxOf:
+                            description: |-
+                              MaxOf allows combining multiple rate limiters, where the maximum delay from all
+                              limiters is used. This enables sophisticated rate limiting that respects multiple
+                              constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
+                            items:
+                              description: |-
+                                RateLimiterTypes defines the different algorithms available for rate limiting.
+
+                                Exactly one of the three rate limiter types must be specified:
+                                  - FastSlow: Quick retry for transient errors, then slower retry for persistent failures
+                                  - ExponentialFailure: Standard exponential backoff for repeated failures
+                                  - Bucket: Token bucket algorithm for controlling overall request rate
+
+                                See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
+                              properties:
+                                bucket:
+                                  description: |-
+                                    Bucket rate limiter uses a token bucket algorithm to control request rate.
+                                    Allows bursts while maintaining an average rate limit.
+                                  properties:
+                                    bucket:
+                                      description: |-
+                                        Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                        This defines the maximum burst size - how many operations can occur in rapid
+                                        succession before rate limiting takes effect. Must be non-negative.
+                                      type: integer
+                                    qps:
+                                      description: |-
+                                        Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                        This defines the sustained rate limit for operations. Must be non-negative.
+                                      type: integer
+                                  required:
+                                  - bucket
+                                  - qps
+                                  type: object
+                                exponentialFailure:
+                                  description: |-
+                                    ExponentialFailure rate limiter increases delay exponentially with each failure.
+                                    Standard approach for backing off when operations fail repeatedly.
+                                  properties:
+                                    baseDelay:
+                                      description: |-
+                                        BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                        increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                        Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                      type: string
+                                    maxDelay:
+                                      description: |-
+                                        MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                        this value, all subsequent retries will use this delay.
+                                        Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                      type: string
+                                  required:
+                                  - baseDelay
+                                  - maxDelay
+                                  type: object
+                                fastSlow:
+                                  description: |-
+                                    FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                                    Useful for quickly retrying transient errors while backing off for persistent failures.
+                                  properties:
+                                    fastDelay:
+                                      description: |-
+                                        FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                        Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                      type: string
+                                    maxFastAttempts:
+                                      description: |-
+                                        MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                        Must be at least 1.
+                                      type: integer
+                                    slowDelay:
+                                      description: |-
+                                        SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                        Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                      type: string
+                                  required:
+                                  - fastDelay
+                                  - maxFastAttempts
+                                  - slowDelay
+                                  type: object
+                              type: object
+                              x-kubernetes-validations:
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
+                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
+                                  <= 1'
+                            maxItems: 3
+                            type: array
+                        type: object
+                        x-kubernetes-validations:
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
+                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
+                            <= 1'
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
+                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
+                            <= 1'
+                      requeueDuration:
+                        description: |-
+                          RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
+                          This creates a periodic reconciliation loop that ensures the desired state is maintained even
+                          without external triggers. Format follows Go's time.Duration syntax (e.g., "5m" for 5 minutes).
+                        type: string
+                    required:
+                    - maxConcurrentReconciles
+                    - rateLimiter
+                    - requeueDuration
+                    type: object
+                required:
+                - workQueue
+                type: object
               promotionStrategy:
                 description: |-
                   PromotionStrategy contains the configuration for the PromotionStrategy controller,
@@ -2894,6 +3096,7 @@ spec:
             - argocdCommitStatus
             - changeTransferPolicy
             - commitStatus
+            - gitCommitStatus
             - promotionStrategy
             - pullRequest
             - timedCommitStatus
@@ -2927,10 +3130,20 @@ spec:
     singular: gitcommitstatus
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: Strategy
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GitCommitStatus is the Schema for the gitcommitstatuses API
+        description: |-
+          GitCommitStatus is the Schema for the gitcommitstatuses API.
+          It validates commits from PromotionStrategy environments using configurable expressions
+          and creates CommitStatus resources with the validation results.
         properties:
           apiVersion:
             description: |-
@@ -2952,25 +3165,81 @@ spec:
           spec:
             description: spec defines the desired state of GitCommitStatus
             properties:
-              foo:
-                description: foo is an example field of GitCommitStatus. Edit gitcommitstatus_types.go
-                  to remove/update
-                type: string
+              environments:
+                description: |-
+                  Environments defines which environments from the PromotionStrategy to validate
+                  and what expressions to evaluate against each environment's proposed hydrated commit.
+                items:
+                  description: GitCommitStatusEnvironment defines validation rules
+                    for a specific environment branch.
+                  properties:
+                    branch:
+                      description: |-
+                        Branch is the environment branch name from the PromotionStrategy.
+                        This should match one of the branches defined in the PromotionStrategy's environments.
+                        The controller will validate the proposed hydrated commit for this environment.
+                      type: string
+                    expression:
+                      description: |-
+                        Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data.
+                        The expression must return a boolean value where true indicates the validation passed.
+
+                        Available variables in the expression context:
+                          - Commit.SHA (string): the proposed hydrated commit SHA being validated
+                          - Commit.Message (string): full commit message including body
+                          - Commit.Author (string): commit author email address
+                          - Commit.Committer (string): committer email address
+                          - Commit.Trailers (map[string][]string): git trailers parsed from commit message
+
+                        The expr library provides built-in functions and operators:
+                          - String operations: contains, startsWith, endsWith, matches (regex)
+                          - Logical operators: &&, ||, !
+                          - Comparison: ==, !=, <, >, <=, >=
+                          - Collections: has() to check map key existence, len() for length
+
+                        Example expressions:
+                          'Commit.Author endsWith "@example.com"'
+                          'has(Commit.Trailers["Signed-off-by"])'
+                          'Commit.Message contains "JIRA-" && has(Commit.Trailers["Reviewed-by"])'
+                          'len(Commit.Trailers["Reviewed-by"]) >= 2'
+                          'Commit.Message matches "^(feat|fix|docs):"'
+                      type: string
+                    name:
+                      description: |-
+                        Name is a friendly name for this validation rule.
+                        It is used in status messages and when creating the CommitStatus resource.
+                      maxLength: 63
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                  required:
+                  - branch
+                  - expression
+                  - name
+                  type: object
+                minItems: 1
+                type: array
+              promotionStrategyRef:
+                description: |-
+                  PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
+                  The controller will validate commits from the environments defined in the referenced PromotionStrategy.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - environments
+            - promotionStrategyRef
             type: object
           status:
             description: status defines the observed state of GitCommitStatus
             properties:
               conditions:
                 description: |-
-                  conditions represent the current state of the GitCommitStatus resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                  Conditions represent the latest available observations of the GitCommitStatus's state.
+                  Standard condition types include "Ready" which aggregates the status of all environments.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -3028,6 +3297,54 @@ spec:
                 type: array
                 x-kubernetes-list-map-keys:
                 - type
+                x-kubernetes-list-type: map
+              environments:
+                description: |-
+                  Environments holds the validation results for each configured environment.
+                  Each entry corresponds to an environment defined in the spec and contains
+                  the validation result for that environment's proposed hydrated commit.
+                items:
+                  description: GitCommitStatusEnvironmentStatus defines the observed
+                    validation status for a specific environment.
+                  properties:
+                    branch:
+                      description: Branch is the environment branch name being validated.
+                      type: string
+                    expressionResult:
+                      description: |-
+                        ExpressionResult contains the boolean result of the expression evaluation.
+                        Only set when the expression successfully evaluates to a boolean.
+                        nil indicates the expression has not yet been evaluated or failed to evaluate.
+                      type: boolean
+                    message:
+                      description: |-
+                        Message provides a human-readable description of the validation result.
+                        This includes details about why validation passed or failed.
+                      type: string
+                    phase:
+                      description: |-
+                        Phase represents the current validation state of the commit.
+                        - "pending": validation has not completed or commit data is not yet available
+                        - "success": expression evaluated to true, validation passed
+                        - "failure": expression evaluated to false, validation failed
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      type: string
+                    sha:
+                      description: |-
+                        Sha is the proposed hydrated commit SHA that was validated.
+                        This comes from the PromotionStrategy's environment status.
+                      type: string
+                  required:
+                  - branch
+                  - phase
+                  - sha
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
                 x-kubernetes-list-type: map
             type: object
         required:
@@ -5764,6 +6081,19 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   commitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      rateLimiter:
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
+      requeueDuration: 5m
+  gitCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:
