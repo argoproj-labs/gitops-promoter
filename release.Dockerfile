@@ -13,5 +13,4 @@ COPY hack/git/promoter_askpass.sh /git/promoter_askpass.sh
 ENV PATH="${PATH}:/git"
 RUN echo "${PATH}" >> /etc/bash.bashrc
 USER 65532:65532
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/gitops-promoter"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/gitops-promoter"]
