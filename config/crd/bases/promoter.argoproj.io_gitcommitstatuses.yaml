@@ -49,63 +49,45 @@ spec:
           spec:
             description: spec defines the desired state of GitCommitStatus
             properties:
-              environments:
+              expression:
                 description: |-
-                  Environments defines which environments from the PromotionStrategy to validate
-                  and what expressions to evaluate against each environment's proposed hydrated commit.
-                items:
-                  description: GitCommitStatusEnvironment defines validation rules
-                    for a specific environment branch.
-                  properties:
-                    branch:
-                      description: |-
-                        Branch is the environment branch name from the PromotionStrategy.
-                        This should match one of the branches defined in the PromotionStrategy's environments.
-                        The controller will validate the proposed hydrated commit for this environment.
-                      type: string
-                    expression:
-                      description: |-
-                        Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data.
-                        The expression must return a boolean value where true indicates the validation passed.
+                  Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data
+                  for ALL environments in the referenced PromotionStrategy.
+                  The expression must return a boolean value where true indicates the validation passed.
 
-                        Available variables in the expression context:
-                          - Commit.SHA (string): the proposed hydrated commit SHA being validated
-                          - Commit.Message (string): full commit message including body
-                          - Commit.Author (string): commit author email address
-                          - Commit.Committer (string): committer email address
-                          - Commit.Trailers (map[string][]string): git trailers parsed from commit message
+                  Available variables in the expression context:
+                    - Commit.SHA (string): the proposed hydrated commit SHA being validated
+                    - Commit.Message (string): full commit message including body
+                    - Commit.Author (string): commit author email address
+                    - Commit.Committer (string): committer email address
+                    - Commit.Trailers (map[string][]string): git trailers parsed from commit message
 
-                        The expr library provides built-in functions and operators:
-                          - String operations: contains, startsWith, endsWith, matches (regex)
-                          - Logical operators: &&, ||, !
-                          - Comparison: ==, !=, <, >, <=, >=
-                          - Collections: has() to check map key existence, len() for length
+                  The expr library provides built-in functions and operators:
+                    - String operations: contains, startsWith, endsWith, matches (regex)
+                    - Logical operators: &&, ||, !
+                    - Comparison: ==, !=, <, >, <=, >=
+                    - Collections: has() to check map key existence, len() for length
 
-                        Example expressions:
-                          'Commit.Author endsWith "@example.com"'
-                          'has(Commit.Trailers["Signed-off-by"])'
-                          'Commit.Message contains "JIRA-" && has(Commit.Trailers["Reviewed-by"])'
-                          'len(Commit.Trailers["Reviewed-by"]) >= 2'
-                          'Commit.Message matches "^(feat|fix|docs):"'
-                      type: string
-                    name:
-                      description: |-
-                        Name is a friendly name for this validation rule.
-                        It is used in status messages and when creating the CommitStatus resource.
-                      maxLength: 63
-                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-                      type: string
-                  required:
-                  - branch
-                  - expression
-                  - name
-                  type: object
-                minItems: 1
-                type: array
+                  Example expressions:
+                    'Commit.Author endsWith "@example.com"'
+                    'has(Commit.Trailers["Signed-off-by"])'
+                    'Commit.Message contains "JIRA-" && has(Commit.Trailers["Reviewed-by"])'
+                    'len(Commit.Trailers["Reviewed-by"]) >= 2'
+                    'Commit.Message matches "^(feat|fix|docs):"'
+                type: string
+              name:
+                description: |-
+                  Name is a friendly name for this validation rule.
+                  It is used as the commit status key and in status messages.
+                  This becomes the key used in PromotionStrategy's activeCommitStatuses or proposedCommitStatuses.
+                maxLength: 63
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
               promotionStrategyRef:
                 description: |-
                   PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
-                  The controller will validate commits from the environments defined in the referenced PromotionStrategy.
+                  The controller will validate commits from ALL environments defined in the referenced PromotionStrategy
+                  using the same expression.
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
@@ -114,7 +96,8 @@ spec:
                 - name
                 type: object
             required:
-            - environments
+            - expression
+            - name
             - promotionStrategyRef
             type: object
           status:

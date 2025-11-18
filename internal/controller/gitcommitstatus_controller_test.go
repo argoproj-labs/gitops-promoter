@@ -49,9 +49,9 @@ var _ = Describe("GitCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "git-commit-status", "default")
 
-			// Configure ActiveCommitStatuses to check for git commit status
-			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "git-expr"},
+			// Configure ProposedCommitStatuses to check for git commit status
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "author-check"},
 			}
 
 			setupInitialTestGitRepoOnServer(ctx, name, name)
@@ -82,13 +82,8 @@ var _ = Describe("GitCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Environments: []promoterv1alpha1.GitCommitStatusEnvironment{
-						{
-							Branch:     testEnvironmentDevelopment,
-							Expression: `Commit.Author == Commit.Committer`, // Simple expression that should pass
-							Name:       "author-check",
-						},
-					},
+					Name:       "author-check",
+					Expression: `Commit.Author == Commit.Committer`, // Simple expression that should pass
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
@@ -110,18 +105,18 @@ var _ = Describe("GitCommitStatus Controller", func() {
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				// Should have status for dev environment
-				g.Expect(gcs.Status.Environments).To(HaveLen(1))
-				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
-				g.Expect(gcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
-
-				// Validate status fields are populated
-				g.Expect(gcs.Status.Environments[0].Sha).ToNot(BeEmpty(), "Sha should be populated")
-				g.Expect(gcs.Status.Environments[0].ExpressionResult).ToNot(BeNil(), "ExpressionResult should be set")
-				g.Expect(*gcs.Status.Environments[0].ExpressionResult).To(BeTrue(), "Expression should evaluate to true")
+				// Should have status for all three environments (from PromotionStrategy)
+				g.Expect(gcs.Status.Environments).To(HaveLen(3))
+				// All environments should have the same validation result
+				for _, env := range gcs.Status.Environments {
+					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+					g.Expect(env.Sha).ToNot(BeEmpty(), "Sha should be populated")
+					g.Expect(env.ExpressionResult).ToNot(BeNil(), "ExpressionResult should be set")
+					g.Expect(*env.ExpressionResult).To(BeTrue(), "Expression should evaluate to true")
+				}
 
 				// Verify CommitStatus was created for dev environment with success phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-git-expr-author-check")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-author-check")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -148,8 +143,9 @@ var _ = Describe("GitCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "git-commit-status-false", "default")
 
-			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "git-expr"},
+			// Configure ProposedCommitStatuses
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "always-fail"},
 			}
 
 			setupInitialTestGitRepoOnServer(ctx, name, name)
@@ -180,13 +176,8 @@ var _ = Describe("GitCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Environments: []promoterv1alpha1.GitCommitStatusEnvironment{
-						{
-							Branch:     testEnvironmentDevelopment,
-							Expression: `false`, // Expression that always evaluates to false
-							Name:       "always-fail",
-						},
-					},
+					Name:       "always-fail",
+					Expression: `false`, // Expression that always evaluates to false
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
@@ -208,16 +199,18 @@ var _ = Describe("GitCommitStatus Controller", func() {
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				g.Expect(gcs.Status.Environments).To(HaveLen(1))
-				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
-				g.Expect(gcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
+				g.Expect(gcs.Status.Environments).To(HaveLen(3))
 
-				g.Expect(gcs.Status.Environments[0].Sha).ToNot(BeEmpty())
-				g.Expect(gcs.Status.Environments[0].ExpressionResult).ToNot(BeNil())
-				g.Expect(*gcs.Status.Environments[0].ExpressionResult).To(BeFalse(), "Expression should evaluate to false")
+				// All environments should have failure phase
+				for _, env := range gcs.Status.Environments {
+					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
+					g.Expect(env.Sha).ToNot(BeEmpty())
+					g.Expect(env.ExpressionResult).ToNot(BeNil())
+					g.Expect(*env.ExpressionResult).To(BeFalse(), "Expression should evaluate to false")
+				}
 
 				// Verify CommitStatus was created with failure phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-git-expr-always-fail")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-always-fail")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -244,8 +237,9 @@ var _ = Describe("GitCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "git-commit-status-error", "default")
 
-			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "git-expr"},
+			// Configure ProposedCommitStatuses
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "invalid-expr"},
 			}
 
 			setupInitialTestGitRepoOnServer(ctx, name, name)
@@ -276,13 +270,8 @@ var _ = Describe("GitCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Environments: []promoterv1alpha1.GitCommitStatusEnvironment{
-						{
-							Branch:     testEnvironmentDevelopment,
-							Expression: `Commit.Invalid..Field`, // Invalid syntax
-							Name:       "invalid-expr",
-						},
-					},
+					Name:       "invalid-expr",
+					Expression: `Commit.Invalid..Field`, // Invalid syntax
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
@@ -304,15 +293,17 @@ var _ = Describe("GitCommitStatus Controller", func() {
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				g.Expect(gcs.Status.Environments).To(HaveLen(1))
-				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
-				g.Expect(gcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
+				g.Expect(gcs.Status.Environments).To(HaveLen(3))
 
-				g.Expect(gcs.Status.Environments[0].Message).To(ContainSubstring("Expression compilation failed"))
-				g.Expect(gcs.Status.Environments[0].ExpressionResult).To(BeNil(), "ExpressionResult should be nil on compilation error")
+				// All environments should have failure phase
+				for _, env := range gcs.Status.Environments {
+					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
+					g.Expect(env.Message).To(ContainSubstring("Expression compilation failed"))
+					g.Expect(env.ExpressionResult).To(BeNil(), "ExpressionResult should be nil on compilation error")
+				}
 
 				// Verify CommitStatus reflects the error
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-git-expr-invalid-expr")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-invalid-expr")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -338,8 +329,9 @@ var _ = Describe("GitCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "git-commit-multi-env", "default")
 
-			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "git-expr"},
+			// Configure ProposedCommitStatuses
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "multi-env-check"},
 			}
 
 			setupInitialTestGitRepoOnServer(ctx, name, name)
@@ -360,7 +352,7 @@ var _ = Describe("GitCommitStatus Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Creating a GitCommitStatus resource with expressions for all environments")
+			By("Creating a GitCommitStatus resource with expression for all environments")
 			gitCommitStatus = &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -370,23 +362,8 @@ var _ = Describe("GitCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Environments: []promoterv1alpha1.GitCommitStatusEnvironment{
-						{
-							Branch:     testEnvironmentDevelopment,
-							Expression: `true`, // Always pass
-							Name:       "dev-check",
-						},
-						{
-							Branch:     testEnvironmentStaging,
-							Expression: `Commit.SHA != ""`, // Should pass
-							Name:       "staging-check",
-						},
-						{
-							Branch:     testEnvironmentProduction,
-							Expression: `false`, // Always fail
-							Name:       "prod-check",
-						},
-					},
+					Name:       "multi-env-check",
+					Expression: `Commit.SHA != ""`, // Should pass for all
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
@@ -398,7 +375,7 @@ var _ = Describe("GitCommitStatus Controller", func() {
 			_ = k8sClient.Delete(ctx, promotionStrategy)
 		})
 
-		It("should evaluate expressions independently for each environment", func() {
+		It("should evaluate expression independently for each environment", func() {
 			By("Waiting for GitCommitStatus to process all environments")
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
@@ -411,26 +388,12 @@ var _ = Describe("GitCommitStatus Controller", func() {
 				// Should have status for all three environments
 				g.Expect(gcs.Status.Environments).To(HaveLen(3))
 
-				// Dev should be success
-				devEnv := findEnvironmentStatus(gcs.Status.Environments, testEnvironmentDevelopment)
-				g.Expect(devEnv).ToNot(BeNil())
-				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
-				g.Expect(devEnv.ExpressionResult).ToNot(BeNil())
-				g.Expect(*devEnv.ExpressionResult).To(BeTrue())
-
-				// Staging should be success
-				stagingEnv := findEnvironmentStatus(gcs.Status.Environments, testEnvironmentStaging)
-				g.Expect(stagingEnv).ToNot(BeNil())
-				g.Expect(stagingEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
-				g.Expect(stagingEnv.ExpressionResult).ToNot(BeNil())
-				g.Expect(*stagingEnv.ExpressionResult).To(BeTrue())
-
-				// Production should be failure
-				prodEnv := findEnvironmentStatus(gcs.Status.Environments, testEnvironmentProduction)
-				g.Expect(prodEnv).ToNot(BeNil())
-				g.Expect(prodEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
-				g.Expect(prodEnv.ExpressionResult).ToNot(BeNil())
-				g.Expect(*prodEnv.ExpressionResult).To(BeFalse())
+				// All environments should have success phase (expression passes)
+				for _, env := range gcs.Status.Environments {
+					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+					g.Expect(env.ExpressionResult).ToNot(BeNil())
+					g.Expect(*env.ExpressionResult).To(BeTrue())
+				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -453,12 +416,8 @@ var _ = Describe("GitCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: "non-existent",
 					},
-					Environments: []promoterv1alpha1.GitCommitStatusEnvironment{
-						{
-							Branch:     "environment/dev",
-							Expression: `true`,
-						},
-					},
+					Name:       "test-validation",
+					Expression: `true`,
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
@@ -498,8 +457,9 @@ var _ = Describe("GitCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "git-commit-sha-change", "default")
 
-			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "git-expr"},
+			// Configure ProposedCommitStatuses
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "sha-check"},
 			}
 
 			setupInitialTestGitRepoOnServer(ctx, name, name)
@@ -530,13 +490,8 @@ var _ = Describe("GitCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Environments: []promoterv1alpha1.GitCommitStatusEnvironment{
-						{
-							Branch:     testEnvironmentDevelopment,
-							Expression: `Commit.SHA != ""`,
-							Name:       "sha-check",
-						},
-					},
+					Name:       "sha-check",
+					Expression: `Commit.SHA != ""`,
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
@@ -559,9 +514,17 @@ var _ = Describe("GitCommitStatus Controller", func() {
 					Namespace: "default",
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(gcs.Status.Environments).To(HaveLen(1))
-				g.Expect(gcs.Status.Environments[0].Sha).ToNot(BeEmpty())
-				initialSha = gcs.Status.Environments[0].Sha
+				// Should process all 3 environments now
+				g.Expect(gcs.Status.Environments).To(HaveLen(3))
+				// Get the development environment SHA
+				for _, env := range gcs.Status.Environments {
+					if env.Branch == testEnvironmentDevelopment {
+						g.Expect(env.Sha).ToNot(BeEmpty())
+						initialSha = env.Sha
+						break
+					}
+				}
+				g.Expect(initialSha).ToNot(BeEmpty(), "Should have found development environment")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Making a change to trigger new SHA in development")
@@ -588,10 +551,16 @@ var _ = Describe("GitCommitStatus Controller", func() {
 					Namespace: "default",
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(gcs.Status.Environments).To(HaveLen(1))
-				// The proposed SHA should be different from initial
-				// Note: We're checking proposed SHA since it's been updated
-				g.Expect(gcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				// Should process all 3 environments
+				g.Expect(gcs.Status.Environments).To(HaveLen(3))
+				// Check that the development environment has been updated with new SHA
+				for _, env := range gcs.Status.Environments {
+					if env.Branch == testEnvironmentDevelopment {
+						g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+						g.Expect(env.Sha).ToNot(Equal(initialSha), "SHA should have changed")
+						break
+					}
+				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -610,8 +579,9 @@ var _ = Describe("GitCommitStatus Controller", func() {
 			var gitRepo *promoterv1alpha1.GitRepository
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "git-commit-delete", "default")
 
-			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "git-expr"},
+			// Configure ProposedCommitStatuses
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "delete-test"},
 			}
 
 			setupInitialTestGitRepoOnServer(ctx, name, name)
@@ -640,20 +610,15 @@ var _ = Describe("GitCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Environments: []promoterv1alpha1.GitCommitStatusEnvironment{
-						{
-							Branch:     testEnvironmentDevelopment,
-							Expression: `true`,
-							Name:       "delete-test",
-						},
-					},
+					Name:       "delete-test",
+					Expression: `true`,
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())
 
 			By("Waiting for CommitStatus to be created")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-git-expr-delete-test")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-delete-test")
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -669,7 +634,7 @@ var _ = Describe("GitCommitStatus Controller", func() {
 		})
 
 		It("should clean up associated CommitStatus resources", func() {
-			commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-git-expr-delete-test")
+			commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-delete-test")
 
 			By("Deleting the GitCommitStatus resource")
 			err := k8sClient.Delete(ctx, gitCommitStatus)
@@ -698,13 +663,3 @@ var _ = Describe("GitCommitStatus Controller", func() {
 		})
 	})
 })
-
-// Helper function to find an environment status by branch name
-func findEnvironmentStatus(envStatuses []promoterv1alpha1.GitCommitStatusEnvironmentStatus, branch string) *promoterv1alpha1.GitCommitStatusEnvironmentStatus {
-	for i := range envStatuses {
-		if envStatuses[i].Branch == branch {
-			return &envStatuses[i]
-		}
-	}
-	return nil
-}

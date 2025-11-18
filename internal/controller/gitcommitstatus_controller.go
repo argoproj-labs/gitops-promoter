@@ -182,7 +182,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 	// Track which environments transitioned to success
 	transitionedEnvironments := []string{}
 	// Track all CommitStatus objects created/updated
-	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(gcs.Spec.Environments))
+	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(ps.Spec.Environments))
 
 	// Save the previous status before clearing it, so we can detect transitions
 	previousStatus := gcs.Status.DeepCopy()
@@ -197,23 +197,57 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 	}
 
 	// Initialize or clear the environments status
-	gcs.Status.Environments = make([]promoterv1alpha1.GitCommitStatusEnvironmentStatus, 0, len(gcs.Spec.Environments))
+	gcs.Status.Environments = make([]promoterv1alpha1.GitCommitStatusEnvironmentStatus, 0, len(ps.Spec.Environments))
 
-	for _, envConfig := range gcs.Spec.Environments {
-		// Look up the environment in the map
-		envStatus, found := envStatusMap[envConfig.Branch]
+	// Check if this GitCommitStatus is referenced in global proposedCommitStatuses
+	globallyProposed := false
+	for _, selector := range ps.Spec.ProposedCommitStatuses {
+		if selector.Key == gcs.Spec.Name {
+			globallyProposed = true
+			break
+		}
+	}
+
+	// Iterate over ALL environments from the PromotionStrategy
+	for _, psEnv := range ps.Spec.Environments {
+		branch := psEnv.Branch
+
+		// Check if this GitCommitStatus applies to this environment
+		// Start with global proposedCommitStatuses
+		appliesToEnvironment := globallyProposed
+
+		// Check environment-specific proposedCommitStatuses
+		if !appliesToEnvironment {
+			for _, selector := range psEnv.ProposedCommitStatuses {
+				if selector.Key == gcs.Spec.Name {
+					appliesToEnvironment = true
+					break
+				}
+			}
+		}
+
+		// Skip this environment if the GitCommitStatus doesn't apply
+		if !appliesToEnvironment {
+			logger.V(4).Info("GitCommitStatus does not apply to environment, skipping",
+				"branch", branch,
+				"name", gcs.Spec.Name)
+			continue
+		}
+
+		// Look up the environment status in the map
+		envStatus, found := envStatusMap[branch]
 		if !found {
-			logger.Info("Environment not found in PromotionStrategy status", "branch", envConfig.Branch)
+			logger.Info("Environment not found in PromotionStrategy status", "branch", branch)
 			continue
 		}
 
 		// Get the proposed hydrated SHA for this environment
 		proposedSha := envStatus.Proposed.Hydrated.Sha
 		if proposedSha == "" {
-			logger.Info("No proposed hydrated commit in environment", "branch", envConfig.Branch)
+			logger.Info("No proposed hydrated commit in environment", "branch", branch)
 			// Add a pending status entry
 			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
-				Branch:  envConfig.Branch,
+				Branch:  branch,
 				Sha:     "",
 				Phase:   "pending",
 				Message: "No proposed hydrated commit available",
@@ -222,12 +256,12 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		}
 
 		// Get commit details for validation
-		commitData, err := r.getCommitData(ctx, gcs, ps, proposedSha, envConfig.Branch)
+		commitData, err := r.getCommitData(ctx, gcs, ps, proposedSha, branch)
 		if err != nil {
-			logger.Error(err, "Failed to get commit data", "branch", envConfig.Branch, "sha", proposedSha)
+			logger.Error(err, "Failed to get commit data", "branch", branch, "sha", proposedSha)
 			// Add a pending status entry with error message
 			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
-				Branch:  envConfig.Branch,
+				Branch:  branch,
 				Sha:     proposedSha,
 				Phase:   "pending",
 				Message: fmt.Sprintf("Failed to fetch commit data: %v", err),
@@ -235,27 +269,27 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			continue
 		}
 
-		// Evaluate the expression
-		phase, message, expressionResult := r.evaluateExpression(ctx, envConfig.Expression, commitData)
+		// Evaluate the same expression for all environments
+		phase, message, expressionResult := r.evaluateExpression(ctx, gcs.Spec.Expression, commitData)
 
 		// Check if this validation transitioned to success
 		var previousPhase string
 		for _, prevEnv := range previousStatus.Environments {
-			if prevEnv.Branch == envConfig.Branch {
+			if prevEnv.Branch == branch {
 				previousPhase = prevEnv.Phase
 				break
 			}
 		}
 		if previousPhase != "success" && phase == "success" {
-			transitionedEnvironments = append(transitionedEnvironments, envConfig.Branch)
+			transitionedEnvironments = append(transitionedEnvironments, branch)
 			logger.Info("Validation transitioned to success",
-				"branch", envConfig.Branch,
+				"branch", branch,
 				"sha", proposedSha)
 		}
 
 		// Update status for this environment
 		envValidationStatus := promoterv1alpha1.GitCommitStatusEnvironmentStatus{
-			Branch:           envConfig.Branch,
+			Branch:           branch,
 			Sha:              proposedSha,
 			Phase:            phase,
 			Message:          message,
@@ -264,17 +298,19 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		gcs.Status.Environments = append(gcs.Status.Environments, envValidationStatus)
 
 		// Create or update the CommitStatus for the proposed hydrated SHA
-		cs, err := r.upsertCommitStatus(ctx, gcs, ps, envConfig.Branch, proposedSha, phase, message, envConfig.Name)
+		// Use the same name from gcs.Spec.Name for all environments
+		cs, err := r.upsertCommitStatus(ctx, gcs, ps, branch, proposedSha, phase, message, gcs.Spec.Name)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", envConfig.Branch, err)
+			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
 		commitStatuses = append(commitStatuses, cs)
 
 		logger.Info("Processed environment validation",
-			"branch", envConfig.Branch,
+			"branch", branch,
 			"proposedSha", proposedSha,
 			"phase", phase,
-			"expression", envConfig.Expression)
+			"name", gcs.Spec.Name,
+			"expression", gcs.Spec.Expression)
 	}
 
 	return transitionedEnvironments, commitStatuses, nil
@@ -380,9 +416,9 @@ func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expr
 	}
 
 	if result {
-		return "success", "Validation passed", ptr.To(true)
+		return "success", "Expression evaluated to true", ptr.To(true)
 	}
-	return "failure", "Validation failed", ptr.To(false)
+	return "failure", "Expression evaluated to false", ptr.To(false)
 }
 
 // upsertCommitStatus creates or updates a CommitStatus resource for the validation result.

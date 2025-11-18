@@ -1,9 +1,13 @@
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: GitCommitStatus
 metadata:
-  labels:
-    app.kubernetes.io/name: promoter
-    app.kubernetes.io/managed-by: kustomize
-  name: gitcommitstatus-sample
+  name: gitcommitstatus
 spec:
-  # TODO(user): Add fields here
+  promotionStrategyRef:
+    name: promotion-strategy-sample
+  name: revert-check
+  # This expression returns false if EITHER condition is true:
+  # 1. Commit message starts with "Revert" → fail
+  # 2. Commit has a "Git-commit-status: pending" trailer → fail
+  # The validation passes only if NEITHER condition is true
+  expression: '!(Commit.Message.startsWith("Revert") || (has(Commit.Trailers["Git-commit-status"]) && Commit.Trailers["Git-commit-status"][0] == "pending"))'

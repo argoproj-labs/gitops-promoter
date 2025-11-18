@@ -26,26 +26,21 @@ import (
 // GitCommitStatusSpec defines the desired state of GitCommitStatus
 type GitCommitStatusSpec struct {
 	// PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
-	// The controller will validate commits from the environments defined in the referenced PromotionStrategy.
+	// The controller will validate commits from ALL environments defined in the referenced PromotionStrategy
+	// using the same expression.
 	// +required
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 
-	// Environments defines which environments from the PromotionStrategy to validate
-	// and what expressions to evaluate against each environment's proposed hydrated commit.
+	// Name is a friendly name for this validation rule.
+	// It is used as the commit status key and in status messages.
+	// This becomes the key used in PromotionStrategy's activeCommitStatuses or proposedCommitStatuses.
 	// +required
-	// +kubebuilder:validation:MinItems=1
-	Environments []GitCommitStatusEnvironment `json:"environments"`
-}
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+	Name string `json:"name"`
 
-// GitCommitStatusEnvironment defines validation rules for a specific environment branch.
-type GitCommitStatusEnvironment struct {
-	// Branch is the environment branch name from the PromotionStrategy.
-	// This should match one of the branches defined in the PromotionStrategy's environments.
-	// The controller will validate the proposed hydrated commit for this environment.
-	// +required
-	Branch string `json:"branch"`
-
-	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data.
+	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data
+	// for ALL environments in the referenced PromotionStrategy.
 	// The expression must return a boolean value where true indicates the validation passed.
 	//
 	// Available variables in the expression context:
@@ -70,13 +65,6 @@ type GitCommitStatusEnvironment struct {
 	//
 	// +required
 	Expression string `json:"expression"`
-
-	// Name is a friendly name for this validation rule.
-	// It is used in status messages and when creating the CommitStatus resource.
-	// +required
-	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-	Name string `json:"name"`
 }
 
 // GitCommitStatusStatus defines the observed state of GitCommitStatus.
