@@ -59,17 +59,18 @@ type GitCommitStatusSpec struct {
 	//   - Commit.Trailers (map[string][]string): git trailers parsed from commit message
 	//
 	// The expr library provides built-in functions and operators:
-	//   - String operations: startsWith(s, prefix), endsWith(s, suffix), contains(s, substr), matches(s, regex)
+	//   - String operations: startsWith(s, prefix), endsWith(s, suffix), contains(s, substr)
+	//   - Regex matching: string matches "pattern" (infix operator)
 	//   - Logical operators: &&, ||, !
 	//   - Comparison: ==, !=, <, >, <=, >=
-	//   - Collections: has() to check map key existence, len() for length
+	//   - Collections: "key" in map to check map key existence, len() for length
 	//
 	// Example expressions:
 	//   'endsWith(Commit.Author, "@example.com")'
-	//   'has(Commit.Trailers["Signed-off-by"])'
-	//   'contains(Commit.Message, "JIRA-") && has(Commit.Trailers["Reviewed-by"])'
+	//   '"Signed-off-by" in Commit.Trailers'
+	//   'contains(Commit.Message, "JIRA-") && "Reviewed-by" in Commit.Trailers'
 	//   'len(Commit.Trailers["Reviewed-by"]) >= 2'
-	//   'matches(Commit.Message, "^(feat|fix|docs):")'
+	//   'Commit.Message matches "^(feat|fix|docs):"'
 	//   'startsWith(Commit.Message, "Revert")'
 	//   'Commit.Author == "user@example.com"'
 	//

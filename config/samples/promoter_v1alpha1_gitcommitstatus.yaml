@@ -8,7 +8,8 @@ spec:
   name: revert-check
   description: "Revert commit validation"
   # This expression returns false if EITHER condition is true:
-  # 1. Commit message starts with "Revert" → fail
+  # 1. Commit message matches the "^Revert" pattern → fail
   # 2. Commit has a "Git-commit-status: pending" trailer → fail
   # The validation passes only if NEITHER condition is true
-  expression: '!(matches(Commit.Message, "^Revert") || (has(Commit.Trailers["Git-commit-status"]) && Commit.Trailers["Git-commit-status"][0] == "pending"))'
+  # Note: 'matches' is an infix operator, and 'in' is used to check map key existence
+  expression: '!(Commit.Message matches "^Revert" || ("Git-commit-status" in Commit.Trailers && Commit.Trailers["Git-commit-status"][0] == "pending"))'
