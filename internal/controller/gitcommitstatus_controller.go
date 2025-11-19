@@ -166,7 +166,8 @@ func (r *GitCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 // CommitData represents the data structure available to expressions during validation.
 type CommitData struct {
 	SHA       string              `expr:"SHA"`
-	Message   string              `expr:"Message"`
+	Subject   string              `expr:"Subject"`
+	Body      string              `expr:"Body"`
 	Author    string              `expr:"Author"`
 	Committer string              `expr:"Committer"`
 	Trailers  map[string][]string `expr:"Trailers"`
@@ -202,7 +203,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 	// Check if this GitCommitStatus is referenced in global proposedCommitStatuses
 	globallyProposed := false
 	for _, selector := range ps.Spec.ProposedCommitStatuses {
-		if selector.Key == gcs.Spec.Name {
+		if selector.Key == gcs.Spec.Key {
 			globallyProposed = true
 			break
 		}
@@ -219,7 +220,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		// Check environment-specific proposedCommitStatuses
 		if !appliesToEnvironment {
 			for _, selector := range psEnv.ProposedCommitStatuses {
-				if selector.Key == gcs.Spec.Name {
+				if selector.Key == gcs.Spec.Key {
 					appliesToEnvironment = true
 					break
 				}
@@ -230,7 +231,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		if !appliesToEnvironment {
 			logger.V(4).Info("GitCommitStatus does not apply to environment, skipping",
 				"branch", branch,
-				"name", gcs.Spec.Name)
+				"key", gcs.Spec.Key)
 			continue
 		}
 
@@ -243,28 +244,19 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 
 		// Get the proposed hydrated SHA for this environment
 		proposedSha := envStatus.Proposed.Hydrated.Sha
-		if proposedSha == "" {
-			logger.Info("No proposed hydrated commit in environment", "branch", branch)
-			// Add a pending status entry
-			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
-				Branch:  branch,
-				Sha:     "",
-				Phase:   "pending",
-				Message: "No proposed hydrated commit available",
-			})
-			continue
-		}
+		activeHydratedSha := envStatus.Active.Hydrated.Sha
 
 		// Get commit details for validation
-		commitData, err := r.getCommitData(ctx, gcs, ps, proposedSha, branch)
+		commitData, err := r.getCommitData(ctx, gcs, ps, activeHydratedSha, branch)
 		if err != nil {
 			logger.Error(err, "Failed to get commit data", "branch", branch, "sha", proposedSha)
 			// Add a pending status entry with error message
 			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
-				Branch:  branch,
-				Sha:     proposedSha,
-				Phase:   "pending",
-				Message: fmt.Sprintf("Failed to fetch commit data: %v", err),
+				Branch:              branch,
+				ProposedHydratedSha: proposedSha,
+				ActiveHydratedSha:   activeHydratedSha,
+				Phase:               "pending",
+				Message:             fmt.Sprintf("Failed to fetch commit data: %v", err),
 			})
 			continue
 		}
@@ -289,17 +281,18 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 
 		// Update status for this environment
 		envValidationStatus := promoterv1alpha1.GitCommitStatusEnvironmentStatus{
-			Branch:           branch,
-			Sha:              proposedSha,
-			Phase:            phase,
-			Message:          message,
-			ExpressionResult: expressionResult,
+			Branch:              branch,
+			ProposedHydratedSha: proposedSha,
+			ActiveHydratedSha:   activeHydratedSha,
+			Phase:               phase,
+			Message:             message,
+			ExpressionResult:    expressionResult,
 		}
 		gcs.Status.Environments = append(gcs.Status.Environments, envValidationStatus)
 
 		// Create or update the CommitStatus for the proposed hydrated SHA
-		// Use the same name from gcs.Spec.Name for all environments
-		cs, err := r.upsertCommitStatus(ctx, gcs, ps, branch, proposedSha, phase, message, gcs.Spec.Name)
+		// Use the same key from gcs.Spec.Key for all environments
+		cs, err := r.upsertCommitStatus(ctx, gcs, ps, branch, proposedSha, phase, message, gcs.Spec.Key)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
@@ -309,7 +302,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			"branch", branch,
 			"proposedSha", proposedSha,
 			"phase", phase,
-			"name", gcs.Spec.Name,
+			"key", gcs.Spec.Key,
 			"expression", gcs.Spec.Expression)
 	}
 
@@ -369,15 +362,10 @@ func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *prom
 		trailers[key] = []string{value}
 	}
 
-	// Build full commit message
-	fullMessage := commitMeta.Subject
-	if commitMeta.Body != "" {
-		fullMessage = commitMeta.Subject + "\n\n" + commitMeta.Body
-	}
-
 	return &CommitData{
 		SHA:       sha,
-		Message:   fullMessage,
+		Subject:   commitMeta.Subject,
+		Body:      commitMeta.Body,
 		Author:    authorEmail,
 		Committer: committerEmail,
 		Trailers:  trailers,

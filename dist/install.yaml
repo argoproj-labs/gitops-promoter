@@ -3181,7 +3181,8 @@ spec:
 
                   Available variables in the expression context:
                     - Commit.SHA (string): the proposed hydrated commit SHA being validated
-                    - Commit.Message (string): full commit message including body
+                    - Commit.Subject (string): the first line of the commit message
+                    - Commit.Body (string): the commit message body (everything after the subject line)
                     - Commit.Author (string): commit author email address
                     - Commit.Committer (string): committer email address
                     - Commit.Trailers (map[string][]string): git trailers parsed from commit message
@@ -3196,15 +3197,15 @@ spec:
                   Example expressions:
                     'endsWith(Commit.Author, "@example.com")'
                     '"Signed-off-by" in Commit.Trailers'
-                    'contains(Commit.Message, "JIRA-") && "Reviewed-by" in Commit.Trailers'
+                    'contains(Commit.Body, "JIRA-") && "Reviewed-by" in Commit.Trailers'
                     'len(Commit.Trailers["Reviewed-by"]) >= 2'
-                    'Commit.Message matches "^(feat|fix|docs):"'
-                    'startsWith(Commit.Message, "Revert")'
+                    'Commit.Subject matches "^(feat|fix|docs):"'
+                    'startsWith(Commit.Subject, "Revert")'
                     'Commit.Author == "user@example.com"'
                 type: string
-              name:
+              key:
                 description: |-
-                  Name is a friendly name for this validation rule.
+                  Key is the unique identifier for this validation rule.
                   It is used as the commit status key and in status messages.
                   This becomes the key used in PromotionStrategy's activeCommitStatuses or proposedCommitStatuses.
                 maxLength: 63
@@ -3224,7 +3225,7 @@ spec:
                 type: object
             required:
             - expression
-            - name
+            - key
             - promotionStrategyRef
             type: object
           status:
@@ -3301,6 +3302,11 @@ spec:
                   description: GitCommitStatusEnvironmentStatus defines the observed
                     validation status for a specific environment.
                   properties:
+                    activeHydratedSha:
+                      description: |-
+                        ActiveHydratedSha is the currently active (deployed) hydrated commit SHA.
+                        This comes from the PromotionStrategy's environment status.
+                      type: string
                     branch:
                       description: Branch is the environment branch name being validated.
                       type: string
@@ -3326,15 +3332,15 @@ spec:
                       - success
                       - failure
                       type: string
-                    sha:
+                    proposedHydratedSha:
                       description: |-
-                        Sha is the proposed hydrated commit SHA that was validated.
+                        ProposedHydratedSha is the proposed hydrated commit SHA that was validated.
                         This comes from the PromotionStrategy's environment status.
                       type: string
                   required:
                   - branch
                   - phase
-                  - sha
+                  - proposedHydratedSha
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:

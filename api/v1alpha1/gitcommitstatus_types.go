@@ -31,13 +31,13 @@ type GitCommitStatusSpec struct {
 	// +required
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 
-	// Name is a friendly name for this validation rule.
+	// Key is the unique identifier for this validation rule.
 	// It is used as the commit status key and in status messages.
 	// This becomes the key used in PromotionStrategy's activeCommitStatuses or proposedCommitStatuses.
 	// +required
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
-	Name string `json:"name"`
+	Key string `json:"key"`
 
 	// Description is a human-readable description of this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status description.
@@ -53,7 +53,8 @@ type GitCommitStatusSpec struct {
 	//
 	// Available variables in the expression context:
 	//   - Commit.SHA (string): the proposed hydrated commit SHA being validated
-	//   - Commit.Message (string): full commit message including body
+	//   - Commit.Subject (string): the first line of the commit message
+	//   - Commit.Body (string): the commit message body (everything after the subject line)
 	//   - Commit.Author (string): commit author email address
 	//   - Commit.Committer (string): committer email address
 	//   - Commit.Trailers (map[string][]string): git trailers parsed from commit message
@@ -68,10 +69,10 @@ type GitCommitStatusSpec struct {
 	// Example expressions:
 	//   'endsWith(Commit.Author, "@example.com")'
 	//   '"Signed-off-by" in Commit.Trailers'
-	//   'contains(Commit.Message, "JIRA-") && "Reviewed-by" in Commit.Trailers'
+	//   'contains(Commit.Body, "JIRA-") && "Reviewed-by" in Commit.Trailers'
 	//   'len(Commit.Trailers["Reviewed-by"]) >= 2'
-	//   'Commit.Message matches "^(feat|fix|docs):"'
-	//   'startsWith(Commit.Message, "Revert")'
+	//   'Commit.Subject matches "^(feat|fix|docs):"'
+	//   'startsWith(Commit.Subject, "Revert")'
 	//   'Commit.Author == "user@example.com"'
 	//
 	// +required
@@ -102,10 +103,15 @@ type GitCommitStatusEnvironmentStatus struct {
 	// +required
 	Branch string `json:"branch"`
 
-	// Sha is the proposed hydrated commit SHA that was validated.
+	// ProposedHydratedSha is the proposed hydrated commit SHA that was validated.
 	// This comes from the PromotionStrategy's environment status.
 	// +required
-	Sha string `json:"sha"`
+	ProposedHydratedSha string `json:"proposedHydratedSha"`
+
+	// ActiveHydratedSha is the currently active (deployed) hydrated commit SHA.
+	// This comes from the PromotionStrategy's environment status.
+	// +optional
+	ActiveHydratedSha string `json:"activeHydratedSha,omitempty"`
 
 	// Phase represents the current validation state of the commit.
 	// - "pending": validation has not completed or commit data is not yet available
