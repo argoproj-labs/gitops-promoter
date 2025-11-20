@@ -256,7 +256,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 				ProposedHydratedSha: proposedSha,
 				ActiveHydratedSha:   activeHydratedSha,
 				Phase:               "pending",
-				Message:             fmt.Sprintf("Failed to fetch commit data: %v", err),
+				ExpressionMessage:   fmt.Sprintf("Failed to fetch commit data: %v", err),
 			})
 			continue
 		}
@@ -285,7 +285,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			ProposedHydratedSha: proposedSha,
 			ActiveHydratedSha:   activeHydratedSha,
 			Phase:               phase,
-			Message:             message,
+			ExpressionMessage:   message,
 			ExpressionResult:    expressionResult,
 		}
 		gcs.Status.Environments = append(gcs.Status.Environments, envValidationStatus)

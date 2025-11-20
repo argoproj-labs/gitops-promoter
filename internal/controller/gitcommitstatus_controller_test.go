@@ -147,7 +147,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)), "Environment "+env.Branch+" should succeed")
 					g.Expect(env.ProposedHydratedSha).ToNot(BeEmpty(), "ProposedHydratedSha should be populated")
 					g.Expect(env.ActiveHydratedSha).ToNot(BeEmpty(), "ActiveHydratedSha should be populated")
-					g.Expect(env.Message).To(Equal("Expression evaluated to true"))
+					g.Expect(env.ExpressionMessage).To(Equal("Expression evaluated to true"))
 					g.Expect(env.ExpressionResult).ToNot(BeNil())
 					g.Expect(*env.ExpressionResult).To(BeTrue())
 				}
@@ -253,7 +253,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 				for _, env := range gcs.Status.Environments {
 					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
-					g.Expect(env.Message).To(Equal("Expression evaluated to false"))
+					g.Expect(env.ExpressionMessage).To(Equal("Expression evaluated to false"))
 					g.Expect(env.ExpressionResult).ToNot(BeNil())
 					g.Expect(*env.ExpressionResult).To(BeFalse())
 				}
@@ -311,7 +311,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 				for _, env := range gcs.Status.Environments {
 					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
-					g.Expect(env.Message).To(ContainSubstring("Expression compilation failed"))
+					g.Expect(env.ExpressionMessage).To(ContainSubstring("Expression compilation failed"))
 					g.Expect(env.ExpressionResult).To(BeNil())
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())

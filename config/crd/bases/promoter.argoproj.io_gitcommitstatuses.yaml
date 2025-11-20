@@ -194,17 +194,17 @@ spec:
                     branch:
                       description: Branch is the environment branch name being validated.
                       type: string
+                    expressionMessage:
+                      description: |-
+                        ExpressionMessage provides a human-readable description of the validation result.
+                        This includes details about why validation passed or failed.
+                      type: string
                     expressionResult:
                       description: |-
                         ExpressionResult contains the boolean result of the expression evaluation.
                         Only set when the expression successfully evaluates to a boolean.
                         nil indicates the expression has not yet been evaluated or failed to evaluate.
                       type: boolean
-                    message:
-                      description: |-
-                        Message provides a human-readable description of the validation result.
-                        This includes details about why validation passed or failed.
-                      type: string
                     phase:
                       description: |-
                         Phase represents the current validation state of the commit.
