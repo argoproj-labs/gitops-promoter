@@ -2,7 +2,9 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -158,6 +160,16 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 	start := time.Now()
 	checkRun, response, err := cs.client.Checks.UpdateCheckRun(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, checkRunID, updateOpts)
 	if err != nil {
+		// Check if the error is a 404 (check run not found)
+		// This can happen when a CommitStatus was created using the legacy Commit Status API
+		// instead of the Checks API, resulting in an invalid check run ID
+		var ghErr *github.ErrorResponse
+		if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound {
+			logger := log.FromContext(ctx)
+			logger.Info("Check run not found (404), falling back to create operation", "checkRunId", commitStatus.Status.Id)
+			// Fall back to creating a new check run
+			return cs.createCheckRun(ctx, commitStatus)
+		}
 		return nil, fmt.Errorf("failed to update check run: %w", err)
 	}
 	return cs.handleCheckRunResponse(ctx, metrics.SCMOperationUpdate, start, commitStatus, gitRepo, checkRun, response)
