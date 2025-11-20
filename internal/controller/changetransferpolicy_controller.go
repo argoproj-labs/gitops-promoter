@@ -891,6 +891,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	prl := promoterv1alpha1.PullRequestList{}
 	// Find the PRs that match the proposed commit and the environment. There should only be one.
 	err := r.List(ctx, &prl, &client.ListOptions{
+		Namespace: ctp.Namespace,
 		LabelSelector: labels.SelectorFromSet(map[string]string{
 			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
 			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
@@ -902,7 +903,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	}
 
 	if len(prl.Items) > 1 {
-		return nil, fmt.Errorf("more than one PullRequest found for ChangeTransferPolicy %s and Environment %s", ctp.Name, ctp.Spec.ActiveBranch)
+		return nil, tooManyPRsError(&prl)
 	}
 
 	if len(prl.Items) != 1 {
