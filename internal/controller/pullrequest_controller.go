@@ -206,7 +206,7 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 	if pr.Status.State == pr.Spec.State {
 		logger.Info("Updating PullRequest")
 		if err := r.updatePullRequest(ctx, *pr, provider); err != nil {
-			return false, fmt.Errorf("failed to update pull request: %w", err)
+			return false, fmt.Errorf("failed to update pull request: %w", err) // Top-level wrap for update errors
 		}
 		return false, nil
 	}
@@ -217,13 +217,13 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 			// Because status id is empty, we need to create a new pull request
 			logger.Info("Creating PullRequest")
 			if err := r.createPullRequest(ctx, pr, provider); err != nil {
-				return false, fmt.Errorf("failed to create pull request: %w", err)
+				return false, fmt.Errorf("failed to create pull request: %w", err) // Top-level wrap for create errors
 			}
 		}
 	case promoterv1alpha1.PullRequestMerged:
 		logger.Info("Merging PullRequest")
 		if err := r.mergePullRequest(ctx, pr, provider); err != nil {
-			return false, fmt.Errorf("failed to merge pull request: %w", err)
+			return false, fmt.Errorf("failed to merge pull request: %w", err) // Top-level wrap for merge errors
 		}
 		if err := r.Delete(ctx, pr); err != nil {
 			return false, fmt.Errorf("failed to delete PullRequest: %w", err)
@@ -232,7 +232,7 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 	case promoterv1alpha1.PullRequestClosed:
 		logger.Info("Closing PullRequest")
 		if err := r.closePullRequest(ctx, pr, provider); err != nil {
-			return false, fmt.Errorf("failed to close pull request: %w", err)
+			return false, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
 		}
 		if err := r.Delete(ctx, pr); err != nil {
 			return false, fmt.Errorf("failed to delete PullRequest: %w", err)
@@ -325,7 +325,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 	// In this case, we can just remove the finalizer without attempting to close the PR.
 	if pr.Status.ID != "" {
 		if err := r.closePullRequest(ctx, pr, provider); err != nil {
-			return false, fmt.Errorf("failed to close pull request: %w", err)
+			return false, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
 		}
 	}
 
@@ -339,7 +339,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
 	id, err := provider.Create(ctx, pr.Spec.Title, pr.Spec.SourceBranch, pr.Spec.TargetBranch, pr.Spec.Description, *pr)
 	if err != nil {
-		return fmt.Errorf("failed to create pull request: %w", err)
+		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestOpen
 	pr.Status.PRCreationTime = metav1.Now()
@@ -356,7 +356,7 @@ func (r *PullRequestReconciler) createPullRequest(ctx context.Context, pr *promo
 
 func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
 	if err := provider.Update(ctx, pr.Spec.Title, pr.Spec.Description, pr); err != nil {
-		return fmt.Errorf("failed to update pull request: %w", err)
+		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	r.Recorder.Event(&pr, "Normal", constants.PullRequestUpdatedReason, fmt.Sprintf("Pull Request %s updated", pr.Name))
 	return nil
@@ -379,7 +379,7 @@ func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promot
 	pr.Spec.Commit.Message = updatedMessage
 
 	if err := provider.Merge(ctx, *pr); err != nil {
-		return fmt.Errorf("failed to merge pull request: %w", err)
+		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestMerged
 	return nil
@@ -407,7 +407,7 @@ func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promot
 		return nil
 	}
 	if err := provider.Close(ctx, *pr); err != nil {
-		return fmt.Errorf("failed to close pull request: %w", err)
+		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	pr.Status.State = promoterv1alpha1.PullRequestClosed
 	return nil
