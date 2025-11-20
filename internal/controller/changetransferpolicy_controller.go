@@ -691,7 +691,8 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
 			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
 			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-		})})
+		}),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %q status update: %w", ctp.Name, err)
 	}
@@ -701,7 +702,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	}
 
 	if len(pr.Items) > 1 {
-		return tooManyPRsError(pr, ctp)
+		return tooManyPRsError(pr)
 	}
 
 	if ctp.Status.PullRequest == nil {
@@ -716,7 +717,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 }
 
 // tooManyPRsError constructs an error indicating that there are too many open pull requests for the CTP.
-func tooManyPRsError(pr *promoterv1alpha1.PullRequestList, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+func tooManyPRsError(pr *promoterv1alpha1.PullRequestList) error {
 	prNames := make([]string, 0, len(pr.Items))
 	for _, prItem := range pr.Items {
 		prNames = append(prNames, prItem.Name)
