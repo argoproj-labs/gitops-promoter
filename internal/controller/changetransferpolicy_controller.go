@@ -685,11 +685,13 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 
 func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	pr := &promoterv1alpha1.PullRequestList{}
-	err := r.List(ctx, pr, &client.ListOptions{LabelSelector: labels.SelectorFromSet(map[string]string{
-		promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-		promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-		promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-	})})
+	err := r.List(ctx, pr, &client.ListOptions{
+		Namespace: ctp.Namespace,
+		LabelSelector: labels.SelectorFromSet(map[string]string{
+			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+		})})
 	if err != nil {
 		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %q status update: %w", ctp.Name, err)
 	}
@@ -715,16 +717,16 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 
 // tooManyPRsError constructs an error indicating that there are too many open pull requests for the CTP.
 func tooManyPRsError(pr *promoterv1alpha1.PullRequestList, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
-	prNumbers := make([]string, 0, len(pr.Items))
+	prNames := make([]string, 0, len(pr.Items))
 	for _, prItem := range pr.Items {
-		prNumbers = append(prNumbers, prItem.Status.ID)
+		prNames = append(prNames, prItem.Name)
 	}
-	// Only show the first 3 PR numbers and then indicate how many more there are
-	summary := strings.Join(prNumbers, ", ")
-	if len(prNumbers) > 3 {
-		summary = strings.Join(prNumbers[:3], ", ") + fmt.Sprintf(" and %d more", len(prNumbers)-3)
+	// Only show the first 3 PR names and then indicate how many more there are
+	summary := strings.Join(prNames, ", ")
+	if len(prNames) > 3 {
+		summary = strings.Join(prNames[:3], ", ") + fmt.Sprintf(" and %d more", len(prNames)-3)
 	}
-	return fmt.Errorf("found more than one open PullRequest (%s) from branch %q to branch %q, this is not expected", summary, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	return fmt.Errorf("found more than one open PullRequest: %s", summary)
 }
 
 // mergeOrPullRequestPromote checks if there's anything to promote and, if there is, it does the promotion. It returns
