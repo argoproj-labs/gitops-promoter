@@ -66,7 +66,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return "", fmt.Errorf("failed to create pull request: %w", err)
+		return "", err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 
 	logGitLabRateLimitsIfAvailable(
@@ -212,7 +212,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to merge request: %w", err)
+		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 
 	logGitLabRateLimitsIfAvailable(
