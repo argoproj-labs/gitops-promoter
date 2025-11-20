@@ -65,7 +65,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return "", fmt.Errorf("failed to create pull request: %w", err)
+		return "", err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
@@ -100,7 +100,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to update pull request: %w", err)
+		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
@@ -140,7 +140,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj promoterv1alpha1.PullReq
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to close pull request: %w", err)
+		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
@@ -181,7 +181,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		return fmt.Errorf("failed to merge pull request: %w", err)
+		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 	return nil

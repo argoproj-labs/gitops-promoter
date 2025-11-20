@@ -157,6 +157,60 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(pullRequest.Status.Conditions[0].Message).To(ContainSubstring("secret from ScmProvider not found"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("should report merge error without redundant wrapping", func() {
+			By("Creating a PullRequest with invalid merge SHA to trigger merge failure")
+
+			name, scmSecret, scmProvider, gitRepo, pullRequest := pullRequestResources(ctx, "merge-error-message-test")
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			// Set an invalid merge SHA that won't match the actual source branch HEAD
+			pullRequest.Spec.MergeSha = "0000000000000000000000000000000000000000"
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be created and open")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Attempting to merge the PullRequest with invalid SHA")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
+				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the error message is not redundantly wrapped")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.Conditions).ToNot(BeEmpty())
+				g.Expect(meta.IsStatusConditionFalse(pullRequest.Status.Conditions, string(conditions.Ready))).To(BeTrue())
+				g.Expect(pullRequest.Status.Conditions[0].Reason).To(Equal(string(conditions.ReconciliationError)))
+
+				// The error message should contain "Reconciliation failed" and "failed to merge pull request" only once each
+				message := pullRequest.Status.Conditions[0].Message
+				g.Expect(message).To(ContainSubstring("Reconciliation failed"))
+				g.Expect(message).To(ContainSubstring("failed to merge pull request"))
+
+				// Count occurrences - should not have redundant wrapping
+				// The message should be: "Reconciliation failed: failed to merge pull request: <actual error>"
+				// NOT: "Reconciliation failed: failed to merge pull request: failed to merge pull request: failed to merge pull request: <actual error>"
+				g.Expect(message).ToNot(ContainSubstring("failed to merge pull request: failed to merge pull request"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Cleaning up the PullRequest")
+			Expect(k8sClient.Delete(ctx, pullRequest)).To(Succeed())
+		})
 	})
 
 	Context("When attempting to create a PullRequest with invalid initial state", func() {
