@@ -38,16 +38,6 @@ When a commit is made to the DRY branch, the hydrator pushes hydrated manifests 
 
 For a detailed architecture explanation, see [Architecture Documentation](docs/architecture.md).
 
-## Quick Start
-
-### Prerequisites
-
-* Kubernetes cluster (1.21+)
-* kubectl CLI
-* SCM provider: GitHub, GitHub Enterprise, GitLab, or Forgejo/Codeberg
-* A hydrator system (e.g., [Argo CD Source Hydrator](https://argo-cd.readthedocs.io/en/stable/user-guide/source-hydrator/))
-
-
 ## Key Concepts
 
 * **DRY Branch** - Git branch containing config for all environments (e.g., `main`)
