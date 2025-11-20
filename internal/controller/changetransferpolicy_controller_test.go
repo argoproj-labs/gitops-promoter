@@ -419,6 +419,50 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 	})
 })
 
+var _ = Describe("tooManyPRsError", func() {
+	It("returns an error listing all PR numbers if 3 or fewer", func() {
+		prList := &promoterv1alpha1.PullRequestList{
+			Items: []promoterv1alpha1.PullRequest{
+				{Status: promoterv1alpha1.PullRequestStatus{ID: "101"}},
+				{Status: promoterv1alpha1.PullRequestStatus{ID: "102"}},
+				{Status: promoterv1alpha1.PullRequestStatus{ID: "103"}},
+			},
+		}
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ProposedBranch: "feature/foo",
+				ActiveBranch:   "main",
+			},
+		}
+		err := tooManyPRsError(prList, ctp)
+		Expect(err).To(HaveOccurred())
+		msg := err.Error()
+		Expect(msg).To(Equal(`found more than one open PullRequest (101, 102, 103) from branch "feature/foo" to branch "main", this is not expected`))
+	})
+
+	It("returns an error listing first 3 PR numbers and count of remaining if more than 3", func() {
+		prList := &promoterv1alpha1.PullRequestList{
+			Items: []promoterv1alpha1.PullRequest{
+				{Status: promoterv1alpha1.PullRequestStatus{ID: "201"}},
+				{Status: promoterv1alpha1.PullRequestStatus{ID: "202"}},
+				{Status: promoterv1alpha1.PullRequestStatus{ID: "203"}},
+				{Status: promoterv1alpha1.PullRequestStatus{ID: "204"}},
+				{Status: promoterv1alpha1.PullRequestStatus{ID: "205"}},
+			},
+		}
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{
+			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+				ProposedBranch: "feature/bar",
+				ActiveBranch:   "main",
+			},
+		}
+		err := tooManyPRsError(prList, ctp)
+		Expect(err).To(HaveOccurred())
+		msg := err.Error()
+		Expect(msg).To(Equal(`found more than one open PullRequest (201, 202, 203 and 2 more) from branch "feature/bar" to branch "main", this is not expected`))
+	})
+})
+
 //nolint:unparam
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))

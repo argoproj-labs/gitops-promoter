@@ -699,7 +699,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	}
 
 	if len(pr.Items) > 1 {
-		return fmt.Errorf("found more than one PullRequest for ChangeTransferPolicy %q, this is not expected", ctp.Name)
+		return tooManyPRsError(pr, ctp)
 	}
 
 	if ctp.Status.PullRequest == nil {
@@ -711,6 +711,20 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	ctp.Status.PullRequest.Url = pr.Items[0].Status.Url
 
 	return nil
+}
+
+// tooManyPRsError constructs an error indicating that there are too many open pull requests for the CTP.
+func tooManyPRsError(pr *promoterv1alpha1.PullRequestList, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	prNumbers := make([]string, 0, len(pr.Items))
+	for _, prItem := range pr.Items {
+		prNumbers = append(prNumbers, prItem.Status.ID)
+	}
+	// Only show the first 3 PR numbers and then indicate how many more there are
+	summary := strings.Join(prNumbers, ", ")
+	if len(prNumbers) > 3 {
+		summary = strings.Join(prNumbers[:3], ", ") + fmt.Sprintf(" and %d more", len(prNumbers)-3)
+	}
+	return fmt.Errorf("found more than one open PullRequest (%s) from branch %q to branch %q, this is not expected", summary, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 }
 
 // mergeOrPullRequestPromote checks if there's anything to promote and, if there is, it does the promotion. It returns
