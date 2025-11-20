@@ -183,7 +183,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 
 	_, err = pr.runGitCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
 	if err != nil {
-		return err //nolint:wrapcheck // Error wrapping handled at top level
+		return err
 	}
 
 	_, err = pr.runGitCmd(ctx, gitPath, "push")
