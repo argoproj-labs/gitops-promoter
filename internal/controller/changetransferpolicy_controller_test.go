@@ -419,6 +419,38 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 	})
 })
 
+var _ = Describe("tooManyPRsError", func() {
+	It("returns an error listing all PR names if 3 or fewer", func() {
+		prList := &promoterv1alpha1.PullRequestList{
+			Items: []promoterv1alpha1.PullRequest{
+				{ObjectMeta: metav1.ObjectMeta{Name: "pr-101"}, Status: promoterv1alpha1.PullRequestStatus{ID: "101"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pr-102"}, Status: promoterv1alpha1.PullRequestStatus{ID: "102"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pr-103"}, Status: promoterv1alpha1.PullRequestStatus{ID: "103"}},
+			},
+		}
+		err := tooManyPRsError(prList)
+		Expect(err).To(HaveOccurred())
+		msg := err.Error()
+		Expect(msg).To(Equal("found more than one open PullRequest: pr-101, pr-102, pr-103"))
+	})
+
+	It("returns an error listing first 3 PR names and count of remaining if more than 3", func() {
+		prList := &promoterv1alpha1.PullRequestList{
+			Items: []promoterv1alpha1.PullRequest{
+				{ObjectMeta: metav1.ObjectMeta{Name: "pr-201"}, Status: promoterv1alpha1.PullRequestStatus{ID: "201"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pr-202"}, Status: promoterv1alpha1.PullRequestStatus{ID: "202"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pr-203"}, Status: promoterv1alpha1.PullRequestStatus{ID: "203"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pr-204"}, Status: promoterv1alpha1.PullRequestStatus{ID: "204"}},
+				{ObjectMeta: metav1.ObjectMeta{Name: "pr-205"}, Status: promoterv1alpha1.PullRequestStatus{ID: "205"}},
+			},
+		}
+		err := tooManyPRsError(prList)
+		Expect(err).To(HaveOccurred())
+		msg := err.Error()
+		Expect(msg).To(Equal("found more than one open PullRequest: pr-201, pr-202, pr-203 and 2 more"))
+	})
+})
+
 //nolint:unparam
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
