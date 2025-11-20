@@ -36,7 +36,7 @@ When a commit is made to the DRY branch, the hydrator pushes hydrated manifests 
 
 ![GitOps Promoter Architecture](docs/assets/architecture.png)
 
-For a detailed architecture explanation, see [Architecture Documentation](docs/architecture.md).
+For a detailed architecture explanation, see [Architecture Documentation](https://gitops-promoter.readthedocs.io/en/latest/architecture/).
 
 ## Key Concepts
 
@@ -55,8 +55,8 @@ GitOps Promoter supports flexible promotion gating through:
 
 ### Built-in Controllers
 
-* **[ArgoCD Health Status](docs/commit-status-controllers/argocd.md)** - Gates promotion based on Argo CD Application health
-* **[Timed Commit Status](docs/commit-status-controllers/timed.md)** - Enforces soak/bake time requirements
+* **[ArgoCD Health Status](https://gitops-promoter.readthedocs.io/en/latest/commit-status-controllers/argocd/)** - Gates promotion based on Argo CD Application health
+* **[Timed Commit Status](https://gitops-promoter.readthedocs.io/en/latest/commit-status-controllers/timed/)** - Enforces soak/bake time requirements
 
 ### Branch Protection Rules
 
@@ -97,22 +97,22 @@ We welcome contributions to add support for additional providers!
 
 GitOps Promoter provides first-class Argo CD integration:
 
-* **[UI Extension](docs/argocd-integrations.md#ui-extension)** - Custom resource views in Argo CD UI
-* **[Deep Links](docs/argocd-integrations.md#deep-links)** - Direct links from Argo CD to PRs
-* **[Commit Status Labels](docs/argocd-integrations.md#commit-status-keys-in-resource-tree)** - Show status keys in resource tree
-* **[Health Monitoring](docs/commit-status-controllers/argocd.md)** - Automatic health-based promotion gating
+* **[UI Extension](https://gitops-promoter.readthedocs.io/en/latest/argocd-integrations/#ui-extension)** - Custom resource views in Argo CD UI
+* **[Deep Links](https://gitops-promoter.readthedocs.io/en/latest/argocd-integrations/#deep-links)** - Direct links from Argo CD to PRs
+* **[Commit Status Labels](https://gitops-promoter.readthedocs.io/en/latest/argocd-integrations/#commit-status-keys-in-resource-tree)** - Show status keys in resource tree
+* **[Health Monitoring](https://gitops-promoter.readthedocs.io/en/latest/commit-status-controllers/argocd/)** - Automatic health-based promotion gating
 
 ## Documentation
 
 * [Full Documentation](https://gitops-promoter.readthedocs.io/)
 * [Getting Started](https://gitops-promoter.readthedocs.io/en/latest/getting-started/)
-* [Architecture](docs/architecture.md)
-* [CRD Specifications](docs/crd-specs.md)
-* [Gating Promotions](docs/gating-promotions.md)
-* [Multi-Tenancy](docs/multi-tenancy.md)
-* [Tool Comparison](docs/tool-comparison.md)
-* [FAQs](docs/faqs.md)
-* [Monitoring](docs/monitoring/)
+* [Architecture](https://gitops-promoter.readthedocs.io/en/latest/architecture/)
+* [CRD Specifications](https://gitops-promoter.readthedocs.io/en/latest/crd-specs/)
+* [Gating Promotions](https://gitops-promoter.readthedocs.io/en/latest/gating-promotions/)
+* [Multi-Tenancy](https://gitops-promoter.readthedocs.io/en/latest/multi-tenancy/)
+* [Tool Comparison](https://gitops-promoter.readthedocs.io/en/latest/tool-comparison/)
+* [FAQs](https://gitops-promoter.readthedocs.io/en/latest/faqs/)
+* [Monitoring](https://gitops-promoter.readthedocs.io/en/latest/monitoring/)
 
 ## Videos & Presentations
 
