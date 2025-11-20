@@ -428,13 +428,7 @@ var _ = Describe("tooManyPRsError", func() {
 				{ObjectMeta: metav1.ObjectMeta{Name: "pr-103"}, Status: promoterv1alpha1.PullRequestStatus{ID: "103"}},
 			},
 		}
-		ctp := &promoterv1alpha1.ChangeTransferPolicy{
-			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
-				ProposedBranch: "feature/foo",
-				ActiveBranch:   "main",
-			},
-		}
-		err := tooManyPRsError(prList, ctp)
+		err := tooManyPRsError(prList)
 		Expect(err).To(HaveOccurred())
 		msg := err.Error()
 		Expect(msg).To(Equal("found more than one open PullRequest: pr-101, pr-102, pr-103"))
@@ -450,13 +444,7 @@ var _ = Describe("tooManyPRsError", func() {
 				{ObjectMeta: metav1.ObjectMeta{Name: "pr-205"}, Status: promoterv1alpha1.PullRequestStatus{ID: "205"}},
 			},
 		}
-		ctp := &promoterv1alpha1.ChangeTransferPolicy{
-			Spec: promoterv1alpha1.ChangeTransferPolicySpec{
-				ProposedBranch: "feature/bar",
-				ActiveBranch:   "main",
-			},
-		}
-		err := tooManyPRsError(prList, ctp)
+		err := tooManyPRsError(prList)
 		Expect(err).To(HaveOccurred())
 		msg := err.Error()
 		Expect(msg).To(Equal("found more than one open PullRequest: pr-201, pr-202, pr-203 and 2 more"))
