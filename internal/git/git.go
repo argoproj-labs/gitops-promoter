@@ -200,10 +200,16 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 		return v1alpha1.CommitShaState{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
 	}
 
+	// Use the HTTPS URL from the SCM provider instead of the repoURL from hydrator.metadata
+	// to ensure compatibility with the UI which expects HTTP(S) URLs. ArgoCD may use SSH URLs
+	// in its hydrator.metadata which won't work for creating web links.
+	// Strip the .git suffix as the UI appends /commit/{sha} directly.
+	httpsRepoURL := strings.TrimSuffix(g.gap.GetGitHttpsRepoUrl(*g.gitRepo), ".git")
+
 	commitState := v1alpha1.CommitShaState{
 		Sha:        hydratorFile.DrySha,
 		CommitTime: hydratorFile.Date,
-		RepoURL:    hydratorFile.RepoURL,
+		RepoURL:    httpsRepoURL,
 		Author:     hydratorFile.Author,
 		Subject:    hydratorFile.Subject,
 		Body:       hydratorFile.Body,
