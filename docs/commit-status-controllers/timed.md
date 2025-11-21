@@ -148,12 +148,12 @@ spec:
     - branch: environment/development
       duration: 30m
     
-    # Staging: Deploy during business hours after 4-hour soak
+    # Staging: Deploy during business hours only after 2-hour soak
     - branch: environment/staging
-      duration: 4h
+      duration: 2h
       schedule:
-        cron: "0 9-17 * * 1-5"    # Hourly from 9 AM-5 PM weekdays
-        window: "30m"              # 30-minute window each hour
+        cron: "0 9 * * 1-5"       # 9 AM Monday-Friday
+        window: "8h"               # 9 AM - 5 PM deployment window
     
     # Production: Deploy only during afternoon window after 24-hour soak
     - branch: environment/production
@@ -165,7 +165,7 @@ spec:
 
 This configuration ensures:
 - Development can deploy anytime after a 30-minute soak
-- Staging deploys only during business hours (every hour from 9 AM-5 PM weekdays) after a 4-hour soak
+- Staging deploys only during business hours (9 AM-5 PM weekdays) after a 2-hour soak
 - Production deploys only in the afternoon window (2 PM-4 PM weekdays) after a full 24-hour soak
 - All environments require passing Argo CD health checks
 - All promotions require passing CI tests
