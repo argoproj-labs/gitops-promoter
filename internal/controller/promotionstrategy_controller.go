@@ -271,8 +271,7 @@ func (r *PromotionStrategyReconciler) cleanupOrphanedChangeTransferPolicies(ctx 
 			return fmt.Errorf("failed to delete orphaned ChangeTransferPolicy %q: %w", ctp.Name, err)
 		}
 
-		r.Recorder.Eventf(ps, "Normal", constants.OrphanedCTPDeletedReason,
-			constants.OrphanedCTPDeletedMessage, ctp.Name)
+		r.Recorder.Eventf(ps, "Normal", constants.OrphanedCTPDeletedReason, constants.OrphanedCTPDeletedMessage, ctp.Name)
 	}
 
 	return nil
