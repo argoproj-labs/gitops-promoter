@@ -88,11 +88,15 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		return nil, errors.New("state field missing or invalid type in Bitbucket API response")
 	}
 
+	// Extract uuid
+	uuid, ok := resultMap["uuid"].(string)
+	if !ok {
+		return nil, errors.New("uuid field missing or invalid type in Bitbucket API response")
+	}
+
 	commitStatus.Status.Phase = buildStateToPhase(state)
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
-
-	// Bitbucket doesn't return an ID for commit statuses, use key as identifier
-	commitStatus.Status.Id = commitStatus.Spec.Name
+	commitStatus.Status.Id = uuid
 
 	return commitStatus, nil
 }
