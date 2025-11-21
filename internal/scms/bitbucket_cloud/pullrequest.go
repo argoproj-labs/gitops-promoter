@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ktrysmt/go-bitbucket"
@@ -65,26 +64,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 
 	start := time.Now()
 	resp, err := pr.client.Repositories.PullRequests.Create(options)
-
-	// The Bitbucket client doesn't return HTTP response metadata, so we parse
-	// the error message to determine status codes (e.g., "400 Bad Request")
-	statusCode := http.StatusCreated
-	if err != nil {
-		statusCode = http.StatusInternalServerError
-		var bbErr *bitbucket.UnexpectedResponseStatusError
-		if errors.As(err, &bbErr) {
-			errMsg := bbErr.Error()
-			switch {
-			case strings.HasPrefix(errMsg, "400"):
-				statusCode = http.StatusBadRequest
-			case strings.HasPrefix(errMsg, "401"):
-				statusCode = http.StatusUnauthorized
-			default:
-				statusCode = http.StatusInternalServerError
-			}
-		}
-	}
-
+	statusCode := parseErrorStatusCode(err, http.StatusCreated)
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
 	if err != nil {
@@ -135,28 +115,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 
 	start := time.Now()
 	_, err = pr.client.Repositories.PullRequests.Update(options)
-
-	// The Bitbucket client doesn't return HTTP response metadata, so we parse
-	// the error message to determine status codes (e.g., "400 Bad Request")
-	statusCode := http.StatusOK
-	if err != nil {
-		statusCode = http.StatusInternalServerError
-		var bbErr *bitbucket.UnexpectedResponseStatusError
-		if errors.As(err, &bbErr) {
-			errMsg := bbErr.Error()
-			switch {
-			case strings.HasPrefix(errMsg, "400"):
-				statusCode = http.StatusBadRequest
-			case strings.HasPrefix(errMsg, "401"):
-				statusCode = http.StatusUnauthorized
-			case strings.HasPrefix(errMsg, "404"):
-				statusCode = http.StatusNotFound
-			default:
-				statusCode = http.StatusInternalServerError
-			}
-		}
-	}
-
+	statusCode := parseErrorStatusCode(err, http.StatusOK)
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
 
 	if err != nil {
@@ -189,21 +148,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 
 	start := time.Now()
 	_, err = pr.client.Repositories.PullRequests.Decline(options)
-
-	// The Bitbucket client doesn't return HTTP response metadata, so we parse
-	// the error message to determine status codes (e.g., "400 Bad Request")
-	statusCode := http.StatusOK
-	if err != nil {
-		statusCode = http.StatusInternalServerError
-		var bbErr *bitbucket.UnexpectedResponseStatusError
-		if errors.As(err, &bbErr) {
-			errMsg := bbErr.Error()
-			if strings.HasPrefix(errMsg, "555") {
-				statusCode = http.StatusInternalServerError
-			}
-		}
-	}
-
+	statusCode := parseErrorStatusCode(err, http.StatusOK)
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
 
 	if err != nil {
@@ -237,26 +182,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 
 	start := time.Now()
 	_, err = pr.client.Repositories.PullRequests.Merge(options)
-
-	// The Bitbucket client doesn't return HTTP response metadata, so we parse
-	// the error message to determine status codes (e.g., "400 Bad Request")
-	statusCode := http.StatusOK
-	if err != nil {
-		statusCode = http.StatusInternalServerError
-		var bbErr *bitbucket.UnexpectedResponseStatusError
-		if errors.As(err, &bbErr) {
-			errMsg := bbErr.Error()
-			switch {
-			case strings.HasPrefix(errMsg, "409"):
-				statusCode = http.StatusConflict
-			case strings.HasPrefix(errMsg, "555"):
-				statusCode = http.StatusInternalServerError
-			default:
-				statusCode = http.StatusInternalServerError
-			}
-		}
-	}
-
+	statusCode := parseErrorStatusCode(err, http.StatusOK)
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
 
 	if err != nil {
@@ -297,25 +223,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 
 	start := time.Now()
 	result, err := pr.client.Repositories.PullRequests.Gets(options)
-
-	// Parse error message to determine status code
-	statusCode := http.StatusOK
-	if err != nil {
-		statusCode = http.StatusInternalServerError
-		var bbErr *bitbucket.UnexpectedResponseStatusError
-		if errors.As(err, &bbErr) {
-			errMsg := bbErr.Error()
-			switch {
-			case strings.HasPrefix(errMsg, "401"):
-				statusCode = http.StatusUnauthorized
-			case strings.HasPrefix(errMsg, "404"):
-				statusCode = http.StatusNotFound
-			default:
-				statusCode = http.StatusInternalServerError
-			}
-		}
-	}
-
+	statusCode := parseErrorStatusCode(err, http.StatusOK)
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 
 	if err != nil {

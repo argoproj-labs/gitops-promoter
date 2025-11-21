@@ -2,10 +2,8 @@ package bitbucket_cloud
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/ktrysmt/go-bitbucket"
@@ -68,25 +66,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		commitOptions,
 		commitStatusOptions,
 	)
-
-	// Parse error message to determine status code
-	statusCode := http.StatusCreated
-	if err != nil {
-		statusCode = http.StatusInternalServerError
-		var bbErr *bitbucket.UnexpectedResponseStatusError
-		if errors.As(err, &bbErr) {
-			errMsg := bbErr.Error()
-			switch {
-			case strings.HasPrefix(errMsg, "401"):
-				statusCode = http.StatusUnauthorized
-			case strings.HasPrefix(errMsg, "404"):
-				statusCode = http.StatusNotFound
-			default:
-				statusCode = http.StatusInternalServerError
-			}
-		}
-	}
-
+	statusCode := parseErrorStatusCode(err, http.StatusCreated)
 	metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
 	if err != nil {
