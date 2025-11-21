@@ -206,8 +206,6 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 	// Strip the .git suffix as the UI appends /commit/{sha} directly.
 	httpsRepoURL := strings.TrimSuffix(g.gap.GetGitHttpsRepoUrl(*g.gitRepo), ".git")
 
-	// References are used as-is from hydrator.metadata. The CI/hydration process that generates
-	// the hydrator.metadata file should ensure references use HTTPS URLs without .git suffix.
 	commitState := v1alpha1.CommitShaState{
 		Sha:        hydratorFile.DrySha,
 		CommitTime: hydratorFile.Date,
