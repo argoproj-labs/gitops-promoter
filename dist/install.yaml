@@ -4763,6 +4763,9 @@ spec:
                             Required when cron is provided.
                           type: string
                       type: object
+                      x-kubernetes-validations:
+                      - message: cron and window must be provided together
+                        rule: has(self.cron) == has(self.window)
                   required:
                   - branch
                   type: object
