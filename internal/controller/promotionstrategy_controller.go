@@ -34,6 +34,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -270,8 +271,8 @@ func (r *PromotionStrategyReconciler) cleanupOrphanedChangeTransferPolicies(ctx 
 			return fmt.Errorf("failed to delete orphaned ChangeTransferPolicy %q: %w", ctp.Name, err)
 		}
 
-		r.Recorder.Eventf(ps, "Normal", "OrphanedCTPDeleted",
-			"Deleted orphaned ChangeTransferPolicy %q", ctp.Name)
+		r.Recorder.Eventf(ps, "Normal", constants.OrphanedCTPDeletedReason,
+			constants.OrphanedCTPDeletedMessage, ctp.Name)
 	}
 
 	return nil

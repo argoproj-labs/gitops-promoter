@@ -45,6 +45,7 @@ All resources may produce the following events:
 
 | Event Type | Event Reason                            | Description                                                                                                                               |
 |------------|-----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| Normal     | OrphanedCTPDeleted                      | An orphaned [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) was deleted after environment changes (e.g., branch rename).     |
 | Warning    | ChangeTransferPolicyNotReady            | One or more of the [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) resources managed by this PromotionStrategy is not Ready. |
 | Warning    | PreviousEnvironmentCommitStatusNotReady | One or more of the active [CommitStatus](../crd-specs.md#commitstatus) resources for the previous environment is not Ready.               |
 
