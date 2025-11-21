@@ -492,7 +492,7 @@ func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context,
 	case scmProvider.GetSpec().Forgejo != nil:
 		logger.V(4).Info("Creating Forgejo git authentication provider")
 		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), nil
-	case scmProvider.GetSpec().Bitbucket != nil:
+	case scmProvider.GetSpec().BitbucketCloud != nil:
 		logger.V(4).Info("Creating Bitbucket Cloud git authentication provider")
 		provider, err := bitbucket_cloud.NewBitbucketCloudGitAuthenticationProvider(scmProvider, secret)
 		if err != nil {

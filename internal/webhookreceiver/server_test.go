@@ -59,7 +59,7 @@ var _ = Describe("DetectProvider", func() {
 			headers: map[string]string{
 				"X-Hook-UUID": "12345-abcde",
 			},
-			expectedResult: webhookreceiver.ProviderBitbucket,
+			expectedResult: webhookreceiver.ProviderBitbucketCloud,
 		},
 		"Unknown provider - no headers": {
 			headers:        map[string]string{},

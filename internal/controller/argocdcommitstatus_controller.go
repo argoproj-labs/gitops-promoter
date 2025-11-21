@@ -738,7 +738,7 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 			return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create GitLab client: %w", err)
 		}
 		return gitlabClient, ps.Spec.RepositoryReference, nil
-	case scmProvider.GetSpec().Bitbucket != nil:
+	case scmProvider.GetSpec().BitbucketCloud != nil:
 		logger.V(4).Info("Creating Bitbucket Cloud git authentication provider")
 		bitbucketClient, err := bitbucket_cloud.NewBitbucketCloudGitAuthenticationProvider(scmProvider, secret)
 		if err != nil {

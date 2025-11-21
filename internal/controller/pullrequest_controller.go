@@ -286,7 +286,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 		return github.NewGithubPullRequestProvider(ctx, r.Client, scmProvider, *secret, gitRepository.Spec.GitHub.Owner) //nolint:wrapcheck
 	case scmProvider.GetSpec().GitLab != nil:
 		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck
-	case scmProvider.GetSpec().Bitbucket != nil:
+	case scmProvider.GetSpec().BitbucketCloud != nil:
 		return bitbucket_cloud.NewBitbucketCloudPullRequestProvider(r.Client, *secret) //nolint:wrapcheck
 	case scmProvider.GetSpec().Forgejo != nil:
 		return forgejo.NewForgejoPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Forgejo.Domain) //nolint:wrapcheck

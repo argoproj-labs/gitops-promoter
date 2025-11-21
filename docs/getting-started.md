@@ -219,11 +219,11 @@ spec:
     name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
 ```
 
-## Bitbucket Configuration
+## Bitbucket Cloud Configuration
 
-To configure the GitOps Promoter with Bitbucket, you will need to create a repository access token with the appropriate permissions and configure the necessary resources to allow the promoter to interact with your repository.
+To configure the GitOps Promoter with Bitbucket Cloud, you will need to create a repository access token with the appropriate permissions and configure the necessary resources to allow the promoter to interact with your repository.
 
-### Creating a Bitbucket Repository Access Token
+### Creating a Bitbucket Cloud Repository Access Token
 
 1. Navigate to your repository URL
 2. Click on "Repository settings" in the sidebar
@@ -237,8 +237,8 @@ To configure the GitOps Promoter with Bitbucket, you will need to create a repos
 ### Webhooks (Optional - but highly recommended)
 
 > [!NOTE]
-> We do support configuration of a Bitbucket webhook that triggers PR creation upon Push. However, we do not configure
-> the ingress to allow Bitbucket to reach the GitOps Promoter. You will need to configure the ingress to allow Bitbucket to reach
+> We do support configuration of a Bitbucket Cloud webhook that triggers PR creation upon Push. However, we do not configure
+> the ingress to allow Bitbucket Cloud to reach the GitOps Promoter. You will need to configure the ingress to allow Bitbucket Cloud to reach
 > the GitOps Promoter via the service promoter-webhook-receiver which listens on port `3333`. If you do not use webhooks
 > you might want to adjust the auto reconciliation interval to a lower value using these `promotionStrategyRequeueDuration` and
 > `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
@@ -305,14 +305,14 @@ metadata:
 spec:
   secretRef:
     name: <your-secret-name>
-  bitbucket: {}
+  bitbucketCloud: {}
 ---
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: GitRepository
 metadata:
   name: <git-repository-ref-name>
 spec:
-  bitbucket:
+  bitbucketCloud:
     workspace: <workspace-name>
     repository: <repo-name>
   scmProviderRef:

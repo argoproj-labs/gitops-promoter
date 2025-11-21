@@ -31,7 +31,7 @@ import (
 var ScmProviderKind = reflect.TypeOf(ScmProvider{}).Name()
 
 // ScmProviderSpec defines the desired state of ScmProvider
-// +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;fake
+// +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;bitbucketCloud;fake
 type ScmProviderSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -48,8 +48,8 @@ type ScmProviderSpec struct {
 	// Forgejo required configuration for Forgejo as the SCM provider
 	Forgejo *Forgejo `json:"forgejo,omitempty"`
 
-	// Bitbucket required configuration for Bitbucket Cloud as the SCM provider
-	Bitbucket *Bitbucket `json:"bitbucket,omitempty"`
+	// BitbucketCloud required configuration for Bitbucket Cloud as the SCM provider
+	BitbucketCloud *BitbucketCloud `json:"bitbucketCloud,omitempty"`
 
 	// Fake required configuration for Fake as the SCM provider
 	Fake *Fake `json:"fake,omitempty"`

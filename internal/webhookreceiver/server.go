@@ -23,11 +23,11 @@ var logger = ctrl.Log.WithName("webhookReceiver")
 
 // Provider type constants
 const (
-	ProviderGitHub    = "github"
-	ProviderGitLab    = "gitlab"
-	ProviderForgejo   = "forgejo"
-	ProviderBitbucket = "bitbucket"
-	ProviderUnknown   = ""
+	ProviderGitHub         = "github"
+	ProviderGitLab         = "gitlab"
+	ProviderForgejo        = "forgejo"
+	ProviderBitbucketCloud = "bitbucketCloud"
+	ProviderUnknown        = ""
 )
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
@@ -76,7 +76,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 }
 
 // DetectProvider determines the SCM provider based on webhook headers.
-// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderBitbucket, or ProviderUnknown.
+// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderBitbucketCloud, or ProviderUnknown.
 func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for GitHub webhook headers
 	if r.Header.Get("X-Github-Event") != "" || r.Header.Get("X-Github-Delivery") != "" {
@@ -95,7 +95,7 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 
 	// Check for Bitbucket Cloud webhook headers
 	if r.Header.Get("X-Hook-Uuid") != "" {
-		return ProviderBitbucket
+		return ProviderBitbucketCloud
 	}
 
 	return ProviderUnknown
@@ -199,7 +199,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
 			ref = gjson.GetBytes(jsonBytes, "ref").String()
 		}
-	case ProviderBitbucket:
+	case ProviderBitbucketCloud:
 		// Bitbucket Cloud webhook format
 		if gjson.GetBytes(jsonBytes, "push.changes").Exists() && gjson.GetBytes(jsonBytes, "actor").Exists() {
 			changes := gjson.GetBytes(jsonBytes, "push.changes")

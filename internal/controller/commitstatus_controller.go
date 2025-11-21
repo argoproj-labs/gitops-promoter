@@ -164,7 +164,7 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 			return nil, fmt.Errorf("failed to get GitLab provider for domain %q with secret %q: %w", scmProvider.GetSpec().GitLab.Domain, secret.Name, err)
 		}
 		return p, nil
-	case scmProvider.GetSpec().Bitbucket != nil:
+	case scmProvider.GetSpec().BitbucketCloud != nil:
 		var p *bitbucket_cloud.CommitStatus
 		p, err = bitbucket_cloud.NewBitbucketCloudCommitStatusProvider(r.Client, *secret, "")
 		if err != nil {
