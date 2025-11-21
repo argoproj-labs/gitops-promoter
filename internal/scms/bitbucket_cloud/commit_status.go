@@ -2,6 +2,7 @@ package bitbucket_cloud
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -82,7 +83,10 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	}
 
 	// Extract state
-	state, _ := resultMap["state"].(string)
+	state, ok := resultMap["state"].(string)
+	if !ok {
+		return nil, errors.New("state field missing or invalid type in Bitbucket API response")
+	}
 
 	commitStatus.Status.Phase = buildStateToPhase(state)
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
