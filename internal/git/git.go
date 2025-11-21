@@ -58,58 +58,6 @@ type HydratorMetadata struct {
 	References []v1alpha1.RevisionReference `json:"references,omitempty"`
 }
 
-// ConvertSSHToHTTPS converts SSH-style Git URLs to HTTPS format for web viewing.
-// Handles common Git SSH URL formats:
-//   - git@github.com:owner/repo.git -> https://github.com/owner/repo
-//   - ssh://git@github.com/owner/repo.git -> https://github.com/owner/repo
-//
-// The .git suffix is stripped as the UI appends /commit/{sha} directly to construct commit URLs.
-// Returns the input unchanged (minus .git) if it's already an HTTPS URL or doesn't match known patterns.
-func ConvertSSHToHTTPS(repoURL string) string {
-	if repoURL == "" {
-		return ""
-	}
-
-	var converted string
-
-	// Already HTTPS or HTTP - just strip .git suffix
-	if strings.HasPrefix(repoURL, "http://") || strings.HasPrefix(repoURL, "https://") {
-		return strings.TrimSuffix(repoURL, ".git")
-	}
-
-	// Handle git@host:path format (most common SSH format)
-	if strings.HasPrefix(repoURL, "git@") {
-		// git@github.com:owner/repo.git
-		parts := strings.SplitN(repoURL, ":", 2)
-		if len(parts) == 2 {
-			host := strings.TrimPrefix(parts[0], "git@")
-			converted = "https://" + host + "/" + parts[1]
-			return strings.TrimSuffix(converted, ".git")
-		}
-	}
-
-	// Handle ssh://git@host/path format
-	if strings.HasPrefix(repoURL, "ssh://git@") {
-		// ssh://git@github.com/owner/repo.git
-		converted = strings.Replace(repoURL, "ssh://git@", "https://", 1)
-		return strings.TrimSuffix(converted, ".git")
-	}
-
-	// Handle ssh://user@host/path format (less common)
-	if strings.HasPrefix(repoURL, "ssh://") {
-		// ssh://user@github.com/owner/repo.git
-		withoutSSH := strings.TrimPrefix(repoURL, "ssh://")
-		// Find the @ symbol and replace up to it
-		if atIndex := strings.Index(withoutSSH, "@"); atIndex != -1 {
-			converted = "https://" + withoutSSH[atIndex+1:]
-			return strings.TrimSuffix(converted, ".git")
-		}
-	}
-
-	// Return unchanged (minus .git) if we don't recognize the format
-	return strings.TrimSuffix(repoURL, ".git")
-}
-
 // NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter is used to differentiate
 // between different environments that might use the same GitRepository and avoid conflicts between concurrent
 // operations.
@@ -258,20 +206,8 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 	// Strip the .git suffix as the UI appends /commit/{sha} directly.
 	httpsRepoURL := strings.TrimSuffix(g.gap.GetGitHttpsRepoUrl(*g.gitRepo), ".git")
 
-	// Convert any SSH URLs in references to HTTPS for UI compatibility
-	references := make([]v1alpha1.RevisionReference, len(hydratorFile.References))
-	for i, ref := range hydratorFile.References {
-		if ref.Commit != nil && ref.Commit.RepoURL != "" {
-			convertedRef := *ref.Commit
-			convertedRef.RepoURL = ConvertSSHToHTTPS(ref.Commit.RepoURL)
-			references[i] = v1alpha1.RevisionReference{
-				Commit: &convertedRef,
-			}
-		} else {
-			references[i] = ref
-		}
-	}
-
+	// References are used as-is from hydrator.metadata. The CI/hydration process that generates
+	// the hydrator.metadata file should ensure references use HTTPS URLs without .git suffix.
 	commitState := v1alpha1.CommitShaState{
 		Sha:        hydratorFile.DrySha,
 		CommitTime: hydratorFile.Date,
@@ -279,7 +215,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 		Author:     hydratorFile.Author,
 		Subject:    hydratorFile.Subject,
 		Body:       hydratorFile.Body,
-		References: references,
+		References: hydratorFile.References,
 	}
 
 	return commitState, nil
