@@ -98,9 +98,11 @@ type ForgejoRepo struct {
 type BitbucketRepo struct {
 	// Workspace is the workspace of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Workspace string `json:"workspace"`
 	// Repository is the repository of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Repository string `json:"repository"`
 }
 

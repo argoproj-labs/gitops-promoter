@@ -52,9 +52,11 @@ spec:
                 properties:
                   repository:
                     description: Repository is the repository of the repository.
+                    minLength: 1
                     type: string
                   workspace:
                     description: Workspace is the workspace of the repository.
+                    minLength: 1
                     type: string
                 required:
                 - repository
