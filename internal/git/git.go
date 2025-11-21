@@ -60,18 +60,21 @@ type HydratorMetadata struct {
 
 // ConvertSSHToHTTPS converts SSH-style Git URLs to HTTPS format for web viewing.
 // Handles common Git SSH URL formats:
-//   - git@github.com:owner/repo.git -> https://github.com/owner/repo.git
-//   - ssh://git@github.com/owner/repo.git -> https://github.com/owner/repo.git
+//   - git@github.com:owner/repo.git -> https://github.com/owner/repo
+//   - ssh://git@github.com/owner/repo.git -> https://github.com/owner/repo
 //
-// Returns the input unchanged if it's already an HTTPS URL or doesn't match known patterns.
+// The .git suffix is stripped as the UI appends /commit/{sha} directly to construct commit URLs.
+// Returns the input unchanged (minus .git) if it's already an HTTPS URL or doesn't match known patterns.
 func ConvertSSHToHTTPS(repoURL string) string {
 	if repoURL == "" {
 		return ""
 	}
 
-	// Already HTTPS or HTTP
+	var converted string
+
+	// Already HTTPS or HTTP - just strip .git suffix
 	if strings.HasPrefix(repoURL, "http://") || strings.HasPrefix(repoURL, "https://") {
-		return repoURL
+		return strings.TrimSuffix(repoURL, ".git")
 	}
 
 	// Handle git@host:path format (most common SSH format)
@@ -80,14 +83,16 @@ func ConvertSSHToHTTPS(repoURL string) string {
 		parts := strings.SplitN(repoURL, ":", 2)
 		if len(parts) == 2 {
 			host := strings.TrimPrefix(parts[0], "git@")
-			return "https://" + host + "/" + parts[1]
+			converted = "https://" + host + "/" + parts[1]
+			return strings.TrimSuffix(converted, ".git")
 		}
 	}
 
 	// Handle ssh://git@host/path format
 	if strings.HasPrefix(repoURL, "ssh://git@") {
 		// ssh://git@github.com/owner/repo.git
-		return strings.Replace(repoURL, "ssh://git@", "https://", 1)
+		converted = strings.Replace(repoURL, "ssh://git@", "https://", 1)
+		return strings.TrimSuffix(converted, ".git")
 	}
 
 	// Handle ssh://user@host/path format (less common)
@@ -96,12 +101,13 @@ func ConvertSSHToHTTPS(repoURL string) string {
 		withoutSSH := strings.TrimPrefix(repoURL, "ssh://")
 		// Find the @ symbol and replace up to it
 		if atIndex := strings.Index(withoutSSH, "@"); atIndex != -1 {
-			return "https://" + withoutSSH[atIndex+1:]
+			converted = "https://" + withoutSSH[atIndex+1:]
+			return strings.TrimSuffix(converted, ".git")
 		}
 	}
 
-	// Return unchanged if we don't recognize the format
-	return repoURL
+	// Return unchanged (minus .git) if we don't recognize the format
+	return strings.TrimSuffix(repoURL, ".git")
 }
 
 // NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter is used to differentiate
@@ -249,7 +255,8 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 	// Use the HTTPS URL from the SCM provider instead of the repoURL from hydrator.metadata
 	// to ensure compatibility with the UI which expects HTTP(S) URLs. ArgoCD may use SSH URLs
 	// in its hydrator.metadata which won't work for creating web links.
-	httpsRepoURL := g.gap.GetGitHttpsRepoUrl(*g.gitRepo)
+	// Strip the .git suffix as the UI appends /commit/{sha} directly.
+	httpsRepoURL := strings.TrimSuffix(g.gap.GetGitHttpsRepoUrl(*g.gitRepo), ".git")
 
 	// Convert any SSH URLs in references to HTTPS for UI compatibility
 	references := make([]v1alpha1.RevisionReference, len(hydratorFile.References))
