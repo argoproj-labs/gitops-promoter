@@ -1,4 +1,5 @@
 import path from 'path';
+import {codecovWebpackPlugin} from "@codecov/webpack-plugin";
 
 export default {
   entry: './index.tsx',
@@ -32,5 +33,12 @@ export default {
       },
     ],
   },
+  plugins: [
+    codecovWebpackPlugin({
+        enableBundleAnalysis: process.env.CODECOV_TOKEN !== undefined,
+        bundleName: "argocd-ui-extension",
+        uploadToken: process.env.CODECOV_TOKEN,
+    }),
+  ],
   mode: 'production',
 }; 

@@ -29,7 +29,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/multicluster-runtime/pkg/controller"
 
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
@@ -329,6 +332,11 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotio
 				return map[string][]*aggregate{}, errors.New("all applications must have the same repo configured")
 			}
 
+			// Check that TargetBranch is not empty
+			if application.Spec.SourceHydrator.SyncSource.TargetBranch == "" {
+				return map[string][]*aggregate{}, fmt.Errorf("application %s/%s spec.sourceHydrator.syncSource.targetBranch must not be empty", application.GetNamespace(), application.GetName())
+			}
+
 			aggregateItem := &aggregate{
 				application: &application,
 			}
@@ -439,21 +447,29 @@ func getMostRecentLastTransitionTime(aggregateItem []*aggregate) *metav1.Time {
 func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchandler.TypedEventHandlerFunc[client.Object, mcreconcile.Request] {
 	return func(clusterName string, cl cluster.Cluster) handler.TypedEventHandler[client.Object, mcreconcile.Request] {
 		return handler.TypedEnqueueRequestsFromMapFunc(func(ctx context.Context, argoCDApplication client.Object) []mcreconcile.Request {
+			metrics.ApplicationWatchEventsHandled.Inc()
+
 			logger := log.FromContext(ctx)
 
 			application := &argocd.Application{}
-
-			// fetch the ArgoCDApplication from the cluster
-			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
-				logger.Error(err, "failed to get ArgoCDApplication")
-				return nil
-			}
 
 			// if clusterName is empty, then cluster == local cluster
 			appKey := appRevisionKey{
 				clusterName: clusterName,
 				namespace:   application.GetNamespace(),
 				name:        application.GetName(),
+			}
+
+			// fetch the ArgoCDApplication from the cluster
+			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
+				if k8s_errors.IsNotFound(err) {
+					rwMutex.Lock()
+					delete(revMap, appKey)
+					rwMutex.Unlock()
+					return nil
+				}
+				logger.Error(err, "failed to get ArgoCDApplication")
+				return nil
 			}
 
 			rwMutex.RLock()
@@ -465,9 +481,11 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 				return nil
 			}
 
-			rwMutex.Lock()
-			revMap[appKey] = application.Status.Sync.Revision
-			rwMutex.Unlock()
+			if appRef != application.Status.Sync.Revision {
+				rwMutex.Lock()
+				revMap[appKey] = application.Status.Sync.Revision
+				rwMutex.Unlock()
+			}
 
 			// lookup the ArgoCDCommitStatus objects in the local cluster
 			var argoCDCommitStatusList promoterv1alpha1.ArgoCDCommitStatusList
@@ -535,16 +553,57 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 			mcbuilder.WithEngageWithProviderClusters(false),
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
-		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: maxConcurrentReconciles,
+			RateLimiter:             rateLimiter,
+			UsePriorityQueue:        ptr.To(true),
+		}).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
-			mcbuilder.WithEngageWithProviderClusters(true)).
+			mcbuilder.WithEngageWithProviderClusters(true),
+			mcbuilder.WithPredicates(applicationPredicate())).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 
 	return nil
+}
+
+// applicationPredicate returns a predicate that filters Argo CD Application events.
+// It only allows events through when relevant fields have changed (health status, sync status, or revision).
+func applicationPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			// Always process new applications
+			return true
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldApp, oldOk := e.ObjectOld.(*argocd.Application)
+			newApp, newOk := e.ObjectNew.(*argocd.Application)
+
+			if !oldOk || !newOk {
+				// If we can't assert the types, let it through to be safe
+				return true
+			}
+
+			// Only process updates when relevant fields have changed
+			healthChanged := oldApp.Status.Health.Status != newApp.Status.Health.Status
+			syncChanged := oldApp.Status.Sync.Status != newApp.Status.Sync.Status
+			revisionChanged := oldApp.Status.Sync.Revision != newApp.Status.Sync.Revision
+			lastTransitionTimeChanged := !oldApp.Status.Health.LastTransitionTime.Equal(newApp.Status.Health.LastTransitionTime)
+
+			return healthChanged || syncChanged || revisionChanged || lastTransitionTimeChanged
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			// Process deletions
+			return true
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			// Process generic events
+			return true
+		},
+	}
 }
 
 // updateAggregatedCommitStatus creates or updates a CommitStatus object for the given target branch and sha.

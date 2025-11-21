@@ -3,8 +3,10 @@ package fake
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
@@ -172,15 +174,27 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		return fmt.Errorf("source branch HEAD SHA %q does not match expected merge SHA %q", actualSha, pullRequest.Spec.MergeSha)
 	}
 
+	// Get the SHA of the target branch before merging - this is the "before" SHA for the webhook
+	beforeSha, err := pr.runGitCmd(ctx, gitPath, "rev-parse", "origin/"+pullRequest.Spec.TargetBranch)
+	if err != nil {
+		return fmt.Errorf("failed to get SHA of target branch before merge: %w", err)
+	}
+	beforeSha = strings.TrimSpace(beforeSha)
+
 	_, err = pr.runGitCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+pullRequest.Spec.SourceBranch, "-m", pullRequest.Spec.Commit.Message)
 	if err != nil {
-		return fmt.Errorf("failed to merge branch: %w", err)
+		return err
 	}
 
 	_, err = pr.runGitCmd(ctx, gitPath, "push")
 	if err != nil {
 		return err
 	}
+
+	// Send webhook after merge to simulate SCM provider webhook behavior
+	// The webhook uses the "before" SHA (target branch SHA before the merge)
+	// The new findChangeTransferPolicy code will search by active.hydrated.sha as fallback
+	pr.sendWebhook(ctx, pullRequest, beforeSha)
 
 	mutexPR.Lock()
 	defer mutexPR.Unlock()
@@ -223,6 +237,63 @@ func (pr *PullRequest) findOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 
 func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name string) string {
 	return fmt.Sprintf("%s/%s/%s/%s", owner, name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
+}
+
+// sendWebhook sends a webhook after a PR merge to simulate SCM provider webhook behavior
+func (pr *PullRequest) sendWebhook(ctx context.Context, pullRequest v1alpha1.PullRequest, beforeSha string) {
+	// Get the webhook receiver port from the test environment
+	// This matches the port calculation in suite_test.go
+	webhookReceiverPort := 8082 + ginkgov2.GinkgoParallelProcess()
+
+	// Build GitHub-style webhook payload with the beforeSha (SHA before the merge)
+	payload := pr.buildGitHubWebhookPayload(beforeSha, "refs/heads/"+pullRequest.Spec.TargetBranch)
+
+	// Send the webhook request
+	webhookURL := fmt.Sprintf("http://localhost:%d/", webhookReceiverPort)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewBufferString(payload))
+	if err != nil {
+		// Don't fail the merge if webhook fails - log it instead
+		fmt.Printf("Failed to create webhook request after PR merge: %v\n", err)
+		return
+	}
+
+	// Set GitHub webhook headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Github-Event", "push")
+	req.Header.Set("X-Github-Delivery", fmt.Sprintf("pr-merge-delivery-%d", time.Now().Unix()))
+
+	// Send the request
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		// Don't fail the merge if webhook fails - log it instead
+		fmt.Printf("Failed to send webhook request after PR merge: %v\n", err)
+		return
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusNoContent {
+		fmt.Printf("Webhook receiver returned unexpected status code after PR merge: %d\n", resp.StatusCode)
+	}
+}
+
+// buildGitHubWebhookPayload builds a GitHub-style push webhook payload
+func (pr *PullRequest) buildGitHubWebhookPayload(beforeSha, ref string) string {
+	payload := map[string]any{
+		"before": beforeSha,
+		"ref":    ref,
+		"pusher": map[string]any{
+			"name": "fake-scm",
+		},
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		fmt.Printf("Failed to marshal webhook payload: %v\n", err)
+		return "{}"
+	}
+	return string(payloadBytes)
 }
 
 func (pr *PullRequest) runGitCmd(ctx context.Context, gitPath string, args ...string) (string, error) {

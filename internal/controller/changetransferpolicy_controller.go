@@ -685,11 +685,14 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 
 func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	pr := &promoterv1alpha1.PullRequestList{}
-	err := r.List(ctx, pr, &client.ListOptions{LabelSelector: labels.SelectorFromSet(map[string]string{
-		promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-		promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-		promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-	})})
+	err := r.List(ctx, pr, &client.ListOptions{
+		Namespace: ctp.Namespace,
+		LabelSelector: labels.SelectorFromSet(map[string]string{
+			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+		}),
+	})
 	if err != nil {
 		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %q status update: %w", ctp.Name, err)
 	}
@@ -699,7 +702,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	}
 
 	if len(pr.Items) > 1 {
-		return fmt.Errorf("found more than one PullRequest for ChangeTransferPolicy %q, this is not expected", ctp.Name)
+		return tooManyPRsError(pr)
 	}
 
 	if ctp.Status.PullRequest == nil {
@@ -711,6 +714,20 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	ctp.Status.PullRequest.Url = pr.Items[0].Status.Url
 
 	return nil
+}
+
+// tooManyPRsError constructs an error indicating that there are too many open pull requests for the CTP.
+func tooManyPRsError(pr *promoterv1alpha1.PullRequestList) error {
+	prNames := make([]string, 0, len(pr.Items))
+	for _, prItem := range pr.Items {
+		prNames = append(prNames, prItem.Name)
+	}
+	// Only show the first 3 PR names and then indicate how many more there are
+	summary := strings.Join(prNames, ", ")
+	if len(prNames) > 3 {
+		summary = strings.Join(prNames[:3], ", ") + fmt.Sprintf(" and %d more", len(prNames)-3)
+	}
+	return fmt.Errorf("found more than one open PullRequest: %s", summary)
 }
 
 // mergeOrPullRequestPromote checks if there's anything to promote and, if there is, it does the promotion. It returns
@@ -874,6 +891,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	prl := promoterv1alpha1.PullRequestList{}
 	// Find the PRs that match the proposed commit and the environment. There should only be one.
 	err := r.List(ctx, &prl, &client.ListOptions{
+		Namespace: ctp.Namespace,
 		LabelSelector: labels.SelectorFromSet(map[string]string{
 			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
 			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
@@ -885,7 +903,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	}
 
 	if len(prl.Items) > 1 {
-		return nil, fmt.Errorf("more than one PullRequest found for ChangeTransferPolicy %s and Environment %s", ctp.Name, ctp.Spec.ActiveBranch)
+		return nil, tooManyPRsError(&prl)
 	}
 
 	if len(prl.Items) != 1 {

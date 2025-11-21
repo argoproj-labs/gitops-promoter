@@ -66,7 +66,7 @@ Connect with this password for the `admin` user.
 > See [Getting Started](./getting-started.md)
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.16.0/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.18.2/install.yaml
 ```
 
 > [!NOTE]
@@ -77,6 +77,12 @@ kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/downl
 ### Create a fork
 
 Argo provides an example repository: [https://github.com/argoproj/argocd-example-apps](https://github.com/argoproj/argocd-example-apps). Fork it!
+
+> [!IMPORTANT]
+> Make sure your staging branches (`environment/development-next`, `environment/staging-next`, etc.) are not auto-deleted
+> when PRs are merged. You can do this either by disabling auto-deletion of branches in the repository settings (in
+> Settings > Automatically delete head branches) or by adding a branch protection rule for a matching pattern such as
+> `environment/*-next` (`/` characters are separators in GitHub's glob implementation, so `*-next` will not work).
 
 ### Create a GitHub application
 
@@ -91,7 +97,7 @@ Fill up the form with the following (leave non specified to defaults):
 | GitHub App name                                        | A unique name of your choice (unique across the whole world) |
 | Homepage URL                                           | The URL of your profile                                      |
 | Webhook > Active                                       | False                                                        |
-| Permissions > Repository Permissions > Commit statuses | Read and write                                               |
+| Permissions > Repository Permissions > Checks          | Read and write                                               |
 | Permissions > Repository Permissions > Content         | Read and write                                               |
 | Permissions > Repository Permissions > Pull requests   | Read and write                                               |
 

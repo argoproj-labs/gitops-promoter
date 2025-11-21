@@ -32,6 +32,9 @@ type CommitStatusSpec struct {
 	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^[a-fA-F0-9]+$`
 	Sha string `json:"sha"`
 
 	// +kubebuilder:validation:Required
@@ -63,7 +66,7 @@ type CommitStatusStatus struct {
 	Id  string `json:"id"`
 	Sha string `json:"sha"`
 	// +kubebuilder:default:=pending
-	// +kubebuilder:validation:Enum:=pending;success;failure;
+	// +kubebuilder:validation:Enum:=pending;success;failure;""
 	// +kubebuilder:validation:Optional
 	Phase CommitStatusPhase `json:"phase,omitempty"`
 

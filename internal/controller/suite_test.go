@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"go.uber.org/zap/zapcore"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -71,21 +72,22 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
-	cfg              *rest.Config
-	cfgDev           *rest.Config
-	cfgStaging       *rest.Config
-	k8sClient        client.Client
-	k8sClientDev     client.Client
-	k8sClientStaging client.Client
-	testEnv          *envtest.Environment
-	testEnvDev       *envtest.Environment
-	testEnvStaging   *envtest.Environment
-	gitServer        *http.Server
-	gitStoragePath   string
-	cancel           context.CancelFunc
-	ctx              context.Context
-	gitServerPort    string
-	scheme           = utils.GetScheme()
+	cfg                 *rest.Config
+	cfgDev              *rest.Config
+	cfgStaging          *rest.Config
+	k8sClient           client.Client
+	k8sClientDev        client.Client
+	k8sClientStaging    client.Client
+	testEnv             *envtest.Environment
+	testEnvDev          *envtest.Environment
+	testEnvStaging      *envtest.Environment
+	gitServer           *http.Server
+	gitStoragePath      string
+	cancel              context.CancelFunc
+	ctx                 context.Context
+	gitServerPort       string
+	webhookReceiverPort int
+	scheme              = utils.GetScheme()
 )
 
 func TestControllers(t *testing.T) {
@@ -134,7 +136,11 @@ var _ = BeforeSuite(func() {
 		Namespace:             constants.KubeconfigSecretNamespace,
 		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
 		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
-		Scheme:                scheme,
+		ClusterOptions: []cluster.Option{
+			func(clusterOptions *cluster.Options) {
+				clusterOptions.Scheme = scheme
+			},
+		},
 	})
 
 	//nolint:fatcontext
@@ -390,7 +396,7 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, multiClusterManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	webhookReceiverPort := constants.WebhookReceiverPort + GinkgoParallelProcess()
+	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
 	whr := webhookreceiver.NewWebhookReceiver(k8sManager)
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
@@ -403,7 +409,49 @@ var _ = BeforeSuite(func() {
 		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
 	}()
 
+	// Wait for the manager's cache to sync before running tests
+	// This ensures that watch handlers are ready and won't miss early resource creation events
+	By("waiting for cache to sync")
+	cache := k8sManager.GetCache()
+	Eventually(func() bool {
+		return cache.WaitForCacheSync(ctx)
+	}, constants.EventuallyTimeout).Should(BeTrue(), "k8sManager cache should sync")
+
+	cache = multiClusterManager.GetLocalManager().GetCache()
+	Eventually(func() bool {
+		return cache.WaitForCacheSync(ctx)
+	}, constants.EventuallyTimeout).Should(BeTrue(), "local cache should sync")
+
+	// Wait for kubeconfig provider to discover remote clusters
 	Eventually(kubeconfigProvider.ListClusters, constants.EventuallyTimeout).Should(HaveLen(2))
+
+	// Wait for remote cluster caches to sync as well
+	By("waiting for remote cluster caches to sync")
+	for _, clusterName := range kubeconfigProvider.ListClusters() {
+		cluster, err := multiClusterManager.GetCluster(ctx, clusterName)
+		Expect(err).ToNot(HaveOccurred(), "should be able to get cluster %s", clusterName)
+		Eventually(func() bool {
+			return cluster.GetCache().WaitForCacheSync(ctx)
+		}, constants.EventuallyTimeout).Should(BeTrue(), "cache for cluster %s should sync", clusterName)
+	}
+
+	// Wait for ArgoCDCommitStatus informer to be ready
+	// The general cache sync above only ensures Application informers are ready (from Watches()).
+	// We need to explicitly verify the ArgoCDCommitStatus informer (from For()) is ready.
+	// This informer is created during mgr.Engage(), which happens AFTER setCluster() adds
+	// the cluster to ListClusters(). There's a small window where ListClusters() shows the
+	// cluster but Engage() hasn't completed yet, meaning the ArgoCDCommitStatus informer
+	// doesn't exist. This wait ensures Engage() has completed and the informer is usable.
+	//
+	// IMPORTANT: We must use the multiClusterManager's cached client here, not k8sClient.
+	// k8sClient is a direct API client (created via client.New()) that bypasses caches entirely.
+	// Using the cached client ensures List() only succeeds when the informer actually exists.
+	By("waiting for ArgoCDCommitStatus informer to be ready")
+	Eventually(func() error {
+		list := &promoterv1alpha1.ArgoCDCommitStatusList{}
+		return multiClusterManager.GetLocalManager().GetClient().List(ctx, list)
+	}, constants.EventuallyTimeout, 100*time.Millisecond).Should(Succeed(),
+		"ArgoCDCommitStatus informer should be ready before tests run")
 })
 
 var _ = AfterSuite(func() {
@@ -505,7 +553,7 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{"environment/development", "environment/staging", "environment/production"} {
+	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "--orphan", environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "rm", "-rf", "--ignore-unmatch", ".")
@@ -627,7 +675,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	_, err = runGitCmd(ctx, gitPath, "config", "pull.rebase", "false")
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{"environment/development", "environment/staging", "environment/production", "environment/development-next", "environment/staging-next", "environment/production-next"} {
+	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction, "environment/development-next", "environment/staging-next", "environment/production-next"} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "pull")
@@ -640,6 +688,11 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 
 	_, err = runGitCmd(ctx, gitPath, "checkout", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
+
+	// Get the SHA before we make changes - this is the "before" SHA for the webhook
+	beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
+	Expect(err).NotTo(HaveOccurred())
+	beforeSha = strings.TrimSpace(beforeSha)
 
 	f, err := os.Create(path.Join(gitPath, "manifests-fake.yaml"))
 	Expect(err).NotTo(HaveOccurred())
@@ -658,6 +711,9 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
+	// Send webhook after push with the "before" SHA that the CTP knows about
+	sendWebhookForPush(ctx, beforeSha, defaultBranch)
+
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	sha = strings.TrimSpace(sha)
@@ -669,6 +725,11 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 
+		// Get the SHA before we make changes - this is the "before" SHA for the webhook
+		beforeBranchSha, err := runGitCmd(ctx, gitPath, "rev-parse", environment)
+		Expect(err).NotTo(HaveOccurred())
+		beforeBranchSha = strings.TrimSpace(beforeBranchSha)
+
 		var subject string
 		var body string
 		parts := strings.SplitN(dryCommitMessage, "\n\n", 2)
@@ -678,7 +739,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 		}
 
 		metadata := git.HydratorMetadata{
-			RepoURL: repoURL,
+			RepoURL: "", // This is not used anywhere, we use the SCM provider's HTTPS URL instead
 			DrySha:  sha,
 			Author:  "testuser <testmail@test.com>",
 			Date:    metav1.Now(),
@@ -727,6 +788,9 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
 
+		// Send webhook after push with the "before" SHA that the CTP knows about
+		sendWebhookForPush(ctx, beforeBranchSha, environment)
+
 		// Sleep one seconds to differentiate the commits to prevent same hash
 		time.Sleep(1 * time.Second)
 	}
@@ -737,7 +801,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 func makeChangeAndHydrateRepoNoOp(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
 	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
 
-	for _, environment := range []string{"environment/development", "environment/staging", "environment/production", "environment/development-next", "environment/staging-next", "environment/production-next"} {
+	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction, "environment/development-next", "environment/staging-next", "environment/production-next"} {
 		_, err := runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "pull")
@@ -754,6 +818,11 @@ func makeChangeAndHydrateRepoNoOp(gitPath string, repoOwner string, repoName str
 	_, err = runGitCmd(ctx, gitPath, "pull")
 	Expect(err).NotTo(HaveOccurred())
 
+	// Get the SHA before we make changes - this is the "before" SHA for the webhook
+	beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
+	Expect(err).NotTo(HaveOccurred())
+	beforeSha = strings.TrimSpace(beforeSha)
+
 	// Make a no-op commit (empty commit)
 	if dryCommitMessage == "" {
 		dryCommitMessage = "no-op commit"
@@ -762,6 +831,9 @@ func makeChangeAndHydrateRepoNoOp(gitPath string, repoOwner string, repoName str
 	Expect(err).NotTo(HaveOccurred())
 	_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
+
+	// Send webhook after push to simulate SCM provider behavior
+	sendWebhookForPush(ctx, beforeSha, defaultBranch)
 
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
@@ -776,6 +848,11 @@ func makeChangeAndHydrateRepoNoOp(gitPath string, repoOwner string, repoName str
 
 		_, err = runGitCmd(ctx, gitPath, "pull")
 		Expect(err).NotTo(HaveOccurred())
+
+		// Get the SHA before we make changes - this is the "before" SHA for the webhook
+		beforeBranchSha, err := runGitCmd(ctx, gitPath, "rev-parse", environment)
+		Expect(err).NotTo(HaveOccurred())
+		beforeBranchSha = strings.TrimSpace(beforeBranchSha)
 
 		var subject string
 		var body string
@@ -813,6 +890,9 @@ func makeChangeAndHydrateRepoNoOp(gitPath string, repoOwner string, repoName str
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
+
+		// Send webhook after push with the "before" SHA that the CTP knows about
+		sendWebhookForPush(ctx, beforeBranchSha, environment)
 
 		// Sleep one seconds to differentiate the commits to prevent same hash
 		time.Sleep(1 * time.Second)
@@ -859,16 +939,55 @@ func randomString(length int) string {
 	return string(result)
 }
 
-func simulateWebhook(ctx context.Context, k8sClient client.Client, ctp *promoterv1alpha1.ChangeTransferPolicy) {
-	Eventually(func(g Gomega) {
-		orig := ctp.DeepCopy()
-		if ctp.Annotations == nil {
-			ctp.Annotations = make(map[string]string)
-		}
-		ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = metav1.Now().Format(time.RFC3339)
-		err := k8sClient.Patch(ctx, ctp, client.MergeFrom(orig))
-		Expect(err).To(Succeed())
-	}, constants.EventuallyTimeout).Should(Succeed())
+// buildGitHubWebhookPayload constructs a GitHub webhook payload for push events
+func buildGitHubWebhookPayload(beforeSha, ref string) string {
+	payload := map[string]any{
+		"before": beforeSha,
+		"ref":    ref,
+		"pusher": map[string]any{
+			"name":  "test-user",
+			"email": "test@example.com",
+		},
+	}
+	payloadBytes, err := json.Marshal(payload)
+	Expect(err).NotTo(HaveOccurred())
+	return string(payloadBytes)
+}
+
+// sendWebhookForPush sends a webhook after a git push to simulate SCM provider behavior
+func sendWebhookForPush(ctx context.Context, sha, branch string) {
+	// Build GitHub-style webhook payload
+	payload := buildGitHubWebhookPayload(sha, "refs/heads/"+branch)
+
+	// Send the webhook request
+	webhookURL := fmt.Sprintf("http://localhost:%d/", webhookReceiverPort)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewBufferString(payload))
+	if err != nil {
+		// Don't fail the test if webhook fails - log it instead
+		fmt.Printf("Failed to create webhook request: %v\n", err)
+		return
+	}
+
+	// Set GitHub webhook headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Github-Event", "push")
+	req.Header.Set("X-Github-Delivery", fmt.Sprintf("test-delivery-%d", time.Now().Unix()))
+
+	// Send the request
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		// Don't fail the test if webhook fails - log it instead
+		fmt.Printf("Failed to send webhook request: %v\n", err)
+		return
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusNoContent {
+		fmt.Printf("Webhook receiver returned unexpected status code: %d\n", resp.StatusCode)
+	}
 }
 
 func createKubeConfig(cfg *rest.Config) ([]byte, error) {

@@ -27,6 +27,7 @@ import (
 	"syscall"
 
 	"go.uber.org/zap/zapcore"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -149,7 +150,11 @@ func runController(
 		Namespace:             controllerNamespace,
 		KubeconfigSecretLabel: constants.KubeconfigSecretLabel,
 		KubeconfigSecretKey:   constants.KubeconfigSecretKey,
-		Scheme:                scheme,
+		ClusterOptions: []cluster.Option{
+			func(clusterOptions *cluster.Options) {
+				clusterOptions.Scheme = scheme
+			},
+		},
 	}
 
 	// Create the provider first, then the manager with the provider
