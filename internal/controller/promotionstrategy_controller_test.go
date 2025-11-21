@@ -3002,4 +3002,170 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 		})
 	})
+
+	Context("When environment branch names are changed", func() {
+		ctx := context.Background()
+
+		It("should cleanup orphaned ChangeTransferPolicies", func() {
+			By("Creating initial resources with environments/dev naming")
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "promotion-strategy-cleanup-test", "default")
+
+			// Setup git repo with branches using "environments" prefix (with typo)
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+
+			// Modify the PromotionStrategy to use "environments" prefix (simulating typo)
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{
+					Branch:    "environments/development",
+					AutoMerge: ptr.To(true),
+				},
+				{
+					Branch:    "environments/staging",
+					AutoMerge: ptr.To(true),
+				},
+				{
+					Branch:    "environments/production",
+					AutoMerge: ptr.To(true),
+				},
+			}
+
+			typeNamespacedName := types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			// Wait for initial CTPs to be created with wrong names
+			var oldCtpDevName string
+			var oldCtpStagingName string
+			var oldCtpProdName string
+
+			By("Waiting for initial ChangeTransferPolicies to be created")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				g.Expect(err).To(Succeed())
+
+				oldCtpDevName = utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, "environments/development"))
+				oldCtpStagingName = utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, "environments/staging"))
+				oldCtpProdName = utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, "environments/production"))
+
+				oldCtpDev := &promoterv1alpha1.ChangeTransferPolicy{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCtpDevName,
+					Namespace: "default",
+				}, oldCtpDev)
+				g.Expect(err).To(Succeed())
+
+				oldCtpStaging := &promoterv1alpha1.ChangeTransferPolicy{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCtpStagingName,
+					Namespace: "default",
+				}, oldCtpStaging)
+				g.Expect(err).To(Succeed())
+
+				oldCtpProd := &promoterv1alpha1.ChangeTransferPolicy{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCtpProdName,
+					Namespace: "default",
+				}, oldCtpProd)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Updating PromotionStrategy to fix branch names (environments -> environment)")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				g.Expect(err).To(Succeed())
+
+				// Fix the typo in branch names
+				promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+					{
+						Branch:    testEnvironmentDevelopment, // "environment/development"
+						AutoMerge: ptr.To(true),
+					},
+					{
+						Branch:    testEnvironmentStaging, // "environment/staging"
+						AutoMerge: ptr.To(true),
+					},
+					{
+						Branch:    testEnvironmentProduction, // "environment/production"
+						AutoMerge: ptr.To(true),
+					},
+				}
+
+				err = k8sClient.Update(ctx, promotionStrategy)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying new ChangeTransferPolicies are created with correct names")
+			newCtpDev := &promoterv1alpha1.ChangeTransferPolicy{}
+			newCtpStaging := &promoterv1alpha1.ChangeTransferPolicy{}
+			newCtpProd := &promoterv1alpha1.ChangeTransferPolicy{}
+
+			Eventually(func(g Gomega) {
+				newCtpDevName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentDevelopment))
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      newCtpDevName,
+					Namespace: "default",
+				}, newCtpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(newCtpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
+
+				newCtpStagingName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentStaging))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      newCtpStagingName,
+					Namespace: "default",
+				}, newCtpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(newCtpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+
+				newCtpProdName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentProduction))
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      newCtpProdName,
+					Namespace: "default",
+				}, newCtpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(newCtpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying old ChangeTransferPolicies are deleted")
+			Eventually(func(g Gomega) {
+				oldCtpDev := &promoterv1alpha1.ChangeTransferPolicy{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCtpDevName,
+					Namespace: "default",
+				}, oldCtpDev)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue(), "Old dev CTP should be deleted")
+
+				oldCtpStaging := &promoterv1alpha1.ChangeTransferPolicy{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCtpStagingName,
+					Namespace: "default",
+				}, oldCtpStaging)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue(), "Old staging CTP should be deleted")
+
+				oldCtpProd := &promoterv1alpha1.ChangeTransferPolicy{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCtpProdName,
+					Namespace: "default",
+				}, oldCtpProd)
+				g.Expect(errors.IsNotFound(err)).To(BeTrue(), "Old prod CTP should be deleted")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying only 3 ChangeTransferPolicies exist for this PromotionStrategy")
+			Eventually(func(g Gomega) {
+				ctpList := &promoterv1alpha1.ChangeTransferPolicyList{}
+				err := k8sClient.List(ctx, ctpList, client.InNamespace("default"), client.MatchingLabels{
+					promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(promotionStrategy.Name),
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpList.Items).To(HaveLen(3), "Should have exactly 3 CTPs after cleanup")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+		})
+	})
 })
