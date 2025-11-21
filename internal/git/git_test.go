@@ -23,6 +23,42 @@ func TestGit(t *testing.T) {
 	RunSpecs(t, "Git Suite")
 }
 
+var _ = Describe("ConvertSSHToHTTPS", func() {
+	It("converts git@host:path format to HTTPS", func() {
+		Expect(git.ConvertSSHToHTTPS("git@github.com:owner/repo.git")).
+			To(Equal("https://github.com/owner/repo.git"))
+		Expect(git.ConvertSSHToHTTPS("git@gitlab.com:namespace/subgroup/project.git")).
+			To(Equal("https://gitlab.com/namespace/subgroup/project.git"))
+		Expect(git.ConvertSSHToHTTPS("git@github.enterprise.com:owner/repo.git")).
+			To(Equal("https://github.enterprise.com/owner/repo.git"))
+	})
+
+	It("converts ssh://git@host/path format to HTTPS", func() {
+		Expect(git.ConvertSSHToHTTPS("ssh://git@github.com/owner/repo.git")).
+			To(Equal("https://github.com/owner/repo.git"))
+		Expect(git.ConvertSSHToHTTPS("ssh://git@gitlab.com/namespace/project.git")).
+			To(Equal("https://gitlab.com/namespace/project.git"))
+	})
+
+	It("leaves HTTPS URLs unchanged", func() {
+		Expect(git.ConvertSSHToHTTPS("https://github.com/owner/repo.git")).
+			To(Equal("https://github.com/owner/repo.git"))
+		Expect(git.ConvertSSHToHTTPS("http://gitlab.com/owner/repo.git")).
+			To(Equal("http://gitlab.com/owner/repo.git"))
+	})
+
+	It("handles empty strings", func() {
+		Expect(git.ConvertSSHToHTTPS("")).To(Equal(""))
+	})
+
+	It("returns unrecognized formats unchanged", func() {
+		Expect(git.ConvertSSHToHTTPS("file:///path/to/repo")).
+			To(Equal("file:///path/to/repo"))
+		Expect(git.ConvertSSHToHTTPS("git://github.com/owner/repo.git")).
+			To(Equal("git://github.com/owner/repo.git"))
+	})
+})
+
 // Helper function to run git commands
 func runGitCmd(dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(context.Background(), "git", args...)

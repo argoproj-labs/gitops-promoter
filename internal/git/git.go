@@ -58,6 +58,52 @@ type HydratorMetadata struct {
 	References []v1alpha1.RevisionReference `json:"references,omitempty"`
 }
 
+// ConvertSSHToHTTPS converts SSH-style Git URLs to HTTPS format for web viewing.
+// Handles common Git SSH URL formats:
+//   - git@github.com:owner/repo.git -> https://github.com/owner/repo.git
+//   - ssh://git@github.com/owner/repo.git -> https://github.com/owner/repo.git
+//
+// Returns the input unchanged if it's already an HTTPS URL or doesn't match known patterns.
+func ConvertSSHToHTTPS(repoURL string) string {
+	if repoURL == "" {
+		return ""
+	}
+
+	// Already HTTPS or HTTP
+	if strings.HasPrefix(repoURL, "http://") || strings.HasPrefix(repoURL, "https://") {
+		return repoURL
+	}
+
+	// Handle git@host:path format (most common SSH format)
+	if strings.HasPrefix(repoURL, "git@") {
+		// git@github.com:owner/repo.git
+		parts := strings.SplitN(repoURL, ":", 2)
+		if len(parts) == 2 {
+			host := strings.TrimPrefix(parts[0], "git@")
+			return "https://" + host + "/" + parts[1]
+		}
+	}
+
+	// Handle ssh://git@host/path format
+	if strings.HasPrefix(repoURL, "ssh://git@") {
+		// ssh://git@github.com/owner/repo.git
+		return strings.Replace(repoURL, "ssh://git@", "https://", 1)
+	}
+
+	// Handle ssh://user@host/path format (less common)
+	if strings.HasPrefix(repoURL, "ssh://") {
+		// ssh://user@github.com/owner/repo.git
+		withoutSSH := strings.TrimPrefix(repoURL, "ssh://")
+		// Find the @ symbol and replace up to it
+		if atIndex := strings.Index(withoutSSH, "@"); atIndex != -1 {
+			return "https://" + withoutSSH[atIndex+1:]
+		}
+	}
+
+	// Return unchanged if we don't recognize the format
+	return repoURL
+}
+
 // NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter is used to differentiate
 // between different environments that might use the same GitRepository and avoid conflicts between concurrent
 // operations.
@@ -200,14 +246,33 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 		return v1alpha1.CommitShaState{}, fmt.Errorf("could not unmarshal metadata file: %w", err)
 	}
 
+	// Use the HTTPS URL from the SCM provider instead of the repoURL from hydrator.metadata
+	// to ensure compatibility with the UI which expects HTTP(S) URLs. ArgoCD may use SSH URLs
+	// in its hydrator.metadata which won't work for creating web links.
+	httpsRepoURL := g.gap.GetGitHttpsRepoUrl(*g.gitRepo)
+
+	// Convert any SSH URLs in references to HTTPS for UI compatibility
+	references := make([]v1alpha1.RevisionReference, len(hydratorFile.References))
+	for i, ref := range hydratorFile.References {
+		if ref.Commit != nil && ref.Commit.RepoURL != "" {
+			convertedRef := *ref.Commit
+			convertedRef.RepoURL = ConvertSSHToHTTPS(ref.Commit.RepoURL)
+			references[i] = v1alpha1.RevisionReference{
+				Commit: &convertedRef,
+			}
+		} else {
+			references[i] = ref
+		}
+	}
+
 	commitState := v1alpha1.CommitShaState{
 		Sha:        hydratorFile.DrySha,
 		CommitTime: hydratorFile.Date,
-		RepoURL:    hydratorFile.RepoURL,
+		RepoURL:    httpsRepoURL,
 		Author:     hydratorFile.Author,
 		Subject:    hydratorFile.Subject,
 		Body:       hydratorFile.Body,
-		References: hydratorFile.References,
+		References: references,
 	}
 
 	return commitState, nil
