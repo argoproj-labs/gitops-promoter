@@ -98,6 +98,12 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		ctps[i] = ctp
 	}
 
+	// Clean up orphaned ChangeTransferPolicies that are no longer in the environment list
+	err = r.cleanupOrphanedChangeTransferPolicies(ctx, &ps, ctps)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned ChangeTransferPolicies: %w", err)
+	}
+
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
 	r.calculateStatus(&ps, ctps)
 
@@ -212,6 +218,63 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	logger.V(4).Info("CreateOrUpdate ChangeTransferPolicy result", "result", res)
 
 	return &ctp, nil
+}
+
+// cleanupOrphanedChangeTransferPolicies deletes ChangeTransferPolicies that are owned by this PromotionStrategy
+// but are not in the current list of valid CTPs (i.e., they correspond to removed or renamed environments).
+func (r *PromotionStrategyReconciler) cleanupOrphanedChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, validCtps []*promoterv1alpha1.ChangeTransferPolicy) error {
+	logger := log.FromContext(ctx)
+
+	// Create a set of valid CTP names for quick lookup
+	validCtpNames := make(map[string]bool)
+	for _, ctp := range validCtps {
+		validCtpNames[ctp.Name] = true
+	}
+
+	// List all CTPs in the namespace with the PromotionStrategy label
+	var ctpList promoterv1alpha1.ChangeTransferPolicyList
+	err := r.List(ctx, &ctpList, client.InNamespace(ps.Namespace), client.MatchingLabels{
+		promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list ChangeTransferPolicies: %w", err)
+	}
+
+	// Delete CTPs that are not in the valid list
+	for _, ctp := range ctpList.Items {
+		// Skip if this CTP is in the valid list
+		if validCtpNames[ctp.Name] {
+			continue
+		}
+
+		// Verify this CTP is owned by this PromotionStrategy before deleting
+		if !metav1.IsControlledBy(&ctp, ps) {
+			logger.V(4).Info("Skipping ChangeTransferPolicy not owned by this PromotionStrategy",
+				"ctpName", ctp.Name,
+				"promotionStrategy", ps.Name)
+			continue
+		}
+
+		// Delete the orphaned CTP
+		logger.Info("Deleting orphaned ChangeTransferPolicy",
+			"ctpName", ctp.Name,
+			"promotionStrategy", ps.Name,
+			"namespace", ps.Namespace)
+
+		if err := r.Delete(ctx, &ctp); err != nil {
+			if k8serrors.IsNotFound(err) {
+				// Already deleted, which is fine
+				logger.V(4).Info("ChangeTransferPolicy already deleted", "ctpName", ctp.Name)
+				continue
+			}
+			return fmt.Errorf("failed to delete orphaned ChangeTransferPolicy %q: %w", ctp.Name, err)
+		}
+
+		r.Recorder.Eventf(ps, "Normal", "OrphanedCTPDeleted",
+			"Deleted orphaned ChangeTransferPolicy %q", ctp.Name)
+	}
+
+	return nil
 }
 
 // calculateStatus calculates the status of the PromotionStrategy based on the ChangeTransferPolicies.
