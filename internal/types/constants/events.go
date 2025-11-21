@@ -31,8 +31,8 @@ const (
 	// CommitStatusSetReason indicates that a commit status has been set.
 	CommitStatusSetReason = "CommitStatusSet"
 
-	// OrphanedCTPDeletedReason indicates that an orphaned ChangeTransferPolicy has been deleted.
-	OrphanedCTPDeletedReason = "OrphanedChangeTransferPolicyDeleted"
-	// OrphanedCTPDeletedMessage is the message for a deleted orphaned ChangeTransferPolicy.
-	OrphanedCTPDeletedMessage = "Deleted orphaned ChangeTransferPolicy %s"
+	// OrphanedChangeTransferPolicyDeletedReason indicates that an orphaned ChangeTransferPolicy has been deleted.
+	OrphanedChangeTransferPolicyDeletedReason = "OrphanedChangeTransferPolicyDeleted"
+	// OrphanedChangeTransferPolicyDeletedMessage is the message for a deleted orphaned ChangeTransferPolicy.
+	OrphanedChangeTransferPolicyDeletedMessage = "Deleted orphaned ChangeTransferPolicy %s"
 )
