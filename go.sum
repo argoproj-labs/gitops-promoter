@@ -317,8 +317,8 @@ sigs.k8s.io/controller-runtime v0.22.4 h1:GEjV7KV3TY8e+tJ2LCTxUTanW4z/FmNB7l327U
 sigs.k8s.io/controller-runtime v0.22.4/go.mod h1:+QX1XUpTXN4mLoblf4tqr5CQcyHPAki2HLXqQMY6vh8=
 sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8 h1:gBQPwqORJ8d8/YNZWEjoZs7npUVDpVXUUOFfW6CgAqE=
 sigs.k8s.io/json v0.0.0-20241014173422-cfa47c3a1cc8/go.mod h1:mdzfpAEoE6DHQEN0uh9ZbOCuHbLK5wOm7dK4ctXE9Tg=
-sigs.k8s.io/multicluster-runtime v0.22.0-beta.0 h1:9NbjTISwohf5oLNWV96cWVISm/G4CzR8v5zOvnC/7nY=
-sigs.k8s.io/multicluster-runtime v0.22.0-beta.0/go.mod h1:4e/q1PCYE75S76Fd4nrPY3cbnj1TXjnjYfJ5ysQyaMw=
+sigs.k8s.io/multicluster-runtime v0.22.0-beta.0.0.20251110070641-9e8b8a8f362c h1:vXAiIZ0L+gG65dG0qivj2MEVII176vkqaEcZfuiL8HE=
+sigs.k8s.io/multicluster-runtime v0.22.0-beta.0.0.20251110070641-9e8b8a8f362c/go.mod h1:4e/q1PCYE75S76Fd4nrPY3cbnj1TXjnjYfJ5ysQyaMw=
 sigs.k8s.io/randfill v1.0.0 h1:JfjMILfT8A6RbawdsK2JXGBR5AQVfd+9TbzrlneTyrU=
 sigs.k8s.io/randfill v1.0.0/go.mod h1:XeLlZ/jmk4i1HRopwe7/aU3H5n1zNUcX6TM94b3QxOY=
 sigs.k8s.io/structured-merge-diff/v6 v6.3.0 h1:jTijUJbW353oVOd9oTlifJqOGEkUw2jB/fXCbTiQEco=

@@ -769,7 +769,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 		}
 
 		metadata := git.HydratorMetadata{
-			RepoURL: repoURL,
+			RepoURL: "", // This is not used anywhere, we use the SCM provider's HTTPS URL instead
 			DrySha:  sha,
 			Author:  "testuser <testmail@test.com>",
 			Date:    metav1.Now(),
