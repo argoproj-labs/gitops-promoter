@@ -334,6 +334,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Sending webhook request")
 				jsonStr := []byte(fmt.Sprintf(`{"before":"%s", "pusher":""}`, changeTransferPolicy.Status.Proposed.Hydrated.Sha))
 				req, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewBuffer(jsonStr))
+				Expect(err).NotTo(HaveOccurred())
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("X-Github-Event", "push")
 				req.Header.Set("X-Github-Delivery", "test-delivery-id")
