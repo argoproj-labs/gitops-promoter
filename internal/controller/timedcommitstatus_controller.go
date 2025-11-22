@@ -276,6 +276,8 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 
 // cleanupOrphanedCommitStatuses deletes CommitStatus resources that are owned by this TimedCommitStatus
 // but are not in the current list of valid CommitStatus resources (i.e., they correspond to removed or renamed environments).
+//
+//nolint:dupl // Similar to PromotionStrategy cleanup but works with different types
 func (r *TimedCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
 	logger := log.FromContext(ctx)
 
