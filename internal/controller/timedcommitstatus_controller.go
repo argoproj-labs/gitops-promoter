@@ -288,7 +288,7 @@ func (r *TimedCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.
 	// List all CommitStatus resources in the namespace with the TimedCommitStatus label
 	var commitStatusList promoterv1alpha1.CommitStatusList
 	err := r.List(ctx, &commitStatusList, client.InNamespace(tcs.Namespace), client.MatchingLabels{
-		"promoter.argoproj.io/timed-commit-status": utils.KubeSafeLabel(tcs.Name),
+		promoterv1alpha1.TimedCommitStatusLabel: utils.KubeSafeLabel(tcs.Name),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to list CommitStatus resources: %w", err)
@@ -363,7 +363,7 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 		if commitStatus.Labels == nil {
 			commitStatus.Labels = make(map[string]string)
 		}
-		commitStatus.Labels["promoter.argoproj.io/timed-commit-status"] = utils.KubeSafeLabel(tcs.Name)
+		commitStatus.Labels[promoterv1alpha1.TimedCommitStatusLabel] = utils.KubeSafeLabel(tcs.Name)
 		commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
 		commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = "timer"
 
