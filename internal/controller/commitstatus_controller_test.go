@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 //go:embed testdata/CommitStatus.yaml
@@ -227,353 +228,204 @@ var _ = Describe("CommitStatus Controller", func() {
 	Context("When creating a CommitStatus with URL validation", func() {
 		ctx := context.Background()
 
-		It("should accept a valid https URL", func() {
-			By("Creating a CommitStatus with a valid https URL")
+		Context("When validating https URL", func() {
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var commitStatus *promoterv1alpha1.CommitStatus
 
-			scmSecret := &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-valid-https-url",
-					Namespace: "default",
-				},
-				Data: nil,
-			}
+			BeforeEach(func() {
+				scmSecret, scmProvider, gitRepo, commitStatus = commitStatusResources(ctx, "test-valid-https-url")
+				commitStatus.Spec.Url = "https://example.com/status"
 
-			scmProvider := &promoterv1alpha1.ScmProvider{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-valid-https-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.ScmProviderSpec{
-					SecretRef: &v1.LocalObjectReference{Name: "test-valid-https-url"},
-					Fake:      &promoterv1alpha1.Fake{},
-				},
-			}
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+			})
 
-			gitRepo := &promoterv1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-valid-https-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.GitRepositorySpec{
-					Fake: &promoterv1alpha1.FakeRepo{
-						Owner: "test-owner",
-						Name:  "test-repo",
-					},
-					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-						Kind: promoterv1alpha1.ScmProviderKind,
-						Name: "test-valid-https-url",
-					},
-				},
-			}
+			AfterEach(func() {
+				By("Cleaning up resources")
+				Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
 
-			commitStatus := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-valid-https-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.CommitStatusSpec{
-					RepositoryReference: promoterv1alpha1.ObjectReference{
-						Name: "test-valid-https-url",
-					},
-					Sha:         "abc123",
-					Name:        "test-status",
-					Description: "test description",
-					Phase:       promoterv1alpha1.CommitPhasePending,
-					Url:         "https://example.com/status",
-				},
-			}
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
-
-			// Cleanup
-			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			It("should accept a valid https URL", func() {
+				By("Creating a CommitStatus with a valid https URL")
+				// Resource creation is in BeforeEach, validation happens automatically
+			})
 		})
 
-		It("should accept a valid http URL", func() {
-			By("Creating a CommitStatus with a valid http URL")
+		Context("When validating http URL", func() {
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var commitStatus *promoterv1alpha1.CommitStatus
 
-			scmSecret := &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-valid-http-url",
-					Namespace: "default",
-				},
-				Data: nil,
-			}
+			BeforeEach(func() {
+				scmSecret, scmProvider, gitRepo, commitStatus = commitStatusResources(ctx, "test-valid-http-url")
+				commitStatus.Spec.Url = "http://example.com/status"
 
-			scmProvider := &promoterv1alpha1.ScmProvider{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-valid-http-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.ScmProviderSpec{
-					SecretRef: &v1.LocalObjectReference{Name: "test-valid-http-url"},
-					Fake:      &promoterv1alpha1.Fake{},
-				},
-			}
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+			})
 
-			gitRepo := &promoterv1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-valid-http-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.GitRepositorySpec{
-					Fake: &promoterv1alpha1.FakeRepo{
-						Owner: "test-owner",
-						Name:  "test-repo",
-					},
-					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-						Kind: promoterv1alpha1.ScmProviderKind,
-						Name: "test-valid-http-url",
-					},
-				},
-			}
+			AfterEach(func() {
+				By("Cleaning up resources")
+				Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
 
-			commitStatus := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-valid-http-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.CommitStatusSpec{
-					RepositoryReference: promoterv1alpha1.ObjectReference{
-						Name: "test-valid-http-url",
-					},
-					Sha:         "abc123",
-					Name:        "test-status",
-					Description: "test description",
-					Phase:       promoterv1alpha1.CommitPhasePending,
-					Url:         "http://example.com/status",
-				},
-			}
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
-
-			// Cleanup
-			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			It("should accept a valid http URL", func() {
+				By("Creating a CommitStatus with a valid http URL")
+				// Resource creation is in BeforeEach, validation happens automatically
+			})
 		})
 
-		It("should accept an empty URL", func() {
-			By("Creating a CommitStatus with an empty URL")
+		Context("When validating empty URL", func() {
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var commitStatus *promoterv1alpha1.CommitStatus
 
-			scmSecret := &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-empty-url",
-					Namespace: "default",
-				},
-				Data: nil,
-			}
+			BeforeEach(func() {
+				scmSecret, scmProvider, gitRepo, commitStatus = commitStatusResources(ctx, "test-empty-url")
+				// URL is already empty by default, no need to set
 
-			scmProvider := &promoterv1alpha1.ScmProvider{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-empty-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.ScmProviderSpec{
-					SecretRef: &v1.LocalObjectReference{Name: "test-empty-url"},
-					Fake:      &promoterv1alpha1.Fake{},
-				},
-			}
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+			})
 
-			gitRepo := &promoterv1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-empty-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.GitRepositorySpec{
-					Fake: &promoterv1alpha1.FakeRepo{
-						Owner: "test-owner",
-						Name:  "test-repo",
-					},
-					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-						Kind: promoterv1alpha1.ScmProviderKind,
-						Name: "test-empty-url",
-					},
-				},
-			}
+			AfterEach(func() {
+				By("Cleaning up resources")
+				Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
 
-			commitStatus := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-empty-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.CommitStatusSpec{
-					RepositoryReference: promoterv1alpha1.ObjectReference{
-						Name: "test-empty-url",
-					},
-					Sha:         "abc123",
-					Name:        "test-status",
-					Description: "test description",
-					Phase:       promoterv1alpha1.CommitPhasePending,
-					Url:         "",
-				},
-			}
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
-
-			// Cleanup
-			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			It("should accept an empty URL", func() {
+				By("Creating a CommitStatus with an empty URL")
+				// Resource creation is in BeforeEach, validation happens automatically
+			})
 		})
 
-		It("should reject an invalid URL", func() {
-			By("Attempting to create a CommitStatus with an invalid URL")
+		Context("When validating invalid URL", func() {
+			It("should reject an invalid URL", func() {
+				By("Attempting to create a CommitStatus with an invalid URL")
 
-			scmSecret := &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-invalid-url",
-					Namespace: "default",
-				},
-				Data: nil,
-			}
+				scmSecret, scmProvider, gitRepo, commitStatus := commitStatusResources(ctx, "test-invalid-url")
+				commitStatus.Spec.Url = "not-a-valid-url"
 
-			scmProvider := &promoterv1alpha1.ScmProvider{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-invalid-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.ScmProviderSpec{
-					SecretRef: &v1.LocalObjectReference{Name: "test-invalid-url"},
-					Fake:      &promoterv1alpha1.Fake{},
-				},
-			}
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 
-			gitRepo := &promoterv1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-invalid-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.GitRepositorySpec{
-					Fake: &promoterv1alpha1.FakeRepo{
-						Owner: "test-owner",
-						Name:  "test-repo",
-					},
-					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-						Kind: promoterv1alpha1.ScmProviderKind,
-						Name: "test-invalid-url",
-					},
-				},
-			}
+				By("Verifying the create operation fails due to CEL validation")
+				err := k8sClient.Create(ctx, commitStatus)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("must be a valid URL"))
 
-			commitStatus := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-invalid-url",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.CommitStatusSpec{
-					RepositoryReference: promoterv1alpha1.ObjectReference{
-						Name: "test-invalid-url",
-					},
-					Sha:         "abc123",
-					Name:        "test-status",
-					Description: "test description",
-					Phase:       promoterv1alpha1.CommitPhasePending,
-					Url:         "not-a-valid-url",
-				},
-			}
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-
-			By("Verifying the create operation fails due to CEL validation")
-			err := k8sClient.Create(ctx, commitStatus)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("must be a valid URL"))
-
-			// Cleanup
-			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+				// Cleanup
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
 		})
 
-		It("should reject a URL with an invalid scheme", func() {
-			By("Attempting to create a CommitStatus with ftp:// scheme")
+		Context("When validating URL scheme", func() {
+			It("should reject a URL with an invalid scheme", func() {
+				By("Attempting to create a CommitStatus with ftp:// scheme")
 
-			scmSecret := &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-invalid-scheme",
-					Namespace: "default",
-				},
-				Data: nil,
-			}
+				scmSecret, scmProvider, gitRepo, commitStatus := commitStatusResources(ctx, "test-invalid-scheme")
+				commitStatus.Spec.Url = "ftp://example.com/status"
 
-			scmProvider := &promoterv1alpha1.ScmProvider{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-invalid-scheme",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.ScmProviderSpec{
-					SecretRef: &v1.LocalObjectReference{Name: "test-invalid-scheme"},
-					Fake:      &promoterv1alpha1.Fake{},
-				},
-			}
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 
-			gitRepo := &promoterv1alpha1.GitRepository{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-invalid-scheme",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.GitRepositorySpec{
-					Fake: &promoterv1alpha1.FakeRepo{
-						Owner: "test-owner",
-						Name:  "test-repo",
-					},
-					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-						Kind: promoterv1alpha1.ScmProviderKind,
-						Name: "test-invalid-scheme",
-					},
-				},
-			}
+				By("Verifying the create operation fails due to pattern validation")
+				err := k8sClient.Create(ctx, commitStatus)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Or(
+					ContainSubstring("must be a valid URL"),
+					ContainSubstring("in body should match"),
+				))
 
-			commitStatus := &promoterv1alpha1.CommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-invalid-scheme",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.CommitStatusSpec{
-					RepositoryReference: promoterv1alpha1.ObjectReference{
-						Name: "test-invalid-scheme",
-					},
-					Sha:         "abc123",
-					Name:        "test-status",
-					Description: "test description",
-					Phase:       promoterv1alpha1.CommitPhasePending,
-					Url:         "ftp://example.com/status",
-				},
-			}
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-
-			By("Verifying the create operation fails due to pattern validation")
-			err := k8sClient.Create(ctx, commitStatus)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Or(
-				ContainSubstring("must be a valid URL"),
-				ContainSubstring("in body should match"),
-			))
-
-			// Cleanup
-			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+				// Cleanup
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
 		})
 	})
 })
+
+// commitStatusResources creates all the resources needed for a CommitStatus test
+// Returns: name (with random suffix), scmSecret, scmProvider, gitRepo, commitStatus
+// Note: URL is set to empty by default and can be customized in tests
+func commitStatusResources(ctx context.Context, name string) (*v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus) {
+	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
+
+	scmSecret := &v1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "default",
+		},
+		Data: nil,
+	}
+
+	scmProvider := &promoterv1alpha1.ScmProvider{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "default",
+		},
+		Spec: promoterv1alpha1.ScmProviderSpec{
+			SecretRef: &v1.LocalObjectReference{Name: name},
+			Fake:      &promoterv1alpha1.Fake{},
+		},
+	}
+
+	gitRepo := &promoterv1alpha1.GitRepository{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "default",
+		},
+		Spec: promoterv1alpha1.GitRepositorySpec{
+			Fake: &promoterv1alpha1.FakeRepo{
+				Owner: "test-owner",
+				Name:  "test-repo",
+			},
+			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
+				Kind: promoterv1alpha1.ScmProviderKind,
+				Name: name,
+			},
+		},
+	}
+
+	commitStatus := &promoterv1alpha1.CommitStatus{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "default",
+		},
+		Spec: promoterv1alpha1.CommitStatusSpec{
+			RepositoryReference: promoterv1alpha1.ObjectReference{
+				Name: name,
+			},
+			Sha:   "abc123",                            // Minimal valid SHA, can be customized by tests
+			Name:  "test-status",                       // Can be customized by tests
+			Phase: promoterv1alpha1.CommitPhasePending, // Reasonable default, can be customized
+			// Description and Url are optional and left empty for tests to set
+		},
+	}
+
+	return scmSecret, scmProvider, gitRepo, commitStatus
+}
