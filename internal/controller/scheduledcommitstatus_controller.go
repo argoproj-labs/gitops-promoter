@@ -272,17 +272,15 @@ func (r *ScheduledCommitStatusReconciler) calculateWindowInfo(ctx context.Contex
 	lastWindowStart := cronSchedule.Next(checkTime)
 
 	// Check if we're currently in a window
-	inWindow := false
 	var nextWindowStart, nextWindowEnd time.Time
+	inWindow := now.After(lastWindowStart) && now.Before(lastWindowStart.Add(windowDuration))
 
 	if now.After(lastWindowStart) && now.Before(lastWindowStart.Add(windowDuration)) {
 		// We're in the current window
-		inWindow = true
 		nextWindowStart = lastWindowStart
 		nextWindowEnd = lastWindowStart.Add(windowDuration)
 	} else {
 		// We're not in a window, find the next one
-		inWindow = false
 		nextWindowStart = cronSchedule.Next(now)
 		nextWindowEnd = nextWindowStart.Add(windowDuration)
 	}
@@ -312,6 +310,9 @@ func (r *ScheduledCommitStatusReconciler) calculateCommitStatusPhase(inWindow bo
 	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Deployment window is closed for %s environment", envBranch)
 }
 
+// upsertCommitStatus creates or updates a CommitStatus resource for a given environment.
+//
+//nolint:dupl // Similar to TimedCommitStatus but with different labels and naming
 func (r *ScheduledCommitStatusReconciler) upsertCommitStatus(ctx context.Context, scs *promoterv1alpha1.ScheduledCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-scheduled", scs.Name, branch))
@@ -425,24 +426,22 @@ func (r *ScheduledCommitStatusReconciler) calculateRequeueDuration(ctx context.C
 
 	// Find the earliest next boundary (either window start or end) across all environments
 	for _, envStatus := range scs.Status.Environments {
-		if envStatus.CurrentlyInWindow {
+		var boundaryTime time.Time
+		var hasBoundary bool
+
+		if envStatus.CurrentlyInWindow && envStatus.NextWindowEnd != nil {
 			// We're in a window, requeue when it ends
-			if envStatus.NextWindowEnd != nil {
-				endTime := envStatus.NextWindowEnd.Time
-				if !hasValidBoundary || endTime.Before(nextBoundary) {
-					nextBoundary = endTime
-					hasValidBoundary = true
-				}
-			}
-		} else {
+			boundaryTime = envStatus.NextWindowEnd.Time
+			hasBoundary = true
+		} else if !envStatus.CurrentlyInWindow && envStatus.NextWindowStart != nil {
 			// We're outside a window, requeue when the next one starts
-			if envStatus.NextWindowStart != nil {
-				startTime := envStatus.NextWindowStart.Time
-				if !hasValidBoundary || startTime.Before(nextBoundary) {
-					nextBoundary = startTime
-					hasValidBoundary = true
-				}
-			}
+			boundaryTime = envStatus.NextWindowStart.Time
+			hasBoundary = true
+		}
+
+		if hasBoundary && (!hasValidBoundary || boundaryTime.Before(nextBoundary)) {
+			nextBoundary = boundaryTime
+			hasValidBoundary = true
 		}
 	}
 
