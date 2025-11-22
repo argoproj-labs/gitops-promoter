@@ -284,6 +284,14 @@ func runController(
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create TimedCommitStatus controller")
 	}
+	if err := (&controller.ScheduledCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("ScheduledCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		panic("unable to create ScheduledCommitStatus controller")
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
