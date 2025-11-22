@@ -25,6 +25,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -792,6 +793,180 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 			}, 5*time.Second, 1*time.Second).Should(Succeed())
+		})
+	})
+
+	Context("When environments are removed from spec", func() {
+		ctx := context.Background()
+
+		var name string
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+		var scheduledCommitStatus *promoterv1alpha1.ScheduledCommitStatus
+
+		BeforeEach(func() {
+			By("Creating the test resources")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "scheduled-cleanup", "default")
+
+			// Configure ProposedCommitStatuses to check for schedule commit status
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "schedule"},
+			}
+
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			By("Waiting for PromotionStrategy to be reconciled")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, promotionStrategy)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Making a change to trigger proposed commits")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = os.RemoveAll(gitPath)
+			}()
+			makeChangeAndHydrateRepo(gitPath, name, name, "test commit for cleanup", "")
+
+			By("Waiting for proposed commits to appear")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, promotionStrategy)
+				g.Expect(err).NotTo(HaveOccurred())
+				for _, env := range promotionStrategy.Status.Environments {
+					g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating ScheduledCommitStatus with two environments")
+			now := time.Now().UTC()
+			cronExpr := fmt.Sprintf("%d %d * * *", now.Add(-1*time.Hour).Minute(), now.Add(-1*time.Hour).Hour())
+
+			scheduledCommitStatus = &promoterv1alpha1.ScheduledCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Environments: []promoterv1alpha1.ScheduledCommitStatusEnvironment{
+						{
+							Branch: testEnvironmentDevelopment,
+							Schedule: promoterv1alpha1.Schedule{
+								Cron:     cronExpr,
+								Window:   "2h",
+								Timezone: "UTC",
+							},
+						},
+						{
+							Branch: testEnvironmentStaging,
+							Schedule: promoterv1alpha1.Schedule{
+								Cron:     cronExpr,
+								Window:   "2h",
+								Timezone: "UTC",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, scheduledCommitStatus)).To(Succeed())
+
+			By("Waiting for both CommitStatuses to be created")
+			Eventually(func(g Gomega) {
+				var scs promoterv1alpha1.ScheduledCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &scs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(scs.Status.Environments).To(HaveLen(2))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			_ = k8sClient.Delete(ctx, scheduledCommitStatus)
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		It("should delete orphaned CommitStatus when environment is removed from spec", func() {
+			By("Verifying both CommitStatuses exist")
+			devCommitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-scheduled")
+			stagingCommitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentStaging+"-scheduled")
+
+			Eventually(func(g Gomega) {
+				var devCS promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      devCommitStatusName,
+					Namespace: "default",
+				}, &devCS)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				var stagingCS promoterv1alpha1.CommitStatus
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      stagingCommitStatusName,
+					Namespace: "default",
+				}, &stagingCS)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Removing staging environment from ScheduledCommitStatus spec")
+			Eventually(func(g Gomega) {
+				var scs promoterv1alpha1.ScheduledCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &scs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Remove staging environment, keep only dev
+				scs.Spec.Environments = []promoterv1alpha1.ScheduledCommitStatusEnvironment{
+					scs.Spec.Environments[0], // Keep dev
+				}
+
+				err = k8sClient.Update(ctx, &scs)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying staging CommitStatus is deleted")
+			Eventually(func(g Gomega) {
+				var stagingCS promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      stagingCommitStatusName,
+					Namespace: "default",
+				}, &stagingCS)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(),
+					"Staging CommitStatus should be deleted")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying dev CommitStatus still exists")
+			Eventually(func(g Gomega) {
+				var devCS promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      devCommitStatusName,
+					Namespace: "default",
+				}, &devCS)
+				g.Expect(err).NotTo(HaveOccurred(),
+					"Dev CommitStatus should still exist")
+				g.Expect(devCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 

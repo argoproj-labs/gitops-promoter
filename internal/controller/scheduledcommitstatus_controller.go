@@ -99,16 +99,22 @@ func (r *ScheduledCommitStatusReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
 
-	// 4. Inherit conditions from CommitStatus objects
+	// 4. Cleanup orphaned CommitStatus resources
+	err = r.cleanupOrphanedCommitStatuses(ctx, &scs, commitStatuses)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatuses: %w", err)
+	}
+
+	// 5. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&scs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// 5. Update status
+	// 6. Update status
 	err = r.Status().Update(ctx, &scs)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update ScheduledCommitStatus status: %w", err)
 	}
 
-	// 6. Calculate smart requeue duration based on next window boundaries
+	// 7. Calculate smart requeue duration based on next window boundaries
 	requeueDuration := r.calculateRequeueDuration(ctx, &scs)
 
 	return ctrl.Result{
@@ -347,6 +353,64 @@ func (r *ScheduledCommitStatusReconciler) upsertCommitStatus(ctx context.Context
 	}
 
 	return &commitStatus, nil
+}
+
+// cleanupOrphanedCommitStatuses deletes CommitStatus resources that are owned by this ScheduledCommitStatus
+// but are not in the current list of valid CommitStatuses (i.e., they correspond to removed or renamed environments).
+func (r *ScheduledCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, scs *promoterv1alpha1.ScheduledCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
+	logger := log.FromContext(ctx)
+
+	// Create a set of valid CommitStatus names for quick lookup
+	validCommitStatusNames := make(map[string]bool)
+	for _, cs := range validCommitStatuses {
+		validCommitStatusNames[cs.Name] = true
+	}
+
+	// List all CommitStatuses in the namespace with the ScheduledCommitStatus label
+	var csList promoterv1alpha1.CommitStatusList
+	err := r.List(ctx, &csList, client.InNamespace(scs.Namespace), client.MatchingLabels{
+		"promoter.argoproj.io/scheduled-commit-status": utils.KubeSafeLabel(scs.Name),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list CommitStatuses: %w", err)
+	}
+
+	// Delete CommitStatuses that are not in the valid list
+	for i := range csList.Items {
+		cs := &csList.Items[i]
+
+		// Skip if this CommitStatus is in the valid list
+		if validCommitStatusNames[cs.Name] {
+			continue
+		}
+
+		// Verify this CommitStatus is owned by this ScheduledCommitStatus before deleting
+		if !metav1.IsControlledBy(cs, scs) {
+			logger.V(4).Info("Skipping CommitStatus not owned by this ScheduledCommitStatus",
+				"commitStatusName", cs.Name,
+				"scheduledCommitStatus", scs.Name)
+			continue
+		}
+
+		// Delete the orphaned CommitStatus
+		logger.Info("Deleting orphaned CommitStatus",
+			"commitStatusName", cs.Name,
+			"scheduledCommitStatus", scs.Name,
+			"namespace", scs.Namespace)
+
+		if err := r.Delete(ctx, cs); err != nil {
+			if k8serrors.IsNotFound(err) {
+				// Already deleted, which is fine
+				logger.V(4).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
+				continue
+			}
+			return fmt.Errorf("failed to delete orphaned CommitStatus %q: %w", cs.Name, err)
+		}
+
+		logger.Info("Successfully deleted orphaned CommitStatus", "commitStatusName", cs.Name)
+	}
+
+	return nil
 }
 
 // calculateRequeueDuration determines when to requeue based on the next window boundary.
