@@ -958,6 +958,7 @@ func runGitCmd(ctx context.Context, directory string, args ...string) (string, e
 	return stdoutBuf.String(), nil
 }
 
+//nolint:unparam // length parameter is intentionally flexible for future use
 func randomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	result := make([]byte, length)
