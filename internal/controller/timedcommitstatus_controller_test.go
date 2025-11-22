@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -661,6 +662,182 @@ var _ = Describe("TimedCommitStatus Controller", func() {
 				// Note: The annotation value might change if there are multiple reconciliations,
 				// but the annotation key should remain present
 			}, 5*time.Second, 1*time.Second).Should(Succeed())
+		})
+	})
+
+	Context("When environment branch names are changed", func() {
+		ctx := context.Background()
+
+		var name string
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+		var timedCommitStatus *promoterv1alpha1.TimedCommitStatus
+
+		BeforeEach(func() {
+			By("Creating the test resources")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-status-cleanup-test", "default")
+
+			// Use all three standard environments initially
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{
+					Branch:    testEnvironmentDevelopment,
+					AutoMerge: nil,
+				},
+				{
+					Branch:    testEnvironmentStaging,
+					AutoMerge: nil,
+				},
+				{
+					Branch:    testEnvironmentProduction,
+					AutoMerge: nil,
+				},
+			}
+
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			By("Waiting for PromotionStrategy to be reconciled with initial state")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, promotionStrategy)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+				// Ensure all environments have active hydrated commits
+				for _, env := range promotionStrategy.Status.Environments {
+					g.Expect(env.Active.Hydrated.Sha).ToNot(BeEmpty())
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a TimedCommitStatus resource tracking all three environments")
+			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.TimedCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+						{
+							Branch:   testEnvironmentDevelopment,
+							Duration: metav1.Duration{Duration: 1 * time.Second},
+						},
+						{
+							Branch:   testEnvironmentStaging,
+							Duration: metav1.Duration{Duration: 1 * time.Second},
+						},
+						{
+							Branch:   testEnvironmentProduction,
+							Duration: metav1.Duration{Duration: 1 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, timedCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			_ = k8sClient.Delete(ctx, timedCommitStatus)
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		It("should cleanup orphaned CommitStatus resources when environments are removed", func() {
+			By("Waiting for all three CommitStatus resources to be created")
+			var oldCommitStatusDevName string
+			var oldCommitStatusStagingName string
+			var oldCommitStatusProdName string
+
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, timedCommitStatus)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(timedCommitStatus.Status.Environments).To(HaveLen(3))
+
+				oldCommitStatusDevName = utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-timed")
+				oldCommitStatusStagingName = utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentStaging+"-timed")
+				oldCommitStatusProdName = utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentProduction+"-timed")
+
+				// Verify all three CommitStatus resources exist
+				oldCsDev := &promoterv1alpha1.CommitStatus{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCommitStatusDevName,
+					Namespace: "default",
+				}, oldCsDev)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				oldCsStaging := &promoterv1alpha1.CommitStatus{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCommitStatusStagingName,
+					Namespace: "default",
+				}, oldCsStaging)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				oldCsProd := &promoterv1alpha1.CommitStatus{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCommitStatusProdName,
+					Namespace: "default",
+				}, oldCsProd)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Updating TimedCommitStatus to only track development (removing staging and production)")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, timedCommitStatus)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Update to only track development environment
+				timedCommitStatus.Spec.Environments = []promoterv1alpha1.TimedCommitStatusEnvironments{
+					{
+						Branch:   testEnvironmentDevelopment,
+						Duration: metav1.Duration{Duration: 1 * time.Second},
+					},
+				}
+
+				err = k8sClient.Update(ctx, timedCommitStatus)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the development CommitStatus still exists")
+			Eventually(func(g Gomega) {
+				devCs := &promoterv1alpha1.CommitStatus{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCommitStatusDevName,
+					Namespace: "default",
+				}, devCs)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying old staging and production CommitStatus resources are deleted")
+			Eventually(func(g Gomega) {
+				oldCsStaging := &promoterv1alpha1.CommitStatus{}
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCommitStatusStagingName,
+					Namespace: "default",
+				}, oldCsStaging)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "Old staging CommitStatus should be deleted")
+
+				oldCsProd := &promoterv1alpha1.CommitStatus{}
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      oldCommitStatusProdName,
+					Namespace: "default",
+				}, oldCsProd)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "Old production CommitStatus should be deleted")
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 })

@@ -35,4 +35,9 @@ const (
 	OrphanedChangeTransferPolicyDeletedReason = "OrphanedChangeTransferPolicyDeleted"
 	// OrphanedChangeTransferPolicyDeletedMessage is the message for a deleted orphaned ChangeTransferPolicy.
 	OrphanedChangeTransferPolicyDeletedMessage = "Deleted orphaned ChangeTransferPolicy %s"
+
+	// OrphanedCommitStatusDeletedReason indicates that an orphaned CommitStatus has been deleted.
+	OrphanedCommitStatusDeletedReason = "OrphanedCommitStatusDeleted"
+	// OrphanedCommitStatusDeletedMessage is the message for a deleted orphaned CommitStatus.
+	OrphanedCommitStatusDeletedMessage = "Deleted orphaned CommitStatus %s"
 )
