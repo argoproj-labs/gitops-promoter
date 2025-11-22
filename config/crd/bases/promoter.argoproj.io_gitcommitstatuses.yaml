@@ -1,0 +1,240 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: gitcommitstatuses.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: GitCommitStatus
+    listKind: GitCommitStatusList
+    plural: gitcommitstatuses
+    singular: gitcommitstatus
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: Strategy
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          GitCommitStatus is the Schema for the gitcommitstatuses API.
+          It validates commits from PromotionStrategy environments using configurable expressions
+          and creates CommitStatus resources with the validation results.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of GitCommitStatus
+            properties:
+              description:
+                description: |-
+                  Description is a human-readable description of this validation that will be shown in the SCM provider
+                  (GitHub, GitLab, etc.) as the commit status description.
+                  If not specified, defaults to "Commit validation".
+                  Keep this concise and avoid special characters that may not be supported by all SCM providers.
+                maxLength: 140
+                type: string
+              expression:
+                description: |-
+                  Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data
+                  for ALL environments in the referenced PromotionStrategy.
+                  The expression must return a boolean value where true indicates the validation passed.
+
+                  Available variables in the expression context:
+                    - Commit.SHA (string): the proposed hydrated commit SHA being validated
+                    - Commit.Subject (string): the first line of the commit message
+                    - Commit.Body (string): the commit message body (everything after the subject line)
+                    - Commit.Author (string): commit author email address
+                    - Commit.Committer (string): committer email address
+                    - Commit.Trailers (map[string][]string): git trailers parsed from commit message
+
+                  The expr library provides built-in functions and operators:
+                    - String operations: startsWith(s, prefix), endsWith(s, suffix), contains(s, substr)
+                    - Regex matching: string matches "pattern" (infix operator)
+                    - Logical operators: &&, ||, !
+                    - Comparison: ==, !=, <, >, <=, >=
+                    - Collections: "key" in map to check map key existence, len() for length
+
+                  Example expressions:
+                    'endsWith(Commit.Author, "@example.com")'
+                    '"Signed-off-by" in Commit.Trailers'
+                    'contains(Commit.Body, "JIRA-") && "Reviewed-by" in Commit.Trailers'
+                    'len(Commit.Trailers["Reviewed-by"]) >= 2'
+                    'Commit.Subject matches "^(feat|fix|docs):"'
+                    'startsWith(Commit.Subject, "Revert")'
+                    'Commit.Author == "user@example.com"'
+                type: string
+              key:
+                description: |-
+                  Key is the unique identifier for this validation rule.
+                  It is used as the commit status key and in status messages.
+                  This becomes the key used in PromotionStrategy's activeCommitStatuses or proposedCommitStatuses.
+                maxLength: 63
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              promotionStrategyRef:
+                description: |-
+                  PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
+                  The controller will validate commits from ALL environments defined in the referenced PromotionStrategy
+                  using the same expression.
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - expression
+            - key
+            - promotionStrategyRef
+            type: object
+          status:
+            description: status defines the observed state of GitCommitStatus
+            properties:
+              conditions:
+                description: |-
+                  Conditions represent the latest available observations of the GitCommitStatus's state.
+                  Standard condition types include "Ready" which aggregates the status of all environments.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              environments:
+                description: |-
+                  Environments holds the validation results for each configured environment.
+                  Each entry corresponds to an environment defined in the spec and contains
+                  the validation result for that environment's proposed hydrated commit.
+                items:
+                  description: GitCommitStatusEnvironmentStatus defines the observed
+                    validation status for a specific environment.
+                  properties:
+                    activeHydratedSha:
+                      description: |-
+                        ActiveHydratedSha is the currently active (deployed) hydrated commit SHA.
+                        This comes from the PromotionStrategy's environment status.
+                      type: string
+                    branch:
+                      description: Branch is the environment branch name being validated.
+                      type: string
+                    expressionMessage:
+                      description: |-
+                        ExpressionMessage provides a human-readable description of the validation result.
+                        This includes details about why validation passed or failed.
+                      type: string
+                    expressionResult:
+                      description: |-
+                        ExpressionResult contains the boolean result of the expression evaluation.
+                        Only set when the expression successfully evaluates to a boolean.
+                        nil indicates the expression has not yet been evaluated or failed to evaluate.
+                      type: boolean
+                    phase:
+                      description: |-
+                        Phase represents the current validation state of the commit.
+                        - "pending": validation has not completed or commit data is not yet available
+                        - "success": expression evaluated to true, validation passed
+                        - "failure": expression evaluated to false, validation failed
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      type: string
+                    proposedHydratedSha:
+                      description: |-
+                        ProposedHydratedSha is the proposed hydrated commit SHA that was validated.
+                        This comes from the PromotionStrategy's environment status.
+                      type: string
+                  required:
+                  - branch
+                  - phase
+                  - proposedHydratedSha
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
