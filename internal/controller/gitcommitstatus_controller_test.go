@@ -541,7 +541,9 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			By("Updating git repo to create a difference between active and proposed")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(gitPath)
+			defer func() {
+				_ = os.RemoveAll(gitPath)
+			}()
 
 			// Make a change to create new proposed SHA
 			makeChangeAndHydrateRepo(gitPath, name, name, "new commit for SHA diff", "different content")

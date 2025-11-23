@@ -291,7 +291,7 @@ func runController(
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GitCommitStatus")
-		os.Exit(1)
+		panic(fmt.Errorf("unable to create GitCommitStatus controller: %w", err))
 	}
 	//+kubebuilder:scaffold:builder
 

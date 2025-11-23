@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -125,7 +126,7 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// If any validations transitioned to success, touch the corresponding ChangeTransferPolicies
 	if len(transitionedEnvironments) > 0 {
-		err = r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
+		err = touchChangeTransferPolicies(ctx, r.Client, &ps, transitionedEnvironments, "validation transition")
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to touch ChangeTransferPolicies: %w", err)
 		}
@@ -165,12 +166,12 @@ func (r *GitCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 
 // CommitData represents the data structure available to expressions during validation.
 type CommitData struct {
+	Trailers  map[string][]string `expr:"Trailers"`
 	SHA       string              `expr:"SHA"`
 	Subject   string              `expr:"Subject"`
 	Body      string              `expr:"Body"`
 	Author    string              `expr:"Author"`
 	Committer string              `expr:"Committer"`
-	Trailers  map[string][]string `expr:"Trailers"`
 }
 
 // processEnvironments processes each environment defined in the GitCommitStatus spec,
@@ -272,7 +273,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 				break
 			}
 		}
-		if previousPhase != "success" && phase == "success" {
+		if previousPhase != CommitPhaseSuccess && phase == CommitPhaseSuccess {
 			transitionedEnvironments = append(transitionedEnvironments, branch)
 			logger.Info("Validation transitioned to success",
 				"branch", branch,
@@ -292,7 +293,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 
 		// Create or update the CommitStatus for the proposed hydrated SHA
 		// Use the same key from gcs.Spec.Key for all environments
-		cs, err := r.upsertCommitStatus(ctx, gcs, ps, branch, proposedSha, phase, message, gcs.Spec.Key)
+		cs, err := r.upsertCommitStatus(ctx, gcs, ps, branch, proposedSha, phase, gcs.Spec.Key)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
@@ -378,39 +379,39 @@ func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expr
 	logger := log.FromContext(ctx)
 
 	// Compile the expression
-	env := map[string]interface{}{
+	env := map[string]any{
 		"Commit": commitData,
 	}
 
 	program, err := expr.Compile(expression, expr.Env(env), expr.AsBool())
 	if err != nil {
 		logger.Error(err, "Failed to compile expression", "expression", expression)
-		return "failure", fmt.Sprintf("Expression compilation failed: %v", err), nil
+		return CommitPhaseFailure, fmt.Sprintf("Expression compilation failed: %v", err), nil
 	}
 
 	// Run the expression
 	output, err := expr.Run(program, env)
 	if err != nil {
 		logger.Error(err, "Failed to evaluate expression", "expression", expression)
-		return "failure", fmt.Sprintf("Expression evaluation failed: %v", err), nil
+		return CommitPhaseFailure, fmt.Sprintf("Expression evaluation failed: %v", err), nil
 	}
 
 	// Check the result
 	result, ok := output.(bool)
 	if !ok {
-		logger.Error(fmt.Errorf("expression did not return boolean"), "Invalid expression result type",
+		logger.Error(errors.New("expression did not return boolean"), "Invalid expression result type",
 			"expression", expression, "resultType", reflect.TypeOf(output))
-		return "failure", fmt.Sprintf("Expression must return boolean, got %T", output), nil
+		return CommitPhaseFailure, fmt.Sprintf("Expression must return boolean, got %T", output), nil
 	}
 
 	if result {
-		return "success", "Expression evaluated to true", ptr.To(true)
+		return CommitPhaseSuccess, "Expression evaluated to true", ptr.To(true)
 	}
-	return "failure", "Expression evaluated to false", ptr.To(false)
+	return CommitPhaseFailure, "Expression evaluated to false", ptr.To(false)
 }
 
 // upsertCommitStatus creates or updates a CommitStatus resource for the validation result.
-func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha, phase, message, validationName string) (*promoterv1alpha1.CommitStatus, error) {
+func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha, phase, validationName string) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-%s", gcs.Name, branch, validationName))
 
@@ -463,48 +464,6 @@ func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs 
 	return &commitStatus, nil
 }
 
-// touchChangeTransferPolicies adds or updates the ReconcileAtAnnotation on the ChangeTransferPolicies
-// for the environments that had validations transition to success.
-func (r *GitCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) error {
-	logger := log.FromContext(ctx)
-
-	for _, envBranch := range transitionedEnvironments {
-		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
-		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
-
-		// Fetch the ChangeTransferPolicy
-		var ctp promoterv1alpha1.ChangeTransferPolicy
-		err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: ctpName}, &ctp)
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				logger.Info("ChangeTransferPolicy not found for environment, skipping touch",
-					"branch", envBranch,
-					"ctpName", ctpName)
-				continue
-			}
-			return fmt.Errorf("failed to get ChangeTransferPolicy %q for environment %q: %w", ctpName, envBranch, err)
-		}
-
-		// Update the annotation to trigger reconciliation
-		ctpUpdated := ctp.DeepCopy()
-		if ctpUpdated.Annotations == nil {
-			ctpUpdated.Annotations = make(map[string]string)
-		}
-		ctpUpdated.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339Nano)
-
-		err = r.Patch(ctx, ctpUpdated, client.MergeFrom(&ctp))
-		if err != nil {
-			return fmt.Errorf("failed to update ChangeTransferPolicy %q annotation for environment %q: %w", ctpName, envBranch, err)
-		}
-
-		logger.Info("Triggered ChangeTransferPolicy reconciliation due to validation transition",
-			"changeTransferPolicy", ctpName,
-			"branch", envBranch)
-	}
-
-	return nil
-}
-
 // getGitAuthProvider retrieves the git authentication provider for accessing the repository.
 func (r *GitCommitStatusReconciler) getGitAuthProvider(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (scms.GitOperationsProvider, promoterv1alpha1.ObjectReference, error) {
 	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ps.Spec.RepositoryReference, gcs)
@@ -552,10 +511,18 @@ func (r *GitCommitStatusReconciler) enqueueGitCommitStatusForPromotionStrategy()
 
 // getCommitAuthorEmail retrieves the author email for a commit.
 func (r *GitCommitStatusReconciler) getCommitAuthorEmail(ctx context.Context, envOps *git.EnvironmentOperations, sha string) (string, error) {
-	return envOps.GitShow(ctx, sha, "%ae")
+	email, err := envOps.GitShow(ctx, sha, "%ae")
+	if err != nil {
+		return "", fmt.Errorf("failed to get author email: %w", err)
+	}
+	return email, nil
 }
 
 // getCommitCommitterEmail retrieves the committer email for a commit.
 func (r *GitCommitStatusReconciler) getCommitCommitterEmail(ctx context.Context, envOps *git.EnvironmentOperations, sha string) (string, error) {
-	return envOps.GitShow(ctx, sha, "%ce")
+	email, err := envOps.GitShow(ctx, sha, "%ce")
+	if err != nil {
+		return "", fmt.Errorf("failed to get committer email: %w", err)
+	}
+	return email, nil
 }
