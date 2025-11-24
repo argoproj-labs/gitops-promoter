@@ -210,9 +210,9 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 
 	// Build query to find PRs matching source and target branches and state
 	// Bitbucket query syntax: https://developer.atlassian.com/cloud/bitbucket/rest/intro/#querying
-	query := fmt.Sprintf(`source.branch.name="%s" AND destination.branch.name="%s" AND state="OPEN"`,
-		pullRequest.Spec.SourceBranch,
-		pullRequest.Spec.TargetBranch,
+	query := fmt.Sprintf(`source.branch.name=%s AND destination.branch.name=%s AND state="OPEN"`,
+		strconv.Quote(pullRequest.Spec.SourceBranch),
+		strconv.Quote(pullRequest.Spec.TargetBranch),
 	)
 
 	options := &bitbucket.PullRequestsOptions{
