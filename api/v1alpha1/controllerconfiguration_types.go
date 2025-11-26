@@ -59,6 +59,11 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	TimedCommitStatus TimedCommitStatusConfiguration `json:"timedCommitStatus"`
+
+	// ScheduledCommitStatus contains the configuration for the ScheduledCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	ScheduledCommitStatus ScheduledCommitStatusConfiguration `json:"scheduledCommitStatus"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -135,6 +140,17 @@ type ArgoCDCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type TimedCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the TimedCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// ScheduledCommitStatusConfiguration defines the configuration for the ScheduledCommitStatus controller.
+//
+// This configuration controls how the ScheduledCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type ScheduledCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the ScheduledCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`

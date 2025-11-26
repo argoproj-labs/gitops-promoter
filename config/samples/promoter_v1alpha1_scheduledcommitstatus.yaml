@@ -1,0 +1,27 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScheduledCommitStatus
+metadata:
+  name: webservice-tier-1
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: webservice-tier-1
+  environments:
+    - branch: environment/development
+      schedule:
+        cron: "0 9 * * 1-5"       # 9 AM Monday-Friday
+        window: "8h"               # 9 AM - 5 PM deployment window
+        timezone: "America/New_York"
+
+    - branch: environment/staging
+      schedule:
+        cron: "0 9 * * 1-5"       # 9 AM Monday-Friday
+        window: "8h"               # 9 AM - 5 PM deployment window
+        timezone: "America/New_York"
+    
+    - branch: environment/production
+      schedule:
+        cron: "0 14 * * 1-5"      # 2 PM Monday-Friday
+        window: "2h"               # 2 PM - 4 PM deployment window
+        timezone: "America/New_York"
+
