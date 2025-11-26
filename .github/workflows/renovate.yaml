@@ -32,7 +32,7 @@ jobs:
       issues: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v6.0.0
 
       - name: Get token
         id: get_token
@@ -42,7 +42,7 @@ jobs:
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
 
       - name: Self-hosted Renovate
-        uses: renovatebot/github-action@v44.0.3
+        uses: renovatebot/github-action@v44.0.4
         with:
           configurationFile: renovate.json5
           token: ${{ steps.get_token.outputs.token }}
