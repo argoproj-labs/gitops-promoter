@@ -261,13 +261,10 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		}
 
 		var shaToValidate string
-		switch validateCommitMode {
-		case "proposed":
+		if validateCommitMode == "proposed" {
 			shaToValidate = proposedSha
-		case "active":
-			shaToValidate = activeHydratedSha
-		default:
-			// Fallback to active for unknown values
+		} else {
+			// Default to active for "active" or any unknown values
 			shaToValidate = activeHydratedSha
 		}
 
@@ -426,7 +423,11 @@ func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *prom
 func (r *GitCommitStatusReconciler) getCompiledExpression(expression string) (*vm.Program, error) {
 	// Check cache first
 	if cached, ok := r.expressionCache.Load(expression); ok {
-		return cached.(*vm.Program), nil
+		program, ok := cached.(*vm.Program)
+		if !ok {
+			return nil, errors.New("cached value is not a *vm.Program")
+		}
+		return program, nil
 	}
 
 	// Compile with type information (using nil pointer provides type info without actual data)
@@ -435,7 +436,7 @@ func (r *GitCommitStatusReconciler) getCompiledExpression(expression string) (*v
 	}
 	program, err := expr.Compile(expression, expr.Env(env), expr.AsBool())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to compile expression: %w", err)
 	}
 
 	// Store in cache
