@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -30,6 +31,7 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/vm"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -54,6 +56,10 @@ type GitCommitStatusReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
+
+	// expressionCache caches compiled expressions to avoid recompilation on every reconciliation
+	// Key: expression string, Value: compiled *vm.Program
+	expressionCache sync.Map
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -247,6 +253,32 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		proposedSha := envStatus.Proposed.Hydrated.Sha
 		activeHydratedSha := envStatus.Active.Hydrated.Sha
 
+		// Validate we have SHAs to work with - if PromotionStrategy hasn't fully reconciled,
+		// these SHAs might be empty which would cause git operations to fail
+		if proposedSha == "" {
+			logger.V(4).Info("Proposed hydrated SHA not yet available", "branch", branch)
+			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
+				Branch:              branch,
+				ProposedHydratedSha: "",
+				ActiveHydratedSha:   activeHydratedSha,
+				Phase:               "pending",
+				ExpressionMessage:   "Waiting for proposed commit SHA",
+			})
+			continue
+		}
+
+		if activeHydratedSha == "" {
+			logger.V(4).Info("Active hydrated SHA not yet available", "branch", branch)
+			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
+				Branch:              branch,
+				ProposedHydratedSha: proposedSha,
+				ActiveHydratedSha:   "",
+				Phase:               "pending",
+				ExpressionMessage:   "Waiting for active commit SHA",
+			})
+			continue
+		}
+
 		// Get commit details for validation
 		commitData, err := r.getCommitData(ctx, gcs, ps, activeHydratedSha, branch)
 		if err != nil {
@@ -373,23 +405,44 @@ func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *prom
 	}, nil
 }
 
+// getCompiledExpression retrieves a compiled expression from the cache or compiles and caches it.
+// This avoids recompiling the same expression on every reconciliation.
+func (r *GitCommitStatusReconciler) getCompiledExpression(expression string) (*vm.Program, error) {
+	// Check cache first
+	if cached, ok := r.expressionCache.Load(expression); ok {
+		return cached.(*vm.Program), nil
+	}
+
+	// Compile with type information (using nil pointer provides type info without actual data)
+	env := map[string]any{
+		"Commit": (*CommitData)(nil),
+	}
+	program, err := expr.Compile(expression, expr.Env(env), expr.AsBool())
+	if err != nil {
+		return nil, err
+	}
+
+	// Store in cache
+	r.expressionCache.Store(expression, program)
+	return program, nil
+}
+
 // evaluateExpression evaluates the configured expression against commit data.
 // Returns the phase (success/failure/pending), a message, and the boolean result.
 func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expression string, commitData *CommitData) (string, string, *bool) {
 	logger := log.FromContext(ctx)
 
-	// Compile the expression
-	env := map[string]any{
-		"Commit": commitData,
-	}
-
-	program, err := expr.Compile(expression, expr.Env(env), expr.AsBool())
+	// Get compiled expression from cache or compile it
+	program, err := r.getCompiledExpression(expression)
 	if err != nil {
 		logger.Error(err, "Failed to compile expression", "expression", expression)
 		return CommitPhaseFailure, fmt.Sprintf("Expression compilation failed: %v", err), nil
 	}
 
-	// Run the expression
+	// Run the expression with actual commit data
+	env := map[string]any{
+		"Commit": commitData,
+	}
 	output, err := expr.Run(program, env)
 	if err != nil {
 		logger.Error(err, "Failed to evaluate expression", "expression", expression)
