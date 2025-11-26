@@ -26,14 +26,13 @@ import (
 // GitCommitStatusSpec defines the desired state of GitCommitStatus
 type GitCommitStatusSpec struct {
 	// PromotionStrategyRef is a reference to the promotion strategy that this commit status applies to.
-	// The controller will validate commits from ALL environments defined in the referenced PromotionStrategy
-	// using the same expression.
+	// The controller will validate commits from environments matching the key defined in the referenced PromotionStrategy.
 	// +required
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 
 	// Key is the unique identifier for this validation rule.
 	// It is used as the commit status key and in status messages.
-	// This becomes the key used in PromotionStrategy's activeCommitStatuses or proposedCommitStatuses.
+	// This becomes the key used in PromotionStrategy's proposedCommitStatuses.
 	// +required
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
@@ -41,7 +40,6 @@ type GitCommitStatusSpec struct {
 
 	// Description is a human-readable description of this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status description.
-	// If not specified, defaults to "Commit validation".
 	// Keep this concise and avoid special characters that may not be supported by all SCM providers.
 	// +optional
 	// +kubebuilder:validation:MaxLength=140
