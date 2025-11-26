@@ -3146,18 +3146,22 @@ spec:
           It validates commits from PromotionStrategy environments using configurable expressions
           and creates CommitStatus resources with the validation results.
 
-          IMPORTANT DESIGN: GitCommitStatus validates the ACTIVE (currently deployed) commit but
-          reports the validation result on the PROPOSED commit. This enables state-based gating
-          where you validate the current environment state before allowing promotion of new changes.
+          FLEXIBLE VALIDATION: Use the ValidateCommit field to control which commit is validated:
+          - "active" (default): Validates the currently deployed commit (state-based gating)
+          - "proposed": Validates the incoming commit (change-based gating)
+
+          The validation result is always reported on the PROPOSED commit to enable promotion gating,
+          regardless of which commit was validated.
 
           Workflow:
            1. Controller reads PromotionStrategy to get ProposedHydratedSha and ActiveHydratedSha
-           2. Controller fetches commit data (subject, body, author, trailers) for ACTIVE SHA
-           3. Controller evaluates expression against ACTIVE commit data
-           4. Controller creates/updates CommitStatus with result attached to PROPOSED SHA
-           5. PromotionStrategy checks CommitStatus on PROPOSED SHA before allowing promotion
+           2. Controller selects SHA to validate based on ValidateCommit field
+           3. Controller fetches commit data (subject, body, author, trailers) for selected SHA
+           4. Controller evaluates expression against selected commit data
+           5. Controller creates/updates CommitStatus with result attached to PROPOSED SHA
+           6. PromotionStrategy checks CommitStatus on PROPOSED SHA before allowing promotion
 
-          This design supports use cases like:
+          Common use cases:
             - "Ensure active commit is not a revert before promoting"
         properties:
           apiVersion:
@@ -3194,41 +3198,30 @@ spec:
                   for environments in the referenced PromotionStrategy.
                   The expression must return a boolean value where true indicates the validation passed.
 
-                  IMPORTANT: The controller validates the ACTIVE (currently deployed) commit but reports the
-                  validation result on the PROPOSED commit. This design enables state-based gating where you
-                  validate the current environment state before allowing promotion of new changes.
+                  The commit validated is determined by the ValidateCommit field:
+                  - "active" (default): Validates the ACTIVE (currently deployed) commit
+                  - "proposed": Validates the PROPOSED commit (what will be promoted)
 
-                  Use cases:
-                    - "Don't promote until active commit has required sign-offs"
-                    - "Verify current deployment meets compliance before next promotion"
-                    - "Ensure active commit passed time-based checks before moving forward"
+                  The validation result is always reported on the PROPOSED commit to enable promotion gating.
 
-                  The expression is compiled once and cached for performance. Multiple evaluations of the
-                  same expression reuse the compiled version.
+                  Use Cases by Mode:
+                    Active mode: State-based gating - validate current environment before allowing promotion
+                      - "Don't promote until active commit has required sign-offs"
+                      - "Verify current deployment meets compliance before next promotion"
+                      - "Ensure active commit is not a revert before promoting"
+
+                    Proposed mode: Change-based gating - validate the incoming change itself
+                      - "Don't promote unless new commit follows naming convention"
+                      - "Ensure proposed commit has proper JIRA ticket reference"
+                      - "Require specific author for proposed changes"
 
                   Available variables in the expression context:
-                    - Commit.SHA (string): the ACTIVE hydrated commit SHA being validated
+                    - Commit.SHA (string): the commit SHA being validated (active or proposed based on ValidateCommit)
                     - Commit.Subject (string): the first line of the commit message
                     - Commit.Body (string): the commit message body (everything after the subject line)
                     - Commit.Author (string): commit author email address
                     - Commit.Committer (string): committer email address
                     - Commit.Trailers (map[string][]string): git trailers parsed from commit message
-
-                  The expr library provides built-in functions and operators:
-                    - String operations: startsWith(s, prefix), endsWith(s, suffix), contains(s, substr)
-                    - Regex matching: string matches "pattern" (infix operator)
-                    - Logical operators: &&, ||, !
-                    - Comparison: ==, !=, <, >, <=, >=
-                    - Collections: "key" in map to check map key existence, len() for length
-
-                  Example expressions:
-                    'endsWith(Commit.Author, "@example.com")'
-                    '"Signed-off-by" in Commit.Trailers'
-                    'contains(Commit.Body, "JIRA-") && "Reviewed-by" in Commit.Trailers'
-                    'len(Commit.Trailers["Reviewed-by"]) >= 2'
-                    'Commit.Subject matches "^(feat|fix|docs):"'
-                    'startsWith(Commit.Subject, "Revert")'
-                    'Commit.Author == "user@example.com"'
                 type: string
               key:
                 description: |-
@@ -3253,6 +3246,27 @@ spec:
                 required:
                 - name
                 type: object
+              validateCommit:
+                default: active
+                description: |-
+                  ValidateCommit specifies which commit SHA to validate with the expression.
+                  - "active": Validates the currently active/deployed commit (default behavior)
+                  - "proposed": Validates the proposed commit that will be promoted
+
+                  Most use cases want "active" to validate the current state before allowing promotion.
+                  Use "proposed" when you want to validate the incoming change itself (e.g., commit message format,
+                  author restrictions, etc.).
+
+                  The validation result is always reported on the PROPOSED commit (for gating), but this field
+                  controls which commit's data is used in the expression evaluation.
+
+                  Examples:
+                    validateCommit: "active" - "Don't promote if a revert commit is detected"
+                    validateCommit: "proposed" - "Don't promote unless new commit follows naming convention"
+                enum:
+                - active
+                - proposed
+                type: string
             required:
             - expression
             - key
@@ -3329,9 +3343,10 @@ spec:
                   Each entry corresponds to an environment from the PromotionStrategy where the Key matches
                   either global or environment-specific proposedCommitStatuses.
 
-                  The controller validates the ACTIVE commit but the CommitStatus is reported on the PROPOSED commit.
+                  The controller validates the commit specified by ValidateCommit ("active" or "proposed")
+                  but the CommitStatus is always reported on the PROPOSED commit for promotion gating.
                   Each environment entry tracks both the ProposedHydratedSha (where status is reported) and the
-                  ActiveHydratedSha (what was actually validated).
+                  ActiveHydratedSha, with ValidatedSha indicating which one was actually evaluated.
                 items:
                   description: GitCommitStatusEnvironmentStatus defines the observed
                     validation status for a specific environment.
@@ -3377,6 +3392,13 @@ spec:
                         The CommitStatus resource is created with this SHA, allowing the PromotionStrategy to gate
                         promotions based on the validation of the ACTIVE commit.
                         May be empty if the PromotionStrategy hasn't reconciled yet.
+                      type: string
+                    validatedSha:
+                      description: |-
+                        ValidatedSha is the commit SHA that was actually validated by the expression.
+                        This will match either ProposedHydratedSha or ActiveHydratedSha depending on
+                        the ValidateCommit setting ("proposed" or "active").
+                        This field clarifies which commit's data was used in the expression evaluation.
                       type: string
                   required:
                   - branch

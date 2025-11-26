@@ -249,45 +249,58 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			continue
 		}
 
-		// Get the proposed hydrated SHA for this environment
+		// Get the proposed and active hydrated SHAs for this environment
 		proposedSha := envStatus.Proposed.Hydrated.Sha
 		activeHydratedSha := envStatus.Active.Hydrated.Sha
 
-		// Validate we have SHAs to work with - if PromotionStrategy hasn't fully reconciled,
-		// these SHAs might be empty which would cause git operations to fail
-		if proposedSha == "" {
-			logger.V(4).Info("Proposed hydrated SHA not yet available", "branch", branch)
-			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
-				Branch:              branch,
-				ProposedHydratedSha: "",
-				ActiveHydratedSha:   activeHydratedSha,
-				Phase:               "pending",
-				ExpressionMessage:   "Waiting for proposed commit SHA",
-			})
-			continue
+		// Determine which commit SHA to validate based on the ValidateCommit field
+		// Default to "active" for backward compatibility
+		validateCommitMode := gcs.Spec.ValidateCommit
+		if validateCommitMode == "" {
+			validateCommitMode = "active"
 		}
 
-		if activeHydratedSha == "" {
-			logger.V(4).Info("Active hydrated SHA not yet available", "branch", branch)
+		var shaToValidate string
+		switch validateCommitMode {
+		case "proposed":
+			shaToValidate = proposedSha
+		case "active":
+			shaToValidate = activeHydratedSha
+		default:
+			// Fallback to active for unknown values
+			shaToValidate = activeHydratedSha
+		}
+
+		// Validate we have the SHA to work with - if PromotionStrategy hasn't fully reconciled,
+		// the SHA might be empty which would cause git operations to fail
+		if shaToValidate == "" {
+			logger.V(4).Info("Commit SHA not yet available",
+				"branch", branch,
+				"validateCommit", validateCommitMode)
 			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
 				Branch:              branch,
 				ProposedHydratedSha: proposedSha,
-				ActiveHydratedSha:   "",
+				ActiveHydratedSha:   activeHydratedSha,
+				ValidatedSha:        "",
 				Phase:               "pending",
-				ExpressionMessage:   "Waiting for active commit SHA",
+				ExpressionMessage:   fmt.Sprintf("Waiting for %s commit SHA", validateCommitMode),
 			})
 			continue
 		}
 
-		// Get commit details for validation
-		commitData, err := r.getCommitData(ctx, gcs, ps, activeHydratedSha, branch)
+		// Get commit details for validation using the selected SHA
+		commitData, err := r.getCommitData(ctx, gcs, ps, shaToValidate, branch)
 		if err != nil {
-			logger.Error(err, "Failed to get commit data", "branch", branch, "sha", proposedSha)
+			logger.Error(err, "Failed to get commit data",
+				"branch", branch,
+				"sha", shaToValidate,
+				"validateCommit", validateCommitMode)
 			// Add a pending status entry with error message
 			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
 				Branch:              branch,
 				ProposedHydratedSha: proposedSha,
 				ActiveHydratedSha:   activeHydratedSha,
+				ValidatedSha:        shaToValidate,
 				Phase:               "pending",
 				ExpressionMessage:   fmt.Sprintf("Failed to fetch commit data: %v", err),
 			})
@@ -317,6 +330,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			Branch:              branch,
 			ProposedHydratedSha: proposedSha,
 			ActiveHydratedSha:   activeHydratedSha,
+			ValidatedSha:        shaToValidate,
 			Phase:               phase,
 			ExpressionMessage:   message,
 			ExpressionResult:    expressionResult,
@@ -334,6 +348,8 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		logger.Info("Processed environment validation",
 			"branch", branch,
 			"proposedSha", proposedSha,
+			"validatedSha", shaToValidate,
+			"validateCommit", validateCommitMode,
 			"phase", phase,
 			"key", gcs.Spec.Key,
 			"expression", gcs.Spec.Expression)
