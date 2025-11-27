@@ -34,16 +34,6 @@ import (
 )
 
 var _ = Describe("GitCommitStatus Controller", Ordered, func() {
-	/*
-	 * Controller Behavior Summary:
-	 * 1. Validates the ACTIVE hydrated commit (not proposed) using expressions
-	 * 2. Tracks both ProposedHydratedSha and ActiveHydratedSha in status
-	 * 3. Uses gcs.Spec.Key field to match against PromotionStrategy's proposedCommitStatuses
-	 * 4. CommitData contains: SHA, Subject, Body, Author, Committer, Trailers
-	 * 5. CommitStatus gets Description from gcs.Spec.Description (defaults to empty)
-	 * 6. Creates CommitStatus resources for PROPOSED SHA but validates ACTIVE SHA
-	 */
-
 	var (
 		ctx               context.Context
 		name              string
