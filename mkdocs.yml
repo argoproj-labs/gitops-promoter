@@ -31,6 +31,7 @@ nav:
   - CommitStatus Controllers:
       - Argo CD: commit-status-controllers/argocd.md
       - Timed: commit-status-controllers/timed.md
+      - Web Request: commit-status-controllers/webrequest.md
       - Development Best Practices: commit-status-controllers/development-best-practices.md
   - Multi-Tenancy: multi-tenancy.md
   - Monitoring:
