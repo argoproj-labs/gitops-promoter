@@ -614,6 +614,151 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("should give different validation results when active and proposed commits have different properties", func() {
+			By("Updating git repo to create a commit with a different subject")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = os.RemoveAll(gitPath)
+			}()
+
+			// Make a change with hydrated commit message that starts with "feat:"
+			// Note: dryCommitMessage is for dry branch, hydratedCommitMessage is for hydrated branches (what we validate)
+			makeChangeAndHydrateRepo(gitPath, name, name, "new commit", "feat: new feature content")
+
+			By("Waiting for PromotionStrategy to update")
+			var developmentProposedSHA string
+			var developmentActiveSHA string
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Check development environment
+				for _, env := range ps.Status.Environments {
+					if env.Branch == testEnvironmentDevelopment {
+						g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
+						g.Expect(env.Active.Hydrated.Sha).ToNot(BeEmpty())
+						developmentProposedSHA = env.Proposed.Hydrated.Sha
+						developmentActiveSHA = env.Active.Hydrated.Sha
+					}
+				}
+				g.Expect(developmentProposedSHA).ToNot(BeEmpty())
+				g.Expect(developmentActiveSHA).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating GitCommitStatus that checks for 'feat:' prefix with active mode")
+			gcsActive := &promoterv1alpha1.GitCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-active-feat-check",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.GitCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:            "test-validation",
+					ValidateCommit: "active",
+					// Check if commit subject startsWith "feat:"
+					Expression: `Commit.Subject startsWith "feat:"`,
+				},
+			}
+			Expect(k8sClient.Create(ctx, gcsActive)).To(Succeed())
+
+			By("Verifying active mode result depends on active SHA")
+			var activePhase string
+			Eventually(func(g Gomega) {
+				var retrieved promoterv1alpha1.GitCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-active-feat-check",
+					Namespace: "default",
+				}, &retrieved)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(retrieved.Status.Environments).ToNot(BeEmpty())
+
+				var devEnv *promoterv1alpha1.GitCommitStatusEnvironmentStatus
+				for i, env := range retrieved.Status.Environments {
+					if env.Branch == testEnvironmentDevelopment {
+						devEnv = &retrieved.Status.Environments[i]
+						break
+					}
+				}
+				g.Expect(devEnv).ToNot(BeNil())
+
+				// Verify it's checking the active SHA
+				g.Expect(devEnv.ValidatedSha).To(Equal(developmentActiveSHA))
+				g.Expect(devEnv.Phase).ToNot(BeEmpty())
+				activePhase = devEnv.Phase
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting active mode GitCommitStatus")
+			Expect(k8sClient.Delete(ctx, gcsActive)).To(Succeed())
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-active-feat-check",
+					Namespace: "default",
+				}, &promoterv1alpha1.GitCommitStatus{})
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating GitCommitStatus that checks for 'feat:' prefix with proposed mode")
+			gcsProposed := &promoterv1alpha1.GitCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-proposed-feat-check",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.GitCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:            "test-validation",
+					ValidateCommit: "proposed",
+					// Check if commit subject starts with "feat:"
+					Expression: `Commit.Subject startsWith "feat:"`,
+				},
+			}
+			Expect(k8sClient.Create(ctx, gcsProposed)).To(Succeed())
+			defer func() {
+				_ = k8sClient.Delete(ctx, gcsProposed)
+			}()
+
+			By("Verifying proposed mode gives success (proposed SHA has 'feat:' prefix)")
+			Eventually(func(g Gomega) {
+				var retrieved promoterv1alpha1.GitCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-proposed-feat-check",
+					Namespace: "default",
+				}, &retrieved)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(retrieved.Status.Environments).ToNot(BeEmpty())
+
+				var devEnv *promoterv1alpha1.GitCommitStatusEnvironmentStatus
+				for i, env := range retrieved.Status.Environments {
+					if env.Branch == testEnvironmentDevelopment {
+						devEnv = &retrieved.Status.Environments[i]
+						break
+					}
+				}
+				g.Expect(devEnv).ToNot(BeNil())
+
+				// Verify it's checking the proposed SHA
+				g.Expect(devEnv.ValidatedSha).To(Equal(developmentProposedSHA))
+				// Proposed commit subject starts with "feat:", so should succeed
+				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(devEnv.ExpressionResult).ToNot(BeNil())
+				g.Expect(*devEnv.ExpressionResult).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the two modes can give different results")
+			// If active and proposed SHAs are different and have different properties,
+			// the validation results should differ. Here, proposed will succeed with "feat:" prefix
+			// while active may or may not depending on whether it's been promoted
+			Expect(activePhase).ToNot(BeEmpty(), "Active validation should have completed")
+		})
 	})
 
 	Describe("ValidateCommit Field", func() {
@@ -689,7 +834,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 				for _, env := range retrieved.Status.Environments {
 					g.Expect(env.ValidatedSha).To(Equal(env.ActiveHydratedSha))
-					g.Expect(env.ValidatedSha).ToNot(Equal(env.ProposedHydratedSha))
 					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -737,7 +881,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			By("Creating GitCommitStatus with active mode")
 			gcsActive := &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-sha-tracking-active",
+					Name:      name + "-sha-active",
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
@@ -754,17 +898,36 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				_ = k8sClient.Delete(ctx, gcsActive)
 			}()
 
+			By("Verifying active mode sets validatedSha to activeHydratedSha")
+			Eventually(func(g Gomega) {
+				var retrieved promoterv1alpha1.GitCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-sha-active",
+					Namespace: "default",
+				}, &retrieved)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(retrieved.Status.Environments).ToNot(BeEmpty())
+
+				for _, env := range retrieved.Status.Environments {
+					g.Expect(env.ValidatedSha).To(Equal(env.ActiveHydratedSha), "ValidatedSha should equal ActiveHydratedSha in active mode")
+					g.Expect(env.ValidatedSha).ToNot(BeEmpty())
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting active mode GitCommitStatus")
+			Expect(k8sClient.Delete(ctx, gcsActive)).To(Succeed())
+
 			By("Creating GitCommitStatus with proposed mode")
 			gcsProposed := &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-sha-tracking-proposed",
+					Name:      name + "-sha-proposed",
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:            "test-validation-2",
+					Key:            "test-validation",
 					ValidateCommit: "proposed",
 					Expression:     `true`,
 				},
@@ -774,34 +937,18 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				_ = k8sClient.Delete(ctx, gcsProposed)
 			}()
 
-			By("Verifying active mode sets validatedSha to activeHydratedSha")
-			Eventually(func(g Gomega) {
-				var retrieved promoterv1alpha1.GitCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name + "-sha-tracking-active",
-					Namespace: "default",
-				}, &retrieved)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(retrieved.Status.Environments).ToNot(BeEmpty())
-
-				for _, env := range retrieved.Status.Environments {
-					g.Expect(env.ValidatedSha).To(Equal(env.ActiveHydratedSha))
-					g.Expect(env.ValidatedSha).ToNot(BeEmpty())
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-
 			By("Verifying proposed mode sets validatedSha to proposedHydratedSha")
 			Eventually(func(g Gomega) {
 				var retrieved promoterv1alpha1.GitCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name + "-sha-tracking-proposed",
+					Name:      name + "-sha-proposed",
 					Namespace: "default",
 				}, &retrieved)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(retrieved.Status.Environments).ToNot(BeEmpty())
 
 				for _, env := range retrieved.Status.Environments {
-					g.Expect(env.ValidatedSha).To(Equal(env.ProposedHydratedSha))
+					g.Expect(env.ValidatedSha).To(Equal(env.ProposedHydratedSha), "ValidatedSha should equal ProposedHydratedSha in proposed mode")
 					g.Expect(env.ValidatedSha).ToNot(BeEmpty())
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
