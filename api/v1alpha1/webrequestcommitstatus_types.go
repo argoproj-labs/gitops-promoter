@@ -273,4 +273,3 @@ func (w *WebRequestCommitStatus) GetConditions() *[]metav1.Condition {
 func init() {
 	SchemeBuilder.Register(&WebRequestCommitStatus{}, &WebRequestCommitStatusList{})
 }
-

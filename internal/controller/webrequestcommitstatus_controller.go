@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -58,13 +59,17 @@ const (
 	WebRequestPhasePending = "pending"
 	// WebRequestPhaseFailure indicates a permanent failure (expression compilation error)
 	WebRequestPhaseFailure = "failure"
+	// ReportOnActive is the value for reportOn when reporting on active SHA
+	ReportOnActive = "active"
+	// ReportOnProposed is the value for reportOn when reporting on proposed SHA
+	ReportOnProposed = "proposed"
 )
 
 // ResponseData represents the data structure available to expressions during validation.
 type ResponseData struct {
-	StatusCode int                 `expr:"StatusCode"`
 	Body       any                 `expr:"Body"`
 	Headers    map[string][]string `expr:"Headers"`
+	StatusCode int                 `expr:"StatusCode"`
 }
 
 // TemplateData represents the data available to Go templates in URL, Headers, and Body.
@@ -166,7 +171,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 // calculateRequeue determines when to requeue based on reportOn mode and polling needs
 func (r *WebRequestCommitStatusReconciler) calculateRequeue(wrcs *promoterv1alpha1.WebRequestCommitStatus, needsPolling bool) ctrl.Result {
 	// If reportOn: active, always requeue at PollingInterval
-	if wrcs.Spec.ReportOn == "active" {
+	if wrcs.Spec.ReportOn == ReportOnActive {
 		return ctrl.Result{RequeueAfter: wrcs.Spec.PollingInterval.Duration}
 	}
 
@@ -244,6 +249,55 @@ func (r *WebRequestCommitStatusReconciler) enqueueWebRequestCommitStatusForPromo
 	})
 }
 
+// checkKeyInSelectors checks if a key exists in a list of commit status selectors
+func checkKeyInSelectors(key string, selectors []promoterv1alpha1.CommitStatusSelector) bool {
+	for _, selector := range selectors {
+		if selector.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+// appliesToEnvironment checks if the WebRequestCommitStatus applies to the given environment
+func (r *WebRequestCommitStatusReconciler) appliesToEnvironment(wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, psEnv promoterv1alpha1.Environment) bool {
+	// Check global commit statuses
+	if checkKeyInSelectors(wrcs.Spec.Key, ps.Spec.ProposedCommitStatuses) {
+		return true
+	}
+	if checkKeyInSelectors(wrcs.Spec.Key, ps.Spec.ActiveCommitStatuses) {
+		return true
+	}
+	// Check environment-specific commit statuses
+	if checkKeyInSelectors(wrcs.Spec.Key, psEnv.ProposedCommitStatuses) {
+		return true
+	}
+	if checkKeyInSelectors(wrcs.Spec.Key, psEnv.ActiveCommitStatuses) {
+		return true
+	}
+	return false
+}
+
+// findPreviousEnvStatus finds the previous status for a given environment branch
+func findPreviousEnvStatus(previousStatus *promoterv1alpha1.WebRequestCommitStatusStatus, branch string) *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus {
+	for i := range previousStatus.Environments {
+		if previousStatus.Environments[i].Environment == branch {
+			return &previousStatus.Environments[i]
+		}
+	}
+	return nil
+}
+
+// shouldSkipRequest checks if we should skip the HTTP request for this environment
+func shouldSkipRequest(reportOn string, previousEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, reportedSha string) bool {
+	if reportOn != ReportOnProposed || previousEnvStatus == nil {
+		return false
+	}
+	return previousEnvStatus.Phase == WebRequestPhaseSuccess &&
+		previousEnvStatus.ReportedSha == reportedSha &&
+		previousEnvStatus.LastSuccessfulSha == reportedSha
+}
+
 // processEnvironments processes each environment from the PromotionStrategy,
 // making HTTP requests and evaluating expressions for matching environments.
 // Returns transitioned environments, commit statuses, whether polling is needed, and any error.
@@ -269,49 +323,12 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 	// Initialize environments status
 	wrcs.Status.Environments = make([]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, 0, len(ps.Spec.Environments))
 
-	// Check if this WebRequestCommitStatus is referenced in global commit statuses
-	globallyProposed := false
-	globallyActive := false
-	for _, selector := range ps.Spec.ProposedCommitStatuses {
-		if selector.Key == wrcs.Spec.Key {
-			globallyProposed = true
-			break
-		}
-	}
-	for _, selector := range ps.Spec.ActiveCommitStatuses {
-		if selector.Key == wrcs.Spec.Key {
-			globallyActive = true
-			break
-		}
-	}
-
 	// Iterate over ALL environments from the PromotionStrategy
 	for _, psEnv := range ps.Spec.Environments {
 		branch := psEnv.Branch
 
-		// Check if this WebRequestCommitStatus applies to this environment
-		appliesToEnvironment := globallyProposed || globallyActive
-
-		// Check environment-specific commit statuses
-		if !appliesToEnvironment {
-			for _, selector := range psEnv.ProposedCommitStatuses {
-				if selector.Key == wrcs.Spec.Key {
-					appliesToEnvironment = true
-					break
-				}
-			}
-		}
-		if !appliesToEnvironment {
-			for _, selector := range psEnv.ActiveCommitStatuses {
-				if selector.Key == wrcs.Spec.Key {
-					appliesToEnvironment = true
-					break
-				}
-			}
-		}
-
 		// Skip this environment if the WebRequestCommitStatus doesn't apply
-		if !appliesToEnvironment {
+		if !r.appliesToEnvironment(wrcs, ps, psEnv) {
 			logger.V(4).Info("WebRequestCommitStatus does not apply to environment, skipping",
 				"branch", branch,
 				"key", wrcs.Spec.Key)
@@ -325,107 +342,136 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			continue
 		}
 
-		// Get the proposed and active hydrated SHAs
-		proposedSha := envStatus.Proposed.Hydrated.Sha
-		activeSha := envStatus.Active.Hydrated.Sha
-
-		// Determine which SHA to report on
-		reportOn := wrcs.Spec.ReportOn
-		if reportOn == "" {
-			reportOn = "proposed"
-		}
-
-		var reportedSha string
-		if reportOn == "active" {
-			reportedSha = activeSha
-		} else {
-			reportedSha = proposedSha
-		}
-
-		// Find previous status for this environment
-		var previousEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
-		for i := range previousStatus.Environments {
-			if previousStatus.Environments[i].Environment == branch {
-				previousEnvStatus = &previousStatus.Environments[i]
-				break
-			}
-		}
-
-		// Check if we should skip the HTTP request (for reportOn: proposed, already succeeded for this SHA)
-		if reportOn == "proposed" && previousEnvStatus != nil &&
-			previousEnvStatus.Phase == WebRequestPhaseSuccess &&
-			previousEnvStatus.ReportedSha == reportedSha &&
-			previousEnvStatus.LastSuccessfulSha == reportedSha {
-			// Already succeeded for this SHA, keep the status and don't make HTTP request
-			wrcs.Status.Environments = append(wrcs.Status.Environments, *previousEnvStatus)
-			// Create CommitStatus with existing success
-			cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, WebRequestPhaseSuccess, wrcs.Spec.Key)
-			if err != nil {
-				return nil, nil, false, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
-			}
-			commitStatuses = append(commitStatuses, cs)
-			continue
-		}
-
-		// Validate we have the SHA to report on
-		if reportedSha == "" {
-			logger.V(4).Info("Reported SHA not yet available", "branch", branch, "reportOn", reportOn)
-			wrcs.Status.Environments = append(wrcs.Status.Environments, promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
-				Environment:         branch,
-				ProposedHydratedSha: proposedSha,
-				ActiveHydratedSha:   activeSha,
-				ReportedSha:         "",
-				Phase:               WebRequestPhasePending,
-				ExpressionMessage:   fmt.Sprintf("Waiting for %s commit SHA", reportOn),
-			})
-			needsPolling = true
-			continue
-		}
-
-		// Make HTTP request and evaluate expression
-		envResult := r.processEnvironmentRequest(ctx, wrcs, branch, proposedSha, activeSha, reportedSha)
-		wrcs.Status.Environments = append(wrcs.Status.Environments, envResult)
-
-		// Check if this validation transitioned to success
-		var previousPhase string
-		if previousEnvStatus != nil {
-			previousPhase = previousEnvStatus.Phase
-		}
-		if previousPhase != WebRequestPhaseSuccess && envResult.Phase == WebRequestPhaseSuccess {
-			transitionedEnvironments = append(transitionedEnvironments, branch)
-			logger.Info("Validation transitioned to success",
-				"branch", branch,
-				"sha", reportedSha)
-		}
-
-		// Update LastSuccessfulSha if successful
-		if envResult.Phase == WebRequestPhaseSuccess {
-			wrcs.Status.Environments[len(wrcs.Status.Environments)-1].LastSuccessfulSha = reportedSha
-		} else if previousEnvStatus != nil {
-			// Preserve previous LastSuccessfulSha
-			wrcs.Status.Environments[len(wrcs.Status.Environments)-1].LastSuccessfulSha = previousEnvStatus.LastSuccessfulSha
-		}
-
-		// Determine if this environment needs polling
-		if envResult.Phase != WebRequestPhaseSuccess || reportOn == "active" {
-			needsPolling = true
-		}
-
-		// Create or update the CommitStatus
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, envResult.Phase, wrcs.Spec.Key)
+		// Process this environment
+		result, err := r.processSingleEnvironment(ctx, wrcs, ps, branch, envStatus, previousStatus)
 		if err != nil {
-			return nil, nil, false, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
+			return nil, nil, false, err
 		}
-		commitStatuses = append(commitStatuses, cs)
 
-		logger.Info("Processed environment web request",
-			"branch", branch,
-			"reportedSha", reportedSha,
-			"phase", envResult.Phase,
-			"statusCode", envResult.ResponseStatusCode)
+		// Collect results
+		if result.transitioned {
+			transitionedEnvironments = append(transitionedEnvironments, branch)
+		}
+		if result.needsPolling {
+			needsPolling = true
+		}
+		if result.commitStatus != nil {
+			commitStatuses = append(commitStatuses, result.commitStatus)
+		}
 	}
 
 	return transitionedEnvironments, commitStatuses, needsPolling, nil
+}
+
+// environmentProcessResult holds the result of processing a single environment
+type environmentProcessResult struct {
+	commitStatus *promoterv1alpha1.CommitStatus
+	transitioned bool
+	needsPolling bool
+}
+
+// processSingleEnvironment processes a single environment and returns the result
+func (r *WebRequestCommitStatusReconciler) processSingleEnvironment(
+	ctx context.Context,
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	ps *promoterv1alpha1.PromotionStrategy,
+	branch string,
+	envStatus *promoterv1alpha1.EnvironmentStatus,
+	previousStatus *promoterv1alpha1.WebRequestCommitStatusStatus,
+) (*environmentProcessResult, error) {
+	logger := log.FromContext(ctx)
+	result := &environmentProcessResult{}
+
+	// Get the proposed and active hydrated SHAs
+	proposedSha := envStatus.Proposed.Hydrated.Sha
+	activeSha := envStatus.Active.Hydrated.Sha
+
+	// Determine which SHA to report on
+	reportOn := wrcs.Spec.ReportOn
+	if reportOn == "" {
+		reportOn = ReportOnProposed
+	}
+
+	reportedSha := proposedSha
+	if reportOn == ReportOnActive {
+		reportedSha = activeSha
+	}
+
+	// Find previous status for this environment
+	previousEnvStatus := findPreviousEnvStatus(previousStatus, branch)
+
+	// Check if we should skip the HTTP request (for reportOn: proposed, already succeeded for this SHA)
+	if shouldSkipRequest(reportOn, previousEnvStatus, reportedSha) {
+		// Already succeeded for this SHA, keep the status and don't make HTTP request
+		wrcs.Status.Environments = append(wrcs.Status.Environments, *previousEnvStatus)
+		// Create CommitStatus with existing success
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, WebRequestPhaseSuccess, wrcs.Spec.Key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
+		}
+		result.commitStatus = cs
+		return result, nil
+	}
+
+	// Validate we have the SHA to report on
+	if reportedSha == "" {
+		logger.V(4).Info("Reported SHA not yet available", "branch", branch, "reportOn", reportOn)
+		wrcs.Status.Environments = append(wrcs.Status.Environments, promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
+			Environment:         branch,
+			ProposedHydratedSha: proposedSha,
+			ActiveHydratedSha:   activeSha,
+			ReportedSha:         "",
+			Phase:               WebRequestPhasePending,
+			ExpressionMessage:   fmt.Sprintf("Waiting for %s commit SHA", reportOn),
+		})
+		result.needsPolling = true
+		return result, nil
+	}
+
+	// Make HTTP request and evaluate expression
+	envResult := r.processEnvironmentRequest(ctx, wrcs, branch, proposedSha, activeSha, reportedSha)
+	wrcs.Status.Environments = append(wrcs.Status.Environments, envResult)
+
+	// Check if this validation transitioned to success
+	var previousPhase string
+	if previousEnvStatus != nil {
+		previousPhase = previousEnvStatus.Phase
+	}
+	if previousPhase != WebRequestPhaseSuccess && envResult.Phase == WebRequestPhaseSuccess {
+		result.transitioned = true
+		logger.Info("Validation transitioned to success",
+			"branch", branch,
+			"sha", reportedSha)
+	}
+
+	// Update LastSuccessfulSha if successful
+	lastIdx := len(wrcs.Status.Environments) - 1
+	if envResult.Phase == WebRequestPhaseSuccess {
+		wrcs.Status.Environments[lastIdx].LastSuccessfulSha = reportedSha
+	} else if previousEnvStatus != nil {
+		// Preserve previous LastSuccessfulSha
+		wrcs.Status.Environments[lastIdx].LastSuccessfulSha = previousEnvStatus.LastSuccessfulSha
+	}
+
+	// Determine if this environment needs polling
+	if envResult.Phase != WebRequestPhaseSuccess || reportOn == ReportOnActive {
+		result.needsPolling = true
+	}
+
+	// Create or update the CommitStatus
+	cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, envResult.Phase, wrcs.Spec.Key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
+	}
+	result.commitStatus = cs
+
+	logger.Info("Processed environment web request",
+		"branch", branch,
+		"reportedSha", reportedSha,
+		"phase", envResult.Phase,
+		"statusCode", envResult.ResponseStatusCode)
+
+	return result, nil
 }
 
 // processEnvironmentRequest makes the HTTP request and evaluates the expression for a single environment
@@ -522,7 +568,9 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 		result.ExpressionMessage = result.Error
 		return result
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	result.ResponseStatusCode = ptr.To(resp.StatusCode)
 
@@ -595,7 +643,7 @@ func (r *WebRequestCommitStatusReconciler) addAuthentication(ctx context.Context
 		username := string(secret.Data["username"])
 		password := string(secret.Data["password"])
 		if username == "" || password == "" {
-			return fmt.Errorf("basic auth secret must contain 'username' and 'password' keys")
+			return errors.New("basic auth secret must contain 'username' and 'password' keys")
 		}
 		auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
 		req.Header.Set("Authorization", "Basic "+auth)
@@ -603,7 +651,7 @@ func (r *WebRequestCommitStatusReconciler) addAuthentication(ctx context.Context
 	case "bearer":
 		token := string(secret.Data["token"])
 		if token == "" {
-			return fmt.Errorf("bearer auth secret must contain 'token' key")
+			return errors.New("bearer auth secret must contain 'token' key")
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 
@@ -626,7 +674,10 @@ func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Contex
 	// Try to get cached compiled expression
 	var program *vm.Program
 	if cached, ok := r.expressionCache.Load(expression); ok {
-		program = cached.(*vm.Program)
+		program, ok = cached.(*vm.Program)
+		if !ok {
+			return WebRequestPhaseFailure, "Invalid cached expression program", nil
+		}
 	} else {
 		// Compile the expression
 		env := map[string]any{"Response": response}

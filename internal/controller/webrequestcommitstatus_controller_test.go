@@ -730,4 +730,3 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 		})
 	})
 })
-

@@ -71,4 +71,3 @@ func touchChangeTransferPolicies(ctx context.Context, k8sClient client.Client, p
 
 	return nil
 }
-
