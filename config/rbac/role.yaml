@@ -37,6 +37,7 @@ rules:
   - clusterscmproviders
   - commitstatuses
   - controllerconfigurations
+  - gitcommitstatuses
   - gitrepositories
   - promotionstrategies
   - pullrequests
@@ -59,6 +60,7 @@ rules:
   - clusterscmproviders/finalizers
   - commitstatuses/finalizers
   - controllerconfigurations/finalizers
+  - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
@@ -75,6 +77,7 @@ rules:
   - clusterscmproviders/status
   - commitstatuses/status
   - controllerconfigurations/status
+  - gitcommitstatuses/status
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status

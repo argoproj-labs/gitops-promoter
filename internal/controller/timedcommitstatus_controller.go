@@ -117,7 +117,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// 6. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
 	if len(transitionedEnvironments) > 0 {
-		err = r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
+		err = touchChangeTransferPolicies(ctx, r.Client, &ps, transitionedEnvironments, "time gate transition")
 		if err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to touch ChangeTransferPolicies: %w", err)
 		}
@@ -319,50 +319,6 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	}
 
 	return &commitStatus, nil
-}
-
-// touchChangeTransferPolicies adds or updates the ReconcileAtAnnotation on the ChangeTransferPolicies
-// for the environments that had time gates transition to success.
-// This triggers the ChangeTransferPolicy controller to reconcile and potentially merge PRs.
-func (r *TimedCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) error {
-	logger := log.FromContext(ctx)
-
-	// For each transitioned environment, find and update the corresponding ChangeTransferPolicy
-	for _, envBranch := range transitionedEnvironments {
-		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
-		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
-
-		// Fetch the ChangeTransferPolicy
-		var ctp promoterv1alpha1.ChangeTransferPolicy
-		err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: ctpName}, &ctp)
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				logger.Info("ChangeTransferPolicy not found for environment, skipping touch",
-					"branch", envBranch,
-					"ctpName", ctpName)
-				continue
-			}
-			return fmt.Errorf("failed to get ChangeTransferPolicy %q for environment %q: %w", ctpName, envBranch, err)
-		}
-
-		// Update the annotation to trigger reconciliation
-		ctpUpdated := ctp.DeepCopy()
-		if ctpUpdated.Annotations == nil {
-			ctpUpdated.Annotations = make(map[string]string)
-		}
-		ctpUpdated.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339Nano)
-
-		err = r.Patch(ctx, ctpUpdated, client.MergeFrom(&ctp))
-		if err != nil {
-			return fmt.Errorf("failed to update ChangeTransferPolicy %q annotation for environment %q: %w", ctpName, envBranch, err)
-		}
-
-		logger.Info("Triggered ChangeTransferPolicy reconciliation due to time gate transition",
-			"changeTransferPolicy", ctpName,
-			"branch", envBranch)
-	}
-
-	return nil
 }
 
 // calculateRequeueDuration determines when to requeue based on whether there are pending time gates.
