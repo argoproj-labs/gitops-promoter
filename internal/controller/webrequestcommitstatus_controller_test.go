@@ -272,13 +272,14 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 		var promotionStrategy *promoterv1alpha1.PromotionStrategy
 		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 		var testServer *httptest.Server
-		var receivedSha string
+		var receivedPaths []string
 
 		BeforeEach(func() {
+			receivedPaths = []string{}
 			By("Creating a mock HTTP server that captures the SHA from the URL")
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Extract SHA from URL path
-				receivedSha = r.URL.Path[1:] // Remove leading /
+				// Extract SHA from URL path and store it
+				receivedPaths = append(receivedPaths, r.URL.Path[1:]) // Remove leading /
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode(map[string]any{
@@ -359,9 +360,20 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
 				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
 
-				// Verify the SHA was correctly templated in the URL
-				g.Expect(receivedSha).ToNot(BeEmpty())
-				g.Expect(receivedSha).To(Equal(wrcs.Status.Environments[0].ProposedHydratedSha))
+				// Verify the SHA was correctly templated in the URL by checking that we received paths
+				// containing the expected SHA
+				g.Expect(len(receivedPaths)).To(BeNumerically(">", 0), "Should have received at least one request")
+
+				// Find the path that matches the first environment's SHA
+				expectedSha := wrcs.Status.Environments[0].ProposedHydratedSha
+				found := false
+				for _, path := range receivedPaths {
+					if path == expectedSha {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeTrue(), "Expected to find SHA %s in received paths %v", expectedSha, receivedPaths)
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
