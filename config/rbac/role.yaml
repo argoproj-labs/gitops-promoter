@@ -43,6 +43,7 @@ rules:
   - revertcommits
   - scmproviders
   - timedcommitstatuses
+  - webrequestcommitstatuses
   verbs:
   - create
   - delete
@@ -65,6 +66,7 @@ rules:
   - revertcommits/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers
+  - webrequestcommitstatuses/finalizers
   verbs:
   - update
 - apiGroups:
@@ -81,6 +83,7 @@ rules:
   - revertcommits/status
   - scmproviders/status
   - timedcommitstatuses/status
+  - webrequestcommitstatuses/status
   verbs:
   - get
   - patch
