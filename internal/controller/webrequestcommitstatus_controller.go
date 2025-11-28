@@ -74,13 +74,13 @@ type ResponseData struct {
 
 // TemplateData represents the data available to Go templates in URL, Headers, and Body.
 type TemplateData struct {
+	Labels              map[string]string
+	Annotations         map[string]string
 	ProposedHydratedSha string
 	ActiveHydratedSha   string
 	Key                 string
 	Name                string
 	Namespace           string
-	Labels              map[string]string
-	Annotations         map[string]string
 }
 
 // WebRequestCommitStatusReconciler reconciles a WebRequestCommitStatus object
