@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"time"
@@ -739,6 +740,137 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				// Status should be empty since PromotionStrategy doesn't exist
 				g.Expect(wrcs.Status.Environments).To(BeEmpty())
 			}, 2*time.Second, 500*time.Millisecond).Should(Succeed())
+		})
+	})
+
+	Context("When using labels and annotations in templates", func() {
+		ctx := context.Background()
+
+		var name string
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+		var testServer *httptest.Server
+		var receivedHeaders http.Header
+		var receivedBody map[string]any
+
+		BeforeEach(func() {
+			By("Creating a mock HTTP server that captures headers and body")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				receivedHeaders = r.Header.Clone()
+				if r.Body != nil {
+					body, _ := io.ReadAll(r.Body)
+					_ = json.Unmarshal(body, &receivedBody)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"status": "ok",
+				})
+			}))
+
+			By("Creating the test resources")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "webrequest-metadata", "default")
+
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "metadata-check"},
+			}
+
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			By("Waiting for PromotionStrategy to be reconciled")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, promotionStrategy)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Creating a WebRequestCommitStatus with labels and annotations")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+					Labels: map[string]string{
+						"team":     "platform",
+						"env-tier": "production",
+					},
+					Annotations: map[string]string{
+						"slack-channel": "#deployments",
+						"jira-project":  "DEPLOY",
+					},
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:         "metadata-check",
+					Description: "Metadata check",
+					ReportOn:    "proposed",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URL:    testServer.URL,
+						Method: "POST",
+						Headers: map[string]string{
+							"Content-Type": "application/json",
+							"X-Team":       `{{ index .Labels "team" }}`,
+							"X-Tier":       `{{ index .Labels "env-tier" }}`,
+						},
+						Body: `{
+							"team": "{{ index .Labels "team" }}",
+							"tier": "{{ index .Labels "env-tier" }}",
+							"slack": "{{ index .Annotations "slack-channel" }}",
+							"jira": "{{ index .Annotations "jira-project" }}"
+						}`,
+						Timeout: metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression:      `Response.StatusCode == 200`,
+					PollingInterval: metav1.Duration{Duration: 5 * time.Second},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			testServer.Close()
+			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		It("should render labels and annotations in headers and body", func() {
+			By("Waiting for WebRequestCommitStatus to make the HTTP request")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+
+				// Verify headers contain templated label values
+				g.Expect(receivedHeaders.Get("X-Team")).To(Equal("platform"))
+				g.Expect(receivedHeaders.Get("X-Tier")).To(Equal("production"))
+
+				// Verify body contains templated label and annotation values
+				g.Expect(receivedBody).ToNot(BeNil())
+				g.Expect(receivedBody["team"]).To(Equal("platform"))
+				g.Expect(receivedBody["tier"]).To(Equal("production"))
+				g.Expect(receivedBody["slack"]).To(Equal("#deployments"))
+				g.Expect(receivedBody["jira"]).To(Equal("DEPLOY"))
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 })

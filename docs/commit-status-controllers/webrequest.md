@@ -81,6 +81,8 @@ Available template variables:
 - `{{ .Key }}` - The WebRequestCommitStatus key
 - `{{ .Name }}` - The WebRequestCommitStatus resource name
 - `{{ .Namespace }}` - The WebRequestCommitStatus namespace
+- `{{ .Labels }}` - Map of labels from the WebRequestCommitStatus resource
+- `{{ .Annotations }}` - Map of annotations from the WebRequestCommitStatus resource
 
 ### POST Request with Body
 
@@ -110,6 +112,49 @@ spec:
     timeout: 30s
   expression: 'Response.StatusCode == 200 && Response.Body.valid == true'
 ```
+
+### Using Labels and Annotations in Templates
+
+Labels and annotations from the WebRequestCommitStatus resource can be used in templates to pass metadata:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: deployment-check
+  labels:
+    team: platform
+    env-tier: production
+  annotations:
+    slack-channel: "#deployments"
+    jira-project: "DEPLOY"
+spec:
+  promotionStrategyRef:
+    name: webservice-tier-1
+  key: deployment-check
+  description: "Deployment verification with metadata"
+  reportOn: proposed
+  pollingInterval: 2m
+  httpRequest:
+    url: "https://api.example.com/deployments/validate"
+    method: POST
+    headers:
+      Content-Type: application/json
+      X-Team: '{{ index .Labels "team" }}'
+      X-Slack-Channel: '{{ index .Annotations "slack-channel" }}'
+    body: |
+      {
+        "sha": "{{ .ProposedHydratedSha }}",
+        "team": "{{ index .Labels "team" }}",
+        "tier": "{{ index .Labels "env-tier" }}",
+        "jiraProject": "{{ index .Annotations "jira-project" }}",
+        "notificationChannel": "{{ index .Annotations "slack-channel" }}"
+      }
+    timeout: 30s
+  expression: 'Response.StatusCode == 200 && Response.Body.approved == true'
+```
+
+**Note:** Use `{{ index .Labels "key-name" }}` or `{{ index .Annotations "key-name" }}` to access specific label/annotation values in templates.
 
 ### Integrating with PromotionStrategy
 

@@ -79,6 +79,8 @@ type TemplateData struct {
 	Key                 string
 	Name                string
 	Namespace           string
+	Labels              map[string]string
+	Annotations         map[string]string
 }
 
 // WebRequestCommitStatusReconciler reconciles a WebRequestCommitStatus object
@@ -494,6 +496,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 		Key:                 wrcs.Spec.Key,
 		Name:                wrcs.Name,
 		Namespace:           wrcs.Namespace,
+		Labels:              wrcs.Labels,
+		Annotations:         wrcs.Annotations,
 	}
 
 	// Render URL template
