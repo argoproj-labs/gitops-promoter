@@ -79,7 +79,6 @@ func (cs *CommitStatus) getGitRepository(ctx context.Context, commitStatus *prom
 
 // buildCheckRunOutput creates a CheckRunOutput with title and description
 // Both Title and Summary are required by GitHub API when Output is provided.
-// If description is empty, we return nil to avoid creating an incomplete Output object.
 func buildCheckRunOutput(ctx context.Context, name, description string) *github.CheckRunOutput {
 	if name == "" || description == "" {
 		logger := log.FromContext(ctx)
