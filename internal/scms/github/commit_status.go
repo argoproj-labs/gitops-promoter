@@ -98,6 +98,13 @@ func (cs *CommitStatus) createCheckRun(ctx context.Context, commitStatus *promot
 		checkRunOpts.DetailsURL = github.Ptr(commitStatus.Spec.Url)
 	}
 
+	// Set description as Output.Summary if provided
+	if commitStatus.Spec.Description != "" {
+		checkRunOpts.Output = &github.CheckRunOutput{
+			Summary: github.Ptr(commitStatus.Spec.Description),
+		}
+	}
+
 	now := github.Timestamp{Time: time.Now()}
 
 	// If the status is completed, set the conclusion and timestamps
@@ -146,6 +153,13 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 	// Set details URL if provided
 	if commitStatus.Spec.Url != "" {
 		updateOpts.DetailsURL = github.Ptr(commitStatus.Spec.Url)
+	}
+
+	// Set description as Output.Summary if provided
+	if commitStatus.Spec.Description != "" {
+		updateOpts.Output = &github.CheckRunOutput{
+			Summary: github.Ptr(commitStatus.Spec.Description),
+		}
 	}
 
 	// If the status is completed, set the conclusion and timestamp
