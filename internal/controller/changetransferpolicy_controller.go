@@ -133,7 +133,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to git merge for conflict resolution: %w", err)
 	}
 
-	directPushWasPerformed, pr, err := r.mergeOrPullRequestPromote(ctx, gitOperations, &ctp)
+	pr, err := r.mergeOrPullRequestPromote(ctx, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set promotion state: %w", err)
 	}
@@ -159,16 +159,9 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
 	}
 
-	// If there was a direct push to the active branch, we want to requeue the reconciliation after a short delay to
-	// allow the CTP to pick up the new state of the active branch. (Merges via PRs should trigger reconciliations since
-	// the CTP controller owns the PR object and will be notified when the PR is merged.)
-	// There's nothing special about 1ns, it just has to be > 0.
-	requeueDuration := 1 * time.Nanosecond
-	if !directPushWasPerformed {
-		requeueDuration, err = settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
-		}
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
 
 	return ctrl.Result{
@@ -724,9 +717,8 @@ func tooManyPRsError(pr *promoterv1alpha1.PullRequestList) error {
 	return fmt.Errorf("found more than one open PullRequest: %s", summary)
 }
 
-// mergeOrPullRequestPromote checks if there's anything to promote and, if there is, it does the promotion. It returns
-// a boolean indicating whether a merge was done via a merge commit/push (as opposed to a pull request).
-func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.Context, gitOperations *git.EnvironmentOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) (bool, *promoterv1alpha1.PullRequest, error) {
+// mergeOrPullRequestPromote checks if there's anything to promote and, if there is, creates or updates a PR.
+func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 
 	// Compare dry SHAs from hydrator.metadata to determine if promotion is needed.
@@ -739,14 +731,14 @@ func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.C
 		logger.V(4).Info("No promotion needed - active branch already has proposed changes",
 			"activeDrySha", activeDrySha,
 			"proposedDrySha", proposedDrySha)
-		return false, nil, nil
+		return nil, nil
 	}
 
 	pr, err := r.creatOrUpdatePullRequest(ctx, ctp)
 	if err != nil {
-		return false, nil, fmt.Errorf("failed to create/update PR: %w", err)
+		return nil, fmt.Errorf("failed to create/update PR: %w", err)
 	}
-	return false, pr, nil
+	return pr, nil
 }
 
 func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
