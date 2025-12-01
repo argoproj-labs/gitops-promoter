@@ -30,7 +30,7 @@ spec:
           It validates commits from PromotionStrategy environments using configurable expressions
           and creates CommitStatus resources with the validation results.
 
-          FLEXIBLE VALIDATION: Use the ValidateCommit field to control which commit is validated:
+          Use the ValidateCommit field to control which commit is validated:
           - "active" (default): Validates the currently deployed commit
           - "proposed": Validates the incoming commit
 

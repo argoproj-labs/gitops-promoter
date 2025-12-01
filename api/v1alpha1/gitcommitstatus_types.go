@@ -47,7 +47,6 @@ type GitCommitStatusSpec struct {
 	// If not specified, defaults to empty string.
 	// Keep this concise and avoid special characters that may not be supported by all SCM providers.
 	// +optional
-	// +kubebuilder:validation:MaxLength=140
 	Description string `json:"description,omitempty"`
 
 	// ValidateCommit specifies which commit SHA to validate with the expression.
@@ -187,7 +186,7 @@ type GitCommitStatusEnvironmentStatus struct {
 // It validates commits from PromotionStrategy environments using configurable expressions
 // and creates CommitStatus resources with the validation results.
 //
-// FLEXIBLE VALIDATION: Use the ValidateCommit field to control which commit is validated:
+// Use the ValidateCommit field to control which commit is validated:
 // - "active" (default): Validates the currently deployed commit
 // - "proposed": Validates the incoming commit
 //

@@ -1,10 +1,6 @@
-# Git Commit Status Controller
-
-The Git Commit Status controller provides flexible, expression-based validation of git commits for environment promotions. It enables you to gate promotions based on commit metadata such as commit messages, authors, trailers (like Signed-off-by), and more.
-
 ## Overview
 
-The GitCommitStatus controller evaluates custom expressions against commit data and automatically creates CommitStatus resources that can be used as gates in your PromotionStrategy. Unlike other commit status controllers, GitCommitStatus gives you complete control over what gets validated through powerful expression language.
+The GitCommitStatus controller evaluates custom expressions against commit data and automatically creates CommitStatus resources that can be used as gates in your PromotionStrategy.
 
 ### How It Works
 
@@ -61,7 +57,7 @@ spec:
   expression: '!(Commit.Subject startsWith "Revert" || Commit.Body startsWith "Revert")'
 ```
 
-### Hydrator Version Check (Active Mode)
+### Hydrator Version Check (Proposed Mode)
 
 Ensure the hydration tooling version is the latest approved version before allowing promotions:
 
@@ -69,12 +65,12 @@ Ensure the hydration tooling version is the latest approved version before allow
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: GitCommitStatus
 metadata:
-  name: hydrator-version-approval
+  name: hydrator-version-check
 spec:
   promotionStrategyRef:
     name: webservice-tier-1
-  key: hydrator-approval
-  description: "Verify active hydrator version is latest"
+  key: hydrator-version
+  description: "Verify active hydrator version is the latest"
   validateCommit: active  # Validates currently deployed commit
   expression: '"Hydrator-version" in Commit.Trailers && Commit.Trailers["Hydrator-version"][0] == "v2.1.0"'
 ```
@@ -82,6 +78,8 @@ spec:
 ### Integrating with PromotionStrategy
 
 To use GitCommitStatus-based gating, configure your PromotionStrategy to check for the commit status key:
+
+> **Important:** GitCommitStatus must always be configured as a `proposedCommitStatuses` in your PromotionStrategy, regardless of whether it validates the active or proposed commit. This is because the CommitStatus is always reported on the **proposed** commit SHA, which is what gates the promotion.
 
 #### As Proposed Commit Status (Validates Incoming Change)
 
@@ -177,7 +175,6 @@ Unique identifier for this validation rule. This key is matched against the Prom
 Human-readable description shown in the SCM provider (GitHub, GitLab, etc.) as the commit status description. Keep this concise.
 
 **Optional**
-**Max:** 140 characters
 
 ### spec.expression
 
@@ -194,8 +191,8 @@ status:
   environments:
     - branch: environment/development
       proposedHydratedSha: abc123def456
-      activeHydratedSha: xyz789ghi012
-      validatedSha: xyz789ghi012  # Which SHA was actually validated
+      activeHydratedSha: bef859def431
+      validatedSha: eda642def745  # Which SHA was actually validated
       phase: success
       expressionMessage: "Expression evaluated to true"
       expressionResult: true
