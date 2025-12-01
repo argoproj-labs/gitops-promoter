@@ -77,6 +77,22 @@ func (cs *CommitStatus) getGitRepository(ctx context.Context, commitStatus *prom
 	return gitRepo, nil
 }
 
+// buildCheckRunOutput creates a CheckRunOutput with title and description
+// Both Title and Summary are required by GitHub API when Output is provided.
+// If description is empty, we return nil to avoid creating an incomplete Output object.
+func buildCheckRunOutput(ctx context.Context, name, description string) *github.CheckRunOutput {
+	if name == "" || description == "" {
+		logger := log.FromContext(ctx)
+		logger.V(4).Info("No output (title/summary) provided for check run",
+			"reason", "name or description is empty")
+		return nil
+	}
+	return &github.CheckRunOutput{
+		Title:   github.Ptr(name),
+		Summary: github.Ptr(description),
+	}
+}
+
 // createCheckRun creates a new GitHub check run
 func (cs *CommitStatus) createCheckRun(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	gitRepo, err := cs.getGitRepository(ctx, commitStatus)
@@ -88,21 +104,11 @@ func (cs *CommitStatus) createCheckRun(ctx context.Context, commitStatus *promot
 
 	// Build create-specific options
 	checkRunOpts := github.CreateCheckRunOptions{
-		Name:    commitStatus.Spec.Name,
-		HeadSHA: commitStatus.Spec.Sha,
-		Status:  github.Ptr(status),
-	}
-
-	// Set details URL if provided
-	if commitStatus.Spec.Url != "" {
-		checkRunOpts.DetailsURL = github.Ptr(commitStatus.Spec.Url)
-	}
-
-	// Set description as Output.Summary if provided
-	if commitStatus.Spec.Description != "" {
-		checkRunOpts.Output = &github.CheckRunOutput{
-			Summary: github.Ptr(commitStatus.Spec.Description),
-		}
+		Name:       commitStatus.Spec.Name,
+		HeadSHA:    commitStatus.Spec.Sha,
+		Status:     github.Ptr(status),
+		DetailsURL: github.Ptr(commitStatus.Spec.Url),
+		Output:     buildCheckRunOutput(ctx, commitStatus.Spec.Name, commitStatus.Spec.Description),
 	}
 
 	now := github.Timestamp{Time: time.Now()}
@@ -146,20 +152,10 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 
 	// Build update-specific options
 	updateOpts := github.UpdateCheckRunOptions{
-		Name:   commitStatus.Spec.Name,
-		Status: github.Ptr(status),
-	}
-
-	// Set details URL if provided
-	if commitStatus.Spec.Url != "" {
-		updateOpts.DetailsURL = github.Ptr(commitStatus.Spec.Url)
-	}
-
-	// Set description as Output.Summary if provided
-	if commitStatus.Spec.Description != "" {
-		updateOpts.Output = &github.CheckRunOutput{
-			Summary: github.Ptr(commitStatus.Spec.Description),
-		}
+		Name:       commitStatus.Spec.Name,
+		Status:     github.Ptr(status),
+		DetailsURL: github.Ptr(commitStatus.Spec.Url),
+		Output:     buildCheckRunOutput(ctx, commitStatus.Spec.Name, commitStatus.Spec.Description),
 	}
 
 	// If the status is completed, set the conclusion and timestamp
