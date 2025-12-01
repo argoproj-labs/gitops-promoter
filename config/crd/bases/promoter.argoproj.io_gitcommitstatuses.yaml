@@ -31,8 +31,8 @@ spec:
           and creates CommitStatus resources with the validation results.
 
           FLEXIBLE VALIDATION: Use the ValidateCommit field to control which commit is validated:
-          - "active" (default): Validates the currently deployed commit (state-based gating)
-          - "proposed": Validates the incoming commit (change-based gating)
+          - "active" (default): Validates the currently deployed commit
+          - "proposed": Validates the incoming commit
 
           The validation result is always reported on the PROPOSED commit to enable promotion gating,
           regardless of which commit was validated.

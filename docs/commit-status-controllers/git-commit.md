@@ -23,7 +23,7 @@ For each environment configured in a GitCommitStatus resource:
 
 GitCommitStatus supports two validation modes:
 
-#### Active Mode (State-Based Gating)
+#### Active Mode
 
 Validates the **currently deployed** commit. Use this when you want to validate the current environment state before allowing new changes to be promoted.
 
@@ -32,7 +32,7 @@ Validates the **currently deployed** commit. Use this when you want to validate 
 - "Ensure active commit is not missing required sign-offs"
 - "Block promotions if active commit violates policy"
 
-#### Proposed Mode (Change-Based Gating)
+#### Proposed Mode
 
 Validates the **incoming** commit that will be promoted. Use this when you want to validate the change itself.
 
@@ -61,40 +61,22 @@ spec:
   expression: '!(Commit.Subject startsWith "Revert" || Commit.Body startsWith "Revert")'
 ```
 
-### Commit Message Format Validation (Proposed Mode)
+### Hydrator Version Check (Active Mode)
 
-Ensure incoming commits follow conventional commit format:
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: GitCommitStatus
-metadata:
-  name: commit-format-check
-spec:
-  promotionStrategyRef:
-    name: webservice-tier-1
-  key: commit-format
-  description: "Enforce conventional commit format"
-  validateCommit: proposed  # Validates incoming commit
-  expression: 'Commit.Subject matches "^(feat|fix|docs|style|refactor|test|chore)(\\(.+\\))?: .+"'
-```
-
-### Author Restrictions (Proposed Mode)
-
-Only allow commits from specific domains:
+Ensure the hydration tooling version is the latest approved version before allowing promotions:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: GitCommitStatus
 metadata:
-  name: author-domain-check
+  name: hydrator-version-approval
 spec:
   promotionStrategyRef:
     name: webservice-tier-1
-  key: author-check
-  description: "Only allow commits from example.com"
-  validateCommit: proposed
-  expression: 'endsWith(Commit.Author, "@example.com")'
+  key: hydrator-approval
+  description: "Verify active hydrator version is latest"
+  validateCommit: active  # Validates currently deployed commit
+  expression: '"Hydrator-version" in Commit.Trailers && Commit.Trailers["Hydrator-version"][0] == "v2.1.0"'
 ```
 
 ### Integrating with PromotionStrategy
