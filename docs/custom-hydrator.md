@@ -302,9 +302,6 @@ Promoter.
 
 4. **Error Handling**: If hydration fails for one environment, it shouldn't prevent hydration of other environments.
 
-5. **Branch Protection**: Configure your SCM to prevent direct pushes to staging branches (except from the hydrator).
-   This ensures all changes flow through the proper hydration process.
-
-6. **Avoid Force Pushes**: Don't force-push to staging branches. GitOps Promoter tracks commit SHAs, and force pushes
+5. **Avoid Force Pushes**: Don't force-push to staging branches. GitOps Promoter tracks commit SHAs, and force pushes
    can cause confusion.
 
