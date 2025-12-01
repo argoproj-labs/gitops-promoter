@@ -20,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/relvacode/iso8601"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -334,73 +333,6 @@ func (g *EnvironmentOperations) GetShaTime(ctx context.Context, sha string) (v1.
 	}
 
 	return v1.Time{Time: cTime}, nil
-}
-
-// PromoteEnvironmentWithMerge merges the next environment branch into the current environment branch and pushes the result.
-// This assumes that both branches have already been fetched via GetBranchShas earlier in the reconciliation,
-// ensuring we merge the exact same refs that were checked for PR requirements.
-func (g *EnvironmentOperations) PromoteEnvironmentWithMerge(ctx context.Context, environmentBranch, environmentNextBranch string) error {
-	logger := log.FromContext(ctx)
-	logger.Info("Promoting environment with merge", "environmentBranch", environmentBranch, "environmentNextBranch", environmentNextBranch)
-
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
-	if gitPath == "" {
-		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	// Checkout the environment branch from the already-fetched origin ref
-	// We use the origin ref to ensure we're working with the same commits that were checked
-	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "--progress", "-B", environmentBranch, "origin/"+environmentBranch)
-	if err != nil {
-		logger.Error(err, "could not git checkout", "gitError", stderr)
-		return err
-	}
-	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
-
-	// Merge using the already-fetched origin ref to ensure we merge the same commits that were checked
-	start := time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+environmentNextBranch, "-m", "This is a no-op commit merging from "+environmentNextBranch+" into "+environmentBranch+"\n\n"+constants.TrailerNoOp+": true\n")
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
-	if err != nil {
-		logger.Error(err, "could not git merge", "gitError", stderr)
-		return err
-	}
-	logger.V(4).Info("Merged branch", "branch", environmentNextBranch)
-
-	start = time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "push", "--progress", "origin", environmentBranch)
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPush, metrics.GitOperationResultFromError(err), time.Since(start))
-	if err != nil {
-		logger.Error(err, "could not git push", "gitError", stderr)
-		return err
-	}
-	logger.Info("Pushed branch", "branch", environmentBranch)
-
-	return nil
-}
-
-// IsPullRequestRequired will compare the environment branch with the next environment branch and return true if a PR is required.
-// The PR is required if the diff between the two branches contain edits to yaml files.
-// This assumes that both branches have already been fetched via GetBranchShas earlier in the reconciliation,
-// ensuring we check the same refs that were used for conflict detection.
-func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, environmentNextBranch, environmentBranch string) (bool, error) {
-	logger := log.FromContext(ctx)
-
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
-	if gitPath == "" {
-		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	// Get the diff between the two branches using already-fetched origin refs - no checkout or fetch needed
-	// This ensures we're checking the same refs that were checked for conflicts
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "diff", fmt.Sprintf("origin/%s...origin/%s", environmentBranch, environmentNextBranch), "--name-only", "--diff-filter=ACMRT")
-	if err != nil {
-		logger.Error(err, "could not get diff", "gitError", stderr)
-		return false, err
-	}
-	logger.V(4).Info("Got diff", "diff", stdout)
-
-	return containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
 }
 
 // LsRemote returns a map of branch names to SHAs for the given branches using git ls-remote.

@@ -179,7 +179,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 // calculateHistory this function calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
 // calculateHistory calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
 // This function is best effort and will log errors but continue processing if it encounters issues with individual commits. This is because history is stored in git
-// in order to get out of a bad state requires re-writing git history or pushing a bunch of no-op commits greater than the max history limit.
+// in order to get out of a bad state requires re-writing git history or pushing a bunch of commits greater than the max history limit.
 func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) {
 	logger := log.FromContext(ctx)
 
@@ -211,11 +211,6 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 	activeTrailers, err := gitOperations.GetTrailers(ctx, sha)
 	if err != nil {
 		return promoterv1alpha1.History{}, false, fmt.Errorf("failed to get trailers for SHA %q: %w", sha, err)
-	}
-
-	// Skip no-op commits
-	if activeTrailers[constants.TrailerNoOp] == "true" {
-		return promoterv1alpha1.History{}, false, nil
 	}
 
 	historyEntry := promoterv1alpha1.History{
@@ -392,7 +387,6 @@ func removeKnownTrailers(input string) string {
 		constants.TrailerShaHydratedProposed,
 		constants.TrailerShaDryActive,
 		constants.TrailerShaDryProposed,
-		constants.TrailerNoOp,
 	}
 
 	lines := strings.Split(input, "\n")
@@ -733,30 +727,26 @@ func tooManyPRsError(pr *promoterv1alpha1.PullRequestList) error {
 // mergeOrPullRequestPromote checks if there's anything to promote and, if there is, it does the promotion. It returns
 // a boolean indicating whether a merge was done via a merge commit/push (as opposed to a pull request).
 func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.Context, gitOperations *git.EnvironmentOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) (bool, *promoterv1alpha1.PullRequest, error) {
-	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
-		// There's nothing to promote.
+	logger := log.FromContext(ctx)
+
+	// Compare dry SHAs from hydrator.metadata to determine if promotion is needed.
+	// Both values come from the hydrator.metadata file on each branch.
+	activeDrySha := ctp.Status.Active.Dry.Sha
+	proposedDrySha := ctp.Status.Proposed.Dry.Sha
+
+	if activeDrySha == proposedDrySha {
+		// There's nothing to promote - active already has the proposed changes.
+		logger.V(4).Info("No promotion needed - active branch already has proposed changes",
+			"activeDrySha", activeDrySha,
+			"proposedDrySha", proposedDrySha)
 		return false, nil, nil
 	}
 
-	prRequired, err := gitOperations.IsPullRequestRequired(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	pr, err := r.creatOrUpdatePullRequest(ctx, ctp)
 	if err != nil {
-		return false, nil, fmt.Errorf("failed to check whether a PR is required from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+		return false, nil, fmt.Errorf("failed to create/update PR: %w", err)
 	}
-
-	var pr *promoterv1alpha1.PullRequest
-	if prRequired {
-		pr, err = r.creatOrUpdatePullRequest(ctx, ctp)
-		if err != nil {
-			return false, nil, fmt.Errorf("failed to create/update PR: %w", err)
-		}
-		return false, pr, nil
-	}
-
-	err = gitOperations.PromoteEnvironmentWithMerge(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch)
-	if err != nil {
-		return false, pr, fmt.Errorf("failed to merge: %w", err)
-	}
-	return true, pr, nil
+	return false, pr, nil
 }
 
 func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {

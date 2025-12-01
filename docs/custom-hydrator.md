@@ -1,0 +1,309 @@
+# Building a Custom Hydrator
+
+GitOps Promoter is designed to work with any hydration system that follows a simple contract. This page documents the
+requirements for building a custom hydrator that integrates with GitOps Promoter.
+
+## Overview
+
+A hydrator is a tool that watches a "DRY" (Don't Repeat Yourself) branch for new commits and transforms them into
+environment-specific "hydrated" commits on staging branches. GitOps Promoter then handles promoting these hydrated
+commits through your environments via Pull Requests.
+
+## The Contract
+
+Your hydrator must fulfill these requirements:
+
+### 1. Watch the DRY Branch
+
+Monitor the configured DRY branch for new commits. When a new commit arrives, trigger hydration for each environment.
+
+### 2. Push to Staging Branches
+
+For each environment, push the hydrated content to the corresponding staging branch. The staging branch name must be
+the environment's live branch name with a `-next` suffix.
+
+| Live Branch | Staging Branch |
+|-------------|----------------|
+| `environment/development` | `environment/development-next` |
+| `environment/staging` | `environment/staging-next` |
+| `environment/production` | `environment/production-next` |
+
+> **Important**: The `-next` suffix convention is hard-coded in GitOps Promoter and cannot be changed.
+
+### 3. Include `hydrator.metadata` File
+
+Each hydrated commit **must** include a `hydrator.metadata` file at the root of the repository. This JSON file tells
+GitOps Promoter which DRY commit was used to produce the hydrated content.
+
+#### Required Fields
+
+```json
+{
+  "drySha": "abc123def456789..."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `drySha` | string | **Yes** | The full SHA of the DRY branch commit that was hydrated |
+
+#### Optional Fields
+
+The following fields are optional but recommended for a better user experience in the GitOps Promoter UI:
+
+```json
+{
+  "drySha": "abc123def456789...",
+  "repoURL": "https://github.com/org/repo",
+  "author": "Jane Developer <jane@example.com>",
+  "date": "2024-01-15T10:30:00Z",
+  "subject": "feat: add new feature",
+  "body": "This commit adds a new feature that...\n\nSigned-off-by: Jane Developer",
+  "references": [
+    {
+      "commit": {
+        "sha": "def789abc123...",
+        "repoURL": "https://github.com/org/other-repo",
+        "author": "John Developer <john@example.com>",
+        "date": "2024-01-14T09:00:00Z",
+        "subject": "chore: update dependency"
+      }
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `repoURL` | string | URL of the DRY repository (used for creating links in the UI) |
+| `author` | string | Author of the DRY commit in git format (`Name <email>`) |
+| `date` | string | ISO 8601 timestamp of the DRY commit |
+| `subject` | string | Subject line of the DRY commit message |
+| `body` | string | Body of the DRY commit message (excluding subject) |
+| `references` | array | Additional commits that contributed to this hydration (e.g., from other repositories) |
+
+### 4. Duplicate Detection (Recommended)
+
+To avoid unnecessary commits when manifests haven't changed, your hydrator should detect when the hydrated output
+is identical to what's already on the staging branch. If nothing has changed, don't push a new commit.
+
+This prevents GitOps Promoter from creating Pull Requests for changes that have no effect.
+
+## Example Implementations
+
+### Minimal Example
+
+A minimal hydrator that copies files and adds metadata:
+
+```bash
+#!/bin/bash
+DRY_BRANCH="main"
+ENVIRONMENTS=("development" "staging" "production")
+
+# Get the latest DRY commit
+git checkout $DRY_BRANCH
+git pull origin $DRY_BRANCH
+DRY_SHA=$(git rev-parse HEAD)
+
+for ENV in "${ENVIRONMENTS[@]}"; do
+  STAGING_BRANCH="environment/${ENV}-next"
+  
+  # Checkout staging branch
+  git checkout $STAGING_BRANCH || git checkout -b $STAGING_BRANCH
+  
+  # Copy/transform files (your hydration logic here)
+  cp -r manifests/${ENV}/* .
+  
+  # Create hydrator.metadata
+  cat > hydrator.metadata << EOF
+{
+  "drySha": "${DRY_SHA}",
+  "repoURL": "https://github.com/org/repo",
+  "author": "$(git show -s --format='%an <%ae>' ${DRY_SHA})",
+  "date": "$(git show -s --format='%aI' ${DRY_SHA})",
+  "subject": "$(git show -s --format='%s' ${DRY_SHA})"
+}
+EOF
+  
+  # Commit and push
+  git add -A
+  git commit -m "Hydrate from ${DRY_SHA}"
+  git push origin $STAGING_BRANCH
+done
+```
+
+### With Helm Template
+
+```bash
+#!/bin/bash
+DRY_SHA=$(git rev-parse HEAD)
+ENV=$1  # e.g., "production"
+
+# Render Helm chart with environment-specific values
+helm template my-app ./chart \
+  --values ./chart/values-${ENV}.yaml \
+  --output-dir ./rendered
+
+# Move rendered manifests to root
+mv ./rendered/my-app/templates/* .
+rm -rf ./rendered
+
+# Create metadata file
+cat > hydrator.metadata << EOF
+{
+  "drySha": "${DRY_SHA}",
+  "repoURL": "https://github.com/org/repo"
+}
+EOF
+```
+
+### With Kustomize
+
+```bash
+#!/bin/bash
+DRY_SHA=$(git rev-parse HEAD)
+ENV=$1  # e.g., "staging"
+
+# Build with kustomize
+kustomize build ./overlays/${ENV} > manifests.yaml
+
+# Create metadata file
+cat > hydrator.metadata << EOF
+{
+  "drySha": "${DRY_SHA}",
+  "repoURL": "https://github.com/org/repo"
+}
+EOF
+```
+
+### Advanced: With Git Notes
+
+This example shows a complete hydrator that:
+
+1. Renders manifests using Kustomize (or Helm)
+2. Compares against what's currently on the staging branch
+3. If manifests changed: creates a new commit with `hydrator.metadata` and a git note
+4. If manifests are identical: only updates the git note (no new commit)
+
+Git notes allow the hydrator to record which DRY SHA was used without creating a new commit when
+manifests haven't changed. This prevents unnecessary Pull Requests.
+
+```bash
+#!/bin/bash
+set -e
+
+DRY_SHA=$(git rev-parse HEAD)
+ENV=$1  # e.g., "production"
+STAGING_BRANCH="environment/${ENV}-next"
+REPO_URL="https://github.com/org/repo"
+NOTES_REF="refs/notes/hydrator"
+
+# Render the new manifests to a temp file
+NEW_MANIFESTS=$(mktemp)
+kustomize build ./overlays/${ENV} > ${NEW_MANIFESTS}
+# Or for Helm:
+# helm template my-app ./chart --values ./chart/values-${ENV}.yaml > ${NEW_MANIFESTS}
+
+# Fetch the staging branch
+git fetch origin ${STAGING_BRANCH} || {
+  echo "Staging branch doesn't exist yet, will create it"
+  CURRENT_MANIFESTS=$(mktemp)
+  touch ${CURRENT_MANIFESTS}
+}
+
+# Get current manifests from staging branch (excluding hydrator.metadata)
+if [ -z "${CURRENT_MANIFESTS}" ]; then
+  CURRENT_MANIFESTS=$(mktemp)
+  git show origin/${STAGING_BRANCH}:manifests.yaml > ${CURRENT_MANIFESTS} 2>/dev/null || touch ${CURRENT_MANIFESTS}
+fi
+
+# Compare rendered output
+if diff -q ${NEW_MANIFESTS} ${CURRENT_MANIFESTS} > /dev/null 2>&1; then
+  #
+  # No changes to manifests - just update the git note
+  #
+  echo "No manifest changes for ${ENV}, updating git note only"
+  
+  HYDRATED_SHA=$(git rev-parse origin/${STAGING_BRANCH})
+  
+  # Fetch existing notes (may not exist yet)
+  git fetch origin ${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
+  
+  # Add/update the note with the new drySha
+  git notes --ref=${NOTES_REF} add -f -m "{\"drySha\": \"${DRY_SHA}\"}" ${HYDRATED_SHA}
+  
+  # Push only the notes ref
+  git push origin ${NOTES_REF}
+  
+  echo "Updated git note on ${HYDRATED_SHA} with drySha ${DRY_SHA}"
+else
+  #
+  # Manifests changed - create new commit with metadata and note
+  #
+  echo "Manifests changed for ${ENV}, creating new hydrated commit"
+  
+  # Checkout staging branch
+  git checkout ${STAGING_BRANCH} 2>/dev/null || git checkout -b ${STAGING_BRANCH} origin/${STAGING_BRANCH} 2>/dev/null || git checkout --orphan ${STAGING_BRANCH}
+  
+  # Clear existing files and copy new manifests
+  git rm -rf . 2>/dev/null || true
+  cp ${NEW_MANIFESTS} manifests.yaml
+  
+  # Create hydrator.metadata with full commit info
+  cat > hydrator.metadata << EOF
+{
+  "drySha": "${DRY_SHA}",
+  "repoURL": "${REPO_URL}",
+  "author": "$(git show -s --format='%an <%ae>' ${DRY_SHA})",
+  "date": "$(git show -s --format='%aI' ${DRY_SHA})",
+  "subject": $(git show -s --format='%s' ${DRY_SHA} | jq -Rs .)
+}
+EOF
+  
+  # Commit
+  git add -A
+  git commit -m "Hydrate ${ENV} from ${DRY_SHA:0:7}"
+  
+  HYDRATED_SHA=$(git rev-parse HEAD)
+  
+  # Add git note to the new commit
+  git fetch origin ${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
+  git notes --ref=${NOTES_REF} add -f -m "{\"drySha\": \"${DRY_SHA}\"}" ${HYDRATED_SHA}
+  
+  # Push branch and notes together
+  git push origin ${STAGING_BRANCH} ${NOTES_REF}
+  
+  echo "Created hydrated commit ${HYDRATED_SHA} with drySha ${DRY_SHA}"
+fi
+
+# Cleanup
+rm -f ${NEW_MANIFESTS} ${CURRENT_MANIFESTS}
+```
+
+## Existing Hydrators
+
+### Argo CD Source Hydrator
+
+The [Argo CD Source Hydrator](https://argo-cd.readthedocs.io/en/stable/user-guide/source-hydrator/) is a built-in
+feature of Argo CD that implements this contract. It supports Helm, Kustomize, and other Argo CD-supported config
+management tools.
+
+See the [Argo CD tutorial](tutorial-argocd-apps.md) for an example of using Argo CD's Source Hydrator with GitOps
+Promoter.
+
+## Best Practices
+
+1. **Idempotency**: Running hydration multiple times with the same input should produce the same output.
+
+2. **Atomic Commits**: Each hydrated commit should represent a complete, valid state. Don't push partial changes.
+
+3. **Meaningful Commit Messages**: Include the DRY SHA in your hydrated commit messages for traceability.
+
+4. **Error Handling**: If hydration fails for one environment, it shouldn't prevent hydration of other environments.
+
+5. **Branch Protection**: Configure your SCM to prevent direct pushes to staging branches (except from the hydrator).
+   This ensures all changes flow through the proper hydration process.
+
+6. **Avoid Force Pushes**: Don't force-push to staging branches. GitOps Promoter tracks commit SHAs, and force pushes
+   can cause confusion.
+
