@@ -397,15 +397,9 @@ func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *prom
 	}
 
 	// Get trailers using git interpret-trailers
-	gitTrailers, err := envOps.GetTrailers(ctx, sha)
+	trailers, err := envOps.GetTrailers(ctx, sha)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get trailers: %w", err)
-	}
-
-	// Convert map[string]string to map[string][]string for compatibility
-	trailers := make(map[string][]string, len(gitTrailers))
-	for key, value := range gitTrailers {
-		trailers[key] = []string{value}
 	}
 
 	return &CommitData{

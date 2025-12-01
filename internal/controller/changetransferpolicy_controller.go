@@ -211,7 +211,7 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 	}
 
 	// Skip no-op commits
-	if activeTrailers[constants.TrailerNoOp] == "true" {
+	if getFirstTrailerValue(activeTrailers, constants.TrailerNoOp) == "true" {
 		return promoterv1alpha1.History{}, false, nil
 	}
 
@@ -227,6 +227,14 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 	r.populateCommitStatuses(ctx, &historyEntry, activeTrailers)
 
 	return historyEntry, true, nil
+}
+
+// getFirstTrailerValue returns the first value for a given trailer key, or an empty string if not found.
+func getFirstTrailerValue(trailers map[string][]string, key string) string {
+	if values, ok := trailers[key]; ok && len(values) > 0 {
+		return values[0]
+	}
+	return ""
 }
 
 // populateActiveMetadata populates the active metadata for a history entry
@@ -247,10 +255,10 @@ func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Cont
 }
 
 // populateProposedMetadata populates the proposed metadata for a history entry
-func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string, gitOperations *git.EnvironmentOperations) {
+func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string][]string, gitOperations *git.EnvironmentOperations) {
 	logger := log.FromContext(ctx)
 
-	proposedHydratedSha := activeTrailers[constants.TrailerShaHydratedProposed]
+	proposedHydratedSha := getFirstTrailerValue(activeTrailers, constants.TrailerShaHydratedProposed)
 	if proposedHydratedSha == "" {
 		logger.V(4).Info("No " + constants.TrailerShaHydratedProposed + " trailer found")
 		return
@@ -264,16 +272,16 @@ func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Co
 }
 
 // populatePullRequestMetadata populates the pull request metadata for a history entry
-func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string) {
+func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string][]string) {
 	logger := log.FromContext(ctx)
 
-	if pullRequestID := activeTrailers[constants.TrailerPullRequestID]; pullRequestID != "" {
+	if pullRequestID := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestID); pullRequestID != "" {
 		h.PullRequest.ID = pullRequestID
 	} else {
 		logger.V(4).Info("No " + constants.TrailerPullRequestID + " found in trailers")
 	}
 
-	if pullRequestUrl := activeTrailers[constants.TrailerPullRequestUrl]; pullRequestUrl != "" {
+	if pullRequestUrl := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestUrl); pullRequestUrl != "" {
 		if !strings.HasPrefix(pullRequestUrl, "http://") && !strings.HasPrefix(pullRequestUrl, "https://") {
 			logger.V(4).Info("pull request URL does not start with http:// or https://", "url", pullRequestUrl)
 		} else {
@@ -283,7 +291,7 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 		logger.V(4).Info("No " + constants.TrailerPullRequestUrl + " found in trailers")
 	}
 
-	if timeStr := activeTrailers[constants.TrailerPullRequestCreationTime]; timeStr != "" {
+	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestCreationTime); timeStr != "" {
 		if creationTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
 			logger.V(4).Info("failed to parse "+constants.TrailerPullRequestCreationTime, "time", timeStr, "err", err)
 		} else {
@@ -293,7 +301,7 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 		logger.V(4).Info("No " + constants.TrailerPullRequestCreationTime + " found in trailers")
 	}
 
-	if timeStr := activeTrailers[constants.TrailerPullRequestMergeTime]; timeStr != "" {
+	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestMergeTime); timeStr != "" {
 		if mergeTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
 			logger.V(4).Info("failed to parse "+constants.TrailerPullRequestMergeTime, "time", timeStr, "err", err)
 		} else {
@@ -305,40 +313,40 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 }
 
 // populateCommitStatuses populates the commit statuses for a history entry
-func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string) {
+func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string][]string) {
 	activeKeys, proposedKeys := getCommitStatusKeysFromTrailers(ctx, activeTrailers)
 
 	h.Active.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(activeKeys))
 	for _, key := range activeKeys {
-		url := activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-url"]
+		url := getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-url")
 		if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			log.FromContext(ctx).Error(errors.New("invalid URL"), "active commit status URL does not start with http:// or https://", "url", url, "key", key)
 			url = ""
 		}
 		h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:   key,
-			Phase: activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-phase"],
+			Phase: getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-phase"),
 			Url:   url,
 		})
 	}
 
 	h.Proposed.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(proposedKeys))
 	for _, key := range proposedKeys {
-		url := activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-url"]
+		url := getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-url")
 		if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			log.FromContext(ctx).Error(errors.New("invalid URL"), "proposed commit status URL does not start with http:// or https://", "url", url, "key", key)
 			url = ""
 		}
 		h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:   key,
-			Phase: activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-phase"],
+			Phase: getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-phase"),
 			Url:   url,
 		})
 	}
 }
 
 // getCommitStatusKeysFromTrailers extracts the commit status keys from the trailers in the given context.
-func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string]string) (activeKeys []string, proposedKeys []string) {
+func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string][]string) (activeKeys []string, proposedKeys []string) {
 	logger := log.FromContext(ctx)
 
 	// This function extracts commit status keys from trailers with the given prefix.

@@ -593,7 +593,8 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 }
 
 // GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
-func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string]string, error) {
+// Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
+func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string][]string, error) {
 	logger := log.FromContext(ctx)
 	// run git interpret-trailers to get the trailers from the last commit
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -629,12 +630,14 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 	stdout := stdoutBuf.String()
 
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	trailers := make(map[string]string, len(lines))
+	trailers := make(map[string][]string)
 	for _, line := range lines {
 		if strings.Contains(line, ":") {
 			key, value, found := strings.Cut(line, ":")
 			if found {
-				trailers[strings.TrimSpace(key)] = strings.TrimSpace(value)
+				trimmedKey := strings.TrimSpace(key)
+				trimmedValue := strings.TrimSpace(value)
+				trailers[trimmedKey] = append(trailers[trimmedKey], trimmedValue)
 			} else {
 				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
 			}
