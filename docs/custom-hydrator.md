@@ -256,7 +256,8 @@ else
   "repoURL": "${REPO_URL}",
   "author": "$(git show -s --format='%an <%ae>' ${DRY_SHA})",
   "date": "$(git show -s --format='%aI' ${DRY_SHA})",
-  "subject": $(git show -s --format='%s' ${DRY_SHA} | jq -Rs .)
+  "subject": $(git show -s --format='%s' ${DRY_SHA} | jq -Rs .),
+  "body": $(git show -s --format='%b' ${DRY_SHA} | jq -Rs .)
 }
 EOF
   
