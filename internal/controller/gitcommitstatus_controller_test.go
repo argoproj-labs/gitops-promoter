@@ -540,7 +540,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, gcsActive)).To(Succeed())
 
-			By("Verifying active mode result depends on active SHA")
+			By("Verifying active mode result depends on active SHA and expression fails")
 			var activePhase string
 			Eventually(func(g Gomega) {
 				var retrieved promoterv1alpha1.GitCommitStatus
@@ -564,6 +564,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(devEnv.ValidatedSha).To(Equal(developmentActiveSHA))
 				g.Expect(devEnv.Phase).ToNot(BeEmpty())
 				activePhase = devEnv.Phase
+
+				// Active commit doesn't have "feat:" prefix, so expression should fail
+				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
+				g.Expect(devEnv.ExpressionResult).ToNot(BeNil())
+				g.Expect(*devEnv.ExpressionResult).To(BeFalse())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Deleting active mode GitCommitStatus")
