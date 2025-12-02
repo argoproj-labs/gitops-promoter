@@ -562,8 +562,8 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 
 	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+HydratorNotesRef, "show", sha)
 	if err != nil {
-		// No note for this commit is not an error
-		if strings.Contains(stderr, "No note found") || strings.Contains(stderr, "could not find") {
+		// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
+		if strings.Contains(strings.ToLower(stderr), "no note found") {
 			logger.V(4).Info("No git note found for commit", "sha", sha)
 			return HydratorMetadata{}, nil
 		}
