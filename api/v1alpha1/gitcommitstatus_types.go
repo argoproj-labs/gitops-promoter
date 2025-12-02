@@ -45,7 +45,6 @@ type GitCommitStatusSpec struct {
 	// Description is a human-readable description of this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status description.
 	// If not specified, defaults to empty string.
-	// Keep this concise and avoid special characters that may not be supported by all SCM providers.
 	// +optional
 	Description string `json:"description,omitempty"`
 
