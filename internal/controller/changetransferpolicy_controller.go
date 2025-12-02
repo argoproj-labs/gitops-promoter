@@ -133,7 +133,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to git merge for conflict resolution: %w", err)
 	}
 
-	pr, err := r.mergeOrPullRequestPromote(ctx, &ctp)
+	pr, err := r.creatOrUpdatePullRequest(ctx, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set promotion state: %w", err)
 	}
@@ -717,34 +717,13 @@ func tooManyPRsError(pr *promoterv1alpha1.PullRequestList) error {
 	return fmt.Errorf("found more than one open PullRequest: %s", summary)
 }
 
-// mergeOrPullRequestPromote checks if there's anything to promote and, if there is, creates or updates a PR.
-func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
-	logger := log.FromContext(ctx)
-
-	// Compare dry SHAs from hydrator.metadata to determine if promotion is needed.
-	// Both values come from the hydrator.metadata file on each branch.
-	activeDrySha := ctp.Status.Active.Dry.Sha
-	proposedDrySha := ctp.Status.Proposed.Dry.Sha
-
-	if activeDrySha == proposedDrySha {
-		// There's nothing to promote - active already has the proposed changes.
-		logger.V(4).Info("No promotion needed - active branch already has proposed changes",
-			"activeDrySha", activeDrySha,
-			"proposedDrySha", proposedDrySha)
-		return nil, nil
-	}
-
-	pr, err := r.creatOrUpdatePullRequest(ctx, ctp)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create/update PR: %w", err)
-	}
-	return pr, nil
-}
-
 func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
 		// If the proposed dry sha is the same as the active dry sha, no need to create a pull request
+		logger.V(4).Info("No promotion needed - active branch already has proposed changes",
+			"activeDrySha", ctp.Status.Active.Dry.Sha,
+			"proposedDrySha", ctp.Status.Proposed.Dry.Sha)
 		return nil, nil
 	}
 
