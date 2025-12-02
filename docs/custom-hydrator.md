@@ -178,15 +178,12 @@ EOF
 
 ### Advanced: With Git Notes
 
-This example shows a complete hydrator that:
+This example shows a complete hydrator that uses git notes to optimize hydration:
 
-1. Renders manifests using Kustomize (or Helm)
-2. Compares against what's currently on the staging branch
-3. If manifests changed: creates a new commit with `hydrator.metadata` and a git note
-4. If manifests are identical: only updates the git note (no new commit)
-
-Git notes allow the hydrator to record which DRY SHA was used without creating a new commit when
-manifests haven't changed. This prevents unnecessary Pull Requests.
+1. First, check the git note on the current staging branch commit - if the `drySha` matches, skip entirely (saves rendering time)
+2. If no match, render manifests and compare against what's on the staging branch
+3. If manifests changed: create a new commit with `hydrator.metadata` and a git note
+4. If manifests are identical: only update the git note (no new commit needed)
 
 ```bash
 #!/bin/bash
@@ -198,41 +195,53 @@ STAGING_BRANCH="environment/${ENV}-next"
 REPO_URL="https://github.com/org/repo"
 NOTES_REF="refs/notes/hydrator"
 
-# Render the new manifests to a temp file
+# Fetch the staging branch and notes
+git fetch origin ${STAGING_BRANCH} 2>/dev/null || {
+  echo "Staging branch doesn't exist yet, will create it"
+  BRANCH_EXISTS=false
+}
+BRANCH_EXISTS=${BRANCH_EXISTS:-true}
+
+if [ "${BRANCH_EXISTS}" = "true" ]; then
+  # Get the current hydrated commit SHA
+  HYDRATED_SHA=$(git rev-parse origin/${STAGING_BRANCH})
+  
+  # Fetch and check the git note - if drySha matches, we can skip entirely
+  git fetch origin ${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
+  EXISTING_NOTE=$(git notes --ref=${NOTES_REF} show ${HYDRATED_SHA} 2>/dev/null || echo "{}")
+  EXISTING_DRY_SHA=$(echo "${EXISTING_NOTE}" | jq -r '.drySha // ""')
+  
+  if [ "${EXISTING_DRY_SHA}" = "${DRY_SHA}" ]; then
+    echo "Already hydrated ${ENV} from ${DRY_SHA:0:7}, skipping"
+    exit 0
+  fi
+fi
+
+#
+# Note didn't match - need to render and check for changes
+#
+echo "Rendering manifests for ${ENV} from ${DRY_SHA:0:7}"
+
+# Render manifests
 NEW_MANIFESTS=$(mktemp)
 kustomize build ./overlays/${ENV} > ${NEW_MANIFESTS}
 # Or for Helm:
 # helm template my-app ./chart --values ./chart/values-${ENV}.yaml > ${NEW_MANIFESTS}
 
-# Fetch the staging branch
-git fetch origin ${STAGING_BRANCH} || {
-  echo "Staging branch doesn't exist yet, will create it"
-  CURRENT_MANIFESTS=$(mktemp)
-  touch ${CURRENT_MANIFESTS}
-}
-
-# Get current manifests from staging branch (excluding hydrator.metadata)
-if [ -z "${CURRENT_MANIFESTS}" ]; then
-  CURRENT_MANIFESTS=$(mktemp)
-  git show origin/${STAGING_BRANCH}:manifests.yaml > ${CURRENT_MANIFESTS} 2>/dev/null || touch ${CURRENT_MANIFESTS}
+# Get current manifests from staging branch for comparison
+CURRENT_MANIFESTS=$(mktemp)
+if [ "${BRANCH_EXISTS}" = "true" ]; then
+  git show origin/${STAGING_BRANCH}:manifests.yaml > ${CURRENT_MANIFESTS} 2>/dev/null || true
 fi
 
 # Compare rendered output
-if diff -q ${NEW_MANIFESTS} ${CURRENT_MANIFESTS} > /dev/null 2>&1; then
+if [ "${BRANCH_EXISTS}" = "true" ] && diff -q ${NEW_MANIFESTS} ${CURRENT_MANIFESTS} > /dev/null 2>&1; then
   #
   # No changes to manifests - just update the git note
   #
   echo "No manifest changes for ${ENV}, updating git note only"
   
-  HYDRATED_SHA=$(git rev-parse origin/${STAGING_BRANCH})
-  
-  # Fetch existing notes (may not exist yet)
-  git fetch origin ${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
-  
-  # Add/update the note with the new drySha
   git notes --ref=${NOTES_REF} add -f -m "{\"drySha\": \"${DRY_SHA}\"}" ${HYDRATED_SHA}
-  
-  # Push only the notes ref
   git push origin ${NOTES_REF}
   
   echo "Updated git note on ${HYDRATED_SHA} with drySha ${DRY_SHA}"
@@ -243,7 +252,9 @@ else
   echo "Manifests changed for ${ENV}, creating new hydrated commit"
   
   # Checkout staging branch
-  git checkout ${STAGING_BRANCH} 2>/dev/null || git checkout -b ${STAGING_BRANCH} origin/${STAGING_BRANCH} 2>/dev/null || git checkout --orphan ${STAGING_BRANCH}
+  git checkout ${STAGING_BRANCH} 2>/dev/null || \
+    git checkout -b ${STAGING_BRANCH} origin/${STAGING_BRANCH} 2>/dev/null || \
+    git checkout --orphan ${STAGING_BRANCH}
   
   # Clear existing files and copy new manifests
   git rm -rf . 2>/dev/null || true
@@ -268,16 +279,14 @@ EOF
   HYDRATED_SHA=$(git rev-parse HEAD)
   
   # Add git note to the new commit
-  git fetch origin ${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
   git notes --ref=${NOTES_REF} add -f -m "{\"drySha\": \"${DRY_SHA}\"}" ${HYDRATED_SHA}
   
   # Push branch and notes together
   git push origin ${STAGING_BRANCH} ${NOTES_REF}
   
-  echo "Created hydrated commit ${HYDRATED_SHA} with drySha ${DRY_SHA}"
+  echo "Created hydrated commit ${HYDRATED_SHA}"
 fi
 
-# Cleanup
 rm -f ${NEW_MANIFESTS} ${CURRENT_MANIFESTS}
 ```
 
@@ -301,7 +310,4 @@ Promoter.
 3. **Meaningful Commit Messages**: Include the DRY SHA in your hydrated commit messages for traceability.
 
 4. **Error Handling**: If hydration fails for one environment, it shouldn't prevent hydration of other environments.
-
-5. **Avoid Force Pushes**: Don't force-push to staging branches. GitOps Promoter tracks commit SHAs, and force pushes
-   can cause confusion.
 
