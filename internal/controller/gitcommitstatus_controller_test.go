@@ -756,6 +756,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 						stagingEnv = &retrieved.Status.Environments[i]
 					case testEnvironmentProduction:
 						prodEnv = &retrieved.Status.Environments[i]
+					default:
+						// Ignore unknown environments
 					}
 				}
 
