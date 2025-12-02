@@ -6,7 +6,7 @@ requirements for building a custom hydrator that integrates with GitOps Promoter
 ## Overview
 
 A hydrator is a tool that watches a "DRY" (Don't Repeat Yourself) branch for new commits and transforms them into
-environment-specific "hydrated" commits on staging branches. GitOps Promoter then handles promoting these hydrated
+environment-specific "hydrated" commits on proposed branches. GitOps Promoter then handles promoting these hydrated
 commits through your environments via Pull Requests.
 
 ## The Contract
@@ -17,13 +17,13 @@ Your hydrator must fulfill these requirements:
 
 Monitor the configured DRY branch for new commits. When a new commit arrives, trigger hydration for each environment.
 
-### 2. Push to Staging Branches
+### 2. Push to Proposed Branches
 
-For each environment, push the hydrated content to the corresponding staging branch. The staging branch name must be
-the environment's live branch name with a `-next` suffix.
+For each environment, push the hydrated content to the corresponding proposed branch. The proposed branch name must be
+the environment's active branch name with a `-next` suffix.
 
-| Live Branch | Staging Branch |
-|-------------|----------------|
+| Active Branch | Proposed Branch |
+|---------------|-----------------|
 | `environment/development` | `environment/development-next` |
 | `environment/staging` | `environment/staging-next` |
 | `environment/production` | `environment/production-next` |
@@ -85,7 +85,7 @@ The following fields are optional but recommended for a better user experience i
 ### 4. Duplicate Detection (Recommended)
 
 To avoid unnecessary commits when manifests haven't changed, your hydrator should detect when the hydrated output
-is identical to what's already on the staging branch. If nothing has changed, don't push a new commit.
+is identical to what's already on the proposed branch. If nothing has changed, don't push a new commit.
 
 This prevents GitOps Promoter from creating Pull Requests for changes that have no effect.
 
@@ -106,10 +106,10 @@ git pull origin $DRY_BRANCH
 DRY_SHA=$(git rev-parse HEAD)
 
 for ENV in "${ENVIRONMENTS[@]}"; do
-  STAGING_BRANCH="environment/${ENV}-next"
+  PROPOSED_BRANCH="environment/${ENV}-next"
   
-  # Checkout staging branch
-  git checkout $STAGING_BRANCH || git checkout -b $STAGING_BRANCH
+  # Checkout proposed branch
+  git checkout $PROPOSED_BRANCH || git checkout -b $PROPOSED_BRANCH
   
   # Copy/transform files (your hydration logic here)
   cp -r manifests/${ENV}/* .
@@ -128,7 +128,7 @@ EOF
   # Commit and push
   git add -A
   git commit -m "Hydrate from ${DRY_SHA}"
-  git push origin $STAGING_BRANCH
+  git push origin $PROPOSED_BRANCH
 done
 ```
 
@@ -180,8 +180,8 @@ EOF
 
 This example shows a complete hydrator that uses git notes to optimize hydration:
 
-1. First, check the git note on the current staging branch commit - if the `drySha` matches, skip entirely (saves rendering time)
-2. If no match, render manifests and compare against what's on the staging branch
+1. First, check the git note on the current proposed branch commit - if the `drySha` matches, skip entirely (saves rendering time)
+2. If no match, render manifests and compare against what's on the proposed branch
 3. If manifests changed: create a new commit with `hydrator.metadata` and a git note
 4. If manifests are identical: only update the git note (no new commit needed)
 
@@ -191,20 +191,20 @@ set -e
 
 DRY_SHA=$(git rev-parse HEAD)
 ENV=$1  # e.g., "production"
-STAGING_BRANCH="environment/${ENV}-next"
+PROPOSED_BRANCH="environment/${ENV}-next"
 REPO_URL="https://github.com/org/repo"
 NOTES_REF="refs/notes/hydrator"
 
-# Fetch the staging branch and notes
-git fetch origin ${STAGING_BRANCH} 2>/dev/null || {
-  echo "Staging branch doesn't exist yet, will create it"
+# Fetch the proposed branch and notes
+git fetch origin ${PROPOSED_BRANCH} 2>/dev/null || {
+  echo "Proposed branch doesn't exist yet, will create it"
   BRANCH_EXISTS=false
 }
 BRANCH_EXISTS=${BRANCH_EXISTS:-true}
 
 if [ "${BRANCH_EXISTS}" = "true" ]; then
   # Get the current hydrated commit SHA
-  HYDRATED_SHA=$(git rev-parse origin/${STAGING_BRANCH})
+  HYDRATED_SHA=$(git rev-parse origin/${PROPOSED_BRANCH})
   
   # Fetch and check the git note - if drySha matches, we can skip entirely
   git fetch origin ${NOTES_REF}:${NOTES_REF} 2>/dev/null || true
@@ -228,10 +228,10 @@ kustomize build ./overlays/${ENV} > ${NEW_MANIFESTS}
 # Or for Helm:
 # helm template my-app ./chart --values ./chart/values-${ENV}.yaml > ${NEW_MANIFESTS}
 
-# Get current manifests from staging branch for comparison
+# Get current manifests from proposed branch for comparison
 CURRENT_MANIFESTS=$(mktemp)
 if [ "${BRANCH_EXISTS}" = "true" ]; then
-  git show origin/${STAGING_BRANCH}:manifests.yaml > ${CURRENT_MANIFESTS} 2>/dev/null || true
+  git show origin/${PROPOSED_BRANCH}:manifests.yaml > ${CURRENT_MANIFESTS} 2>/dev/null || true
 fi
 
 # Compare rendered output
@@ -251,10 +251,10 @@ else
   #
   echo "Manifests changed for ${ENV}, creating new hydrated commit"
   
-  # Checkout staging branch
-  git checkout ${STAGING_BRANCH} 2>/dev/null || \
-    git checkout -b ${STAGING_BRANCH} origin/${STAGING_BRANCH} 2>/dev/null || \
-    git checkout --orphan ${STAGING_BRANCH}
+  # Checkout proposed branch
+  git checkout ${PROPOSED_BRANCH} 2>/dev/null || \
+    git checkout -b ${PROPOSED_BRANCH} origin/${PROPOSED_BRANCH} 2>/dev/null || \
+    git checkout --orphan ${PROPOSED_BRANCH}
   
   # Clear existing files and copy new manifests
   git rm -rf . 2>/dev/null || true
@@ -282,7 +282,7 @@ EOF
   git notes --ref=${NOTES_REF} add -f -m "{\"drySha\": \"${DRY_SHA}\"}" ${HYDRATED_SHA}
   
   # Push branch and notes together
-  git push origin ${STAGING_BRANCH} ${NOTES_REF}
+  git push origin ${PROPOSED_BRANCH} ${NOTES_REF}
   
   echo "Created hydrated commit ${HYDRATED_SHA}"
 fi
