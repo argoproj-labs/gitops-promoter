@@ -739,7 +739,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 		}
 
 		metadata := git.HydratorMetadata{
-			RepoURL: repoURL,
+			RepoURL: "", // This is not used anywhere, we use the SCM provider's HTTPS URL instead
 			DrySha:  sha,
 			Author:  "testuser <testmail@test.com>",
 			Date:    metav1.Now(),
@@ -928,6 +928,7 @@ func runGitCmd(ctx context.Context, directory string, args ...string) (string, e
 	return stdoutBuf.String(), nil
 }
 
+//nolint:unparam // length parameter is intentionally flexible for future use
 func randomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	result := make([]byte, length)

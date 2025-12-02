@@ -77,7 +77,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
-	commitStatus.Status.Id = strconv.Itoa(glStatus.ID)
+	commitStatus.Status.Id = strconv.FormatInt(glStatus.ID, 10)
 	commitStatus.Status.Phase = buildStateToPhase(gitlab.BuildStateValue(glStatus.Status))
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
 	return commitStatus, nil

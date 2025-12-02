@@ -15,7 +15,7 @@ GitHub, GitHub Enterprise, GitLab, Bitbucket Cloud, and Forgejo (including Codeb
 To install GitOps Promoter, you can use the following command:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.17.0/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.18.2/install.yaml
 ```
 
 ## GitHub App Configuration
@@ -27,11 +27,11 @@ During the creation the GitHub App, you will need to configure the following set
 
 ### Permissions
 
-| Action            | Permission     |
-| ----------------- | -------------- |
-| `Commit statuses` | Read and write |
-| `Contents`        | Read and write |
-| `Pull requests`   | Read and write |
+| Action         | Permission     |
+| -------------- | -------------- |
+| `Checks`       | Read and write |
+| `Contents`     | Read and write |
+| `Pull requests`| Read and write |
 
 ### Webhooks (Optional - but highly recommended)
 
