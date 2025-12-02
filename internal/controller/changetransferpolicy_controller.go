@@ -123,6 +123,12 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to clone repo %q: %w", ctp.Spec.RepositoryReference.Name, err)
 	}
 
+	// Fetch git notes for hydrator metadata (used to track hydration completion)
+	err = gitOperations.FetchNotes(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to fetch git notes: %w", err)
+	}
+
 	err = r.calculateStatus(ctx, &ctp, gitOperations)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to calculate ChangeTransferPolicy status: %w", err)
@@ -568,6 +574,8 @@ func (e *TooManyMatchingShaError) Error() string {
 }
 
 func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, activeHydratedSha, proposedHydratedSha string) error {
+	logger := log.FromContext(ctx)
+
 	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeHydratedSha)
 	if err != nil {
 		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
@@ -591,6 +599,18 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 		return fmt.Errorf("failed to get commit proposed metadata for hydrated SHA %q: %w", proposedHydratedSha, err)
 	}
 	ctp.Status.Proposed.Hydrated = proposedCommitMetadata
+
+	// Read the git note for the proposed hydrated commit to get the NoteDrySha.
+	// This is used by downstream environments to verify that hydration is complete
+	// for a given dry commit before allowing promotion.
+	proposedNote, err := gitOperations.GetHydratorNote(ctx, proposedHydratedSha)
+	if err != nil {
+		return fmt.Errorf("failed to get hydrator note for proposed hydrated SHA %q: %w", proposedHydratedSha, err)
+	}
+	ctp.Status.Proposed.Hydrated.NoteDrySha = proposedNote.DrySha
+	logger.V(4).Info("Set proposed hydrated NoteDrySha from git note",
+		"proposedHydratedSha", proposedHydratedSha,
+		"noteDrySha", proposedNote.DrySha)
 
 	return nil
 }

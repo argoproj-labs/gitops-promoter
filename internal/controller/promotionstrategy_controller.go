@@ -443,6 +443,14 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 // isPreviousEnvironmentPending returns whether the previous environment is pending and a reason string if it is pending.
 func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus, proposedDrySha string) (isPending bool, reason string) {
+	// First check if the previous environment's hydrator has finished processing the same dry SHA
+	// that we're trying to promote. The NoteDrySha is set from the git note on the proposed hydrated
+	// commit, which confirms hydration is complete for that dry SHA.
+	previousEnvNoteDrySha := previousEnvironmentStatus.Proposed.Hydrated.NoteDrySha
+	if previousEnvNoteDrySha != "" && previousEnvNoteDrySha != proposedDrySha {
+		return true, "Waiting for previous environment's hydrator to finish processing the proposed dry commit"
+	}
+
 	if previousEnvironmentStatus.Active.Dry.Sha != proposedDrySha {
 		return true, "Waiting for previous environment's active commit to match proposed commit"
 	}

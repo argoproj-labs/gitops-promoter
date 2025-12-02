@@ -57,6 +57,9 @@ type HydratorMetadata struct {
 	References []v1alpha1.RevisionReference `json:"references,omitempty"`
 }
 
+// HydratorNotesRef is the git notes reference used by hydrators to store metadata about hydrated commits.
+const HydratorNotesRef = "refs/notes/hydrator"
+
 // NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter is used to differentiate
 // between different environments that might use the same GitRepository and avoid conflicts between concurrent
 // operations.
@@ -522,6 +525,60 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 	}
 
 	return strings.TrimSpace(stdoutBuf.String()), nil
+}
+
+// FetchNotes fetches the git notes from the remote repository.
+func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
+	logger := log.FromContext(ctx)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	// Fetch the notes ref from origin. We use + to force update in case of divergence.
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", "+"+HydratorNotesRef+":"+HydratorNotesRef)
+	if err != nil {
+		// Notes ref might not exist yet, which is fine
+		if strings.Contains(stderr, "couldn't find remote ref") {
+			logger.V(4).Info("Git notes ref does not exist on remote", "ref", HydratorNotesRef)
+			return nil
+		}
+		logger.Error(err, "Failed to fetch git notes", "stderr", stderr)
+		return fmt.Errorf("failed to fetch git notes: %w", err)
+	}
+
+	logger.V(4).Info("Fetched git notes", "ref", HydratorNotesRef)
+	return nil
+}
+
+// GetHydratorNote reads the hydrator git note for a given commit SHA.
+// Returns an empty HydratorMetadata if no note exists for the commit.
+func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string) (HydratorMetadata, error) {
+	logger := log.FromContext(ctx)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return HydratorMetadata{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+HydratorNotesRef, "show", sha)
+	if err != nil {
+		// No note for this commit is not an error
+		if strings.Contains(stderr, "No note found") || strings.Contains(stderr, "could not find") {
+			logger.V(4).Info("No git note found for commit", "sha", sha)
+			return HydratorMetadata{}, nil
+		}
+		logger.Error(err, "Failed to read git note", "sha", sha, "stderr", stderr)
+		return HydratorMetadata{}, fmt.Errorf("failed to read git note for sha %q: %w", sha, err)
+	}
+
+	var note HydratorMetadata
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &note); err != nil {
+		logger.V(4).Info("Failed to parse git note as JSON, ignoring", "sha", sha, "content", stdout, "error", err)
+		return HydratorMetadata{}, nil
+	}
+
+	logger.V(4).Info("Got hydrator note", "sha", sha, "note", note)
+	return note, nil
 }
 
 // GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
