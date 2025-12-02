@@ -445,20 +445,52 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 // isPreviousEnvironmentPending returns whether the previous environment is pending and a reason string if it is pending.
 func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus, proposedDrySha string) (isPending bool, reason string) {
-	// First check if the previous environment's hydrator has finished processing the same dry SHA
-	// that we're trying to promote. The NoteDrySha is set from the git note on the proposed hydrated
-	// commit, which confirms hydration is complete for that dry SHA.
+	// Check if the previous environment's hydrator has finished processing the same dry SHA
+	// that we're trying to promote.
+	//
+	// The NoteDrySha (from git note) is the authoritative source for which dry SHA the hydrator
+	// has processed. This is important because when manifests don't change between dry commits,
+	// the hydrator may only update the git note without creating a new commit (optimization).
+	// In that case, the hydrator.metadata file (which sets Proposed.Dry.Sha) still contains
+	// the old dry SHA, but the git note confirms hydration is complete for the new dry SHA.
+	//
+	// Priority:
+	// 1. If NoteDrySha is set, use it accounts for no-change hydrations
+	// 2. Fall back to Proposed.Dry.Sha (for hydrators that don't use git notes)
 	previousEnvNoteDrySha := previousEnvironmentStatus.Proposed.Hydrated.NoteDrySha
-	if previousEnvNoteDrySha != "" && previousEnvNoteDrySha != proposedDrySha {
+	previousEnvProposedDrySha := previousEnvironmentStatus.Proposed.Dry.Sha
+
+	// Determine which dry SHA the previous environment's hydrator has processed
+	previousEnvHydratedForDrySha := previousEnvNoteDrySha
+	if previousEnvHydratedForDrySha == "" {
+		// No git note, fall back to hydrator.metadata
+		previousEnvHydratedForDrySha = previousEnvProposedDrySha
+	}
+
+	// Check if hydration is complete for the proposed dry SHA
+	if previousEnvHydratedForDrySha != proposedDrySha {
 		return true, "Waiting for previous environment's hydrator to finish processing the proposed dry commit"
 	}
 
-	if previousEnvironmentStatus.Active.Dry.Sha != proposedDrySha {
+	// At this point, we know the previous environment's hydrator has processed the proposed dry SHA.
+	// Now check if the previous environment needs to merge changes, or if it's already up-to-date.
+	//
+	// There are two valid states:
+	// 1. The previous env has already merged (Active.Dry.Sha == proposedDrySha)
+	// 2. The previous env has no changes to merge because manifests are identical
+	//    (detected by: NoteDrySha shows new dry SHA, but Proposed.Dry.Sha still shows old dry SHA,
+	//     meaning the hydrator updated only the note without creating a new commit)
+	previousEnvAlreadyMerged := previousEnvironmentStatus.Active.Dry.Sha == proposedDrySha
+	previousEnvNoChangesToMerge := previousEnvNoteDrySha == proposedDrySha && previousEnvProposedDrySha != proposedDrySha
+
+	if !previousEnvAlreadyMerged && !previousEnvNoChangesToMerge {
 		return true, "Waiting for previous environment's active commit to match proposed commit"
 	}
 
 	// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
 	// time. Basically, we can't move back in time.
+	// Note: When previousEnvNoChangesToMerge is true, we compare against the current active time since
+	// the previous env's active hasn't changed.
 	previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
 		previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
 
