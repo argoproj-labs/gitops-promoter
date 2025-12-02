@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"os"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -634,6 +635,159 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			// the validation results should differ. Here, proposed will succeed with "feat:" prefix
 			// while active may or may not depending on whether it's been promoted
 			Expect(activePhase).ToNot(BeEmpty(), "Active validation should have completed")
+		})
+	})
+
+	Describe("Revert Detection Flow", func() {
+		It("should detect reverts on staging and fail the commit status", func() {
+			By("Creating a GitCommitStatus that detects 'Revert' prefix on active commits")
+			// Use the existing "test-validation" key from BeforeAll setup
+			gcsRevertCheck := &promoterv1alpha1.GitCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-revert-check",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.GitCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:            "test-validation",
+					ValidateCommit: "active",
+					// Check if commit subject does NOT start with "Revert" - if it does, fail
+					Expression: `!(Commit.Subject startsWith "Revert")`,
+				},
+			}
+			Expect(k8sClient.Create(ctx, gcsRevertCheck)).To(Succeed())
+			defer func() {
+				_ = k8sClient.Delete(ctx, gcsRevertCheck)
+			}()
+
+			By("Waiting for initial validation to pass on all environments (no reverts yet)")
+			Eventually(func(g Gomega) {
+				var retrieved promoterv1alpha1.GitCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-revert-check",
+					Namespace: "default",
+				}, &retrieved)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(retrieved.Status.Environments).To(HaveLen(3))
+
+				// All environments should pass initially (no reverts)
+				for _, env := range retrieved.Status.Environments {
+					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
+						"Environment %s should pass initially", env.Branch)
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Simulating a revert on the staging active branch using git revert")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				_ = os.RemoveAll(gitPath)
+			}()
+
+			// Clone the repo
+			repoURL := "http://localhost:" + gitServerPort + "/" + name + "/" + name
+			_, err = runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testmail@test.com")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Checkout the staging active branch
+			_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testEnvironmentStaging, "origin/"+testEnvironmentStaging)
+			Expect(err).NotTo(HaveOccurred())
+
+			// First, create a commit that we can revert
+			f, err := os.Create(gitPath + "/feature-to-revert.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = f.WriteString("feature: enabled\n")
+			Expect(err).NotTo(HaveOccurred())
+			err = f.Close()
+			Expect(err).NotTo(HaveOccurred())
+
+			_, err = runGitCmd(ctx, gitPath, "add", "feature-to-revert.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(ctx, gitPath, "commit", "-m", "feat: add new feature")
+			Expect(err).NotTo(HaveOccurred())
+
+			// Get the SHA of the commit we just created (to revert it)
+			commitToRevert, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
+			Expect(err).NotTo(HaveOccurred())
+			commitToRevert = strings.TrimSpace(commitToRevert)
+
+			// Get the SHA before we make the revert for the webhook
+			beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", testEnvironmentStaging)
+			Expect(err).NotTo(HaveOccurred())
+			beforeSha = strings.TrimSpace(beforeSha)
+
+			// Use actual git revert command - this creates a commit with "Revert" prefix automatically
+			_, err = runGitCmd(ctx, gitPath, "revert", "--no-edit", commitToRevert)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Push the revert commit
+			_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", testEnvironmentStaging)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Send webhook to trigger reconciliation
+			sendWebhookForPush(ctx, beforeSha, testEnvironmentStaging)
+
+			By("Verifying staging environment fails due to revert detection")
+			Eventually(func(g Gomega) {
+				var retrieved promoterv1alpha1.GitCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-revert-check",
+					Namespace: "default",
+				}, &retrieved)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(retrieved.Status.Environments).To(HaveLen(3))
+
+				var stagingEnv *promoterv1alpha1.GitCommitStatusEnvironmentStatus
+				var devEnv *promoterv1alpha1.GitCommitStatusEnvironmentStatus
+				var prodEnv *promoterv1alpha1.GitCommitStatusEnvironmentStatus
+
+				for i, env := range retrieved.Status.Environments {
+					switch env.Branch {
+					case testEnvironmentDevelopment:
+						devEnv = &retrieved.Status.Environments[i]
+					case testEnvironmentStaging:
+						stagingEnv = &retrieved.Status.Environments[i]
+					case testEnvironmentProduction:
+						prodEnv = &retrieved.Status.Environments[i]
+					}
+				}
+
+				g.Expect(stagingEnv).ToNot(BeNil(), "Staging environment should exist")
+				g.Expect(devEnv).ToNot(BeNil(), "Development environment should exist")
+				g.Expect(prodEnv).ToNot(BeNil(), "Production environment should exist")
+
+				// Staging should fail because active commit starts with "Revert"
+				g.Expect(stagingEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)),
+					"Staging should fail due to revert commit")
+				g.Expect(stagingEnv.ExpressionResult).ToNot(BeNil())
+				g.Expect(*stagingEnv.ExpressionResult).To(BeFalse(),
+					"Expression should evaluate to false for revert commit")
+
+				// Development and Production should still pass (no reverts on those branches)
+				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
+					"Development should still pass")
+				g.Expect(prodEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
+					"Production should still pass")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the CommitStatus for staging shows failure")
+			Eventually(func(g Gomega) {
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-revert-check-"+testEnvironmentStaging+"-test-validation")
+				var cs promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      commitStatusName,
+					Namespace: "default",
+				}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 })
