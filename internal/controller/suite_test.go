@@ -1098,11 +1098,7 @@ func addNoteToEnvironment(ctx context.Context, gitPath, branch, drySha string) (
 	hydratedSha = strings.TrimSpace(hydratedSha)
 
 	// Add git note to the existing commit
-	if err := pushGitNote(ctx, gitPath, hydratedSha, drySha); err != nil {
-		return err
-	}
-
-	return nil
+	return pushGitNote(ctx, gitPath, hydratedSha, drySha)
 }
 
 func createKubeConfig(cfg *rest.Config) ([]byte, error) {

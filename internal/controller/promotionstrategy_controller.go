@@ -108,6 +108,14 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
 	r.calculateStatus(&ps, ctps)
 
+	// Check if any environments need to refresh their git notes.
+	// GitHub doesn't send webhooks when git notes are pushed, so we need to
+	// trigger CTP reconciliation when we detect stale NoteDrySha values.
+	needsRequeueForNotes, err := r.triggerReconcileForStaleGitNotes(ctx, ctps)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to trigger reconcile for stale git notes: %w", err)
+	}
+
 	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to merge PRs: %w", err)
@@ -116,6 +124,16 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	err = r.Status().Update(ctx, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
+	}
+
+	// If we triggered CTP reconciles for stale git notes, requeue after 1 minute
+	// to check if the notes have been updated.
+	if needsRequeueForNotes {
+		logger.V(4).Info("Requeuing PromotionStrategy to check for updated git notes")
+		return ctrl.Result{
+			Requeue:      true,
+			RequeueAfter: 1 * time.Minute,
+		}, nil
 	}
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
@@ -313,6 +331,73 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	}
 
 	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.ChangeTransferPolicyNotReady, ctps...)
+}
+
+// triggerReconcileForStaleGitNotes checks if all CTPs have the same effective dry SHA
+// (NoteDrySha if set, otherwise Proposed.Dry.Sha). If they differ, the CTPs with
+// different values need to reconcile to fetch updated git notes. This is needed
+// because GitHub doesn't send webhooks when git notes are pushed.
+// Returns true if any CTPs were triggered to reconcile.
+func (r *PromotionStrategyReconciler) triggerReconcileForStaleGitNotes(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	if len(ctps) == 0 {
+		return false, nil
+	}
+
+	// Get the effective dry SHA for each CTP (NoteDrySha if set, otherwise Proposed.Dry.Sha)
+	getEffectiveDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
+		if ctp.Status.Proposed.Hydrated.NoteDrySha != "" {
+			return ctp.Status.Proposed.Hydrated.NoteDrySha
+		}
+		return ctp.Status.Proposed.Dry.Sha
+	}
+
+	// Find the target SHA - the one from the CTP with the newest proposed hydrated commit time.
+	// This represents the most recently hydrated environment, which should have the correct SHA.
+	var targetSha string
+	var newestTime metav1.Time
+	for _, ctp := range ctps {
+		effectiveSha := getEffectiveDrySha(ctp)
+		if effectiveSha == "" {
+			continue
+		}
+		commitTime := ctp.Status.Proposed.Hydrated.CommitTime
+		if targetSha == "" || commitTime.After(newestTime.Time) {
+			targetSha = effectiveSha
+			newestTime = commitTime
+		}
+	}
+
+	if targetSha == "" {
+		return false, nil
+	}
+
+	// Trigger reconcile only for CTPs that have a different effective dry SHA
+	needsRequeue := false
+	for _, ctp := range ctps {
+		effectiveSha := getEffectiveDrySha(ctp)
+		if effectiveSha == targetSha {
+			continue
+		}
+
+		logger.V(4).Info("Triggering CTP reconcile for stale hydrated dry sha",
+			"ctp", ctp.Name,
+			"effectiveSha", effectiveSha,
+			"targetSha", targetSha)
+
+		patch := client.MergeFrom(ctp.DeepCopy())
+		if ctp.Annotations == nil {
+			ctp.Annotations = make(map[string]string)
+		}
+		ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339)
+		if err := r.Patch(ctx, ctp, patch); err != nil {
+			return false, fmt.Errorf("failed to patch CTP %q to trigger reconcile: %w", ctp.Name, err)
+		}
+		needsRequeue = true
+	}
+
+	return needsRequeue, nil
 }
 
 func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
