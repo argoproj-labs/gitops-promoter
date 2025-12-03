@@ -126,8 +126,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
 	}
 
-	// If we triggered CTP reconciles for stale git notes, requeue after 1 minute
-	// to check if the notes have been updated.
+	// If we triggered CTP reconciles for stale shas, requeue to check if the shas have been updated.
 	if needsRequeueForNotes {
 		logger.V(4).Info("Requeuing PromotionStrategy to check for updated git notes")
 		return ctrl.Result{
