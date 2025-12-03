@@ -19,14 +19,12 @@ package controller
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path"
 	"strings"
 	"time"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -3457,86 +3455,16 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(err).To(Succeed())
 
 			By("Now simulating out-of-order hydration: hydrate ONLY staging for a new commit")
-			// Make a new dry commit
-			gitPath2, err := os.MkdirTemp("", "*")
+			gitPath2, err := cloneTestRepo(ctx, name)
 			Expect(err).NotTo(HaveOccurred())
 			defer os.RemoveAll(gitPath2)
 
-			repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name)
-			_, err = runGitCmd(ctx, gitPath2, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
+			secondDrySha, err := makeDryCommit(ctx, gitPath2, "second commit - will be hydrated out of order")
 			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "config", "user.name", "testuser")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "config", "user.email", "testmail@test.com")
-			Expect(err).NotTo(HaveOccurred())
-
-			// Get default branch
-			defaultBranch, err := runGitCmd(ctx, gitPath2, "rev-parse", "--abbrev-ref", "origin/HEAD")
-			Expect(err).NotTo(HaveOccurred())
-			defaultBranch, _ = strings.CutPrefix(strings.TrimSpace(defaultBranch), "origin/")
-
-			// Make a new dry commit
-			_, err = runGitCmd(ctx, gitPath2, "checkout", defaultBranch)
-			Expect(err).NotTo(HaveOccurred())
-			f, err := os.Create(path.Join(gitPath2, "manifests-fake.yaml"))
-			Expect(err).NotTo(HaveOccurred())
-			_, err = f.WriteString(fmt.Sprintf("{\"time\": \"%s\", \"test\": \"out-of-order\"}", time.Now().Format(time.RFC3339Nano)))
-			Expect(err).NotTo(HaveOccurred())
-			err = f.Close()
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "add", "manifests-fake.yaml")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "commit", "-m", "second commit - will be hydrated out of order")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "push", "-u", "origin", defaultBranch)
-			Expect(err).NotTo(HaveOccurred())
-
-			secondDrySha, err := runGitCmd(ctx, gitPath2, "rev-parse", defaultBranch)
-			Expect(err).NotTo(HaveOccurred())
-			secondDrySha = strings.TrimSpace(secondDrySha)
 
 			By("Hydrating ONLY staging-next (simulating out-of-order hydration)")
-			// Hydrate only staging-next, NOT development-next
-			_, err = runGitCmd(ctx, gitPath2, "checkout", "-B", "environment/staging-next", "origin/environment/staging-next")
+			_, err = hydrateEnvironment(ctx, gitPath2, "environment/staging-next", secondDrySha, "hydrate staging for second dry sha")
 			Expect(err).NotTo(HaveOccurred())
-
-			beforeBranchSha, err := runGitCmd(ctx, gitPath2, "rev-parse", "environment/staging-next")
-			Expect(err).NotTo(HaveOccurred())
-			beforeBranchSha = strings.TrimSpace(beforeBranchSha)
-
-			// Create hydrator.metadata for staging
-			metadata := git.HydratorMetadata{
-				DrySha:  secondDrySha,
-				Author:  "testuser <testmail@test.com>",
-				Date:    metav1.Now(),
-				Subject: "second commit - will be hydrated out of order",
-			}
-			m, err := json.MarshalIndent(metadata, "", "\t")
-			Expect(err).NotTo(HaveOccurred())
-			f, err = os.Create(path.Join(gitPath2, "hydrator.metadata"))
-			Expect(err).NotTo(HaveOccurred())
-			_, err = f.Write(m)
-			Expect(err).NotTo(HaveOccurred())
-			err = f.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			// Update manifests
-			f, err = os.Create(path.Join(gitPath2, "manifests-fake.yaml"))
-			Expect(err).NotTo(HaveOccurred())
-			_, err = f.WriteString(fmt.Sprintf("{\"time\": \"%s\", \"test\": \"staging-hydrated\"}", time.Now().Format(time.RFC3339Nano)))
-			Expect(err).NotTo(HaveOccurred())
-			err = f.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			_, err = runGitCmd(ctx, gitPath2, "add", "-A")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "commit", "-m", "hydrate staging for second dry sha")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "push", "-u", "origin", "environment/staging-next")
-			Expect(err).NotTo(HaveOccurred())
-
-			// Send webhook for staging-next
-			sendWebhookForPush(ctx, beforeBranchSha, "environment/staging-next")
 
 			By("Verifying staging sees the new proposed dry SHA")
 			Eventually(func(g Gomega) {
@@ -3582,38 +3510,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Now hydrating dev-next with the second dry SHA")
-			_, err = runGitCmd(ctx, gitPath2, "checkout", "-B", "environment/development-next", "origin/environment/development-next")
+			_, err = hydrateEnvironment(ctx, gitPath2, "environment/development-next", secondDrySha, "hydrate dev for second dry sha")
 			Expect(err).NotTo(HaveOccurred())
-
-			beforeDevBranchSha, err := runGitCmd(ctx, gitPath2, "rev-parse", "environment/development-next")
-			Expect(err).NotTo(HaveOccurred())
-			beforeDevBranchSha = strings.TrimSpace(beforeDevBranchSha)
-
-			// Create hydrator.metadata for dev
-			f, err = os.Create(path.Join(gitPath2, "hydrator.metadata"))
-			Expect(err).NotTo(HaveOccurred())
-			_, err = f.Write(m) // Same metadata as staging
-			Expect(err).NotTo(HaveOccurred())
-			err = f.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			// Update manifests
-			f, err = os.Create(path.Join(gitPath2, "manifests-fake.yaml"))
-			Expect(err).NotTo(HaveOccurred())
-			_, err = f.WriteString(fmt.Sprintf("{\"time\": \"%s\", \"test\": \"dev-hydrated\"}", time.Now().Format(time.RFC3339Nano)))
-			Expect(err).NotTo(HaveOccurred())
-			err = f.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			_, err = runGitCmd(ctx, gitPath2, "add", "-A")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "commit", "-m", "hydrate dev for second dry sha")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "push", "-u", "origin", "environment/development-next")
-			Expect(err).NotTo(HaveOccurred())
-
-			// Send webhook for development-next
-			sendWebhookForPush(ctx, beforeDevBranchSha, "environment/development-next")
 
 			By("Verifying dev now has the new proposed dry SHA")
 			Eventually(func(g Gomega) {
@@ -3742,97 +3640,16 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(err).To(Succeed())
 
 			By("Now simulating out-of-order hydration: hydrate ONLY staging for a new commit")
-			// Make a new dry commit
-			gitPath2, err := os.MkdirTemp("", "*")
+			gitPath2, err := cloneTestRepo(ctx, name)
 			Expect(err).NotTo(HaveOccurred())
 			defer os.RemoveAll(gitPath2)
 
-			repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name)
-			_, err = runGitCmd(ctx, gitPath2, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
+			secondDrySha, err := makeDryCommit(ctx, gitPath2, "second commit - git note only test")
 			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "config", "user.name", "testuser")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "config", "user.email", "testmail@test.com")
-			Expect(err).NotTo(HaveOccurred())
-
-			// Get default branch
-			defaultBranch, err := runGitCmd(ctx, gitPath2, "rev-parse", "--abbrev-ref", "origin/HEAD")
-			Expect(err).NotTo(HaveOccurred())
-			defaultBranch, _ = strings.CutPrefix(strings.TrimSpace(defaultBranch), "origin/")
-
-			// Make a new dry commit
-			_, err = runGitCmd(ctx, gitPath2, "checkout", defaultBranch)
-			Expect(err).NotTo(HaveOccurred())
-			f, err := os.Create(path.Join(gitPath2, "manifests-fake.yaml"))
-			Expect(err).NotTo(HaveOccurred())
-			_, err = f.WriteString(fmt.Sprintf("{\"time\": \"%s\", \"test\": \"git-note-only\"}", time.Now().Format(time.RFC3339Nano)))
-			Expect(err).NotTo(HaveOccurred())
-			err = f.Close()
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "add", "manifests-fake.yaml")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "commit", "-m", "second commit - git note only test")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "push", "-u", "origin", defaultBranch)
-			Expect(err).NotTo(HaveOccurred())
-
-			secondDrySha, err := runGitCmd(ctx, gitPath2, "rev-parse", defaultBranch)
-			Expect(err).NotTo(HaveOccurred())
-			secondDrySha = strings.TrimSpace(secondDrySha)
 
 			By("Hydrating ONLY staging-next (simulating out-of-order hydration)")
-			// Hydrate only staging-next, NOT development-next
-			_, err = runGitCmd(ctx, gitPath2, "checkout", "-B", "environment/staging-next", "origin/environment/staging-next")
+			_, err = hydrateEnvironment(ctx, gitPath2, "environment/staging-next", secondDrySha, "hydrate staging for second dry sha")
 			Expect(err).NotTo(HaveOccurred())
-
-			beforeStagingBranchSha, err := runGitCmd(ctx, gitPath2, "rev-parse", "environment/staging-next")
-			Expect(err).NotTo(HaveOccurred())
-			beforeStagingBranchSha = strings.TrimSpace(beforeStagingBranchSha)
-
-			// Create hydrator.metadata for staging
-			metadata := git.HydratorMetadata{
-				DrySha:  secondDrySha,
-				Author:  "testuser <testmail@test.com>",
-				Date:    metav1.Now(),
-				Subject: "second commit - git note only test",
-			}
-			m, err := json.MarshalIndent(metadata, "", "\t")
-			Expect(err).NotTo(HaveOccurred())
-			f, err = os.Create(path.Join(gitPath2, "hydrator.metadata"))
-			Expect(err).NotTo(HaveOccurred())
-			_, err = f.Write(m)
-			Expect(err).NotTo(HaveOccurred())
-			err = f.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			// Update manifests for staging
-			f, err = os.Create(path.Join(gitPath2, "manifests-fake.yaml"))
-			Expect(err).NotTo(HaveOccurred())
-			_, err = f.WriteString(fmt.Sprintf("{\"time\": \"%s\", \"test\": \"staging-hydrated-v2\"}", time.Now().Format(time.RFC3339Nano)))
-			Expect(err).NotTo(HaveOccurred())
-			err = f.Close()
-			Expect(err).NotTo(HaveOccurred())
-
-			_, err = runGitCmd(ctx, gitPath2, "add", "-A")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "commit", "-m", "hydrate staging for second dry sha")
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "push", "-u", "origin", "environment/staging-next")
-			Expect(err).NotTo(HaveOccurred())
-
-			stagingHydratedSha, err := runGitCmd(ctx, gitPath2, "rev-parse", "environment/staging-next")
-			Expect(err).NotTo(HaveOccurred())
-			stagingHydratedSha = strings.TrimSpace(stagingHydratedSha)
-
-			// Add git note to staging's hydrated commit
-			noteContent := fmt.Sprintf(`{"drySha": "%s"}`, secondDrySha)
-			_, err = runGitCmd(ctx, gitPath2, "notes", "--ref="+git.HydratorNotesRef, "add", "-f", "-m", noteContent, stagingHydratedSha)
-			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "push", "origin", git.HydratorNotesRef)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Send webhook for staging-next
-			sendWebhookForPush(ctx, beforeStagingBranchSha, "environment/staging-next")
 
 			By("Verifying staging sees the new proposed dry SHA")
 			Eventually(func(g Gomega) {
@@ -3858,25 +3675,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Adding ONLY a git note to dev's existing hydrated commit (no new commit)")
-			// Get dev's current proposed hydrated SHA from the development-next branch
-			_, err = runGitCmd(ctx, gitPath2, "fetch", "origin")
-			Expect(err).NotTo(HaveOccurred())
-
-			devProposedHydratedSha, err := runGitCmd(ctx, gitPath2, "rev-parse", "origin/environment/development-next")
-			Expect(err).NotTo(HaveOccurred())
-			devProposedHydratedSha = strings.TrimSpace(devProposedHydratedSha)
-
-			// Add a git note to dev's existing hydrated commit with the NEW dry SHA
 			// This simulates the hydrator saying "the manifests haven't changed, but I've processed this dry SHA"
-			noteContent = fmt.Sprintf(`{"drySha": "%s"}`, secondDrySha)
-			_, err = runGitCmd(ctx, gitPath2, "notes", "--ref="+git.HydratorNotesRef, "add", "-f", "-m", noteContent, devProposedHydratedSha)
+			_, err = hydrateWithNoteOnly(ctx, gitPath2, "environment/development-next", secondDrySha)
 			Expect(err).NotTo(HaveOccurred())
-			_, err = runGitCmd(ctx, gitPath2, "push", "origin", git.HydratorNotesRef)
-			Expect(err).NotTo(HaveOccurred())
-
-			// IMPORTANT: Send webhook for development-next branch (not staging-next!)
-			// This triggers the dev CTP to reconcile and pick up the new git note
-			sendWebhookForPush(ctx, devProposedHydratedSha, "environment/development-next")
 
 			By("Waiting for dev CTP to pick up the git note")
 			Eventually(func(g Gomega) {
