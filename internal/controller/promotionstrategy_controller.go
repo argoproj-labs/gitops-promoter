@@ -542,9 +542,9 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 	// Check if the previous environment's hydrator has finished processing the same dry SHA
 	// that we're trying to promote.
 	//
-	// The NoteDrySha (from git note) is the authoritative source for which dry SHA the hydrator
+	// The NoteDrySha (from git note) is the source for which dry SHA the hydrator
 	// has processed. This is important because when manifests don't change between dry commits,
-	// the hydrator may only update the git note without creating a new commit (optimization).
+	// the hydrator may only update the git note without creating a new commit.
 	// In that case, the hydrator.metadata file (which sets Proposed.Dry.Sha) still contains
 	// the old dry SHA, but the git note confirms hydration is complete for the new dry SHA.
 	//
