@@ -132,7 +132,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		logger.V(4).Info("Requeuing PromotionStrategy to check for updated git notes")
 		return ctrl.Result{
 			Requeue:      true,
-			RequeueAfter: 1 * time.Minute,
+			RequeueAfter: 30 * time.Second, // Don't want to make this configurable yet, but might in future.
 		}, nil
 	}
 
