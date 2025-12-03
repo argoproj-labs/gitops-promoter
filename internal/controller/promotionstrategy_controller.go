@@ -422,11 +422,14 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 		logger.V(4).Info("Setting previous environment CommitStatus phase",
 			"phase", commitStatusPhase,
+			"pendingReason", pendingReason,
 			"activeBranch", ctp.Spec.ActiveBranch,
 			"proposedDrySha", ctp.Status.Proposed.Dry.Sha,
 			"proposedHydratedSha", ctp.Status.Proposed.Hydrated.Sha,
 			"previousEnvironmentActiveDrySha", previousEnvironmentStatus.Active.Dry.Sha,
 			"previousEnvironmentActiveHydratedSha", previousEnvironmentStatus.Active.Hydrated.Sha,
+			"previousEnvironmentProposedDrySha", previousEnvironmentStatus.Proposed.Dry.Sha,
+			"previousEnvironmentProposedNoteDrySha", previousEnvironmentStatus.Proposed.Hydrated.NoteDrySha,
 			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch)
 
 		// Since there is at least one configured active check, and since this is not the first environment,
@@ -487,16 +490,21 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 		return true, "Waiting for previous environment's active commit to match proposed commit"
 	}
 
-	// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
-	// time. Basically, we can't move back in time.
-	// Note: When previousEnvNoChangesToMerge is true, we compare against the current active time since
-	// the previous env's active hasn't changed.
-	previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
-		previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
+	// When the previous environment has no changes to merge (git note optimization),
+	// we skip the time check because:
+	// 1. The previous env's active dry SHA is still the old one (no new commit was made)
+	// 2. The time comparison would compare old hydration times, which is meaningless
+	// 3. The git note already confirms the hydrator processed the new dry SHA
+	if !previousEnvNoChangesToMerge {
+		// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
+		// time. Basically, we can't move back in time.
+		previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
+			previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
 
-	if !previousEnvironmentDryShaEqualOrNewer {
-		// This should basically never happen.
-		return true, "Previous environment's commit is older than current environment's commit"
+		if !previousEnvironmentDryShaEqualOrNewer {
+			// This should basically never happen.
+			return true, "Previous environment's commit is older than current environment's commit"
+		}
 	}
 
 	previousEnvironmentPassing := utils.AreCommitStatusesPassing(previousEnvironmentStatus.Active.CommitStatuses)
