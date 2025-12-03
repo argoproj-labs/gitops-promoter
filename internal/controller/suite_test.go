@@ -335,19 +335,23 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	// ChangeTransferPolicy controller must be set up before PromotionStrategy so we can
+	// get the enqueue function to pass to PromotionStrategy.
+	ctpReconciler := &ChangeTransferPolicyReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
+		SettingsMgr: settingsMgr,
+	}
+	err = ctpReconciler.SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	err = (&PromotionStrategyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorderFor("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(ctx, k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&ChangeTransferPolicyReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
-		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -397,7 +401,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
-	whr := webhookreceiver.NewWebhookReceiver(k8sManager)
+	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")

@@ -51,6 +51,10 @@ type PromotionStrategyReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
+
+	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
+	// This is set during initialization and used by triggerReconcileForStaleGitNotes.
+	EnqueueCTP CTPEnqueueFunc
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
@@ -108,14 +112,6 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
 	r.calculateStatus(&ps, ctps)
 
-	// Check if any environments need to refresh their git notes.
-	// GitHub doesn't send webhooks when git notes are pushed, so we need to
-	// trigger CTP reconciliation when we detect stale NoteDrySha values.
-	needsRequeueForNotes, err := r.triggerReconcileForStaleGitNotes(ctx, ctps)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to trigger reconcile for stale git notes: %w", err)
-	}
-
 	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to merge PRs: %w", err)
@@ -126,7 +122,17 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
 	}
 
+	// Check if any environments need to refresh their git notes.
+	// GitHub doesn't send webhooks when git notes are pushed, so we need to
+	// trigger CTP reconciliation when we detect stale NoteDrySha values.
+	// This is done AFTER updating the PromotionStrategy status to avoid conflicts
+	// since triggering CTP reconciles will cause them to update, which triggers
+	// the PromotionStrategy to requeue.
+	needsRequeueForNotes := r.triggerReconcileForStaleGitNotes(ctx, ctps)
+
 	// If we triggered CTP reconciles for stale shas, requeue to check if the shas have been updated.
+	// This is more of a safety net because the CTP reconciling will cause the PromotionStrategy to requeue automatically.
+	// However, we do not know how long the CTP reconciling will take, so we requeue after a short period of time.
 	if needsRequeueForNotes {
 		logger.V(4).Info("Requeuing PromotionStrategy to check for updated git notes")
 		return ctrl.Result{
@@ -337,11 +343,11 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // different values need to reconcile to fetch updated git notes. This is needed
 // because GitHub doesn't send webhooks when git notes are pushed.
 // Returns true if any CTPs were triggered to reconcile.
-func (r *PromotionStrategyReconciler) triggerReconcileForStaleGitNotes(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) (bool, error) {
+func (r *PromotionStrategyReconciler) triggerReconcileForStaleGitNotes(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) bool {
 	logger := log.FromContext(ctx)
 
 	if len(ctps) == 0 {
-		return false, nil
+		return false
 	}
 
 	// Get the effective dry SHA for each CTP (NoteDrySha if set, otherwise Proposed.Dry.Sha)
@@ -371,10 +377,12 @@ func (r *PromotionStrategyReconciler) triggerReconcileForStaleGitNotes(ctx conte
 	}
 
 	if targetSha == "" {
-		return false, nil
+		return false
 	}
 
-	// Trigger reconcile only for CTPs that have a different effective dry SHA
+	// Trigger reconcile only for CTPs that have a different effective dry SHA.
+	// We use the EnqueueCTP function to add the CTP to the reconcile queue without
+	// modifying the object, which avoids conflicts with concurrent CTP reconciliations.
 	needsRequeue := false
 	for _, ctp := range ctps {
 		effectiveSha := getEffectiveDrySha(ctp)
@@ -387,18 +395,15 @@ func (r *PromotionStrategyReconciler) triggerReconcileForStaleGitNotes(ctx conte
 			"effectiveSha", effectiveSha,
 			"targetSha", targetSha)
 
-		patch := client.MergeFrom(ctp.DeepCopy())
-		if ctp.Annotations == nil {
-			ctp.Annotations = make(map[string]string)
-		}
-		ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339)
-		if err := r.Patch(ctx, ctp, patch); err != nil {
-			return false, fmt.Errorf("failed to patch CTP %q to trigger reconcile: %w", ctp.Name, err)
+		// Use the enqueue function to trigger reconciliation without modifying the CTP.
+		// This avoids conflicts when the CTP is already being reconciled.
+		if r.EnqueueCTP != nil {
+			r.EnqueueCTP(ctp.Namespace, ctp.Name)
 		}
 		needsRequeue = true
 	}
 
-	return needsRequeue, nil
+	return needsRequeue
 }
 
 func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {

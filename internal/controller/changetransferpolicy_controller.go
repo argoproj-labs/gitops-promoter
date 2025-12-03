@@ -50,12 +50,20 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 )
+
+// CTPEnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
+// without modifying the CTP object. This is used by other controllers (like PromotionStrategy)
+// to trigger CTP reconciliation without causing object conflicts.
+type CTPEnqueueFunc func(namespace, name string)
 
 // ChangeTransferPolicyReconciler reconciles a ChangeTransferPolicy object
 type ChangeTransferPolicyReconciler struct {
@@ -63,6 +71,16 @@ type ChangeTransferPolicyReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
+
+	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
+	// It allows other controllers to enqueue CTP reconcile requests.
+	enqueueFunc CTPEnqueueFunc
+}
+
+// GetEnqueueFunc returns a function that can be used to enqueue CTP reconcile requests.
+// This should be called after SetupWithManager has been called.
+func (r *ChangeTransferPolicyReconciler) GetEnqueueFunc() CTPEnqueueFunc {
+	return r.enqueueFunc
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -441,6 +459,26 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		return fmt.Errorf("failed to get ChangeTransferPolicy max concurrent reconciles: %w", err)
 	}
 
+	// Create a channel for external enqueue requests. This allows other controllers
+	// to trigger CTP reconciliation without modifying the CTP object.
+	// The channel uses GenericEvent with a minimal CTP object containing just the namespace/name.
+	externalEnqueueChan := make(chan event.GenericEvent, 100)
+
+	// Store the enqueue function so it can be retrieved by other controllers
+	r.enqueueFunc = func(namespace, name string) {
+		// Create a minimal CTP object with just namespace and name for the event
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{}
+		ctp.SetNamespace(namespace)
+		ctp.SetName(name)
+		select {
+		case externalEnqueueChan <- event.GenericEvent{Object: ctp}:
+		default:
+			// Channel is full, the request will be dropped but the CTP will eventually reconcile
+			log.FromContext(ctx).V(4).Info("CTP enqueue channel full, dropping request",
+				"namespace", namespace, "name", name)
+		}
+	}
+
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ChangeTransferPolicy{},
 			builder.WithPredicates(predicate.Or(
@@ -453,6 +491,9 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		// checks whether it needs to update a related ChangeTransferPolicy by setting an annotation. Avoiding .Owns
 		// here avoids duplicate reconciliations.
 		Owns(&promoterv1alpha1.PullRequest{}).
+		// Watch for external enqueue requests from other controllers (e.g., PromotionStrategy).
+		// The handler.EnqueueRequestForObject extracts the namespace/name from the GenericEvent.
+		WatchesRawSource(source.Channel(externalEnqueueChan, &handler.EnqueueRequestForObject{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
