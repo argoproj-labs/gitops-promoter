@@ -462,21 +462,17 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 	// Create a channel for external enqueue requests. This allows other controllers
 	// to trigger CTP reconciliation without modifying the CTP object.
 	// The channel uses GenericEvent with a minimal CTP object containing just the namespace/name.
-	externalEnqueueChan := make(chan event.GenericEvent, 100)
+	// We use a buffer of 1024 to match the default internal buffer size of source.Channel.
+	// Sends will block if the buffer is full, providing natural backpressure to callers.
+	externalEnqueueChan := make(chan event.GenericEvent, 1024)
 
-	// Store the enqueue function so it can be retrieved by other controllers
+	// Store the enqueue function so it can be retrieved by other controllers.
+	// This is a blocking send - callers will wait if the channel buffer is full.
 	r.enqueueFunc = func(namespace, name string) {
-		// Create a minimal CTP object with just namespace and name for the event
 		ctp := &promoterv1alpha1.ChangeTransferPolicy{}
 		ctp.SetNamespace(namespace)
 		ctp.SetName(name)
-		select {
-		case externalEnqueueChan <- event.GenericEvent{Object: ctp}:
-		default:
-			// Channel is full, the request will be dropped but the CTP will eventually reconcile
-			log.FromContext(ctx).V(4).Info("CTP enqueue channel full, dropping request",
-				"namespace", namespace, "name", name)
-		}
+		externalEnqueueChan <- event.GenericEvent{Object: ctp}
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).

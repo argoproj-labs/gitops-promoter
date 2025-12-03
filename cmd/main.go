@@ -207,14 +207,6 @@ func runController(
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PullRequest controller: %w", err))
 	}
-	if err = (&controller.CommitStatusReconciler{
-		Client:      localManager.GetClient(),
-		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorderFor("CommitStatus"),
-		SettingsMgr: settingsMgr,
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic(fmt.Errorf("unable to create CommitStatus controller: %w", err))
-	}
 	if err = (&controller.RevertCommitReconciler{
 		Client:   localManager.GetClient(),
 		Scheme:   localManager.GetScheme(),
@@ -223,8 +215,8 @@ func runController(
 		panic(fmt.Errorf("unable to create RevertCommit controller: %w", err))
 	}
 
-	// ChangeTransferPolicy controller must be set up before PromotionStrategy so we can
-	// get the enqueue function to pass to PromotionStrategy.
+	// ChangeTransferPolicy controller must be set up first so we can
+	// get the enqueue function to pass to other controllers.
 	ctpReconciler := &controller.ChangeTransferPolicyReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
@@ -233,6 +225,16 @@ func runController(
 	}
 	if err = ctpReconciler.SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))
+	}
+
+	if err = (&controller.CommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("CommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create CommitStatus controller: %w", err))
 	}
 
 	if err = (&controller.PromotionStrategyReconciler{
