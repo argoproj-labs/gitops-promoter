@@ -58,7 +58,7 @@ type HydratorMetadata struct {
 }
 
 // HydratorNotesRef is the git notes reference used by hydrators to store metadata about hydrated commits.
-const HydratorNotesRef = "refs/notes/hydrator"
+const HydratorNotesRef = "refs/notes/hydrator.metadata"
 
 // NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter is used to differentiate
 // between different environments that might use the same GitRepository and avoid conflicts between concurrent

@@ -193,7 +193,7 @@ DRY_SHA=$(git rev-parse HEAD)
 ENV=$1  # e.g., "production"
 PROPOSED_BRANCH="environment/${ENV}-next"
 REPO_URL="https://github.com/org/repo"
-NOTES_REF="refs/notes/hydrator"
+NOTES_REF="refs/notes/hydrator.metadata"
 
 # Fetch the proposed branch and notes
 git fetch origin ${PROPOSED_BRANCH} 2>/dev/null || {
