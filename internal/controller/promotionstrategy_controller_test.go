@@ -3406,7 +3406,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Making a change and hydrating all environments (normal flow first)")
 			gitPath1, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(gitPath1)
+			defer func() { _ = os.RemoveAll(gitPath1) }()
 			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, name, name, "first commit", "")
 
 			By("Setting dev's commit status to success so staging can promote")
@@ -3457,13 +3457,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Now simulating out-of-order hydration: hydrate ONLY staging for a new commit")
 			gitPath2, err := cloneTestRepo(ctx, name)
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(gitPath2)
+			defer func() { _ = os.RemoveAll(gitPath2) }()
 
 			secondDrySha, err := makeDryCommit(ctx, gitPath2, "second commit - will be hydrated out of order")
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Hydrating ONLY staging-next (simulating out-of-order hydration)")
-			_, err = hydrateEnvironment(ctx, gitPath2, "environment/staging-next", secondDrySha, "hydrate staging for second dry sha")
+			err = hydrateEnvironment(ctx, gitPath2, "environment/staging-next", secondDrySha, "hydrate staging for second dry sha")
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying staging sees the new proposed dry SHA")
@@ -3510,7 +3510,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Now hydrating dev-next with the second dry SHA")
-			_, err = hydrateEnvironment(ctx, gitPath2, "environment/development-next", secondDrySha, "hydrate dev for second dry sha")
+			err = hydrateEnvironment(ctx, gitPath2, "environment/development-next", secondDrySha, "hydrate dev for second dry sha")
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying dev now has the new proposed dry SHA")
@@ -3591,7 +3591,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Making a change and hydrating all environments (normal flow first)")
 			gitPath1, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(gitPath1)
+			defer func() { _ = os.RemoveAll(gitPath1) }()
 			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, name, name, "first commit", "")
 
 			By("Setting dev's commit status to success so staging can promote")
@@ -3642,13 +3642,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			By("Now simulating out-of-order hydration: hydrate ONLY staging for a new commit")
 			gitPath2, err := cloneTestRepo(ctx, name)
 			Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(gitPath2)
+			defer func() { _ = os.RemoveAll(gitPath2) }()
 
 			secondDrySha, err := makeDryCommit(ctx, gitPath2, "second commit - git note only test")
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Hydrating ONLY staging-next (simulating out-of-order hydration)")
-			_, err = hydrateEnvironment(ctx, gitPath2, "environment/staging-next", secondDrySha, "hydrate staging for second dry sha")
+			err = hydrateEnvironment(ctx, gitPath2, "environment/staging-next", secondDrySha, "hydrate staging for second dry sha")
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying staging sees the new proposed dry SHA")
@@ -3676,7 +3676,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Adding ONLY a git note to dev's existing hydrated commit (no new commit)")
 			// This simulates the hydrator saying "the manifests haven't changed, but I've processed this dry SHA"
-			_, err = hydrateWithNoteOnly(ctx, gitPath2, "environment/development-next", secondDrySha)
+			err = addNoteToEnvironment(ctx, gitPath2, "environment/development-next", secondDrySha)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Waiting for dev CTP to pick up the git note")

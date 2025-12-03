@@ -898,19 +898,19 @@ func cloneTestRepo(ctx context.Context, repoName string) (gitPath string, err er
 	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoName, repoName)
 	_, err = runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 	if err != nil {
-		os.RemoveAll(gitPath)
+		_ = os.RemoveAll(gitPath)
 		return "", fmt.Errorf("failed to clone: %w", err)
 	}
 
 	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
 	if err != nil {
-		os.RemoveAll(gitPath)
+		_ = os.RemoveAll(gitPath)
 		return "", fmt.Errorf("failed to set user.name: %w", err)
 	}
 
 	_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testmail@test.com")
 	if err != nil {
-		os.RemoveAll(gitPath)
+		_ = os.RemoveAll(gitPath)
 		return "", fmt.Errorf("failed to set user.email: %w", err)
 	}
 
@@ -948,7 +948,7 @@ func makeDryCommit(ctx context.Context, gitPath, commitMessage string) (drySha s
 	// Create a unique change
 	manifestContent := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339Nano))
 	manifestPath := path.Join(gitPath, "manifests-fake.yaml")
-	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0644); err != nil {
+	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0o644); err != nil {
 		return "", fmt.Errorf("failed to write manifests-fake.yaml: %w", err)
 	}
 
@@ -986,22 +986,22 @@ func makeDryCommit(ctx context.Context, gitPath, commitMessage string) (drySha s
 // hydrateEnvironment hydrates a single environment branch with a new commit containing
 // hydrator.metadata and a git note. This simulates what a hydrator does.
 // Returns the hydrated commit SHA.
-func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMessage string) (hydratedSha string, err error) {
+func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMessage string) error {
 	// Fetch latest and checkout the branch
-	_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+	_, err := runGitCmd(ctx, gitPath, "fetch", "origin")
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch: %w", err)
+		return fmt.Errorf("failed to fetch: %w", err)
 	}
 
 	_, err = runGitCmd(ctx, gitPath, "checkout", "-B", branch, "origin/"+branch)
 	if err != nil {
-		return "", fmt.Errorf("failed to checkout branch %s: %w", branch, err)
+		return fmt.Errorf("failed to checkout branch %s: %w", branch, err)
 	}
 
 	// Get the SHA before we make changes - this is the "before" SHA for the webhook
 	beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", branch)
 	if err != nil {
-		return "", fmt.Errorf("failed to get before SHA: %w", err)
+		return fmt.Errorf("failed to get before SHA: %w", err)
 	}
 	beforeSha = strings.TrimSpace(beforeSha)
 
@@ -1014,25 +1014,25 @@ func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMess
 	}
 	m, err := json.MarshalIndent(metadata, "", "\t")
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal metadata: %w", err)
+		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
 	metadataPath := path.Join(gitPath, "hydrator.metadata")
-	if err := os.WriteFile(metadataPath, m, 0644); err != nil {
-		return "", fmt.Errorf("failed to write hydrator.metadata: %w", err)
+	if err := os.WriteFile(metadataPath, m, 0o644); err != nil {
+		return fmt.Errorf("failed to write hydrator.metadata: %w", err)
 	}
 
 	// Update manifests with unique content
 	manifestContent := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339Nano))
 	manifestPath := path.Join(gitPath, "manifests-fake.yaml")
-	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0644); err != nil {
-		return "", fmt.Errorf("failed to write manifests-fake.yaml: %w", err)
+	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0o644); err != nil {
+		return fmt.Errorf("failed to write manifests-fake.yaml: %w", err)
 	}
 
 	// Commit and push
 	_, err = runGitCmd(ctx, gitPath, "add", "-A")
 	if err != nil {
-		return "", fmt.Errorf("failed to add files: %w", err)
+		return fmt.Errorf("failed to add files: %w", err)
 	}
 
 	if commitMessage == "" {
@@ -1040,30 +1040,30 @@ func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMess
 	}
 	_, err = runGitCmd(ctx, gitPath, "commit", "-m", commitMessage)
 	if err != nil {
-		return "", fmt.Errorf("failed to commit: %w", err)
+		return fmt.Errorf("failed to commit: %w", err)
 	}
 
 	_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", branch)
 	if err != nil {
-		return "", fmt.Errorf("failed to push: %w", err)
+		return fmt.Errorf("failed to push: %w", err)
 	}
 
 	// Get the new hydrated SHA
-	hydratedSha, err = runGitCmd(ctx, gitPath, "rev-parse", branch)
+	hydratedSha, err := runGitCmd(ctx, gitPath, "rev-parse", branch)
 	if err != nil {
-		return "", fmt.Errorf("failed to get hydrated SHA: %w", err)
+		return fmt.Errorf("failed to get hydrated SHA: %w", err)
 	}
 	hydratedSha = strings.TrimSpace(hydratedSha)
 
 	// Add git note
 	if err := pushGitNote(ctx, gitPath, hydratedSha, drySha); err != nil {
-		return "", err
+		return err
 	}
 
 	// Send webhook for the branch
 	sendWebhookForPush(ctx, beforeSha, branch)
 
-	return hydratedSha, nil
+	return nil
 }
 
 // pushGitNote adds a git note to a commit and pushes it to origin.
@@ -1080,32 +1080,29 @@ func pushGitNote(ctx context.Context, gitPath, commitSha, drySha string) error {
 	return nil
 }
 
-// hydrateWithNoteOnly adds a git note to an existing hydrated commit without creating a new commit.
+// addNoteToEnvironment adds a git note to an existing hydrated commit without creating a new commit.
 // This simulates the hydrator where manifests haven't changed.
-// It also sends a webhook to trigger reconciliation.
-func hydrateWithNoteOnly(ctx context.Context, gitPath, branch, drySha string) (hydratedSha string, err error) {
+// We do not send a webhook to trigger reconciliation, because github and other SCM providers do not support webhooks for git notes.
+func addNoteToEnvironment(ctx context.Context, gitPath, branch, drySha string) (err error) {
 	// Fetch latest
 	_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch: %w", err)
+		return fmt.Errorf("failed to fetch: %w", err)
 	}
 
 	// Get the current hydrated SHA from the branch
-	hydratedSha, err = runGitCmd(ctx, gitPath, "rev-parse", "origin/"+branch)
+	hydratedSha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+branch)
 	if err != nil {
-		return "", fmt.Errorf("failed to get hydrated SHA: %w", err)
+		return fmt.Errorf("failed to get hydrated SHA: %w", err)
 	}
 	hydratedSha = strings.TrimSpace(hydratedSha)
 
 	// Add git note to the existing commit
 	if err := pushGitNote(ctx, gitPath, hydratedSha, drySha); err != nil {
-		return "", err
+		return err
 	}
 
-	// Send webhook to trigger reconciliation
-	sendWebhookForPush(ctx, hydratedSha, branch)
-
-	return hydratedSha, nil
+	return nil
 }
 
 func createKubeConfig(cfg *rest.Config) ([]byte, error) {
