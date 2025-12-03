@@ -352,18 +352,20 @@ func (r *PromotionStrategyReconciler) triggerReconcileForStaleGitNotes(ctx conte
 		return ctp.Status.Proposed.Dry.Sha
 	}
 
-	// Find the target SHA - the one from the CTP with the newest proposed hydrated commit time.
-	// This represents the most recently hydrated environment, which should have the correct SHA.
+	// Find the target SHA - the Proposed.Dry.Sha from the CTP with the newest proposed hydrated commit.
+	// We use the hydrated commit time to find the most recently hydrated environment, then use its
+	// Proposed.Dry.Sha as the target. CTPs whose effective dry SHA (from git note) doesn't match
+	// this target need to reconcile to fetch the updated git note.
 	var targetSha string
 	var newestTime metav1.Time
 	for _, ctp := range ctps {
-		effectiveSha := getEffectiveDrySha(ctp)
-		if effectiveSha == "" {
+		proposedDrySha := ctp.Status.Proposed.Dry.Sha
+		if proposedDrySha == "" {
 			continue
 		}
 		commitTime := ctp.Status.Proposed.Hydrated.CommitTime
 		if targetSha == "" || commitTime.After(newestTime.Time) {
-			targetSha = effectiveSha
+			targetSha = proposedDrySha
 			newestTime = commitTime
 		}
 	}
