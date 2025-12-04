@@ -39,23 +39,8 @@ type EnvironmentOperations struct {
 	activeBranch string
 }
 
-// HydratorMetadata contains metadata about the commit that is used to hydrate a branch.
-type HydratorMetadata struct {
-	// RepoURL is the URL of the repository where the commit is located.
-	RepoURL string `json:"repoURL,omitempty"`
-	// DrySha is the SHA of the commit that was used as the dry source for hydration.
-	DrySha string `json:"drySha,omitempty"`
-	// Author is the author of the dry commit that was used to hydrate the branch.
-	Author string `json:"author,omitempty"`
-	// Date is the date of the dry commit that was used to hydrate the branch.
-	Date v1.Time `json:"date,omitempty"`
-	// Subject is the subject line of the dry commit that was used to hydrate the branch.
-	Subject string `json:"subject,omitempty"`
-	// Body is the body of the dry commit that was used to hydrate the branch without the subject.
-	Body string `json:"body,omitempty"`
-	// References are the references to other commits, that went into the hydration of the branch.
-	References []v1alpha1.RevisionReference `json:"references,omitempty"`
-}
+// HydratorMetadata is an alias to v1alpha1.HydratorMetadata for convenience.
+type HydratorMetadata = v1alpha1.HydratorMetadata
 
 // HydratorNotesRef is the git notes reference used by hydrators to store metadata about hydrated commits.
 const HydratorNotesRef = "refs/notes/hydrator.metadata"

@@ -3686,8 +3686,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Namespace: ctpDev.Namespace,
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
-				// Dev's Note.Sha should be the second dry SHA (from git note)
-				g.Expect(ctpDev.Status.Proposed.Note.Sha).To(Equal(secondDrySha))
+				// Dev's Note.DrySha should be the second dry SHA (from git note)
+				g.Expect(ctpDev.Status.Proposed.Note.DrySha).To(Equal(secondDrySha))
 				// Dev's Proposed.Dry.Sha should still be the first dry SHA (no new commit was made)
 				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -3833,8 +3833,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Namespace: ctpDev.Namespace,
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
-				// Dev's Note.Sha should be the second dry SHA (from git note)
-				g.Expect(ctpDev.Status.Proposed.Note.Sha).To(Equal(secondDrySha))
+				// Dev's Note.DrySha should be the second dry SHA (from git note)
+				g.Expect(ctpDev.Status.Proposed.Note.DrySha).To(Equal(secondDrySha))
 				// Dev's Proposed.Dry.Sha should still be the first dry SHA (no new commit was made)
 				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -3874,13 +3874,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Namespace: ctpProd.Namespace,
 				}, &ctpProd)
 				g.Expect(err).To(Succeed())
-				// Production's Note.Sha should be the second dry SHA (from git note)
-				g.Expect(ctpProd.Status.Proposed.Note.Sha).To(Equal(secondDrySha))
+				// Production's Note.DrySha should be the second dry SHA (from git note)
+				g.Expect(ctpProd.Status.Proposed.Note.DrySha).To(Equal(secondDrySha))
 				// Production's Proposed.Dry.Sha should still be the first dry SHA (no new commit was made)
 				g.Expect(ctpProd.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying production's previous environment check passes (staging is ahead with matching Note.Sha)")
+			By("Verifying production's previous environment check passes (staging is ahead with matching Note.DrySha)")
 			Eventually(func(g Gomega) {
 				var prevEnvCS promoterv1alpha1.CommitStatus
 				csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpProd.Name)
@@ -3910,7 +3910,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		newerTime := metav1.NewTime(time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC))
 
 		// Helper to create environment status with specific values
-		makeEnvStatusWithTime := func(activeDrySha, proposedDrySha, noteSha string, activeTime metav1.Time) promoterv1alpha1.EnvironmentStatus {
+		makeEnvStatusWithTime := func(activeDrySha, proposedDrySha, noteDrySha string, activeTime metav1.Time) promoterv1alpha1.EnvironmentStatus {
 			return promoterv1alpha1.EnvironmentStatus{
 				Active: promoterv1alpha1.CommitBranchState{
 					Dry: promoterv1alpha1.CommitShaState{
@@ -3926,8 +3926,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						Sha:        proposedDrySha,
 						CommitTime: olderTime, // Set proposed commit time to olderTime by default
 					},
-					Note: promoterv1alpha1.CommitShaState{
-						Sha: noteSha,
+					Note: promoterv1alpha1.HydratorMetadata{
+						DrySha: noteDrySha,
 					},
 				},
 			}
@@ -4003,7 +4003,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		)
 
 		// Test for when previous environment has already moved past the proposed dry SHA
-		// AND both environments have the same Note.Sha (confirming they've seen the same dry commits)
+		// AND both environments have the same Note.DrySha (confirming they've seen the same dry commits)
 		//
 		// Example scenario:
 		// 1. Dry commit ABC is made (commitTime: 10:00)
@@ -4011,12 +4011,12 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		// 3. Before production merges ABC, someone makes dry commit DEF (commitTime: 10:05)
 		// 4. Staging hydrates and merges DEF
 		// 5. Production is still trying to promote ABC, but staging is ahead
-		// 6. Both have Note.Sha = DEF (both hydrated up to the latest), so allow promotion
-		It("allows when previous env has already merged a newer commit with matching Note.Sha", func() {
+		// 6. Both have Note.DrySha = DEF (both hydrated up to the latest), so allow promotion
+		It("allows when previous env has already merged a newer commit with matching Note.DrySha", func() {
 			// Previous env (staging) has merged a newer commit (DEF at newerTime)
 			prevEnvStatus := makeEnvStatusWithTime("DEF", "DEF", "DEF", newerTime)
 			// Current env (production) is trying to promote an older commit (ABC at olderTime)
-			// Both have Note.Sha = "DEF", meaning they've both been hydrated up to the same point
+			// Both have Note.DrySha = "DEF", meaning they've both been hydrated up to the same point
 			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
 				Active: promoterv1alpha1.CommitBranchState{
 					Dry: promoterv1alpha1.CommitShaState{
@@ -4032,20 +4032,20 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						Sha:        "ABC",
 						CommitTime: olderTime, // ABC was made before DEF
 					},
-					Note: promoterv1alpha1.CommitShaState{
-						Sha: "DEF", // But hydrator has processed up to DEF
+					Note: promoterv1alpha1.HydratorMetadata{
+						DrySha: "DEF", // But hydrator has processed up to DEF
 					},
 				},
 			}
 
 			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
 
-			Expect(isPending).To(BeFalse(), "should allow promotion when previous env is ahead and Note.Sha matches")
+			Expect(isPending).To(BeFalse(), "should allow promotion when previous env is ahead and Note.DrySha matches")
 			Expect(reason).To(BeEmpty())
 		})
 
-		It("blocks when Note.Sha doesn't match between environments", func() {
-			// Previous env (staging) has Note.Sha "XYZ" while production's is "ABC"
+		It("blocks when Note.DrySha doesn't match between environments", func() {
+			// Previous env (staging) has Note.DrySha "XYZ" while production's is "ABC"
 			// This means they haven't been hydrated for the same dry commits
 			prevEnvStatus := makeEnvStatusWithTime("DEF", "DEF", "XYZ", newerTime)
 			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
@@ -4063,22 +4063,22 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						Sha:        "ABC",
 						CommitTime: olderTime,
 					},
-					Note: promoterv1alpha1.CommitShaState{
-						Sha: "ABC", // Different from staging's XYZ
+					Note: promoterv1alpha1.HydratorMetadata{
+						DrySha: "ABC", // Different from staging's XYZ
 					},
 				},
 			}
 
 			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
 
-			Expect(isPending).To(BeTrue(), "should block when Note.Sha doesn't match")
+			Expect(isPending).To(BeTrue(), "should block when Note.DrySha doesn't match")
 			Expect(reason).To(ContainSubstring("hydrator to finish processing"))
 		})
 
 		// Test for legacy hydrators (no git notes) when previous env is ahead
 		It("allows when previous env is ahead with matching Proposed.Dry.Sha (legacy hydrator)", func() {
 			// Previous env (staging) has merged a newer commit (DEF at newerTime)
-			// Both environments use legacy hydrator (no Note.Sha), so we compare Proposed.Dry.Sha
+			// Both environments use legacy hydrator (no Note.DrySha), so we compare Proposed.Dry.Sha
 			prevEnvStatus := promoterv1alpha1.EnvironmentStatus{
 				Active: promoterv1alpha1.CommitBranchState{
 					Dry: promoterv1alpha1.CommitShaState{
@@ -4093,7 +4093,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Dry: promoterv1alpha1.CommitShaState{
 						Sha: "DEF",
 					},
-					// Note.Sha is empty (legacy hydrator, no git notes)
+					// Note.DrySha is empty (legacy hydrator, no git notes)
 				},
 			}
 			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
@@ -4111,7 +4111,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						Sha:        "DEF", // Same as staging's Proposed.Dry.Sha
 						CommitTime: olderTime,
 					},
-					// Note.Sha is empty (legacy hydrator, no git notes)
+					// Note.DrySha is empty (legacy hydrator, no git notes)
 				},
 			}
 
@@ -4137,8 +4137,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Dry: promoterv1alpha1.CommitShaState{
 						Sha: "DEF",
 					},
-					Note: promoterv1alpha1.CommitShaState{
-						Sha: "DEF",
+					Note: promoterv1alpha1.HydratorMetadata{
+						DrySha: "DEF",
 					},
 				},
 			}
@@ -4157,8 +4157,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						Sha:        "ABC",
 						CommitTime: olderTime,
 					},
-					Note: promoterv1alpha1.CommitShaState{
-						Sha: "DEF", // Note.Sha matches staging
+					Note: promoterv1alpha1.HydratorMetadata{
+						DrySha: "DEF", // Note.DrySha matches staging
 					},
 				},
 			}
