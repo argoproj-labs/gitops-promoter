@@ -479,7 +479,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		default:
 			// Channel is full, log a warning and block until space is available
 			log.FromContext(ctx).Info("CTP enqueue channel is full, blocking until space is available",
-				"namespace", namespace, "name", name, "bufferSize", 1024)
+				"namespace", namespace, "name", name)
 			externalEnqueueChan <- event.GenericEvent{Object: ctp}
 		}
 	}
