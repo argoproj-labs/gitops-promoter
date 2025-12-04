@@ -309,5 +309,3 @@ Promoter.
 
 3. **Meaningful Commit Messages**: Include the DRY SHA in your hydrated commit messages for traceability.
 
-4. **Error Handling**: If hydration fails for one environment, it shouldn't prevent hydration of other environments.
-

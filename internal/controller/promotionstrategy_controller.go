@@ -53,7 +53,6 @@ type PromotionStrategyReconciler struct {
 	SettingsMgr *settings.Manager
 
 	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
-	// This is set during initialization and used by triggerReconcileForStaleGitNotes.
 	EnqueueCTP CTPEnqueueFunc
 }
 
@@ -128,7 +127,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// This is done AFTER updating the PromotionStrategy status to avoid conflicts
 	// since triggering CTP reconciles will cause them to update, which triggers
 	// the PromotionStrategy to requeue.
-	needsRequeueForNotes := r.triggerReconcileForStaleGitNotes(ctx, ctps)
+	needsRequeueForNotes := r.enqueueOutOfSyncCTPs(ctx, ctps)
 
 	// If we triggered CTP reconciles for stale shas, requeue to check if the shas have been updated.
 	// This is more of a safety net because the CTP reconciling will cause the PromotionStrategy to requeue automatically.
@@ -338,12 +337,12 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.ChangeTransferPolicyNotReady, ctps...)
 }
 
-// triggerReconcileForStaleGitNotes checks if all CTPs have the same effective dry SHA
+// enqueueOutOfSyncCTPs checks if all CTPs have the same effective dry SHA
 // (NoteDrySha if set, otherwise Proposed.Dry.Sha). If they differ, the CTPs with
-// different values need to reconcile to fetch updated git notes. This is needed
+// different values need to reconcile to fetch updated git notes or proposed dry sha. This is needed
 // because GitHub doesn't send webhooks when git notes are pushed.
-// Returns true if any CTPs were triggered to reconcile.
-func (r *PromotionStrategyReconciler) triggerReconcileForStaleGitNotes(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) bool {
+// Returns true if any CTPs were enqueued for reconciliation.
+func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) bool {
 	logger := log.FromContext(ctx)
 
 	if len(ctps) == 0 {
@@ -390,7 +389,7 @@ func (r *PromotionStrategyReconciler) triggerReconcileForStaleGitNotes(ctx conte
 			continue
 		}
 
-		logger.V(4).Info("Triggering CTP reconcile for stale hydrated dry sha",
+		logger.V(4).Info("Enqueueing out-of-sync CTP for reconciliation",
 			"ctp", ctp.Name,
 			"effectiveSha", effectiveSha,
 			"targetSha", targetSha)
