@@ -3686,8 +3686,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Namespace: ctpDev.Namespace,
 				}, &ctpDev)
 				g.Expect(err).To(Succeed())
-				// Dev's NoteDrySha should be the second dry SHA (from git note)
-				g.Expect(ctpDev.Status.Proposed.Hydrated.NoteDrySha).To(Equal(secondDrySha))
+				// Dev's NoteSha should be the second dry SHA (from git note)
+				g.Expect(ctpDev.Status.Proposed.Dry.NoteSha).To(Equal(secondDrySha))
 				// Dev's Proposed.Dry.Sha should still be the first dry SHA (no new commit was made)
 				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -3721,7 +3721,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		fixedTime := metav1.NewTime(time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC))
 
 		// Helper to create environment status with specific values
-		makeEnvStatus := func(activeDrySha, proposedDrySha, noteDrySha string) promoterv1alpha1.EnvironmentStatus {
+		makeEnvStatus := func(activeDrySha, proposedDrySha, noteSha string) promoterv1alpha1.EnvironmentStatus {
 			return promoterv1alpha1.EnvironmentStatus{
 				Active: promoterv1alpha1.CommitBranchState{
 					Dry: promoterv1alpha1.CommitShaState{
@@ -3734,10 +3734,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 				Proposed: promoterv1alpha1.CommitBranchState{
 					Dry: promoterv1alpha1.CommitShaState{
-						Sha: proposedDrySha,
-					},
-					Hydrated: promoterv1alpha1.CommitShaState{
-						NoteDrySha: noteDrySha,
+						Sha:     proposedDrySha,
+						NoteSha: noteSha,
 					},
 				},
 			}

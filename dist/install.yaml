@@ -451,9 +451,9 @@ spec:
                         description: CommitTime is the time the commit was made
                         format: date-time
                         type: string
-                      noteDrySha:
+                      noteSha:
                         description: |-
-                          NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                          NoteSha is the dry SHA from the git note attached to this hydrated commit.
                           This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                           Used to determine when hydration is complete for a given dry commit.
                         type: string
@@ -529,9 +529,9 @@ spec:
                         description: CommitTime is the time the commit was made
                         format: date-time
                         type: string
-                      noteDrySha:
+                      noteSha:
                         description: |-
-                          NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                          NoteSha is the dry SHA from the git note attached to this hydrated commit.
                           This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                           Used to determine when hydration is complete for a given dry commit.
                         type: string
@@ -719,9 +719,9 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteDrySha:
+                            noteSha:
                               description: |-
-                                NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                NoteSha is the dry SHA from the git note attached to this hydrated commit.
                                 This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                                 Used to determine when hydration is complete for a given dry commit.
                               type: string
@@ -800,9 +800,9 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteDrySha:
+                            noteSha:
                               description: |-
-                                NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                NoteSha is the dry SHA from the git note attached to this hydrated commit.
                                 This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                                 Used to determine when hydration is complete for a given dry commit.
                               type: string
@@ -919,9 +919,9 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteDrySha:
+                            noteSha:
                               description: |-
-                                NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                NoteSha is the dry SHA from the git note attached to this hydrated commit.
                                 This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                                 Used to determine when hydration is complete for a given dry commit.
                               type: string
@@ -1077,9 +1077,9 @@ spec:
                         description: CommitTime is the time the commit was made
                         format: date-time
                         type: string
-                      noteDrySha:
+                      noteSha:
                         description: |-
-                          NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                          NoteSha is the dry SHA from the git note attached to this hydrated commit.
                           This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                           Used to determine when hydration is complete for a given dry commit.
                         type: string
@@ -1155,9 +1155,9 @@ spec:
                         description: CommitTime is the time the commit was made
                         format: date-time
                         type: string
-                      noteDrySha:
+                      noteSha:
                         description: |-
-                          NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                          NoteSha is the dry SHA from the git note attached to this hydrated commit.
                           This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                           Used to determine when hydration is complete for a given dry commit.
                         type: string
@@ -3468,9 +3468,9 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteDrySha:
+                            noteSha:
                               description: |-
-                                NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                NoteSha is the dry SHA from the git note attached to this hydrated commit.
                                 This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                                 Used to determine when hydration is complete for a given dry commit.
                               type: string
@@ -3549,9 +3549,9 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteDrySha:
+                            noteSha:
                               description: |-
-                                NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                NoteSha is the dry SHA from the git note attached to this hydrated commit.
                                 This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                                 Used to determine when hydration is complete for a given dry commit.
                               type: string
@@ -3687,9 +3687,9 @@ spec:
                                       was made
                                     format: date-time
                                     type: string
-                                  noteDrySha:
+                                  noteSha:
                                     description: |-
-                                      NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                      NoteSha is the dry SHA from the git note attached to this hydrated commit.
                                       This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                                       Used to determine when hydration is complete for a given dry commit.
                                     type: string
@@ -3775,9 +3775,9 @@ spec:
                                       was made
                                     format: date-time
                                     type: string
-                                  noteDrySha:
+                                  noteSha:
                                     description: |-
-                                      NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                      NoteSha is the dry SHA from the git note attached to this hydrated commit.
                                       This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                                       Used to determine when hydration is complete for a given dry commit.
                                     type: string
@@ -3902,9 +3902,9 @@ spec:
                                       was made
                                     format: date-time
                                     type: string
-                                  noteDrySha:
+                                  noteSha:
                                     description: |-
-                                      NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                      NoteSha is the dry SHA from the git note attached to this hydrated commit.
                                       This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                                       Used to determine when hydration is complete for a given dry commit.
                                     type: string
@@ -4087,9 +4087,9 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteDrySha:
+                            noteSha:
                               description: |-
-                                NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                NoteSha is the dry SHA from the git note attached to this hydrated commit.
                                 This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                                 Used to determine when hydration is complete for a given dry commit.
                               type: string
@@ -4168,9 +4168,9 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteDrySha:
+                            noteSha:
                               description: |-
-                                NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                NoteSha is the dry SHA from the git note attached to this hydrated commit.
                                 This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
                                 Used to determine when hydration is complete for a given dry commit.
                               type: string
