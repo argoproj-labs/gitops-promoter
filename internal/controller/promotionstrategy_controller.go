@@ -395,8 +395,7 @@ func (r *PromotionStrategyReconciler) triggerReconcileForStaleGitNotes(ctx conte
 			"effectiveSha", effectiveSha,
 			"targetSha", targetSha)
 
-		// Use the enqueue function to trigger reconciliation without modifying the CTP.
-		// This avoids conflicts when the CTP is already being reconciled.
+		// Use the enqueue function to trigger reconciliation.
 		if r.EnqueueCTP != nil {
 			r.EnqueueCTP(ctp.Namespace, ctp.Name)
 		}
@@ -581,7 +580,7 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 		return true, "Waiting for previous environment's active commit to match proposed commit"
 	}
 
-	// When the previous environment has no changes to merge (git note optimization),
+	// When the previous environment has no changes to merge,
 	// we skip the time check because:
 	// 1. The previous env's active dry SHA is still the old one (no new commit was made)
 	// 2. The time comparison would compare old hydration times, which is meaningless

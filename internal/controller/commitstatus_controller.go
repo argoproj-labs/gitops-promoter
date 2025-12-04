@@ -227,8 +227,7 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 
 	logger.Info("ChangeTransferPolicy list", "count", len(ctpList), "oldSha", oldSha, "newSha", newSha)
 	for _, ctp := range ctpList {
-		// Use the enqueue function to trigger reconciliation without modifying the CTP object.
-		// This avoids conflicts when the CTP is already being reconciled.
+		// Use the enqueue function to trigger reconciliation
 		if r.EnqueueCTP != nil {
 			r.EnqueueCTP(ctp.Namespace, ctp.Name)
 		}

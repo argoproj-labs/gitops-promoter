@@ -3770,9 +3770,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				"ABC", // trying to promote ABC
 				false, ""),
 
-			// Scenario 3: Git note optimization - dev has no manifest changes
+			// Scenario 3: Git note - dev has no manifest changes
 			// Dev's hydrator updated the note but didn't create a new commit
-			Entry("allows when previous env has no changes to merge (git note optimization)",
+			Entry("allows when previous env has no changes to merge (git note)",
 				"OLD", "OLD", "ABC", // prev: active=OLD, proposed=OLD, note=ABC (note updated, no new commit)
 				"OLD", // curr: active=OLD
 				"ABC", // trying to promote ABC

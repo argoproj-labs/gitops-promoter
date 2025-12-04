@@ -158,8 +158,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	ctpFound = true
 
-	// Use the enqueue function to trigger reconciliation without modifying the CTP object.
-	// This avoids conflicts when the CTP is already being reconciled.
+	// Use the enqueue function to trigger reconciliation.
 	startUpdate := time.Now()
 	if wr.enqueueCTP != nil {
 		wr.enqueueCTP(ctp.Namespace, ctp.Name)

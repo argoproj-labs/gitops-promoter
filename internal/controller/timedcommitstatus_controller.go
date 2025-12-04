@@ -399,8 +399,7 @@ func (r *TimedCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Co
 			"changeTransferPolicy", ctpName,
 			"branch", envBranch)
 
-		// Use the enqueue function to trigger reconciliation without modifying the CTP.
-		// This avoids conflicts when the CTP is already being reconciled.
+		// Use the enqueue function to trigger reconciliation.
 		if r.EnqueueCTP != nil {
 			r.EnqueueCTP(ps.Namespace, ctpName)
 		}
