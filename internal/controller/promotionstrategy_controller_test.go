@@ -3788,7 +3788,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				"OLD", "ABC", "", // prev: active=OLD, proposed=ABC, note="" (empty)
 				"OLD", // curr: active=OLD
 				"ABC", // trying to promote ABC
-				true, "active commit to match"),
+				true, "merge its changes"),
 
 			// Scenario 6: Legacy hydrator - dev has hydrated and merged
 			Entry("allows when previous env has merged (no git notes)",
@@ -3802,7 +3802,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				"OLD", "ABC", "ABC", // prev: active=OLD, proposed=ABC, note=ABC
 				"OLD", // curr: active=OLD
 				"ABC", // trying to promote ABC
-				true, "active commit to match"),
+				true, "merge its changes"),
 
 			// Scenario 8: Mismatch between note and proposed (edge case)
 			// Note shows newer SHA than proposed (hydrator updated note for even newer commit)
