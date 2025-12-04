@@ -472,7 +472,16 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		ctp := &promoterv1alpha1.ChangeTransferPolicy{}
 		ctp.SetNamespace(namespace)
 		ctp.SetName(name)
-		externalEnqueueChan <- event.GenericEvent{Object: ctp}
+
+		select {
+		case externalEnqueueChan <- event.GenericEvent{Object: ctp}:
+			// Sent successfully
+		default:
+			// Channel is full, log a warning and block until space is available
+			log.FromContext(ctx).Info("CTP enqueue channel is full, blocking until space is available",
+				"namespace", namespace, "name", name, "bufferSize", 1024)
+			externalEnqueueChan <- event.GenericEvent{Object: ctp}
+		}
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
