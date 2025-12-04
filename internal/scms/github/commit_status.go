@@ -92,6 +92,15 @@ func buildCheckRunOutput(ctx context.Context, name, description string) *github.
 	}
 }
 
+// buildDetailsURL returns a pointer to the URL if non-empty, nil otherwise.
+// GitHub API rejects empty strings as they are not valid HTTP/HTTPS URLs.
+func buildDetailsURL(url string) *string {
+	if url == "" {
+		return nil
+	}
+	return github.Ptr(url)
+}
+
 // createCheckRun creates a new GitHub check run
 func (cs *CommitStatus) createCheckRun(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	gitRepo, err := cs.getGitRepository(ctx, commitStatus)
@@ -106,7 +115,7 @@ func (cs *CommitStatus) createCheckRun(ctx context.Context, commitStatus *promot
 		Name:       commitStatus.Spec.Name,
 		HeadSHA:    commitStatus.Spec.Sha,
 		Status:     github.Ptr(status),
-		DetailsURL: github.Ptr(commitStatus.Spec.Url),
+		DetailsURL: buildDetailsURL(commitStatus.Spec.Url),
 		Output:     buildCheckRunOutput(ctx, commitStatus.Spec.Name, commitStatus.Spec.Description),
 	}
 
@@ -153,7 +162,7 @@ func (cs *CommitStatus) updateCheckRun(ctx context.Context, commitStatus *promot
 	updateOpts := github.UpdateCheckRunOptions{
 		Name:       commitStatus.Spec.Name,
 		Status:     github.Ptr(status),
-		DetailsURL: github.Ptr(commitStatus.Spec.Url),
+		DetailsURL: buildDetailsURL(commitStatus.Spec.Url),
 		Output:     buildCheckRunOutput(ctx, commitStatus.Spec.Name, commitStatus.Spec.Description),
 	}
 

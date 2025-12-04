@@ -108,6 +108,10 @@ type CommitShaState struct {
 	Body string `json:"body,omitempty"`
 	// References are the references to other commits, that went into the hydration of the branch
 	References []RevisionReference `json:"references,omitempty"`
+	// NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+	// This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
+	// Used to determine when hydration is complete for a given dry commit.
+	NoteDrySha string `json:"noteDrySha,omitempty"`
 }
 
 // DryShaShort returns the first 7 characters of the dry SHA, or the full SHA if it is shorter than 7 characters.

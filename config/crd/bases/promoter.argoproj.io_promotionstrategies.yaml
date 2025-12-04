@@ -301,6 +301,12 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
+                            noteDrySha:
+                              description: |-
+                                NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
+                                Used to determine when hydration is complete for a given dry commit.
+                              type: string
                             references:
                               description: References are the references to other
                                 commits, that went into the hydration of the branch
@@ -375,6 +381,12 @@ spec:
                             commitTime:
                               description: CommitTime is the time the commit was made
                               format: date-time
+                              type: string
+                            noteDrySha:
+                              description: |-
+                                NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
+                                Used to determine when hydration is complete for a given dry commit.
                               type: string
                             references:
                               description: References are the references to other
@@ -508,6 +520,12 @@ spec:
                                       was made
                                     format: date-time
                                     type: string
+                                  noteDrySha:
+                                    description: |-
+                                      NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                      This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
+                                      Used to determine when hydration is complete for a given dry commit.
+                                    type: string
                                   references:
                                     description: References are the references to
                                       other commits, that went into the hydration
@@ -589,6 +607,12 @@ spec:
                                     description: CommitTime is the time the commit
                                       was made
                                     format: date-time
+                                    type: string
+                                  noteDrySha:
+                                    description: |-
+                                      NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                      This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
+                                      Used to determine when hydration is complete for a given dry commit.
                                     type: string
                                   references:
                                     description: References are the references to
@@ -710,6 +734,12 @@ spec:
                                     description: CommitTime is the time the commit
                                       was made
                                     format: date-time
+                                    type: string
+                                  noteDrySha:
+                                    description: |-
+                                      NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                      This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
+                                      Used to determine when hydration is complete for a given dry commit.
                                     type: string
                                   references:
                                     description: References are the references to
@@ -890,6 +920,12 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
+                            noteDrySha:
+                              description: |-
+                                NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
+                                Used to determine when hydration is complete for a given dry commit.
+                              type: string
                             references:
                               description: References are the references to other
                                 commits, that went into the hydration of the branch
@@ -964,6 +1000,12 @@ spec:
                             commitTime:
                               description: CommitTime is the time the commit was made
                               format: date-time
+                              type: string
+                            noteDrySha:
+                              description: |-
+                                NoteDrySha is the dry SHA from the git note attached to this hydrated commit.
+                                This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
+                                Used to determine when hydration is complete for a given dry commit.
                               type: string
                             references:
                               description: References are the references to other

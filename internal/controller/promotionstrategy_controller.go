@@ -51,6 +51,10 @@ type PromotionStrategyReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
+
+	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
+	// This is set during initialization and used by triggerReconcileForStaleGitNotes.
+	EnqueueCTP CTPEnqueueFunc
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
@@ -116,6 +120,25 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	err = r.Status().Update(ctx, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
+	}
+
+	// Check if any environments need to refresh their git notes.
+	// GitHub doesn't send webhooks when git notes are pushed, so we need to
+	// trigger CTP reconciliation when we detect stale NoteDrySha values.
+	// This is done AFTER updating the PromotionStrategy status to avoid conflicts
+	// since triggering CTP reconciles will cause them to update, which triggers
+	// the PromotionStrategy to requeue.
+	needsRequeueForNotes := r.triggerReconcileForStaleGitNotes(ctx, ctps)
+
+	// If we triggered CTP reconciles for stale shas, requeue to check if the shas have been updated.
+	// This is more of a safety net because the CTP reconciling will cause the PromotionStrategy to requeue automatically.
+	// However, we do not know how long the CTP reconciling will take, so we requeue after a short period of time.
+	if needsRequeueForNotes {
+		logger.V(4).Info("Requeuing PromotionStrategy to check for updated git notes")
+		return ctrl.Result{
+			Requeue:      true,
+			RequeueAfter: 30 * time.Second, // Don't want to make this configurable yet, but might in future.
+		}, nil
 	}
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
@@ -315,6 +338,73 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 	utils.InheritNotReadyConditionFromObjects(ps, promoterConditions.ChangeTransferPolicyNotReady, ctps...)
 }
 
+// triggerReconcileForStaleGitNotes checks if all CTPs have the same effective dry SHA
+// (NoteDrySha if set, otherwise Proposed.Dry.Sha). If they differ, the CTPs with
+// different values need to reconcile to fetch updated git notes. This is needed
+// because GitHub doesn't send webhooks when git notes are pushed.
+// Returns true if any CTPs were triggered to reconcile.
+func (r *PromotionStrategyReconciler) triggerReconcileForStaleGitNotes(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) bool {
+	logger := log.FromContext(ctx)
+
+	if len(ctps) == 0 {
+		return false
+	}
+
+	// Get the effective dry SHA for each CTP (NoteDrySha if set, otherwise Proposed.Dry.Sha)
+	getEffectiveDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
+		if ctp.Status.Proposed.Hydrated.NoteDrySha != "" {
+			return ctp.Status.Proposed.Hydrated.NoteDrySha
+		}
+		return ctp.Status.Proposed.Dry.Sha
+	}
+
+	// Find the target SHA - the Proposed.Dry.Sha from the CTP with the newest proposed hydrated commit.
+	// We use the hydrated commit time to find the most recently hydrated environment, then use its
+	// Proposed.Dry.Sha as the target. CTPs whose effective dry SHA (from git note) doesn't match
+	// this target need to reconcile to fetch the updated git note.
+	var targetSha string
+	var newestTime metav1.Time
+	for _, ctp := range ctps {
+		proposedDrySha := ctp.Status.Proposed.Dry.Sha
+		if proposedDrySha == "" {
+			continue
+		}
+		commitTime := ctp.Status.Proposed.Hydrated.CommitTime
+		if targetSha == "" || commitTime.After(newestTime.Time) {
+			targetSha = proposedDrySha
+			newestTime = commitTime
+		}
+	}
+
+	if targetSha == "" {
+		return false
+	}
+
+	// Trigger reconcile only for CTPs that have a different effective dry SHA.
+	// We use the EnqueueCTP function to add the CTP to the reconcile queue without
+	// modifying the object, which avoids conflicts with concurrent CTP reconciliations.
+	needsRequeue := false
+	for _, ctp := range ctps {
+		effectiveSha := getEffectiveDrySha(ctp)
+		if effectiveSha == targetSha {
+			continue
+		}
+
+		logger.V(4).Info("Triggering CTP reconcile for stale hydrated dry sha",
+			"ctp", ctp.Name,
+			"effectiveSha", effectiveSha,
+			"targetSha", targetSha)
+
+		// Use the enqueue function to trigger reconciliation.
+		if r.EnqueueCTP != nil {
+			r.EnqueueCTP(ctp.Namespace, ctp.Name)
+		}
+		needsRequeue = true
+	}
+
+	return needsRequeue
+}
+
 func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
@@ -422,11 +512,14 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 		logger.V(4).Info("Setting previous environment CommitStatus phase",
 			"phase", commitStatusPhase,
+			"pendingReason", pendingReason,
 			"activeBranch", ctp.Spec.ActiveBranch,
 			"proposedDrySha", ctp.Status.Proposed.Dry.Sha,
 			"proposedHydratedSha", ctp.Status.Proposed.Hydrated.Sha,
 			"previousEnvironmentActiveDrySha", previousEnvironmentStatus.Active.Dry.Sha,
 			"previousEnvironmentActiveHydratedSha", previousEnvironmentStatus.Active.Hydrated.Sha,
+			"previousEnvironmentProposedDrySha", previousEnvironmentStatus.Proposed.Dry.Sha,
+			"previousEnvironmentProposedNoteDrySha", previousEnvironmentStatus.Proposed.Hydrated.NoteDrySha,
 			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch)
 
 		// Since there is at least one configured active check, and since this is not the first environment,
@@ -445,18 +538,63 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 // isPreviousEnvironmentPending returns whether the previous environment is pending and a reason string if it is pending.
 func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus, proposedDrySha string) (isPending bool, reason string) {
-	if previousEnvironmentStatus.Active.Dry.Sha != proposedDrySha {
+	// Check if the previous environment's hydrator has finished processing the same dry SHA
+	// that we're trying to promote.
+	//
+	// The NoteDrySha (from git note) is the source for which dry SHA the hydrator
+	// has processed. This is important because when manifests don't change between dry commits,
+	// the hydrator may only update the git note without creating a new commit.
+	// In that case, the hydrator.metadata file (which sets Proposed.Dry.Sha) still contains
+	// the old dry SHA, but the git note confirms hydration is complete for the new dry SHA.
+	//
+	// Priority:
+	// 1. If NoteDrySha is set, use it accounts for no-change hydrations
+	// 2. Fall back to Proposed.Dry.Sha (for hydrators that don't use git notes)
+	previousEnvNoteDrySha := previousEnvironmentStatus.Proposed.Hydrated.NoteDrySha
+	previousEnvProposedDrySha := previousEnvironmentStatus.Proposed.Dry.Sha
+
+	// Determine which dry SHA the previous environment's hydrator has processed
+	previousEnvHydratedForDrySha := previousEnvNoteDrySha
+	if previousEnvHydratedForDrySha == "" {
+		// No git note, fall back to hydrator.metadata
+		previousEnvHydratedForDrySha = previousEnvProposedDrySha
+	}
+
+	// Check if hydration is complete for the proposed dry SHA
+	if previousEnvHydratedForDrySha != proposedDrySha {
+		return true, "Waiting for previous environment's hydrator to finish processing the proposed dry commit"
+	}
+
+	// At this point, we know the previous environment's hydrator has processed the proposed dry SHA.
+	// Now check if the previous environment needs to merge changes, or if it's already up-to-date.
+	//
+	// There are two valid states:
+	// 1. The previous env has already merged (Active.Dry.Sha == proposedDrySha)
+	// 2. The previous env has no changes to merge because manifests are identical
+	//    (detected by: NoteDrySha shows new dry SHA, but Proposed.Dry.Sha still shows old dry SHA,
+	//     meaning the hydrator updated only the note without creating a new commit)
+	previousEnvAlreadyMerged := previousEnvironmentStatus.Active.Dry.Sha == proposedDrySha
+	previousEnvNoChangesToMerge := previousEnvNoteDrySha == proposedDrySha && previousEnvProposedDrySha != proposedDrySha
+
+	if !previousEnvAlreadyMerged && !previousEnvNoChangesToMerge {
 		return true, "Waiting for previous environment's active commit to match proposed commit"
 	}
 
-	// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
-	// time. Basically, we can't move back in time.
-	previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
-		previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
+	// When the previous environment has no changes to merge,
+	// we skip the time check because:
+	// 1. The previous env's active dry SHA is still the old one (no new commit was made)
+	// 2. The time comparison would compare old hydration times, which is meaningless
+	// 3. The git note already confirms the hydrator processed the new dry SHA
+	if !previousEnvNoChangesToMerge {
+		// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
+		// time. Basically, we can't move back in time.
+		previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
+			previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
 
-	if !previousEnvironmentDryShaEqualOrNewer {
-		// This should basically never happen.
-		return true, "Previous environment's commit is older than current environment's commit"
+		if !previousEnvironmentDryShaEqualOrNewer {
+			// This should basically never happen.
+			return true, "Previous environment's commit is older than current environment's commit"
+		}
 	}
 
 	previousEnvironmentPassing := utils.AreCommitStatusesPassing(previousEnvironmentStatus.Active.CommitStatuses)
