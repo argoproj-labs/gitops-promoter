@@ -3953,7 +3953,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Entry("blocks when previous env hasn't hydrated yet (with git notes)",
 				"OLD", "OLD", "OLD", // prev: active=OLD, proposed=OLD, note=OLD
 				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
-				true, "hydrator to finish processing"),
+				true, "Waiting for the hydrator to finish processing the proposed dry commit"),
 
 			// Scenario 2: Normal flow - dev has hydrated and merged
 			Entry("allows when previous env has merged the proposed dry SHA",
@@ -3972,13 +3972,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Entry("blocks when previous env hasn't hydrated (no git notes)",
 				"OLD", "OLD", "", // prev: active=OLD, proposed=OLD, note="" (empty)
 				"OLD", "ABC", "", // curr: active=OLD, proposed=ABC, note="" (empty for legacy)
-				true, "hydrator to finish processing"),
+				true, "Waiting for the hydrator to finish processing the proposed dry commit"),
 
 			// Scenario 5: Legacy hydrator - dev has hydrated but not merged
 			Entry("blocks when previous env has hydrated but not merged (no git notes)",
 				"OLD", "ABC", "", // prev: active=OLD, proposed=ABC, note="" (empty)
 				"OLD", "ABC", "", // curr: active=OLD, proposed=ABC, note="" (empty for legacy)
-				true, "merge its promotion PR"),
+				true, "Waiting for previous environment to be promoted"),
 
 			// Scenario 6: Legacy hydrator - dev has hydrated and merged
 			Entry("allows when previous env has merged (no git notes)",
@@ -3990,14 +3990,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Entry("blocks when previous env has hydrated but not merged (with git notes)",
 				"OLD", "ABC", "ABC", // prev: active=OLD, proposed=ABC, note=ABC
 				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
-				true, "merge its promotion PR"),
+				true, "Waiting for previous environment to be promoted"),
 
 			// Scenario 8: Mismatch between note and proposed (edge case)
 			// Note shows newer SHA than proposed (hydrator updated note for even newer commit)
 			Entry("blocks when note shows different SHA than what we're promoting",
 				"OLD", "OLD", "DEF", // prev: active=OLD, proposed=OLD, note=DEF (different!)
 				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
-				true, "hydrator to finish processing"),
+				true, "Waiting for the hydrator to finish processing the proposed dry commit"),
 		)
 
 		// Test for when previous environment has already moved past the proposed dry SHA

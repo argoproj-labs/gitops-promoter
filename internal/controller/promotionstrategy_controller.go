@@ -567,17 +567,18 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 	//
 	// 2. noOpHydration: The hydrator determined the manifests were unchanged between the
 	//    old and new dry commits, so it only updated the git note (NoteSha) without creating
-	//    a new hydrated commit. In this case:
-	//    - NoteSha (previousEnvHydratedForDrySha) points to the new dry SHA
-	//    - Proposed.Dry.Sha (previousEnvProposedDrySha) still points to the old dry SHA
-	//      (because hydrator.metadata wasn't updated - no new commit was created)
-	//    - There's no PR to merge, so we shouldn't block waiting for one.
+	//    a new hydrated commit. We detect this by comparing:
+	//    - previousEnvHydratedForDrySha: The dry SHA the hydrator has processed (from NoteSha)
+	//    - previousEnvProposedDrySha: The dry SHA in hydrator.metadata (Proposed.Dry.Sha)
+	//    When these differ, it means the git note was updated to a newer dry SHA, but
+	//    hydrator.metadata still has the old value because no new commit was created.
+	//    In this case, there's no PR to merge, so we shouldn't block waiting for one.
 	//
 	prMerged := previousEnvironmentStatus.Active.Dry.Sha == currentEnvHydratedForDrySha
 	noOpHydration := previousEnvProposedDrySha != previousEnvHydratedForDrySha
-
-	if !(prMerged || noOpHydration) {
-		return true, "Waiting for previous environment to merge its promotion PR"
+	promotionComplete := prMerged || noOpHydration
+	if !promotionComplete {
+		return true, "Waiting for previous environment to be promoted"
 	}
 
 	// Only check commit times if the previous environment actually merged the exact SHA (not no-op).
