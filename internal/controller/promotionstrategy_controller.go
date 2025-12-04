@@ -502,7 +502,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			continue
 		}
 
-		isPending, pendingReason := isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus, ctp.Status.Proposed.Dry.Sha)
+		isPending, pendingReason := isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus)
 
 		commitStatusPhase := promoterv1alpha1.CommitPhaseSuccess
 		if isPending {
@@ -536,7 +536,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 }
 
 // isPreviousEnvironmentPending returns whether the previous environment is pending and a reason string if it is pending.
-func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus, proposedDrySha string) (isPending bool, reason string) {
+func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
 	previousEnvProposedDryNoteSha := previousEnvironmentStatus.Proposed.Dry.NoteSha
 	previousEnvProposedDrySha := previousEnvironmentStatus.Proposed.Dry.Sha
 
@@ -555,58 +555,33 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 		currentEnvHydratedForDrySha = currentEnvironmentStatus.Proposed.Dry.Sha
 	}
 
-	// Check if previous environment has already moved past this dry SHA (is "ahead").
-	// This happens when a new commit is made before the current environment finishes promoting.
-	previousEnvActiveDryCommitTime := previousEnvironmentStatus.Active.Dry.CommitTime
-	currentEnvProposedDryCommitTime := currentEnvironmentStatus.Proposed.Dry.CommitTime
-	previousEnvIsAheadByTime := previousEnvActiveDryCommitTime.After(currentEnvProposedDryCommitTime.Time)
-
-	// Case: Previous environment has already merged a newer commit than what we're promoting.
-	// This happens when a new commit is made before the current environment finishes promoting:
-	// 1. Dry commit A is made (commitTime: 10:00)
-	// 2. All environments get hydrated for A
-	// 3. Before production merges A, someone makes dry commit B (commitTime: 10:05) that only affects staging
-	// 4. Staging hydrates and merges B (production's hydrated manifests are unchanged)
-	// 5. Production is still trying to promote A
-	// In this case, staging is "ahead" and production should be allowed to promote A.
-	// We verify both environments have been hydrated to the same point (the latest dry commit)
-	// by comparing their effective hydration SHA (NoteSha if available, otherwise Proposed.Dry.Sha).
-	if previousEnvIsAheadByTime && previousEnvHydratedForDrySha != currentEnvHydratedForDrySha {
-		return true, "Waiting for current environment to be hydrated to the latest dry commit"
+	// Check if hydrator has processed the same dry SHA as the current environment.
+	if previousEnvHydratedForDrySha != currentEnvHydratedForDrySha {
+		return true, "Waiting for the hydrator to finish processing the proposed dry commit"
 	}
 
-	// Case: Previous environment is NOT ahead - check if it has processed the proposed dry SHA.
-	if !previousEnvIsAheadByTime && previousEnvHydratedForDrySha != proposedDrySha {
-		return true, "Waiting for previous environment's hydrator to finish processing the proposed dry commit"
+	// Check if the previous environment has completed its promotion.
+	// Promotion is complete if either:
+	// - prMerged: The PR was already merged (Active.Dry.Sha matches)
+	// - noOpHydration: No new commit was created because manifests were unchanged
+	//   (Proposed.Dry.Sha doesn't match, only the git note was updated)
+	prMerged := previousEnvironmentStatus.Active.Dry.Sha == currentEnvHydratedForDrySha
+	// No-op hydration in previous env: NoteSha was updated but no new commit was created
+	// because the manifests were unchanged.
+	noOpHydration := previousEnvProposedDrySha != previousEnvHydratedForDrySha
+
+	if !(prMerged || noOpHydration) {
+		return true, "Waiting for previous environment to merge its promotion PR"
 	}
 
-	// Case: Previous environment is NOT ahead - check if promotion is complete.
-	// There are two ways promotion can be complete:
-	//
-	// 1. PR was merged: The Active.Dry.Sha matches the proposed dry SHA.
-	//
-	// 2. No-op hydration: The hydrator processed the dry SHA but the rendered manifests
-	//    were identical to what's already deployed. In this case:
-	//    - NoteSha == proposedDrySha (git note confirms hydration completed)
-	//    - Proposed.Dry.Sha != proposedDrySha (no new commit was created, so hydrator.metadata still has old SHA)
-	//
-	if !previousEnvIsAheadByTime {
-		prWasMerged := previousEnvironmentStatus.Active.Dry.Sha == proposedDrySha
-		noChangesToMerge := previousEnvProposedDryNoteSha == proposedDrySha && previousEnvProposedDrySha != proposedDrySha
-		promotionComplete := prWasMerged || noChangesToMerge
-
-		if !promotionComplete {
-			return true, "Waiting for previous environment to merge its promotion PR"
-		}
-
-		// Only check commit times if the previous environment actually merged the exact SHA (not no-op).
-		if prWasMerged {
-			previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
-				previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
-			if !previousEnvironmentDryShaEqualOrNewer {
-				// This should basically never happen.
-				return true, "Previous environment's commit is older than current environment's commit"
-			}
+	// Only check commit times if the previous environment actually merged the exact SHA (not no-op).
+	prWasMerged := previousEnvironmentStatus.Active.Dry.Sha == currentEnvHydratedForDrySha
+	if prWasMerged {
+		previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
+			previousEnvironmentStatus.Active.Dry.CommitTime.After(currentEnvironmentStatus.Active.Dry.CommitTime.Time)
+		if !previousEnvironmentDryShaEqualOrNewer {
+			// This should basically never happen.
+			return true, "Previous environment's commit is older than current environment's commit"
 		}
 	}
 

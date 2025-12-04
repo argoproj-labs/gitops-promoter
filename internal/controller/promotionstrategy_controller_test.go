@@ -3941,7 +3941,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				prevEnvStatus := makeEnvStatus(prevActiveDry, prevProposedDry, prevNoteDry)
 				currEnvStatus := makeEnvStatus(currActiveDry, currProposedDry, currNoteSha)
 
-				isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus, currProposedDry)
+				isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
 
 				Expect(isPending).To(Equal(expectPending), "isPending mismatch")
 				if expectReasonContains != "" {
@@ -4034,15 +4034,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 			}
 
-			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus, "ABC")
+			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
 
 			Expect(isPending).To(BeFalse(), "should allow promotion when previous env is ahead and NoteSha matches")
 			Expect(reason).To(BeEmpty())
 		})
 
-		It("blocks when previous env is ahead but NoteSha doesn't match", func() {
-			// Previous env (staging) has merged a newer commit (DEF at newerTime)
-			// But staging's NoteSha is "XYZ" while production's is "ABC"
+		It("blocks when NoteSha doesn't match between environments", func() {
+			// Previous env (staging) has NoteSha "XYZ" while production's is "ABC"
 			// This means they haven't been hydrated for the same dry commits
 			prevEnvStatus := makeEnvStatusWithTime("DEF", "DEF", "XYZ", newerTime)
 			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
@@ -4064,10 +4063,10 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 			}
 
-			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus, "ABC")
+			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
 
-			Expect(isPending).To(BeTrue(), "should block when NoteSha doesn't match even if previous env is ahead")
-			Expect(reason).To(ContainSubstring("current environment to be hydrated"))
+			Expect(isPending).To(BeTrue(), "should block when NoteSha doesn't match")
+			Expect(reason).To(ContainSubstring("hydrator to finish processing"))
 		})
 
 		// Test for legacy hydrators (no git notes) when previous env is ahead
@@ -4110,7 +4109,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 			}
 
-			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus, "ABC")
+			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
 
 			Expect(isPending).To(BeFalse(), "should allow promotion when previous env is ahead and Proposed.Dry.Sha matches (legacy)")
 			Expect(reason).To(BeEmpty())
@@ -4154,7 +4153,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 			}
 
-			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus, "ABC")
+			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
 
 			Expect(isPending).To(BeTrue(), "should block when previous env commit statuses are not passing")
 			Expect(reason).To(ContainSubstring("commit status"))
