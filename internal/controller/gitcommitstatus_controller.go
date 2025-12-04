@@ -57,6 +57,9 @@ type GitCommitStatusReconciler struct {
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
 
+	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
+	EnqueueCTP CTPEnqueueFunc
+
 	// expressionCache caches compiled expressions to avoid recompilation on every reconciliation
 	// Key: expression string, Value: compiled *vm.Program
 	expressionCache sync.Map
@@ -130,12 +133,9 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, fmt.Errorf("failed to update GitCommitStatus status: %w", err)
 	}
 
-	// If any validations transitioned to success, touch the corresponding ChangeTransferPolicies
+	// If any validations transitioned to success, trigger reconciliation of the corresponding ChangeTransferPolicies
 	if len(transitionedEnvironments) > 0 {
-		err = touchChangeTransferPolicies(ctx, r.Client, &ps, transitionedEnvironments, "validation transition")
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to touch ChangeTransferPolicies: %w", err)
-		}
+		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
 	}
 
 	return ctrl.Result{}, nil
@@ -589,4 +589,26 @@ func (r *GitCommitStatusReconciler) getCommitCommitterEmail(ctx context.Context,
 		return "", fmt.Errorf("failed to get committer email: %w", err)
 	}
 	return email, nil
+}
+
+// touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
+// for the environments that had validations transition to success.
+// This triggers the ChangeTransferPolicy controller to reconcile and potentially merge PRs.
+func (r *GitCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
+	logger := log.FromContext(ctx)
+
+	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
+	for _, envBranch := range transitionedEnvironments {
+		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
+		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
+
+		logger.Info("Triggering ChangeTransferPolicy reconciliation due to validation transition",
+			"changeTransferPolicy", ctpName,
+			"branch", envBranch)
+
+		// Use the enqueue function to trigger reconciliation.
+		if r.EnqueueCTP != nil {
+			r.EnqueueCTP(ps.Namespace, ctpName)
+		}
+	}
 }
