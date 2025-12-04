@@ -646,17 +646,17 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 	}
 	ctp.Status.Proposed.Hydrated = proposedCommitMetadata
 
-	// Read the git note for the proposed hydrated commit to get the NoteSha.
+	// Read the git note for the proposed hydrated commit to get the Note.Sha.
 	// This is used by downstream environments to verify that hydration is complete
 	// for a given dry commit before allowing promotion.
 	proposedNote, err := gitOperations.GetHydratorNote(ctx, proposedHydratedSha)
 	if err != nil {
 		return fmt.Errorf("failed to get hydrator note for proposed hydrated SHA %q: %w", proposedHydratedSha, err)
 	}
-	ctp.Status.Proposed.Dry.NoteSha = proposedNote.DrySha
-	logger.V(4).Info("Set proposed dry NoteSha from git note",
+	ctp.Status.Proposed.Note.Sha = proposedNote.DrySha
+	logger.V(4).Info("Set proposed Note.Sha from git note",
 		"proposedHydratedSha", proposedHydratedSha,
-		"noteDrySha", proposedNote.DrySha)
+		"noteSha", proposedNote.DrySha)
 
 	return nil
 }

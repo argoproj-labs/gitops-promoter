@@ -451,12 +451,6 @@ spec:
                         description: CommitTime is the time the commit was made
                         format: date-time
                         type: string
-                      noteSha:
-                        description: |-
-                          NoteSha is the dry SHA from the git note attached to this a commit.
-                          This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                          Used to determine when hydration is complete for a given dry commit.
-                        type: string
                       references:
                         description: References are the references to other commits,
                           that went into the hydration of the branch
@@ -529,11 +523,77 @@ spec:
                         description: CommitTime is the time the commit was made
                         format: date-time
                         type: string
-                      noteSha:
-                        description: |-
-                          NoteSha is the dry SHA from the git note attached to this a commit.
-                          This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                          Used to determine when hydration is complete for a given dry commit.
+                      references:
+                        description: References are the references to other commits,
+                          that went into the hydration of the branch
+                        items:
+                          description: |-
+                            RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                            it supports only references to a commit. In the future, it may support other types of references.
+                          properties:
+                            commit:
+                              description: Commit contains metadata about the commit
+                                that is related in some way to another commit.
+                              properties:
+                                author:
+                                  description: Author is the author of the commit.
+                                  type: string
+                                body:
+                                  description: Body is the body of the commit message,
+                                    excluding the subject line, i.e. `git show --format=%b`.
+                                  type: string
+                                date:
+                                  description: Date is the date of the commit, formatted
+                                    as by `git show -s --format=%aI`.
+                                  format: date-time
+                                  type: string
+                                repoURL:
+                                  description: RepoURL is the URL of the repository
+                                    where the commit is located.
+                                  pattern: ^(https?://.*)?$
+                                  type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid URL
+                                    rule: self == '' || isURL(self)
+                                sha:
+                                  description: Sha is the commit hash.
+                                  type: string
+                                subject:
+                                  description: Subject is the subject line of the
+                                    commit message, i.e. `git show --format=%s`.
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                      repoURL:
+                        description: RepoURL is the URL of the repository where the
+                          commit is located
+                        pattern: ^(https?://.*)?$
+                        type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid URL
+                          rule: self == '' || isURL(self)
+                      sha:
+                        description: Sha is the SHA of the commit in the branch
+                        type: string
+                      subject:
+                        description: Subject is the subject line of the commit message
+                        type: string
+                    type: object
+                  note:
+                    description: Note is the state of the git note attached to the
+                      commit.
+                    properties:
+                      author:
+                        description: Author is the author of the commit
+                        type: string
+                      body:
+                        description: Body is the body of the commit message without
+                          the subject line
+                        type: string
+                      commitTime:
+                        description: CommitTime is the time the commit was made
+                        format: date-time
                         type: string
                       references:
                         description: References are the references to other commits,
@@ -719,12 +779,6 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteSha:
-                              description: |-
-                                NoteSha is the dry SHA from the git note attached to this a commit.
-                                This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                                Used to determine when hydration is complete for a given dry commit.
-                              type: string
                             references:
                               description: References are the references to other
                                 commits, that went into the hydration of the branch
@@ -800,11 +854,80 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteSha:
-                              description: |-
-                                NoteSha is the dry SHA from the git note attached to this a commit.
-                                This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                                Used to determine when hydration is complete for a given dry commit.
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        pattern: ^(https?://.*)?$
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
+                                      sha:
+                                        description: Sha is the commit hash.
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              pattern: ^(https?://.*)?$
+                              type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
+                            sha:
+                              description: Sha is the SHA of the commit in the branch
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
+                              type: string
+                          type: object
+                        note:
+                          description: Note is the state of the git note attached
+                            to the commit.
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
                               type: string
                             references:
                               description: References are the references to other
@@ -918,12 +1041,6 @@ spec:
                             commitTime:
                               description: CommitTime is the time the commit was made
                               format: date-time
-                              type: string
-                            noteSha:
-                              description: |-
-                                NoteSha is the dry SHA from the git note attached to this a commit.
-                                This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                                Used to determine when hydration is complete for a given dry commit.
                               type: string
                             references:
                               description: References are the references to other
@@ -1077,12 +1194,6 @@ spec:
                         description: CommitTime is the time the commit was made
                         format: date-time
                         type: string
-                      noteSha:
-                        description: |-
-                          NoteSha is the dry SHA from the git note attached to this a commit.
-                          This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                          Used to determine when hydration is complete for a given dry commit.
-                        type: string
                       references:
                         description: References are the references to other commits,
                           that went into the hydration of the branch
@@ -1155,11 +1266,77 @@ spec:
                         description: CommitTime is the time the commit was made
                         format: date-time
                         type: string
-                      noteSha:
-                        description: |-
-                          NoteSha is the dry SHA from the git note attached to this a commit.
-                          This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                          Used to determine when hydration is complete for a given dry commit.
+                      references:
+                        description: References are the references to other commits,
+                          that went into the hydration of the branch
+                        items:
+                          description: |-
+                            RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                            it supports only references to a commit. In the future, it may support other types of references.
+                          properties:
+                            commit:
+                              description: Commit contains metadata about the commit
+                                that is related in some way to another commit.
+                              properties:
+                                author:
+                                  description: Author is the author of the commit.
+                                  type: string
+                                body:
+                                  description: Body is the body of the commit message,
+                                    excluding the subject line, i.e. `git show --format=%b`.
+                                  type: string
+                                date:
+                                  description: Date is the date of the commit, formatted
+                                    as by `git show -s --format=%aI`.
+                                  format: date-time
+                                  type: string
+                                repoURL:
+                                  description: RepoURL is the URL of the repository
+                                    where the commit is located.
+                                  pattern: ^(https?://.*)?$
+                                  type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid URL
+                                    rule: self == '' || isURL(self)
+                                sha:
+                                  description: Sha is the commit hash.
+                                  type: string
+                                subject:
+                                  description: Subject is the subject line of the
+                                    commit message, i.e. `git show --format=%s`.
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                      repoURL:
+                        description: RepoURL is the URL of the repository where the
+                          commit is located
+                        pattern: ^(https?://.*)?$
+                        type: string
+                        x-kubernetes-validations:
+                        - message: must be a valid URL
+                          rule: self == '' || isURL(self)
+                      sha:
+                        description: Sha is the SHA of the commit in the branch
+                        type: string
+                      subject:
+                        description: Subject is the subject line of the commit message
+                        type: string
+                    type: object
+                  note:
+                    description: Note is the state of the git note attached to the
+                      commit.
+                    properties:
+                      author:
+                        description: Author is the author of the commit
+                        type: string
+                      body:
+                        description: Body is the body of the commit message without
+                          the subject line
+                        type: string
+                      commitTime:
+                        description: CommitTime is the time the commit was made
+                        format: date-time
                         type: string
                       references:
                         description: References are the references to other commits,
@@ -3468,12 +3645,6 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteSha:
-                              description: |-
-                                NoteSha is the dry SHA from the git note attached to this a commit.
-                                This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                                Used to determine when hydration is complete for a given dry commit.
-                              type: string
                             references:
                               description: References are the references to other
                                 commits, that went into the hydration of the branch
@@ -3549,11 +3720,80 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteSha:
-                              description: |-
-                                NoteSha is the dry SHA from the git note attached to this a commit.
-                                This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                                Used to determine when hydration is complete for a given dry commit.
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        pattern: ^(https?://.*)?$
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
+                                      sha:
+                                        description: Sha is the commit hash.
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              pattern: ^(https?://.*)?$
+                              type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
+                            sha:
+                              description: Sha is the SHA of the commit in the branch
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
+                              type: string
+                          type: object
+                        note:
+                          description: Note is the state of the git note attached
+                            to the commit.
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
                               type: string
                             references:
                               description: References are the references to other
@@ -3687,12 +3927,6 @@ spec:
                                       was made
                                     format: date-time
                                     type: string
-                                  noteSha:
-                                    description: |-
-                                      NoteSha is the dry SHA from the git note attached to this a commit.
-                                      This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                                      Used to determine when hydration is complete for a given dry commit.
-                                    type: string
                                   references:
                                     description: References are the references to
                                       other commits, that went into the hydration
@@ -3775,11 +4009,86 @@ spec:
                                       was made
                                     format: date-time
                                     type: string
-                                  noteSha:
-                                    description: |-
-                                      NoteSha is the dry SHA from the git note attached to this a commit.
-                                      This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                                      Used to determine when hydration is complete for a given dry commit.
+                                  references:
+                                    description: References are the references to
+                                      other commits, that went into the hydration
+                                      of the branch
+                                    items:
+                                      description: |-
+                                        RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                        it supports only references to a commit. In the future, it may support other types of references.
+                                      properties:
+                                        commit:
+                                          description: Commit contains metadata about
+                                            the commit that is related in some way
+                                            to another commit.
+                                          properties:
+                                            author:
+                                              description: Author is the author of
+                                                the commit.
+                                              type: string
+                                            body:
+                                              description: Body is the body of the
+                                                commit message, excluding the subject
+                                                line, i.e. `git show --format=%b`.
+                                              type: string
+                                            date:
+                                              description: Date is the date of the
+                                                commit, formatted as by `git show
+                                                -s --format=%aI`.
+                                              format: date-time
+                                              type: string
+                                            repoURL:
+                                              description: RepoURL is the URL of the
+                                                repository where the commit is located.
+                                              pattern: ^(https?://.*)?$
+                                              type: string
+                                              x-kubernetes-validations:
+                                              - message: must be a valid URL
+                                                rule: self == '' || isURL(self)
+                                            sha:
+                                              description: Sha is the commit hash.
+                                              type: string
+                                            subject:
+                                              description: Subject is the subject
+                                                line of the commit message, i.e. `git
+                                                show --format=%s`.
+                                              type: string
+                                          type: object
+                                      type: object
+                                    type: array
+                                  repoURL:
+                                    description: RepoURL is the URL of the repository
+                                      where the commit is located
+                                    pattern: ^(https?://.*)?$
+                                    type: string
+                                    x-kubernetes-validations:
+                                    - message: must be a valid URL
+                                      rule: self == '' || isURL(self)
+                                  sha:
+                                    description: Sha is the SHA of the commit in the
+                                      branch
+                                    type: string
+                                  subject:
+                                    description: Subject is the subject line of the
+                                      commit message
+                                    type: string
+                                type: object
+                              note:
+                                description: Note is the state of the git note attached
+                                  to the commit.
+                                properties:
+                                  author:
+                                    description: Author is the author of the commit
+                                    type: string
+                                  body:
+                                    description: Body is the body of the commit message
+                                      without the subject line
+                                    type: string
+                                  commitTime:
+                                    description: CommitTime is the time the commit
+                                      was made
+                                    format: date-time
                                     type: string
                                   references:
                                     description: References are the references to
@@ -3901,12 +4210,6 @@ spec:
                                     description: CommitTime is the time the commit
                                       was made
                                     format: date-time
-                                    type: string
-                                  noteSha:
-                                    description: |-
-                                      NoteSha is the dry SHA from the git note attached to this a commit.
-                                      This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                                      Used to determine when hydration is complete for a given dry commit.
                                     type: string
                                   references:
                                     description: References are the references to
@@ -4087,12 +4390,6 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteSha:
-                              description: |-
-                                NoteSha is the dry SHA from the git note attached to this a commit.
-                                This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                                Used to determine when hydration is complete for a given dry commit.
-                              type: string
                             references:
                               description: References are the references to other
                                 commits, that went into the hydration of the branch
@@ -4168,11 +4465,80 @@ spec:
                               description: CommitTime is the time the commit was made
                               format: date-time
                               type: string
-                            noteSha:
-                              description: |-
-                                NoteSha is the dry SHA from the git note attached to this a commit.
-                                This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-                                Used to determine when hydration is complete for a given dry commit.
+                            references:
+                              description: References are the references to other
+                                commits, that went into the hydration of the branch
+                              items:
+                                description: |-
+                                  RevisionReference contains a reference to a some information that is related in some way to another commit. For now,
+                                  it supports only references to a commit. In the future, it may support other types of references.
+                                properties:
+                                  commit:
+                                    description: Commit contains metadata about the
+                                      commit that is related in some way to another
+                                      commit.
+                                    properties:
+                                      author:
+                                        description: Author is the author of the commit.
+                                        type: string
+                                      body:
+                                        description: Body is the body of the commit
+                                          message, excluding the subject line, i.e.
+                                          `git show --format=%b`.
+                                        type: string
+                                      date:
+                                        description: Date is the date of the commit,
+                                          formatted as by `git show -s --format=%aI`.
+                                        format: date-time
+                                        type: string
+                                      repoURL:
+                                        description: RepoURL is the URL of the repository
+                                          where the commit is located.
+                                        pattern: ^(https?://.*)?$
+                                        type: string
+                                        x-kubernetes-validations:
+                                        - message: must be a valid URL
+                                          rule: self == '' || isURL(self)
+                                      sha:
+                                        description: Sha is the commit hash.
+                                        type: string
+                                      subject:
+                                        description: Subject is the subject line of
+                                          the commit message, i.e. `git show --format=%s`.
+                                        type: string
+                                    type: object
+                                type: object
+                              type: array
+                            repoURL:
+                              description: RepoURL is the URL of the repository where
+                                the commit is located
+                              pattern: ^(https?://.*)?$
+                              type: string
+                              x-kubernetes-validations:
+                              - message: must be a valid URL
+                                rule: self == '' || isURL(self)
+                            sha:
+                              description: Sha is the SHA of the commit in the branch
+                              type: string
+                            subject:
+                              description: Subject is the subject line of the commit
+                                message
+                              type: string
+                          type: object
+                        note:
+                          description: Note is the state of the git note attached
+                            to the commit.
+                          properties:
+                            author:
+                              description: Author is the author of the commit
+                              type: string
+                            body:
+                              description: Body is the body of the commit message
+                                without the subject line
+                              type: string
+                            commitTime:
+                              description: CommitTime is the time the commit was made
+                              format: date-time
                               type: string
                             references:
                               description: References are the references to other

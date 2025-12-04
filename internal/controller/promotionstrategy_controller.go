@@ -338,7 +338,7 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 }
 
 // enqueueOutOfSyncCTPs checks if all CTPs have the same effective dry SHA
-// (NoteSha if set, otherwise Proposed.Dry.Sha). If they differ, the CTPs with
+// (Note.Sha if set, otherwise Proposed.Dry.Sha). If they differ, the CTPs with
 // different values need to reconcile to fetch updated git notes or proposed dry sha. This is needed
 // because GitHub doesn't send webhooks when git notes are pushed.
 // Returns true if any CTPs were enqueued for reconciliation.
@@ -349,10 +349,10 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		return false
 	}
 
-	// Get the effective dry SHA for each CTP (NoteSha if set, otherwise Proposed.Dry.Sha)
+	// Get the effective dry SHA for each CTP (Note.Sha if set, otherwise Proposed.Dry.Sha)
 	getEffectiveDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
-		if ctp.Status.Proposed.Dry.NoteSha != "" {
-			return ctp.Status.Proposed.Dry.NoteSha
+		if ctp.Status.Proposed.Note.Sha != "" {
+			return ctp.Status.Proposed.Note.Sha
 		}
 		return ctp.Status.Proposed.Dry.Sha
 	}
@@ -518,7 +518,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			"previousEnvironmentActiveDrySha", previousEnvironmentStatus.Active.Dry.Sha,
 			"previousEnvironmentActiveHydratedSha", previousEnvironmentStatus.Active.Hydrated.Sha,
 			"previousEnvironmentProposedDrySha", previousEnvironmentStatus.Proposed.Dry.Sha,
-			"previousEnvironmentProposedNoteSha", previousEnvironmentStatus.Proposed.Dry.NoteSha,
+			"previousEnvironmentProposedNoteSha", previousEnvironmentStatus.Proposed.Note.Sha,
 			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch)
 
 		// Since there is at least one configured active check, and since this is not the first environment,
@@ -537,20 +537,20 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 // isPreviousEnvironmentPending returns whether the previous environment is pending and a reason string if it is pending.
 func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
-	previousEnvProposedDryNoteSha := previousEnvironmentStatus.Proposed.Dry.NoteSha
+	previousEnvProposedNoteSha := previousEnvironmentStatus.Proposed.Note.Sha
 	previousEnvProposedDrySha := previousEnvironmentStatus.Proposed.Dry.Sha
 
 	// Determine which dry SHA each environment's hydrator has processed.
-	// The NoteSha (from git note) is the authoritative source because when manifests don't change
+	// The Note.Sha (from git note) is the authoritative source because when manifests don't change
 	// between dry commits, the hydrator may only update the git note without creating a new commit.
 	// In that case, hydrator.metadata (Proposed.Dry.Sha) still has the old SHA, but the git note
 	// confirms hydration is complete for the new dry SHA.
 	// For legacy hydrators that don't use git notes, fall back to Proposed.Dry.Sha.
-	previousEnvHydratedForDrySha := previousEnvProposedDryNoteSha
+	previousEnvHydratedForDrySha := previousEnvProposedNoteSha
 	if previousEnvHydratedForDrySha == "" {
 		previousEnvHydratedForDrySha = previousEnvProposedDrySha
 	}
-	currentEnvHydratedForDrySha := currentEnvironmentStatus.Proposed.Dry.NoteSha
+	currentEnvHydratedForDrySha := currentEnvironmentStatus.Proposed.Note.Sha
 	if currentEnvHydratedForDrySha == "" {
 		currentEnvHydratedForDrySha = currentEnvironmentStatus.Proposed.Dry.Sha
 	}
@@ -566,9 +566,9 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 	// 1. prMerged: A PR was created and merged, so Active.Dry.Sha now matches the target.
 	//
 	// 2. noOpHydration: The hydrator determined the manifests were unchanged between the
-	//    old and new dry commits, so it only updated the git note (NoteSha) without creating
+	//    old and new dry commits, so it only updated the git note (Note.Sha) without creating
 	//    a new hydrated commit. We detect this by comparing:
-	//    - previousEnvHydratedForDrySha: The dry SHA the hydrator has processed (from NoteSha)
+	//    - previousEnvHydratedForDrySha: The dry SHA the hydrator has processed (from Note.Sha)
 	//    - previousEnvProposedDrySha: The dry SHA in hydrator.metadata (Proposed.Dry.Sha)
 	//    When these differ, it means the git note was updated to a newer dry SHA, but
 	//    hydrator.metadata still has the old value because no new commit was created.

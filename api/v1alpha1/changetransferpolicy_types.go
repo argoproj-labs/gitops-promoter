@@ -83,6 +83,8 @@ type CommitBranchState struct {
 	Dry CommitShaState `json:"dry,omitempty"`
 	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
+	// Note is the state of the git note attached to the commit.
+	Note CommitShaState `json:"note,omitempty"`
 	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
 	// +kubebuilder:validation:Optional
 	// +listType:=map
@@ -108,10 +110,6 @@ type CommitShaState struct {
 	Body string `json:"body,omitempty"`
 	// References are the references to other commits, that went into the hydration of the branch
 	References []RevisionReference `json:"references,omitempty"`
-	// NoteSha is the dry SHA from the git note attached to this a commit.
-	// This is set by the hydrator to indicate which dry commit was used to produce this hydrated commit.
-	// Used to determine when hydration is complete for a given dry commit.
-	NoteSha string `json:"noteSha,omitempty"`
 }
 
 // DryShaShort returns the first 7 characters of the dry SHA, or the full SHA if it is shorter than 7 characters.
