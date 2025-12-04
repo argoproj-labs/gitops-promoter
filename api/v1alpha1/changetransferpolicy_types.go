@@ -92,8 +92,8 @@ type CommitBranchState struct {
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
 }
 
-// HydratorMetadata contains metadata about the commit that is used to hydrate a branch.
-// This is extracted from the git note attached to the hydrated commit.
+// HydratorMetadata contains metadata about the hydrated commit.
+// This is extracted from the git note or metadata file.
 type HydratorMetadata struct {
 	// RepoURL is the URL of the repository where the commit is located.
 	RepoURL string `json:"repoURL,omitempty"`
