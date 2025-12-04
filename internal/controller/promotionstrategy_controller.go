@@ -537,6 +537,41 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 
 // isPreviousEnvironmentPending returns whether the previous environment is pending and a reason string if it is pending.
 func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus, proposedDrySha string) (isPending bool, reason string) {
+	// Check if the previous environment has already moved past the proposed dry SHA.
+	// This can happen when a new commit is made to a downstream environment before an upstream
+	// environment has finished promoting an older commit. For example:
+	//
+	// 1. Dry commit A is made (commitTime: 10:00)
+	// 2. All environments get hydrated for A
+	// 3. Before production merges A, someone makes dry commit B (commitTime: 10:05)
+	// 4. Staging hydrates and merges B
+	// 5. Production is still trying to promote A
+	//
+	// In this case, staging is "ahead" (has merged a newer commit by time) and production
+	// should be allowed to promote A since staging has already moved on.
+	//
+	// We verify this by checking that both environments have the same NoteSha, which confirms
+	// they've both been hydrated up to the same point (the latest dry commit).
+	previousEnvActiveDryCommitTime := previousEnvironmentStatus.Active.Dry.CommitTime
+	previousEnvNoteSha := previousEnvironmentStatus.Proposed.Dry.NoteSha
+	currentEnvProposedDryCommitTime := currentEnvironmentStatus.Proposed.Dry.CommitTime
+	currentEnvNoteSha := currentEnvironmentStatus.Proposed.Dry.NoteSha
+
+	if previousEnvActiveDryCommitTime.After(currentEnvProposedDryCommitTime.Time) && previousEnvNoteSha == currentEnvNoteSha {
+		// Previous environment has already merged a commit newer than what we're trying to promote,
+		// AND both environments have been hydrated for the same dry commit (NoteSha matches).
+		// Check if commit statuses are passing before allowing.
+		previousEnvironmentPassing := utils.AreCommitStatusesPassing(previousEnvironmentStatus.Active.CommitStatuses)
+		if !previousEnvironmentPassing {
+			if len(previousEnvironmentStatus.Active.CommitStatuses) == 1 {
+				return true, fmt.Sprintf("Waiting for previous environment's %q commit status to be successful", previousEnvironmentStatus.Active.CommitStatuses[0].Key)
+			}
+			return true, "Waiting for previous environment's commit statuses to be successful"
+		}
+		// Previous environment is ahead, has seen the same dry commit, and is healthy. Allow promotion.
+		return false, ""
+	}
+
 	// Check if the previous environment's hydrator has finished processing the same dry SHA
 	// that we're trying to promote.
 	//

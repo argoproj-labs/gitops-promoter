@@ -3717,16 +3717,17 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	})
 
 	Context("isPreviousEnvironmentPending", func() {
-		// Use a fixed time for all tests to ensure consistent time comparisons
-		fixedTime := metav1.NewTime(time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC))
+		// Use fixed times for tests to ensure consistent time comparisons
+		olderTime := metav1.NewTime(time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC))
+		newerTime := metav1.NewTime(time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC))
 
 		// Helper to create environment status with specific values
-		makeEnvStatus := func(activeDrySha, proposedDrySha, noteSha string) promoterv1alpha1.EnvironmentStatus {
+		makeEnvStatusWithTime := func(activeDrySha, proposedDrySha, noteSha string, activeTime metav1.Time) promoterv1alpha1.EnvironmentStatus {
 			return promoterv1alpha1.EnvironmentStatus{
 				Active: promoterv1alpha1.CommitBranchState{
 					Dry: promoterv1alpha1.CommitShaState{
 						Sha:        activeDrySha,
-						CommitTime: fixedTime,
+						CommitTime: activeTime,
 					},
 					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 						{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
@@ -3741,12 +3742,17 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}
 		}
 
-		DescribeTable("should correctly determine if previous environment is pending",
-			func(prevActiveDry, prevProposedDry, prevNoteDry, currActiveDry, proposedDrySha string, expectPending bool, expectReasonContains string) {
-				prevEnvStatus := makeEnvStatus(prevActiveDry, prevProposedDry, prevNoteDry)
-				currEnvStatus := makeEnvStatus(currActiveDry, "", "")
+		// Helper that uses the older time by default (for backward compatibility)
+		makeEnvStatus := func(activeDrySha, proposedDrySha, noteSha string) promoterv1alpha1.EnvironmentStatus {
+			return makeEnvStatusWithTime(activeDrySha, proposedDrySha, noteSha, olderTime)
+		}
 
-				isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus, proposedDrySha)
+		DescribeTable("should correctly determine if previous environment is pending",
+			func(prevActiveDry, prevProposedDry, prevNoteDry, currActiveDry, currProposedDry, currNoteSha string, expectPending bool, expectReasonContains string) {
+				prevEnvStatus := makeEnvStatus(prevActiveDry, prevProposedDry, prevNoteDry)
+				currEnvStatus := makeEnvStatus(currActiveDry, currProposedDry, currNoteSha)
+
+				isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus, currProposedDry)
 
 				Expect(isPending).To(Equal(expectPending), "isPending mismatch")
 				if expectReasonContains != "" {
@@ -3757,60 +3763,166 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// Dev hasn't hydrated yet (note and proposed still show OLD)
 			Entry("blocks when previous env hasn't hydrated yet (with git notes)",
 				"OLD", "OLD", "OLD", // prev: active=OLD, proposed=OLD, note=OLD
-				"OLD", // curr: active=OLD
-				"ABC", // trying to promote ABC
+				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
 				true, "hydrator to finish processing"),
 
 			// Scenario 2: Normal flow - dev has hydrated and merged
 			Entry("allows when previous env has merged the proposed dry SHA",
 				"ABC", "ABC", "ABC", // prev: active=ABC, proposed=ABC, note=ABC
-				"OLD", // curr: active=OLD
-				"ABC", // trying to promote ABC
+				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
 				false, ""),
 
 			// Scenario 3: Git note - dev has no manifest changes
 			// Dev's hydrator updated the note but didn't create a new commit
 			Entry("allows when previous env has no changes to merge (git note)",
 				"OLD", "OLD", "ABC", // prev: active=OLD, proposed=OLD, note=ABC (note updated, no new commit)
-				"OLD", // curr: active=OLD
-				"ABC", // trying to promote ABC
+				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
 				false, ""),
 
 			// Scenario 4: Legacy hydrator (no git notes) - dev hasn't hydrated
 			Entry("blocks when previous env hasn't hydrated (no git notes)",
 				"OLD", "OLD", "", // prev: active=OLD, proposed=OLD, note="" (empty)
-				"OLD", // curr: active=OLD
-				"ABC", // trying to promote ABC
+				"OLD", "ABC", "", // curr: active=OLD, proposed=ABC, note="" (empty for legacy)
 				true, "hydrator to finish processing"),
 
 			// Scenario 5: Legacy hydrator - dev has hydrated but not merged
 			Entry("blocks when previous env has hydrated but not merged (no git notes)",
 				"OLD", "ABC", "", // prev: active=OLD, proposed=ABC, note="" (empty)
-				"OLD", // curr: active=OLD
-				"ABC", // trying to promote ABC
+				"OLD", "ABC", "", // curr: active=OLD, proposed=ABC, note="" (empty for legacy)
 				true, "merge its changes"),
 
 			// Scenario 6: Legacy hydrator - dev has hydrated and merged
 			Entry("allows when previous env has merged (no git notes)",
 				"ABC", "ABC", "", // prev: active=ABC, proposed=ABC, note="" (empty)
-				"OLD", // curr: active=OLD
-				"ABC", // trying to promote ABC
+				"OLD", "ABC", "", // curr: active=OLD, proposed=ABC, note="" (empty for legacy)
 				false, ""),
 
 			// Scenario 7: Dev hydrated but not yet merged (with git notes)
 			Entry("blocks when previous env has hydrated but not merged (with git notes)",
 				"OLD", "ABC", "ABC", // prev: active=OLD, proposed=ABC, note=ABC
-				"OLD", // curr: active=OLD
-				"ABC", // trying to promote ABC
+				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
 				true, "merge its changes"),
 
 			// Scenario 8: Mismatch between note and proposed (edge case)
 			// Note shows newer SHA than proposed (hydrator updated note for even newer commit)
 			Entry("blocks when note shows different SHA than what we're promoting",
 				"OLD", "OLD", "DEF", // prev: active=OLD, proposed=OLD, note=DEF (different!)
-				"OLD", // curr: active=OLD
-				"ABC", // trying to promote ABC
+				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
 				true, "hydrator to finish processing"),
 		)
+
+		// Test for when previous environment has already moved past the proposed dry SHA
+		// AND both environments have the same NoteSha (confirming they've seen the same dry commits)
+		//
+		// Example scenario:
+		// 1. Dry commit ABC is made (commitTime: 10:00)
+		// 2. All environments get hydrated for ABC
+		// 3. Before production merges ABC, someone makes dry commit DEF (commitTime: 10:05)
+		// 4. Staging hydrates and merges DEF
+		// 5. Production is still trying to promote ABC, but staging is ahead
+		// 6. Both have NoteSha = DEF (both hydrated up to the latest), so allow promotion
+		It("allows when previous env has already merged a newer commit with matching NoteSha", func() {
+			// Previous env (staging) has merged a newer commit (DEF at newerTime)
+			prevEnvStatus := makeEnvStatusWithTime("DEF", "DEF", "DEF", newerTime)
+			// Current env (production) is trying to promote an older commit (ABC at olderTime)
+			// Both have NoteSha = "DEF", meaning they've both been hydrated up to the same point
+			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "OLD",
+						CommitTime: olderTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "ABC",
+						CommitTime: olderTime, // ABC was made before DEF
+						NoteSha:    "DEF",     // But hydrator has processed up to DEF
+					},
+				},
+			}
+
+			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus, "ABC")
+
+			Expect(isPending).To(BeFalse(), "should allow promotion when previous env is ahead and NoteSha matches")
+			Expect(reason).To(BeEmpty())
+		})
+
+		It("blocks when previous env is ahead but NoteSha doesn't match", func() {
+			// Previous env (staging) has merged a newer commit (DEF at newerTime)
+			// But staging's NoteSha is "XYZ" while production's is "ABC"
+			// This means they haven't been hydrated for the same dry commits
+			prevEnvStatus := makeEnvStatusWithTime("DEF", "DEF", "XYZ", newerTime)
+			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "OLD",
+						CommitTime: olderTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "ABC",
+						CommitTime: olderTime,
+						NoteSha:    "ABC", // Different from staging's XYZ
+					},
+				},
+			}
+
+			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus, "ABC")
+
+			Expect(isPending).To(BeTrue(), "should block when NoteSha doesn't match even if previous env is ahead")
+			Expect(reason).To(ContainSubstring("hydrator to finish processing"))
+		})
+
+		It("blocks when previous env is ahead but commit statuses are not passing", func() {
+			// Previous env has merged a newer commit but health check is pending
+			prevEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "DEF",
+						CommitTime: newerTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhasePending)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:     "DEF",
+						NoteSha: "DEF",
+					},
+				},
+			}
+			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "OLD",
+						CommitTime: olderTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "ABC",
+						CommitTime: olderTime,
+						NoteSha:    "DEF", // NoteSha matches staging
+					},
+				},
+			}
+
+			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus, "ABC")
+
+			Expect(isPending).To(BeTrue(), "should block when previous env commit statuses are not passing")
+			Expect(reason).To(ContainSubstring("commit status"))
+		})
 	})
 })
