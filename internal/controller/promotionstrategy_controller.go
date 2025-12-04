@@ -565,26 +565,29 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 	}
 
 	// At this point, we know the previous environment's hydrator has processed the proposed dry SHA.
-	// Now check if the previous environment needs to merge changes, or if it's already up-to-date.
-	//
-	// There are two valid states:
-	// 1. The previous env has already merged (Active.Dry.Sha == proposedDrySha)
-	// 2. The previous env has no changes to merge because manifests are identical
-	//    (detected by: NoteDrySha shows new dry SHA, but Proposed.Dry.Sha still shows old dry SHA,
-	//     meaning the hydrator updated only the note without creating a new commit)
+	// Now check if the previous environment has completed its promotion (merged or no changes needed).
+
+	// Case 1: Previous environment has already merged the PR for this dry SHA.
 	previousEnvAlreadyMerged := previousEnvironmentStatus.Active.Dry.Sha == proposedDrySha
+
+	// Case 2: Previous environment has no changes to merge (no-op hydration).
+	// This happens when the hydrator processed the new dry SHA but the rendered manifests
+	// are identical to what's already deployed. The hydrator updates only the git note
+	// without creating a new commit, so:
+	// - NoteDrySha == proposedDrySha (git note confirms hydration complete)
+	// - Proposed.Dry.Sha != proposedDrySha (hydrator.metadata still has old SHA, no new commit)
 	previousEnvNoChangesToMerge := previousEnvNoteDrySha == proposedDrySha && previousEnvProposedDrySha != proposedDrySha
 
 	if !previousEnvAlreadyMerged && !previousEnvNoChangesToMerge {
-		return true, "Waiting for previous environment's active commit to match proposed commit"
+		// Previous environment hasn't merged yet and there ARE changes to merge.
+		// Block until the PR is merged.
+		return true, "Waiting for previous environment to merge its changes before promoting"
 	}
 
-	// When the previous environment has no changes to merge,
-	// we skip the time check because:
-	// 1. The previous env's active dry SHA is still the old one (no new commit was made)
-	// 2. The time comparison would compare old hydration times, which is meaningless
-	// 3. The git note already confirms the hydrator processed the new dry SHA
-	if !previousEnvNoChangesToMerge {
+	// Only check commit times if the previous environment actually merged (not a no-op).
+	// When it's a no-op hydration, the Active.Dry.Sha still points to an older commit,
+	// so the time comparison would be meaningless.
+	if previousEnvAlreadyMerged {
 		// The previous environment's dry commit time must be equal or newer than the current environment's dry commit
 		// time. Basically, we can't move back in time.
 		previousEnvironmentDryShaEqualOrNewer := previousEnvironmentStatus.Active.Dry.CommitTime.Equal(&metav1.Time{Time: currentEnvironmentStatus.Active.Dry.CommitTime.Time}) ||
