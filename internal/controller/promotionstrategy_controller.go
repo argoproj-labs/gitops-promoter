@@ -562,7 +562,15 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 	previousEnvIsAheadByTime := previousEnvActiveDryCommitTime.After(currentEnvProposedDryCommitTime.Time)
 
 	// Case: Previous environment has already merged a newer commit than what we're promoting.
-	// Allow promotion only if both environments have been hydrated to the same point.
+	// This happens when a new commit is made before the current environment finishes promoting:
+	// 1. Dry commit A is made (commitTime: 10:00)
+	// 2. All environments get hydrated for A
+	// 3. Before production merges A, someone makes dry commit B (commitTime: 10:05) that only affects staging
+	// 4. Staging hydrates and merges B (production's hydrated manifests are unchanged)
+	// 5. Production is still trying to promote A
+	// In this case, staging is "ahead" and production should be allowed to promote A.
+	// We verify both environments have been hydrated to the same point (the latest dry commit)
+	// by comparing their effective hydration SHA (NoteSha if available, otherwise Proposed.Dry.Sha).
 	if previousEnvIsAheadByTime && previousEnvHydratedForDrySha != currentEnvHydratedForDrySha {
 		return true, "Waiting for current environment to be hydrated to the latest dry commit"
 	}
