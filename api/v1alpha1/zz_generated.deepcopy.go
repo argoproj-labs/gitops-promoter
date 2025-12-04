@@ -407,7 +407,11 @@ func (in *CommitBranchState) DeepCopyInto(out *CommitBranchState) {
 	*out = *in
 	in.Dry.DeepCopyInto(&out.Dry)
 	in.Hydrated.DeepCopyInto(&out.Hydrated)
-	in.Note.DeepCopyInto(&out.Note)
+	if in.Note != nil {
+		in, out := &in.Note, &out.Note
+		*out = new(HydratorMetadata)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.CommitStatuses != nil {
 		in, out := &in.CommitStatuses, &out.CommitStatuses
 		*out = make([]ChangeRequestPolicyCommitStatusPhase, len(*in))

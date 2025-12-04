@@ -351,7 +351,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 
 	// Get the effective dry SHA for each CTP (Note.DrySha if set, otherwise Proposed.Dry.Sha)
 	getEffectiveDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
-		if ctp.Status.Proposed.Note.DrySha != "" {
+		if ctp.Status.Proposed.Note != nil && ctp.Status.Proposed.Note.DrySha != "" {
 			return ctp.Status.Proposed.Note.DrySha
 		}
 		return ctp.Status.Proposed.Dry.Sha
@@ -518,7 +518,7 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			"previousEnvironmentActiveDrySha", previousEnvironmentStatus.Active.Dry.Sha,
 			"previousEnvironmentActiveHydratedSha", previousEnvironmentStatus.Active.Hydrated.Sha,
 			"previousEnvironmentProposedDrySha", previousEnvironmentStatus.Proposed.Dry.Sha,
-			"previousEnvironmentProposedNoteSha", previousEnvironmentStatus.Proposed.Note.DrySha,
+			"previousEnvironmentProposedNoteSha", getNoteDrySha(previousEnvironmentStatus.Proposed.Note),
 			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch)
 
 		// Since there is at least one configured active check, and since this is not the first environment,
@@ -535,9 +535,17 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 	return nil
 }
 
+// getNoteDrySha safely returns the DrySha from a HydratorMetadata pointer, or empty string if nil.
+func getNoteDrySha(note *promoterv1alpha1.HydratorMetadata) string {
+	if note == nil {
+		return ""
+	}
+	return note.DrySha
+}
+
 // isPreviousEnvironmentPending returns whether the previous environment is pending and a reason string if it is pending.
 func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
-	previousEnvProposedNoteSha := previousEnvironmentStatus.Proposed.Note.DrySha
+	previousEnvProposedNoteSha := getNoteDrySha(previousEnvironmentStatus.Proposed.Note)
 	previousEnvProposedDrySha := previousEnvironmentStatus.Proposed.Dry.Sha
 
 	// Determine which dry SHA each environment's hydrator has processed.
@@ -550,7 +558,7 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 	if previousEnvHydratedForDrySha == "" {
 		previousEnvHydratedForDrySha = previousEnvProposedDrySha
 	}
-	currentEnvHydratedForDrySha := currentEnvironmentStatus.Proposed.Note.DrySha
+	currentEnvHydratedForDrySha := getNoteDrySha(currentEnvironmentStatus.Proposed.Note)
 	if currentEnvHydratedForDrySha == "" {
 		currentEnvHydratedForDrySha = currentEnvironmentStatus.Proposed.Dry.Sha
 	}

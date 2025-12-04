@@ -3909,6 +3909,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		olderTime := metav1.NewTime(time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC))
 		newerTime := metav1.NewTime(time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC))
 
+		// Helper to create a HydratorMetadata pointer, or nil if empty
+		makeNote := func(drySha string) *promoterv1alpha1.HydratorMetadata {
+			if drySha == "" {
+				return nil
+			}
+			return &promoterv1alpha1.HydratorMetadata{DrySha: drySha}
+		}
+
 		// Helper to create environment status with specific values
 		makeEnvStatusWithTime := func(activeDrySha, proposedDrySha, noteDrySha string, activeTime metav1.Time) promoterv1alpha1.EnvironmentStatus {
 			return promoterv1alpha1.EnvironmentStatus{
@@ -3926,9 +3934,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						Sha:        proposedDrySha,
 						CommitTime: olderTime, // Set proposed commit time to olderTime by default
 					},
-					Note: promoterv1alpha1.HydratorMetadata{
-						DrySha: noteDrySha,
-					},
+					Note: makeNote(noteDrySha),
 				},
 			}
 		}
@@ -4032,7 +4038,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						Sha:        "ABC",
 						CommitTime: olderTime, // ABC was made before DEF
 					},
-					Note: promoterv1alpha1.HydratorMetadata{
+					Note: &promoterv1alpha1.HydratorMetadata{
 						DrySha: "DEF", // But hydrator has processed up to DEF
 					},
 				},
@@ -4063,7 +4069,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						Sha:        "ABC",
 						CommitTime: olderTime,
 					},
-					Note: promoterv1alpha1.HydratorMetadata{
+					Note: &promoterv1alpha1.HydratorMetadata{
 						DrySha: "ABC", // Different from staging's XYZ
 					},
 				},
@@ -4137,7 +4143,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					Dry: promoterv1alpha1.CommitShaState{
 						Sha: "DEF",
 					},
-					Note: promoterv1alpha1.HydratorMetadata{
+					Note: &promoterv1alpha1.HydratorMetadata{
 						DrySha: "DEF",
 					},
 				},
@@ -4157,7 +4163,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						Sha:        "ABC",
 						CommitTime: olderTime,
 					},
-					Note: promoterv1alpha1.HydratorMetadata{
+					Note: &promoterv1alpha1.HydratorMetadata{
 						DrySha: "DEF", // Note.DrySha matches staging
 					},
 				},
