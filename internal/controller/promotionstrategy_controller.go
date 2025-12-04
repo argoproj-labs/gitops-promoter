@@ -381,7 +381,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 
 	// Trigger reconcile only for CTPs that have a different effective dry SHA.
 	// We use the EnqueueCTP function to add the CTP to the reconcile queue without
-	// modifying the object, which avoids conflicts with concurrent CTP reconciliations.
+	// modifying the object, which avoids conflicts.
 	needsRequeue := false
 	for _, ctp := range ctps {
 		effectiveSha := getEffectiveDrySha(ctp)
