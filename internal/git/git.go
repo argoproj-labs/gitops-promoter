@@ -521,16 +521,20 @@ func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
 	}
 
 	// Fetch the notes ref from origin. We use + to force update in case of divergence.
+	start := time.Now()
 	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", "+"+HydratorNotesRef+":"+HydratorNotesRef)
 	if err != nil {
 		// Notes ref might not exist yet, which is fine
 		if strings.Contains(stderr, "couldn't find remote ref") {
+			metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
 			logger.V(4).Info("Git notes ref does not exist on remote", "ref", HydratorNotesRef)
 			return nil
 		}
+		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultFailure, time.Since(start))
 		logger.Error(err, "Failed to fetch git notes", "stderr", stderr)
 		return fmt.Errorf("failed to fetch git notes: %w", err)
 	}
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
 
 	logger.V(4).Info("Fetched git notes", "ref", HydratorNotesRef)
 	return nil
