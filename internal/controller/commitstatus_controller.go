@@ -21,11 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/client-go/util/retry"
-
-	"k8s.io/client-go/tools/record"
-
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -41,7 +36,9 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -55,6 +52,9 @@ type CommitStatusReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
+
+	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
+	EnqueueCTP CTPEnqueueFunc
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -226,25 +226,10 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	ctpList := utils.UpsertChangeTransferPolicyList(ctpListActiveOldSha.Items, ctpListActiveNewSha.Items, ctpListProposedOldSha.Items, ctpListProposedNewSha.Items)
 
 	logger.Info("ChangeTransferPolicy list", "count", len(ctpList), "oldSha", oldSha, "newSha", newSha)
-	// TODO: parallelize this loop since it contains network calls.
 	for _, ctp := range ctpList {
-		if ctp.Annotations == nil {
-			ctp.Annotations = map[string]string{}
-		}
-		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			ctpUpdated := promoterv1alpha1.ChangeTransferPolicy{}
-			err = r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}, &ctpUpdated)
-			if ctpUpdated.Annotations == nil {
-				ctpUpdated.Annotations = map[string]string{}
-			}
-			ctpUpdated.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339Nano)
-			if err != nil {
-				return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", ctp.Name, err)
-			}
-			return r.Update(ctx, &ctpUpdated)
-		})
-		if err != nil {
-			return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", ctp.Name, err)
+		// Use the enqueue function to trigger reconciliation
+		if r.EnqueueCTP != nil {
+			r.EnqueueCTP(ctp.Namespace, ctp.Name)
 		}
 		logger.Info("Reconcile of ChangeTransferPolicy triggered", "ChangeTransferPolicy", ctp.Name,
 			"sha", cs.Spec.Sha, "phase", cs.Spec.Phase, "proposedHydratedSha", ctp.Status.Proposed.Hydrated.Sha, "activeHydratedSha", ctp.Status.Active.Hydrated.Sha)
