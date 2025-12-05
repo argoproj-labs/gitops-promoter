@@ -11,6 +11,7 @@ import (
 )
 
 func TestRecordSCMCall(t *testing.T) {
+	t.Parallel()
 	repo := &v1alpha1.GitRepository{
 		ObjectMeta: metav1.ObjectMeta{Name: "repo1"},
 		Spec: v1alpha1.GitRepositorySpec{
@@ -31,8 +32,8 @@ func TestRecordSCMCall(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                    string
 		rateLimit               *RateLimit
+		name                    string
 		countTotal              float64
 		rateLimitLimit          float64
 		rateLimitRemaining      float64
@@ -59,6 +60,7 @@ func TestRecordSCMCall(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			RecordSCMCall(repo, SCMAPICommitStatus, SCMOperationCreate, 200, 1*time.Second, tt.rateLimit)
 			if got := testutil.ToFloat64(scmCallsTotal.With(labels)); got != tt.countTotal {
 				t.Errorf("scmCallsTotal = %v, want %v", got, tt.countTotal)
