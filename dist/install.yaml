@@ -1265,6 +1265,10 @@ spec:
           spec:
             description: ScmProviderSpec defines the desired state of ScmProvider
             properties:
+              bitbucketCloud:
+                description: BitbucketCloud required configuration for Bitbucket Cloud
+                  as the SCM provider
+                type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider
                 properties:
@@ -1338,9 +1342,9 @@ spec:
                 x-kubernetes-map-type: atomic
             type: object
             x-kubernetes-validations:
-            - message: exactly one of the fields in [github gitlab forgejo fake] must
-                be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.fake)].filter(x,x==true).size()
+            - message: exactly one of the fields in [github gitlab forgejo bitbucketCloud
+                fake] must be set
+              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.bitbucketCloud),has(self.fake)].filter(x,x==true).size()
                 == 1'
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider
@@ -2959,6 +2963,22 @@ spec:
           spec:
             description: GitRepositorySpec defines the desired state of GitRepository
             properties:
+              bitbucketCloud:
+                description: BitbucketCloudRepo is a repository in Bitbucket Cloud,
+                  identified by its workspace and repository.
+                properties:
+                  repository:
+                    description: Repository is the repository of the repository.
+                    minLength: 1
+                    type: string
+                  workspace:
+                    description: Workspace is the workspace of the repository.
+                    minLength: 1
+                    type: string
+                required:
+                - repository
+                - workspace
+                type: object
               fake:
                 description: FakeRepo is a placeholder for a repository in the fake
                   SCM provider, used for testing purposes.
@@ -3049,9 +3069,9 @@ spec:
             - scmProviderRef
             type: object
             x-kubernetes-validations:
-            - message: exactly one of the fields in [github gitlab forgejo fake] must
-                be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.fake)].filter(x,x==true).size()
+            - message: exactly one of the fields in [github gitlab forgejo bitbucketCloud
+                fake] must be set
+              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.bitbucketCloud),has(self.fake)].filter(x,x==true).size()
                 == 1'
           status:
             description: GitRepositoryStatus defines the observed state of GitRepository
@@ -4531,6 +4551,10 @@ spec:
           spec:
             description: ScmProviderSpec defines the desired state of ScmProvider
             properties:
+              bitbucketCloud:
+                description: BitbucketCloud required configuration for Bitbucket Cloud
+                  as the SCM provider
+                type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider
                 properties:
@@ -4604,9 +4628,9 @@ spec:
                 x-kubernetes-map-type: atomic
             type: object
             x-kubernetes-validations:
-            - message: exactly one of the fields in [github gitlab forgejo fake] must
-                be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.fake)].filter(x,x==true).size()
+            - message: exactly one of the fields in [github gitlab forgejo bitbucketCloud
+                fake] must be set
+              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.bitbucketCloud),has(self.fake)].filter(x,x==true).size()
                 == 1'
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider
