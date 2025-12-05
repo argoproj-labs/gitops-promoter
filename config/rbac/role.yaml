@@ -41,6 +41,7 @@ rules:
   - promotionstrategies
   - pullrequests
   - revertcommits
+  - scheduledcommitstatuses
   - scmproviders
   - timedcommitstatuses
   verbs:
@@ -63,6 +64,7 @@ rules:
   - promotionstrategies/finalizers
   - pullrequests/finalizers
   - revertcommits/finalizers
+  - scheduledcommitstatuses/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers
   verbs:
@@ -79,6 +81,7 @@ rules:
   - promotionstrategies/status
   - pullrequests/status
   - revertcommits/status
+  - scheduledcommitstatuses/status
   - scmproviders/status
   - timedcommitstatuses/status
   verbs:
