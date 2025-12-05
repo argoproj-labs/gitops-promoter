@@ -37,6 +37,9 @@ resources:
 # default, aiding admins in cluster management. Those roles are
 # not used by the promoter itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- gitcommitstatus_admin_role.yaml
+- gitcommitstatus_editor_role.yaml
+- gitcommitstatus_viewer_role.yaml
 - timedcommitstatus_admin_role.yaml
 - timedcommitstatus_editor_role.yaml
 - timedcommitstatus_viewer_role.yaml

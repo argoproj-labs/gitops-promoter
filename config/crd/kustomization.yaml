@@ -13,6 +13,7 @@ resources:
 - bases/promoter.argoproj.io_controllerconfigurations.yaml
 - bases/promoter.argoproj.io_clusterscmproviders.yaml
 - bases/promoter.argoproj.io_timedcommitstatuses.yaml
+- bases/promoter.argoproj.io_gitcommitstatuses.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patches:

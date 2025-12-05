@@ -44,11 +44,8 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -704,8 +701,6 @@ func (r *ArgoCDCommitStatusReconciler) getPromotionStrategy(ctx context.Context,
 }
 
 func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus) (scms.GitOperationsProvider, promoterv1alpha1.ObjectReference, error) {
-	logger := log.FromContext(ctx)
-
 	ps, err := r.getPromotionStrategy(ctx, argoCDCommitStatus.GetNamespace(), argoCDCommitStatus.Spec.PromotionStrategyRef)
 	if ps == nil {
 		return nil, promoterv1alpha1.ObjectReference{}, fmt.Errorf("PromotionStrategy is nil for ArgoCDCommitStatus %s", argoCDCommitStatus.Name)
@@ -719,30 +714,12 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get ScmProvider and secret for PromotionStrategy %q: %w", ps.Name, err)
 	}
 
-	switch {
-	case scmProvider.GetSpec().Fake != nil:
-		logger.V(4).Info("Creating fake git authentication provider")
-		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
-	case scmProvider.GetSpec().GitHub != nil:
-		logger.V(4).Info("Creating GitHub git authentication provider")
-		provider, err := github.NewGithubGitAuthenticationProvider(ctx, r.localClient, scmProvider, secret, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: ps.Spec.RepositoryReference.Name})
-		if err != nil {
-			return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create GitHub client: %w", err)
-		}
-		return provider, ps.Spec.RepositoryReference, nil
-	case scmProvider.GetSpec().GitLab != nil:
-		logger.V(4).Info("Creating GitLab git authentication provider")
-		gitlabClient, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
-		if err != nil {
-			return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create GitLab client: %w", err)
-		}
-		return gitlabClient, ps.Spec.RepositoryReference, nil
-	case scmProvider.GetSpec().Forgejo != nil:
-		logger.V(4).Info("Creating Forgejo git authentication provider")
-		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
-	default:
-		return nil, ps.Spec.RepositoryReference, errors.New("no supported git authentication provider found")
+	provider, err := gitauth.CreateGitOperationsProvider(ctx, r.localClient, scmProvider, secret, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: ps.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create git operations provider: %w", err)
 	}
+
+	return provider, ps.Spec.RepositoryReference, nil
 }
 
 func hash(data []byte) string {
