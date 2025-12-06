@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -37,6 +36,18 @@ var _ = Describe("RecordSCMCall", func() {
 		rateLimitLabels = prometheus.Labels{
 			"scm_provider": "github",
 		}
+		scmCallsTotal.Reset()
+		scmCallsRateLimitLimit.Reset()
+		scmCallsRateLimitRemaining.Reset()
+		scmCallsRateLimitResetRemainingSeconds.Reset()
+	})
+	Describe("RecordSCMCall increments the SCM call metrics", func() {
+		It("accumulates SCM call metrics across multiple calls", func() {
+			for i := 1; i <= 3; i++ {
+				RecordSCMCall(repo, SCMAPICommitStatus, SCMOperationCreate, 200, 1*time.Second, nil)
+				Expect(testutil.ToFloat64(scmCallsTotal.With(labels))).To(Equal(float64(i)))
+			}
+		})
 	})
 
 	DescribeTable("should record SCM call metrics",
@@ -50,7 +61,5 @@ var _ = Describe("RecordSCMCall", func() {
 			}
 		},
 		Entry("with rate limit", &RateLimit{Limit: 10, Remaining: 5, ResetRemaining: 30 * time.Second}, 1.0, 10.0, 5.0, 30.0),
-		Entry("without rate limit", nil, 2.0, 0.0, 0.0, 0.0),
-		Entry("without rate limit", nil, 3.0, 0.0, 0.0, 0.0),
 	)
 })
