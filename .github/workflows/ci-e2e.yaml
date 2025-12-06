@@ -13,9 +13,9 @@ jobs:
       fail-fast: false
       matrix:
         kubernetes-minor-version:
-          - 1.28.0
           - 1.29.0
           - 1.30.0
+          - 1.31.0
     name: E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
