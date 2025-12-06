@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
