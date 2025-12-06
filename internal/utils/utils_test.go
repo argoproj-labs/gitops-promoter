@@ -262,3 +262,18 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		Expect(err).ToNot(HaveOccurred())
 	})
 })
+
+var _ = Describe("TruncateString", func() {
+	DescribeTable("should truncate string correctly",
+		func(input string, length int, expected string) {
+			result := utils.TruncateString(input, length)
+			Expect(result).To(Equal(expected))
+		},
+		Entry("length less than string", "abcdef", 3, "abc"),
+		Entry("length equal to string", "abcdef", 6, "abcdef"),
+		Entry("length greater than string", "abcdef", 10, "abcdef"),
+		Entry("empty string", "", 5, ""),
+		Entry("zero length", "abcdef", 0, ""),
+		Entry("negative length", "abcdef", -1, ""),
+	)
+})
