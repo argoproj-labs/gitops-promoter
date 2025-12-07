@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -247,12 +248,15 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 
 	start := time.Now()
 	mrs, resp, err := pr.client.MergeRequests.ListMergeRequests(options)
-	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
-	}
 	if err != nil {
 		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
+	if resp == nil {
+		logger.V(4).Info("gitlab response status", "status", "nil response")
+		return false, "", time.Time{}, errors.New("received nil response from GitLab API")
+	}
+
+	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 
 	logGitLabRateLimitsIfAvailable(
 		logger,
