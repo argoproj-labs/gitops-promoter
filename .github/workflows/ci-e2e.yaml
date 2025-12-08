@@ -13,9 +13,9 @@ jobs:
       fail-fast: false
       matrix:
         kubernetes-minor-version:
-          - 1.28.0
           - 1.29.0
           - 1.30.0
+          - 1.31.0
     name: E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -31,7 +31,7 @@ jobs:
         uses: helm/kind-action@v1
         with:
           cluster_name: kind
-          version: v0.23.0
+          version: v0.30.0
           node_image: kindest/node:v${{ matrix.kubernetes-minor-version }}
           kubectl_version: v${{ matrix.kubernetes-minor-version }}
       - name: Checkout Repo

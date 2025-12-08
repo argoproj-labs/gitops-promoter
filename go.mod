@@ -22,7 +22,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
-	gitlab.com/gitlab-org/api/client-go v1.5.0
+	gitlab.com/gitlab-org/api/client-go v1.7.0
 	go.uber.org/zap v1.27.1
 	golang.org/x/sync v0.18.0
 	golang.org/x/time v0.14.0
@@ -32,7 +32,7 @@ require (
 	k8s.io/client-go v0.34.2
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
 	sigs.k8s.io/controller-runtime v0.22.4
-	sigs.k8s.io/multicluster-runtime v0.22.0-beta.0.0.20251110070641-9e8b8a8f362c
+	sigs.k8s.io/multicluster-runtime v0.22.4-beta.1
 )
 
 require (
