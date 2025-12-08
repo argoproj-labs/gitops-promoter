@@ -6,6 +6,8 @@ theme:
     text: Work Sans
   logo: assets/logo.png
   name: material
+  features:
+    - content.code.copy
   palette:
     - primary: teal
       scheme: default
