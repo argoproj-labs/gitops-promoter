@@ -17,14 +17,11 @@ limitations under the License.
 package controller
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -254,106 +251,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
-				}, constants.EventuallyTimeout).Should(Succeed())
-			})
-		})
-
-		Context("When testing webhook annotations", func() {
-			var webhookPort int
-			var webhookURL string
-			var name string
-			var scmSecret *v1.Secret
-			var scmProvider *promoterv1alpha1.ScmProvider
-			var gitRepo *promoterv1alpha1.GitRepository
-			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
-			var typeNamespacedName types.NamespacedName
-			var gitPath string
-			var err error
-			var pr promoterv1alpha1.PullRequest
-			var prName string
-
-			BeforeEach(func() {
-				webhookPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
-				webhookURL = fmt.Sprintf("http://localhost:%d/", webhookPort)
-
-				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-webhook", "default")
-
-				typeNamespacedName = types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}
-
-				changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
-				changeTransferPolicy.Spec.ActiveBranch = testEnvironmentDevelopment
-				// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
-				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
-
-				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
-
-				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
-
-				gitPath, err = os.MkdirTemp("", "*")
-				Expect(err).NotTo(HaveOccurred())
-			})
-
-			AfterEach(func() {
-				By("Cleaning up resources")
-				Expect(k8sClient.Delete(ctx, changeTransferPolicy)).To(Succeed())
-				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
-				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
-				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
-			})
-
-			It("should modify annotation when webhook is triggered", func() {
-				By("Adding a pending commit")
-				fullSha, shortSha := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
-
-				Eventually(func(g Gomega) {
-					err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
-					g.Expect(err).To(Succeed())
-					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
-					g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).ToNot(Equal(""))
-					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).ToNot(Equal(""))
-				}, constants.EventuallyTimeout).Should(Succeed())
-
-				Eventually(func(g Gomega) {
-					typeNamespacedNamePR := types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, prName),
-						Namespace: "default",
-					}
-					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
-					g.Expect(err).To(Succeed())
-					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testEnvironmentDevelopment)))
-					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
-				}, constants.EventuallyTimeout).Should(Succeed())
-
-				By("Sending webhook request")
-				jsonStr := []byte(fmt.Sprintf(`{"before":"%s", "pusher":""}`, changeTransferPolicy.Status.Proposed.Hydrated.Sha))
-				req, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewBuffer(jsonStr))
-				Expect(err).NotTo(HaveOccurred())
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("X-Github-Event", "push")
-				req.Header.Set("X-Github-Delivery", "test-delivery-id")
-
-				client := &http.Client{}
-				resp, err := client.Do(req)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(resp.StatusCode).To(Equal(204))
-				err = resp.Body.Close()
-				Expect(err).To(Succeed())
-
-				Eventually(func(g Gomega) {
-					err = k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
-					g.Expect(err).To(Succeed())
-					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
-
-					t, err := time.Parse(time.RFC3339Nano, changeTransferPolicy.Annotations[promoterv1alpha1.ReconcileAtAnnotation])
-					g.Expect(err).To(Succeed())
-					g.Expect(t).Should(BeTemporally("~", time.Now(), 3*time.Second))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
