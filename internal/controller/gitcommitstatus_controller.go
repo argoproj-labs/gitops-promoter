@@ -249,18 +249,10 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		activeHydratedSha := envStatus.Active.Hydrated.Sha
 
 		// Determine which commit SHA to validate based on the ValidateCommit field
-		// Default to "active"
-		validateCommitMode := gcs.Spec.ValidateCommit
-		if validateCommitMode == "" {
-			validateCommitMode = "active"
-		}
-
-		var shaToValidate string
-		if validateCommitMode == "proposed" {
+		// The field is defaulted to "active" by the API server and validated to be "active" or "proposed"
+		shaToValidate := activeHydratedSha
+		if gcs.Spec.ValidateCommit == "proposed" {
 			shaToValidate = proposedSha
-		} else {
-			// Default to active for "active" or any unknown values
-			shaToValidate = activeHydratedSha
 		}
 
 		// Validate we have the SHA to work with - if PromotionStrategy hasn't fully reconciled,
@@ -268,14 +260,14 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		if shaToValidate == "" {
 			logger.V(4).Info("Commit SHA not yet available",
 				"branch", branch,
-				"validateCommit", validateCommitMode)
+				"validateCommit", gcs.Spec.ValidateCommit)
 			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
 				Branch:              branch,
 				ProposedHydratedSha: proposedSha,
 				ActiveHydratedSha:   activeHydratedSha,
 				ValidatedSha:        "",
 				Phase:               "pending",
-				ExpressionMessage:   fmt.Sprintf("Waiting for %s commit SHA", validateCommitMode),
+				ExpressionMessage:   fmt.Sprintf("Waiting for %s commit SHA", gcs.Spec.ValidateCommit),
 			})
 			continue
 		}
@@ -286,7 +278,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			logger.Error(err, "Failed to get commit data",
 				"branch", branch,
 				"sha", shaToValidate,
-				"validateCommit", validateCommitMode)
+				"validateCommit", gcs.Spec.ValidateCommit)
 			// Add a pending status entry with error message
 			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
 				Branch:              branch,
@@ -341,7 +333,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			"branch", branch,
 			"proposedSha", proposedSha,
 			"validatedSha", shaToValidate,
-			"validateCommit", validateCommitMode,
+			"validateCommit", gcs.Spec.ValidateCommit,
 			"phase", phase,
 			"key", gcs.Spec.Key,
 			"expression", gcs.Spec.Expression)
