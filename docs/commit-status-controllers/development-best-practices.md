@@ -16,7 +16,7 @@ All commit status controllers should set the following standard labels on the `C
 commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = "your-controller-key"
 ```
 
-**Purpose:** This label identifies which controller created the commit status. The value should match the `key` used in the PromotionStrategy's `activeCommitStatuses` or `proposedCommitStatuses` configuration.
+**Purpose:** This label identifies which controller created the commit status. The value should match the `key` used in the PromotionStrategy's `proposedCommitStatuses` configuration.
 
 **Examples:**
 - `"argocd-health"` - Used by ArgoCDCommitStatus controller

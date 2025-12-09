@@ -81,7 +81,7 @@ To use GitCommitStatus-based gating, configure your PromotionStrategy to check f
 
 > **Important:** GitCommitStatus must always be configured as a `proposedCommitStatuses` in your PromotionStrategy, regardless of whether it validates the active or proposed commit. This is because the CommitStatus is always reported on the **proposed** commit SHA, which is what gates the promotion.
 
-#### As Proposed Commit Status (Validates Incoming Change)
+#### As Proposed Commit Status
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -192,7 +192,7 @@ status:
     - branch: environment/development
       proposedHydratedSha: abc123def456
       activeHydratedSha: bef859def431
-      validatedSha: eda642def745  # Which SHA was actually validated
+      validatedSha: bef859def431  # Which SHA was actually validated
       phase: success
       expressionMessage: "Expression evaluated to true"
       expressionResult: true

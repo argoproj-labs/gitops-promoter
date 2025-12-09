@@ -8,7 +8,7 @@ spec:
   key: revert-check
   description: "Revert commit validation on active deployment"
   # Default: validates the ACTIVE (currently deployed) commit
-  # Omitting validateCommit defaults to "active" for backward compatibility
+  # Omitting validateCommit defaults to "active"
   validateCommit: active
   # This expression returns false if ANY of these conditions are true:
   # 1. Commit subject starts with "Revert" → fail

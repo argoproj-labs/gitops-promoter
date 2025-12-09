@@ -135,10 +135,6 @@ spec:
                   - "active": Validates the currently active/deployed commit (default behavior)
                   - "proposed": Validates the proposed commit that will be promoted
 
-                  Most use cases want "active" to validate the current state before allowing promotion.
-                  Use "proposed" when you want to validate the incoming change itself (e.g., commit message format,
-                  author restrictions, etc.).
-
                   The validation result is always reported on the PROPOSED commit (for gating), but this field
                   controls which commit's data is used in the expression evaluation.
 

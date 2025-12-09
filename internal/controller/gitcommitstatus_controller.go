@@ -57,6 +57,9 @@ type GitCommitStatusReconciler struct {
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
 
+	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
+	EnqueueCTP CTPEnqueueFunc
+
 	// expressionCache caches compiled expressions to avoid recompilation on every reconciliation
 	// Key: expression string, Value: compiled *vm.Program
 	expressionCache sync.Map
@@ -132,10 +135,7 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// If any validations transitioned to success, touch the corresponding ChangeTransferPolicies
 	if len(transitionedEnvironments) > 0 {
-		err = touchChangeTransferPolicies(ctx, r.Client, &ps, transitionedEnvironments, "validation transition")
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to touch ChangeTransferPolicies: %w", err)
-		}
+		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
 	}
 
 	return ctrl.Result{}, nil
@@ -254,7 +254,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		activeHydratedSha := envStatus.Active.Hydrated.Sha
 
 		// Determine which commit SHA to validate based on the ValidateCommit field
-		// Default to "active" for backward compatibility
+		// Default to "active"
 		validateCommitMode := gcs.Spec.ValidateCommit
 		if validateCommitMode == "" {
 			validateCommitMode = "active"
@@ -315,7 +315,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 				break
 			}
 		}
-		if previousPhase != CommitPhaseSuccess && phase == CommitPhaseSuccess {
+		if previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) && phase == string(promoterv1alpha1.CommitPhaseSuccess) {
 			transitionedEnvironments = append(transitionedEnvironments, branch)
 			logger.Info("Validation transitioned to success",
 				"branch", branch,
@@ -447,7 +447,7 @@ func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expr
 	program, err := r.getCompiledExpression(expression)
 	if err != nil {
 		logger.Error(err, "Failed to compile expression", "expression", expression)
-		return CommitPhaseFailure, fmt.Sprintf("Expression compilation failed: %v", err), nil
+		return string(promoterv1alpha1.CommitPhaseFailure), fmt.Sprintf("Expression compilation failed: %v", err), nil
 	}
 
 	// Run the expression with actual commit data
@@ -457,7 +457,7 @@ func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expr
 	output, err := expr.Run(program, env)
 	if err != nil {
 		logger.Error(err, "Failed to evaluate expression", "expression", expression)
-		return CommitPhaseFailure, fmt.Sprintf("Expression evaluation failed: %v", err), nil
+		return string(promoterv1alpha1.CommitPhaseFailure), fmt.Sprintf("Expression evaluation failed: %v", err), nil
 	}
 
 	// Check the result
@@ -465,13 +465,13 @@ func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expr
 	if !ok {
 		logger.Error(errors.New("expression did not return boolean"), "Invalid expression result type",
 			"expression", expression, "resultType", reflect.TypeOf(output))
-		return CommitPhaseFailure, fmt.Sprintf("Expression must return boolean, got %T", output), nil
+		return string(promoterv1alpha1.CommitPhaseFailure), fmt.Sprintf("Expression must return boolean, got %T", output), nil
 	}
 
 	if result {
-		return CommitPhaseSuccess, "Expression evaluated to true", ptr.To(true)
+		return string(promoterv1alpha1.CommitPhaseSuccess), "Expression evaluated to true", ptr.To(true)
 	}
-	return CommitPhaseFailure, "Expression evaluated to false", ptr.To(false)
+	return string(promoterv1alpha1.CommitPhaseFailure), "Expression evaluated to false", ptr.To(false)
 }
 
 // upsertCommitStatus creates or updates a CommitStatus resource for the validation result.
@@ -504,9 +504,9 @@ func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs 
 		// Convert phase string to CommitStatusPhase
 		var commitPhase promoterv1alpha1.CommitStatusPhase
 		switch phase {
-		case "success":
+		case string(promoterv1alpha1.CommitPhaseSuccess):
 			commitPhase = promoterv1alpha1.CommitPhaseSuccess
-		case "failure":
+		case string(promoterv1alpha1.CommitPhaseFailure):
 			commitPhase = promoterv1alpha1.CommitPhaseFailure
 		default:
 			commitPhase = promoterv1alpha1.CommitPhasePending
@@ -526,6 +526,28 @@ func (r *GitCommitStatusReconciler) upsertCommitStatus(ctx context.Context, gcs 
 	}
 
 	return &commitStatus, nil
+}
+
+// touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
+// for the environments that had validations transition to success.
+// This triggers the ChangeTransferPolicy controller to reconcile and potentially merge PRs.
+func (r *GitCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
+	logger := log.FromContext(ctx)
+
+	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
+	for _, envBranch := range transitionedEnvironments {
+		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
+		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
+
+		logger.Info("Triggering ChangeTransferPolicy reconciliation due to validation transition",
+			"changeTransferPolicy", ctpName,
+			"branch", envBranch)
+
+		// Use the enqueue function to trigger reconciliation.
+		if r.EnqueueCTP != nil {
+			r.EnqueueCTP(ps.Namespace, ctpName)
+		}
+	}
 }
 
 // getGitAuthProvider retrieves the git authentication provider for accessing the repository.
