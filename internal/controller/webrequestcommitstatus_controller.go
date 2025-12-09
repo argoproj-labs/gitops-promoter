@@ -90,6 +90,7 @@ type WebRequestCommitStatusReconciler struct {
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
 	HTTPClient  *http.Client
+	EnqueueCTP  CTPEnqueueFunc
 
 	// expressionCache caches compiled expressions to avoid recompilation on every reconciliation
 	expressionCache sync.Map
@@ -160,10 +161,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 
 	// If any validations transitioned to success, touch the corresponding ChangeTransferPolicies
 	if len(transitionedEnvironments) > 0 {
-		err = touchChangeTransferPolicies(ctx, r.Client, &ps, transitionedEnvironments, "web request validation transition")
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to touch ChangeTransferPolicies: %w", err)
-		}
+		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
 	}
 
 	// Determine requeue strategy based on reportOn and polling needs
@@ -712,6 +710,28 @@ func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Contex
 		return WebRequestPhaseSuccess, "Expression evaluated to true", ptr.To(true)
 	}
 	return WebRequestPhasePending, "Expression evaluated to false", ptr.To(false)
+}
+
+// touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
+// for the environments that had validations transition to success.
+// This triggers the ChangeTransferPolicy controller to reconcile and potentially merge PRs.
+func (r *WebRequestCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
+	logger := log.FromContext(ctx)
+
+	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
+	for _, envBranch := range transitionedEnvironments {
+		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
+		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
+
+		logger.Info("Triggering ChangeTransferPolicy reconciliation due to validation transition",
+			"changeTransferPolicy", ctpName,
+			"branch", envBranch)
+
+		// Use the enqueue function to trigger reconciliation.
+		if r.EnqueueCTP != nil {
+			r.EnqueueCTP(ps.Namespace, ctpName)
+		}
+	}
 }
 
 // upsertCommitStatus creates or updates a CommitStatus for the given environment
