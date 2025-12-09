@@ -173,7 +173,9 @@ type GitCommitStatusEnvironmentStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="Strategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`
+// +kubebuilder:printcolumn:name="Key",type=string,JSONPath=`.spec.key`
+// +kubebuilder:printcolumn:name="PromotionStrategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`
+// +kubebuilder:printcolumn:name="Validates",type=string,JSONPath=`.spec.validateCommit`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 
 // GitCommitStatus is the Schema for the gitcommitstatuses API.
