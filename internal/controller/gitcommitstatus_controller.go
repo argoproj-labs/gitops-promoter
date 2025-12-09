@@ -77,9 +77,6 @@ type GitCommitStatusReconciler struct {
 // 2. Retrieves commit details (message, author, trailers) from git
 // 3. Evaluates the configured expression against the commit data
 // 4. Creates/updates a CommitStatus resource with the validation result
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.22.4/pkg/reconcile
 func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling GitCommitStatus", "name", req.Name)
@@ -180,6 +177,36 @@ type CommitData struct {
 	Committer string              `expr:"Committer"`
 }
 
+// getApplicableEnvironments returns the environments from the PromotionStrategy that this GitCommitStatus applies to.
+// An environment is applicable if the GitCommitStatus key is referenced in either:
+// - The global ps.Spec.ProposedCommitStatuses, or
+// - The environment-specific psEnv.ProposedCommitStatuses
+func (r *GitCommitStatusReconciler) getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string) []promoterv1alpha1.Environment {
+	// Check if globally referenced
+	globallyProposed := false
+	for _, selector := range ps.Spec.ProposedCommitStatuses {
+		if selector.Key == key {
+			globallyProposed = true
+			break
+		}
+	}
+
+	applicable := make([]promoterv1alpha1.Environment, 0, len(ps.Spec.Environments))
+	for _, env := range ps.Spec.Environments {
+		if globallyProposed {
+			applicable = append(applicable, env)
+			continue
+		}
+		for _, selector := range env.ProposedCommitStatuses {
+			if selector.Key == key {
+				applicable = append(applicable, env)
+				break
+			}
+		}
+	}
+	return applicable
+}
+
 // processEnvironments processes each environment defined in the GitCommitStatus spec,
 // evaluating expressions against the proposed hydrated commit for each environment.
 // Returns a list of environment branches that transitioned from non-success to success
@@ -187,62 +214,30 @@ type CommitData struct {
 func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy) ([]string, []*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
-	// Track which environments transitioned to success
-	transitionedEnvironments := []string{}
-	// Track all CommitStatus objects created/updated
-	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(ps.Spec.Environments))
-
 	// Save the previous status before clearing it, so we can detect transitions
 	previousStatus := gcs.Status.DeepCopy()
 	if previousStatus == nil {
 		previousStatus = &promoterv1alpha1.GitCommitStatusStatus{}
 	}
 
-	// Build a map of environments from PromotionStrategy for efficient lookup
+	// Build a map of environment statuses for efficient lookup
 	envStatusMap := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
 	for i := range ps.Status.Environments {
 		envStatusMap[ps.Status.Environments[i].Branch] = &ps.Status.Environments[i]
 	}
 
-	// Initialize or clear the environments status
-	gcs.Status.Environments = make([]promoterv1alpha1.GitCommitStatusEnvironmentStatus, 0, len(ps.Spec.Environments))
+	// Get environments this GitCommitStatus applies to
+	applicableEnvs := r.getApplicableEnvironments(ps, gcs.Spec.Key)
 
-	// Check if this GitCommitStatus is referenced in global proposedCommitStatuses
-	globallyProposed := false
-	for _, selector := range ps.Spec.ProposedCommitStatuses {
-		if selector.Key == gcs.Spec.Key {
-			globallyProposed = true
-			break
-		}
-	}
+	// Initialize tracking variables
+	transitionedEnvironments := make([]string, 0)
+	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
+	gcs.Status.Environments = make([]promoterv1alpha1.GitCommitStatusEnvironmentStatus, 0, len(applicableEnvs))
 
-	// Iterate over ALL environments from the PromotionStrategy
-	for _, psEnv := range ps.Spec.Environments {
-		branch := psEnv.Branch
+	for _, env := range applicableEnvs {
+		branch := env.Branch
 
-		// Check if this GitCommitStatus applies to this environment
-		// Start with global proposedCommitStatuses
-		appliesToEnvironment := globallyProposed
-
-		// Check environment-specific proposedCommitStatuses
-		if !appliesToEnvironment {
-			for _, selector := range psEnv.ProposedCommitStatuses {
-				if selector.Key == gcs.Spec.Key {
-					appliesToEnvironment = true
-					break
-				}
-			}
-		}
-
-		// Skip this environment if the GitCommitStatus doesn't apply
-		if !appliesToEnvironment {
-			logger.V(4).Info("GitCommitStatus does not apply to environment, skipping",
-				"branch", branch,
-				"key", gcs.Spec.Key)
-			continue
-		}
-
-		// Look up the environment status in the map
+		// Look up the environment status
 		envStatus, found := envStatusMap[branch]
 		if !found {
 			logger.Info("Environment not found in PromotionStrategy status", "branch", branch)
