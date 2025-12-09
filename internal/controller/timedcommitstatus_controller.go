@@ -47,6 +47,7 @@ type TimedCommitStatusReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
+	EnqueueCTP  CTPEnqueueFunc
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=timedcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -124,10 +125,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// 7. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
 	if len(transitionedEnvironments) > 0 {
-		err = touchChangeTransferPolicies(ctx, r.Client, &ps, transitionedEnvironments, "time gate transition")
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to touch ChangeTransferPolicies: %w", err)
-		}
+		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
 	}
 
 	// Requeue based on the shortest duration or default requeue duration
@@ -384,6 +382,28 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	}
 
 	return &commitStatus, nil
+}
+
+// touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
+// for the environments that had time gates transition to success.
+// This triggers the ChangeTransferPolicy controller to reconcile and potentially merge PRs.
+func (r *TimedCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
+	logger := log.FromContext(ctx)
+
+	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
+	for _, envBranch := range transitionedEnvironments {
+		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
+		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
+
+		logger.Info("Triggering ChangeTransferPolicy reconciliation due to time gate transition",
+			"changeTransferPolicy", ctpName,
+			"branch", envBranch)
+
+		// Use the enqueue function to trigger reconciliation.
+		if r.EnqueueCTP != nil {
+			r.EnqueueCTP(ps.Namespace, ctpName)
+		}
+	}
 }
 
 // calculateRequeueDuration determines when to requeue based on whether there are pending time gates.

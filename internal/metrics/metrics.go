@@ -18,6 +18,8 @@ const (
 	GitOperationClone GitOperation = "clone"
 	// GitOperationFetch is used when fetching updates from a git repository.
 	GitOperationFetch GitOperation = "fetch"
+	// GitOperationFetchNotes is used when fetching git notes from a git repository.
+	GitOperationFetchNotes GitOperation = "fetch-notes"
 	// GitOperationPull is used when pulling changes from a git repository.
 	GitOperationPull GitOperation = "pull"
 	// GitOperationPush is used when pushing changes to a git repository.
