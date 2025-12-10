@@ -266,7 +266,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 				ProposedHydratedSha: proposedSha,
 				ActiveHydratedSha:   activeHydratedSha,
 				ValidatedSha:        shaToValidate,
-				Phase:               "pending",
+				Phase:               string(promoterv1alpha1.CommitPhasePending),
 				Message:             fmt.Sprintf("Waiting for %s commit SHA", gcs.Spec.ValidateCommit),
 			})
 			continue
@@ -285,7 +285,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 				ProposedHydratedSha: proposedSha,
 				ActiveHydratedSha:   activeHydratedSha,
 				ValidatedSha:        shaToValidate,
-				Phase:               "pending",
+				Phase:               string(promoterv1alpha1.CommitPhasePending),
 				Message:             fmt.Sprintf("Failed to fetch commit data: %v", err),
 			})
 			continue
