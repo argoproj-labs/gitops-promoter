@@ -40,8 +40,7 @@ const AppViewExtension = ({ tree, application }: AppViewComponentProps) => {
         throw new Error("Error fetching promotion strategy data: " + err);
       });
   }, [promotionStrategyNodes]);
-
-  if (isLoading || !promotionStrategy) {
+  if (isLoading && !promotionStrategy) {
     return <div>Loading...</div>;
   }
   return (
