@@ -31,6 +31,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -287,6 +288,8 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck
 	case scmProvider.GetSpec().Forgejo != nil:
 		return forgejo.NewForgejoPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Forgejo.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().Gitea != nil:
+		return gitea.NewGiteaPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Gitea.Domain) //nolint:wrapcheck
 	case scmProvider.GetSpec().Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:

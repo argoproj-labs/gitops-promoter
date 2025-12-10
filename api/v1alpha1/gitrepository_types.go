@@ -24,11 +24,12 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // GitRepositorySpec defines the desired state of GitRepository
-// +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;fake
+// +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;gitea;fake
 type GitRepositorySpec struct {
 	GitHub  *GitHubRepo  `json:"github,omitempty"`
 	GitLab  *GitLabRepo  `json:"gitlab,omitempty"`
 	Forgejo *ForgejoRepo `json:"forgejo,omitempty"`
+	Gitea   *GiteaRepo   `json:"gitea,omitempty"`
 	Fake    *FakeRepo    `json:"fake,omitempty"`
 	// +kubebuilder:validation:Required
 	ScmProviderRef ScmProviderObjectReference `json:"scmProviderRef"`
