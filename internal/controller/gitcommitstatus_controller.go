@@ -265,7 +265,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 				Branch:              branch,
 				ProposedHydratedSha: proposedSha,
 				ActiveHydratedSha:   activeHydratedSha,
-				ValidatedSha:        "",
+				ValidatedSha:        shaToValidate,
 				Phase:               "pending",
 				Message:             fmt.Sprintf("Waiting for %s commit SHA", gcs.Spec.ValidateCommit),
 			})
