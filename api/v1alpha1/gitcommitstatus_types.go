@@ -38,6 +38,7 @@ type GitCommitStatusSpec struct {
 	// This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses
 	// to determine which environments this validation applies to.
 	// +required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	Key string `json:"key"`

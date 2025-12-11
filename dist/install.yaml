@@ -3452,6 +3452,7 @@ spec:
                   This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses
                   to determine which environments this validation applies to.
                 maxLength: 63
+                minLength: 1
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
               promotionStrategyRef:
