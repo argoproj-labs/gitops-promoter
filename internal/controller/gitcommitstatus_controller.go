@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sync"
 	"time"
 
@@ -108,10 +107,8 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	err = r.Get(ctx, psKey, &ps)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Error(err, "referenced PromotionStrategy not found", "promotionStrategy", gcs.Spec.PromotionStrategyRef.Name)
 			return ctrl.Result{}, fmt.Errorf("referenced PromotionStrategy %q not found: %w", gcs.Spec.PromotionStrategyRef.Name, err)
 		}
-		logger.Error(err, "failed to get PromotionStrategy")
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", gcs.Spec.PromotionStrategyRef.Name, err)
 	}
 
@@ -240,8 +237,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		// Look up the environment status
 		envStatus, found := envStatusMap[branch]
 		if !found {
-			logger.Info("Environment not found in PromotionStrategy status", "branch", branch)
-			continue
+			return nil, nil, fmt.Errorf("environment %q not found in PromotionStrategy status", branch)
 		}
 
 		// Get the proposed and active hydrated SHAs for this environment
@@ -258,41 +254,20 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		// Validate we have the SHA to work with - if PromotionStrategy hasn't fully reconciled,
 		// the SHA might be empty which would cause git operations to fail
 		if shaToValidate == "" {
-			logger.V(4).Info("Commit SHA not yet available",
-				"branch", branch,
-				"validateCommit", gcs.Spec.ValidateCommit)
-			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
-				Branch:              branch,
-				ProposedHydratedSha: proposedSha,
-				ActiveHydratedSha:   activeHydratedSha,
-				ValidatedSha:        shaToValidate,
-				Phase:               string(promoterv1alpha1.CommitPhasePending),
-				Message:             fmt.Sprintf("Waiting for %s commit SHA", gcs.Spec.ValidateCommit),
-			})
-			continue
+			return nil, nil, fmt.Errorf("commit SHA not yet available for branch %q (validateCommit=%s): PromotionStrategy may not be fully reconciled", branch, gcs.Spec.ValidateCommit)
 		}
 
 		// Get commit details for validation using the selected SHA
 		commitData, err := r.getCommitData(ctx, gcs, ps, shaToValidate, branch)
 		if err != nil {
-			logger.Error(err, "Failed to get commit data",
-				"branch", branch,
-				"sha", shaToValidate,
-				"validateCommit", gcs.Spec.ValidateCommit)
-			// Add a pending status entry with error message
-			gcs.Status.Environments = append(gcs.Status.Environments, promoterv1alpha1.GitCommitStatusEnvironmentStatus{
-				Branch:              branch,
-				ProposedHydratedSha: proposedSha,
-				ActiveHydratedSha:   activeHydratedSha,
-				ValidatedSha:        shaToValidate,
-				Phase:               string(promoterv1alpha1.CommitPhasePending),
-				Message:             fmt.Sprintf("Failed to fetch commit data: %v", err),
-			})
-			continue
+			return nil, nil, fmt.Errorf("failed to get commit data for branch %q at SHA %q: %w", branch, shaToValidate, err)
 		}
 
 		// Evaluate the same expression for all environments
-		phase, message, expressionResult := r.evaluateExpression(ctx, gcs.Spec.Expression, commitData)
+		phase, message, expressionResult, err := r.evaluateExpression(ctx, gcs.Spec.Expression, commitData)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to evaluate expression for branch %q: %w", branch, err)
+		}
 
 		// Check if this validation transitioned to success
 		var previousPhase string
@@ -426,15 +401,12 @@ func (r *GitCommitStatusReconciler) getCompiledExpression(expression string) (*v
 }
 
 // evaluateExpression evaluates the configured expression against commit data.
-// Returns the phase (success/failure/pending), a message, and the boolean result.
-func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expression string, commitData *CommitData) (string, string, *bool) {
-	logger := log.FromContext(ctx)
-
+// Returns the phase (success/failure), a message, the boolean result, and an error if compilation or evaluation fails.
+func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expression string, commitData *CommitData) (string, string, *bool, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledExpression(expression)
 	if err != nil {
-		logger.Error(err, "Failed to compile expression", "expression", expression)
-		return string(promoterv1alpha1.CommitPhaseFailure), fmt.Sprintf("Expression compilation failed: %v", err), nil
+		return "", "", nil, fmt.Errorf("failed to compile expression: %w", err)
 	}
 
 	// Run the expression with actual commit data
@@ -443,22 +415,19 @@ func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expr
 	}
 	output, err := expr.Run(program, env)
 	if err != nil {
-		logger.Error(err, "Failed to evaluate expression", "expression", expression)
-		return string(promoterv1alpha1.CommitPhaseFailure), fmt.Sprintf("Expression evaluation failed: %v", err), nil
+		return "", "", nil, fmt.Errorf("failed to evaluate expression: %w", err)
 	}
 
 	// Check the result
 	result, ok := output.(bool)
 	if !ok {
-		logger.Error(errors.New("expression did not return boolean"), "Invalid expression result type",
-			"expression", expression, "resultType", reflect.TypeOf(output))
-		return string(promoterv1alpha1.CommitPhaseFailure), fmt.Sprintf("Expression must return boolean, got %T", output), nil
+		return "", "", nil, fmt.Errorf("expression must return boolean, got %T", output)
 	}
 
 	if result {
-		return string(promoterv1alpha1.CommitPhaseSuccess), "Expression evaluated to true", ptr.To(true)
+		return string(promoterv1alpha1.CommitPhaseSuccess), "Expression evaluated to true", ptr.To(true), nil
 	}
-	return string(promoterv1alpha1.CommitPhaseFailure), "Expression evaluated to false", ptr.To(false)
+	return string(promoterv1alpha1.CommitPhaseFailure), "Expression evaluated to false", ptr.To(false), nil
 }
 
 // upsertCommitStatus creates or updates a CommitStatus resource for the validation result.
