@@ -3585,13 +3585,6 @@ spec:
                         Only set when the expression successfully evaluates to a boolean.
                         nil indicates the expression has not yet been evaluated, failed to compile, or failed to evaluate.
                       type: boolean
-                    message:
-                      description: |-
-                        Message provides a human-readable description of the validation result.
-                        This includes details about why validation passed, failed, or is pending.
-                        Examples: "Expression evaluated to true", "Expression evaluated to false",
-                        "Waiting for proposed commit SHA", "Expression compilation failed: ...", etc.
-                      type: string
                     phase:
                       description: |-
                         Phase represents the current validation state of the commit.

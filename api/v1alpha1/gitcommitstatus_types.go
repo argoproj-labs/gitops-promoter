@@ -157,13 +157,6 @@ type GitCommitStatusEnvironmentStatus struct {
 	// +required
 	Phase string `json:"phase"`
 
-	// Message provides a human-readable description of the validation result.
-	// This includes details about why validation passed, failed, or is pending.
-	// Examples: "Expression evaluated to true", "Expression evaluated to false",
-	// "Waiting for proposed commit SHA", "Expression compilation failed: ...", etc.
-	// +optional
-	Message string `json:"message,omitempty"`
-
 	// ExpressionResult contains the boolean result of the expression evaluation.
 	// Only set when the expression successfully evaluates to a boolean.
 	// nil indicates the expression has not yet been evaluated, failed to compile, or failed to evaluate.

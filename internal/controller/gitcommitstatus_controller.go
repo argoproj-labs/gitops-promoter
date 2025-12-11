@@ -264,7 +264,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		}
 
 		// Evaluate the same expression for all environments
-		phase, message, expressionResult, err := r.evaluateExpression(ctx, gcs.Spec.Expression, commitData)
+		phase, expressionResult, err := r.evaluateExpression(ctx, gcs.Spec.Expression, commitData)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to evaluate expression for branch %q: %w", branch, err)
 		}
@@ -291,7 +291,6 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			ActiveHydratedSha:   activeHydratedSha,
 			ValidatedSha:        shaToValidate,
 			Phase:               phase,
-			Message:             message,
 			ExpressionResult:    expressionResult,
 		}
 		gcs.Status.Environments = append(gcs.Status.Environments, envValidationStatus)
@@ -401,12 +400,12 @@ func (r *GitCommitStatusReconciler) getCompiledExpression(expression string) (*v
 }
 
 // evaluateExpression evaluates the configured expression against commit data.
-// Returns the phase (success/failure), a message, the boolean result, and an error if compilation or evaluation fails.
-func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expression string, commitData *CommitData) (string, string, *bool, error) {
+// Returns the phase (success/failure) and the boolean result.
+func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expression string, commitData *CommitData) (string, *bool, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledExpression(expression)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to compile expression: %w", err)
+		return "", nil, fmt.Errorf("failed to compile expression: %w", err)
 	}
 
 	// Run the expression with actual commit data
@@ -415,19 +414,19 @@ func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expr
 	}
 	output, err := expr.Run(program, env)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("failed to evaluate expression: %w", err)
+		return "", nil, fmt.Errorf("failed to evaluate expression: %w", err)
 	}
 
 	// Check the result
 	result, ok := output.(bool)
 	if !ok {
-		return "", "", nil, fmt.Errorf("expression must return boolean, got %T", output)
+		return "", nil, fmt.Errorf("expression must return boolean, got %T", output)
 	}
 
 	if result {
-		return string(promoterv1alpha1.CommitPhaseSuccess), "Expression evaluated to true", ptr.To(true), nil
+		return string(promoterv1alpha1.CommitPhaseSuccess), ptr.To(true), nil
 	}
-	return string(promoterv1alpha1.CommitPhaseFailure), "Expression evaluated to false", ptr.To(false), nil
+	return string(promoterv1alpha1.CommitPhaseFailure), ptr.To(false), nil
 }
 
 // upsertCommitStatus creates or updates a CommitStatus resource for the validation result.

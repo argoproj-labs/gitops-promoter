@@ -25,11 +25,12 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -138,7 +139,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)), "Environment "+env.Branch+" should succeed")
 					g.Expect(env.ProposedHydratedSha).ToNot(BeEmpty(), "ProposedHydratedSha should be populated")
 					g.Expect(env.ActiveHydratedSha).ToNot(BeEmpty(), "ActiveHydratedSha should be populated")
-					g.Expect(env.Message).To(Equal("Expression evaluated to true"))
 					g.Expect(env.ExpressionResult).ToNot(BeNil())
 					g.Expect(*env.ExpressionResult).To(BeTrue())
 				}
@@ -244,7 +244,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 				for _, env := range gcs.Status.Environments {
 					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
-					g.Expect(env.Message).To(Equal("Expression evaluated to false"))
 					g.Expect(env.ExpressionResult).ToNot(BeNil())
 					g.Expect(*env.ExpressionResult).To(BeFalse())
 				}
@@ -290,7 +289,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		})
 
 		It("should report failure with compilation error message", func() {
-			By("Waiting for evaluation to complete")
+			By("Waiting for the Ready condition to show the compilation error")
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -298,13 +297,13 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(gcs.Status.Environments).ToNot(BeEmpty())
 
-				for _, env := range gcs.Status.Environments {
-					g.Expect(env.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
-					g.Expect(env.Message).To(ContainSubstring("Expression compilation failed"))
-					g.Expect(env.ExpressionResult).To(BeNil())
-				}
+				// The controller should error out due to expression compilation failure
+				// This will set Ready=False via HandleReconciliationResult
+				readyCondition := meta.FindStatusCondition(gcs.Status.Conditions, "Ready")
+				g.Expect(readyCondition).NotTo(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(readyCondition.Message).To(ContainSubstring("failed to evaluate expression"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
