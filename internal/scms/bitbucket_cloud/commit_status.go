@@ -18,6 +18,9 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
+// Bitbucket Cloud Key field for commit status request max length is 40
+const maxKeyFieldLength = 40
+
 // CommitStatus implements the scms.CommitStatusProvider interface for Bitbucket Cloud.
 type CommitStatus struct {
 	client    *bitbucket.Client
@@ -57,7 +60,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 
 	commitStatusOptions := &bitbucket.CommitStatusOptions{
 		State:       phaseToBuildState(commitStatus.Spec.Phase),
-		Key:         commitStatus.Spec.Name,
+		Key:         truncateString(commitStatus.Spec.Name, maxKeyFieldLength),
 		Url:         commitStatus.Spec.Url,
 		Description: commitStatus.Spec.Description,
 	}
@@ -88,15 +91,8 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		return nil, errors.New("state field missing or invalid type in Bitbucket API response")
 	}
 
-	// Extract uuid
-	uuid, ok := resultMap["uuid"].(string)
-	if !ok {
-		return nil, errors.New("uuid field missing or invalid type in Bitbucket API response")
-	}
-
 	commitStatus.Status.Phase = buildStateToPhase(state)
 	commitStatus.Status.Sha = commitStatus.Spec.Sha
-	commitStatus.Status.Id = uuid
 
 	return commitStatus, nil
 }
