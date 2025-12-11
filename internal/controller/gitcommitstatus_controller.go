@@ -264,7 +264,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		}
 
 		// Evaluate the same expression for all environments
-		phase, expressionResult, err := r.evaluateExpression(ctx, gcs.Spec.Expression, commitData)
+		phase, expressionResult, err := r.evaluateExpression(gcs.Spec.Expression, commitData)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to evaluate expression for branch %q: %w", branch, err)
 		}
@@ -401,7 +401,7 @@ func (r *GitCommitStatusReconciler) getCompiledExpression(expression string) (*v
 
 // evaluateExpression evaluates the configured expression against commit data.
 // Returns the phase (success/failure) and the boolean result.
-func (r *GitCommitStatusReconciler) evaluateExpression(ctx context.Context, expression string, commitData *CommitData) (string, *bool, error) {
+func (r *GitCommitStatusReconciler) evaluateExpression(expression string, commitData *CommitData) (string, *bool, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledExpression(expression)
 	if err != nil {
