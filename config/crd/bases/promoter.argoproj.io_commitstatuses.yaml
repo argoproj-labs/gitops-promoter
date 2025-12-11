@@ -70,6 +70,7 @@ spec:
                 - name
                 type: object
               name:
+                minLength: 1
                 type: string
               phase:
                 default: pending

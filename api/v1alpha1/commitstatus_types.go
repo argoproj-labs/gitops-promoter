@@ -38,6 +38,7 @@ type CommitStatusSpec struct {
 	Sha string `json:"sha"`
 
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
 	Description string `json:"description"`
