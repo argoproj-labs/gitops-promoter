@@ -30,17 +30,23 @@ const (
 	ProviderUnknown        = ""
 )
 
+// EnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
+// without modifying the CTP object. This matches controller.CTPEnqueueFunc.
+type EnqueueFunc func(namespace, name string)
+
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
-	mgr       controllerruntime.Manager
-	k8sClient client.Client
+	mgr        controllerruntime.Manager
+	k8sClient  client.Client
+	enqueueCTP EnqueueFunc
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager) WebhookReceiver {
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) WebhookReceiver {
 	return WebhookReceiver{
-		mgr:       mgr,
-		k8sClient: mgr.GetClient(),
+		mgr:        mgr,
+		k8sClient:  mgr.GetClient(),
+		enqueueCTP: enqueueCTP,
 	}
 }
 
@@ -158,22 +164,12 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	ctpFound = true
 
-	orig := ctp.DeepCopy()
-
-	if ctp.Annotations == nil {
-		ctp.Annotations = make(map[string]string)
-	}
-	ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339)
-
+	// Use the enqueue function to trigger reconciliation.
 	startUpdate := time.Now()
-	err = wr.k8sClient.Patch(r.Context(), ctp, client.MergeFrom(orig))
-	updateDuration = time.Since(startUpdate)
-	if err != nil {
-		logger.Error(err, fmt.Sprintf("failed to update ChangeTransferPolicy annotations '%s/%s' from webhook", ctp.Namespace, ctp.Name))
-		responseCode = http.StatusInternalServerError
-		http.Error(w, "could not cause reconcile of ChangeTransferPolicy", responseCode)
-		return
+	if wr.enqueueCTP != nil {
+		wr.enqueueCTP(ctp.Namespace, ctp.Name)
 	}
+	updateDuration = time.Since(startUpdate)
 	logger.Info("Triggered reconcile of ChangeTransferPolicy via webhook", "namespace", ctp.Namespace, "name", ctp.Name)
 
 	responseCode = http.StatusNoContent

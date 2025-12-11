@@ -141,19 +141,19 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
                 </span>
               )}
             </div>
+            {showTooltip && (
+              <div
+                className="tooltip-container anchored-tooltip"
+                onMouseEnter={() => handleMouseEnter(type)}
+                onMouseLeave={() => handleMouseLeave(type)}
+              >
+                {getTooltipContent(commit)}
+              </div>
+            )}
           </div>
           <div className="commit-icon-wrapper">
             {getIcon(iconType)}
           </div>
-          {showTooltip && (
-            <div
-              className="tooltip-container"
-              onMouseEnter={() => handleMouseEnter(type)}
-              onMouseLeave={() => handleMouseLeave(type)}
-            >
-              {getTooltipContent(commit)}
-            </div>
-          )}
         </div>
       );
     } else {

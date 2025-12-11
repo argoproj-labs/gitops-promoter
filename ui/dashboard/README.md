@@ -15,6 +15,12 @@ make run-dashboard
 ```
 Open [http://localhost:8080](http://localhost:8080) in your browser.
 
+### Run Vite dev server
+```bash
+make run-dashboard-dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser. This will hit the Vite dev server which allows for hot module reloading, keeping up to date with the latest UI changes.
+
 ### Run Controller
 ```bash
 make run
