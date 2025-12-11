@@ -68,7 +68,11 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, statusCode, time.Since(start), nil)
 
 	if err != nil {
-		return "", fmt.Errorf("failed to create pull request: %w", err.(*bitbucket.UnexpectedResponseStatusError).ErrorWithBody())
+		var unexpectedErr *bitbucket.UnexpectedResponseStatusError
+		if errors.As(err, &unexpectedErr) {
+			return "", fmt.Errorf("failed to create pull request: %w", unexpectedErr.ErrorWithBody())
+		}
+		return "", fmt.Errorf("failed to create pull request: %w", err)
 	}
 
 	// Extract pull request ID from response
@@ -119,7 +123,11 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, statusCode, time.Since(start), nil)
 
 	if err != nil {
-		return fmt.Errorf("failed to update pull request: %w", err.(*bitbucket.UnexpectedResponseStatusError).ErrorWithBody())
+		var unexpectedErr *bitbucket.UnexpectedResponseStatusError
+		if errors.As(err, &unexpectedErr) {
+			return fmt.Errorf("failed to update pull request: %w", unexpectedErr.ErrorWithBody())
+		}
+		return fmt.Errorf("failed to update pull request: %w", err)
 	}
 
 	logger.V(4).Info("bitbucket response status", "status", statusCode)
@@ -152,7 +160,11 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, statusCode, time.Since(start), nil)
 
 	if err != nil {
-		return fmt.Errorf("failed to close pull request: %w", err.(*bitbucket.UnexpectedResponseStatusError).ErrorWithBody())
+		var unexpectedErr *bitbucket.UnexpectedResponseStatusError
+		if errors.As(err, &unexpectedErr) {
+			return fmt.Errorf("failed to close pull request: %w", unexpectedErr.ErrorWithBody())
+		}
+		return fmt.Errorf("failed to close pull request: %w", err)
 	}
 
 	logger.V(4).Info("bitbucket response status", "status", statusCode)
@@ -186,7 +198,11 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, statusCode, time.Since(start), nil)
 
 	if err != nil {
-		return fmt.Errorf("failed to merge request: %w", err.(*bitbucket.UnexpectedResponseStatusError).ErrorWithBody())
+		var unexpectedErr *bitbucket.UnexpectedResponseStatusError
+		if errors.As(err, &unexpectedErr) {
+			return fmt.Errorf("failed to merge request: %w", unexpectedErr.ErrorWithBody())
+		}
+		return fmt.Errorf("failed to merge request: %w", err)
 	}
 
 	logger.V(4).Info("bitbucket response status", "status", statusCode)
@@ -227,7 +243,11 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
 
 	if err != nil {
-		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err.(*bitbucket.UnexpectedResponseStatusError).ErrorWithBody())
+		var unexpectedErr *bitbucket.UnexpectedResponseStatusError
+		if errors.As(err, &unexpectedErr) {
+			return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", unexpectedErr.ErrorWithBody())
+		}
+		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
 
 	logger.V(4).Info("bitbucket response status", "status", statusCode)
