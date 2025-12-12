@@ -68,6 +68,8 @@ const (
 	SCMOperationClose SCMOperation = "close"
 	// SCMOperationList is used when listing resources, such as pull requests.
 	SCMOperationList SCMOperation = "list"
+	// SCMOperationGet is used when getting a single resource, such as a specific pull request.
+	SCMOperationGet SCMOperation = "get"
 )
 
 // RateLimit represents the rate limit information for SCM API calls.
