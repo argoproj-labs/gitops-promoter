@@ -244,17 +244,17 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		proposedSha := envStatus.Proposed.Hydrated.Sha
 		activeHydratedSha := envStatus.Active.Hydrated.Sha
 
-		// Determine which commit SHA to validate based on the ValidateCommit field
+		// Determine which commit SHA to validate based on the Target field
 		// The field is defaulted to "active" by the API server and validated to be "active" or "proposed"
 		shaToValidate := activeHydratedSha
-		if gcs.Spec.ValidateCommit == "proposed" {
+		if gcs.Spec.Target == "proposed" {
 			shaToValidate = proposedSha
 		}
 
 		// Validate we have the SHA to work with - if PromotionStrategy hasn't fully reconciled,
 		// the SHA might be empty which would cause git operations to fail
 		if shaToValidate == "" {
-			return nil, nil, fmt.Errorf("commit SHA not yet available for branch %q (validateCommit=%s): PromotionStrategy may not be fully reconciled", branch, gcs.Spec.ValidateCommit)
+			return nil, nil, fmt.Errorf("commit SHA not yet available for branch %q (target=%s): PromotionStrategy may not be fully reconciled", branch, gcs.Spec.Target)
 		}
 
 		// Get commit details for validation using the selected SHA
@@ -289,7 +289,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			Branch:              branch,
 			ProposedHydratedSha: proposedSha,
 			ActiveHydratedSha:   activeHydratedSha,
-			ValidatedSha:        shaToValidate,
+			TargetedSha:         shaToValidate,
 			Phase:               phase,
 			ExpressionResult:    expressionResult,
 		}
@@ -306,8 +306,8 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		logger.Info("Processed environment validation",
 			"branch", branch,
 			"proposedSha", proposedSha,
-			"validatedSha", shaToValidate,
-			"validateCommit", gcs.Spec.ValidateCommit,
+			"targetedSha", shaToValidate,
+			"target", gcs.Spec.Target,
 			"phase", phase,
 			"key", gcs.Spec.Key,
 			"expression", gcs.Spec.Expression)

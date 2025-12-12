@@ -49,7 +49,7 @@ type GitCommitStatusSpec struct {
 	// +optional
 	Description string `json:"description,omitempty"`
 
-	// ValidateCommit specifies which commit SHA to validate with the expression.
+	// Target specifies which commit SHA to validate with the expression.
 	// - "active": Validates the currently active/deployed commit (default behavior)
 	// - "proposed": Validates the proposed commit that will be promoted
 	//
@@ -57,19 +57,19 @@ type GitCommitStatusSpec struct {
 	// controls which commit's data is used in the expression evaluation.
 	//
 	// Examples:
-	//   validateCommit: "active" - "Don't promote if a revert commit is detected"
-	//   validateCommit: "proposed" - "Don't promote unless new commit follows naming convention"
+	//   target: "active" - "Don't promote if a revert commit is detected"
+	//   target: "proposed" - "Don't promote unless new commit follows naming convention"
 	//
 	// +optional
 	// +kubebuilder:default="active"
 	// +kubebuilder:validation:Enum=active;proposed
-	ValidateCommit string `json:"validateCommit,omitempty"`
+	Target string `json:"target,omitempty"`
 
 	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against commit data
 	// for environments in the referenced PromotionStrategy.
 	// The expression must return a boolean value where true indicates the validation passed.
 	//
-	// The commit validated is determined by the ValidateCommit field:
+	// The commit validated is determined by the Target field:
 	// - "active" (default): Validates the ACTIVE (currently deployed) commit
 	// - "proposed": Validates the PROPOSED commit (what will be promoted)
 	//
@@ -88,7 +88,7 @@ type GitCommitStatusSpec struct {
 	//
 	//
 	// Available variables in the expression context:
-	//   - Commit.SHA (string): the commit SHA being validated (active or proposed based on ValidateCommit)
+	//   - Commit.SHA (string): the commit SHA being validated (active or proposed based on Target)
 	//   - Commit.Subject (string): the first line of the commit message
 	//   - Commit.Body (string): the commit message body (everything after the subject line)
 	//   - Commit.Author (string): commit author email address
@@ -105,10 +105,10 @@ type GitCommitStatusStatus struct {
 	// Each entry corresponds to an environment from the PromotionStrategy where the Key matches
 	// either global or environment-specific proposedCommitStatuses.
 	//
-	// The controller validates the commit specified by ValidateCommit ("active" or "proposed")
+	// The controller validates the commit specified by Target ("active" or "proposed")
 	// but the CommitStatus is always reported on the PROPOSED commit for promotion gating.
 	// Each environment entry tracks both the ProposedHydratedSha (where status is reported) and the
-	// ActiveHydratedSha, with ValidatedSha indicating which one was actually evaluated.
+	// ActiveHydratedSha, with TargetedSha indicating which one was actually evaluated.
 	// +listType=map
 	// +listMapKey=branch
 	// +optional
@@ -143,12 +143,12 @@ type GitCommitStatusEnvironmentStatus struct {
 	// +optional
 	ActiveHydratedSha string `json:"activeHydratedSha,omitempty"`
 
-	// ValidatedSha is the commit SHA that was actually validated by the expression.
+	// TargetedSha is the commit SHA that was actually validated by the expression.
 	// This will match either ProposedHydratedSha or ActiveHydratedSha depending on
-	// the ValidateCommit setting ("proposed" or "active").
+	// the Target setting ("proposed" or "active").
 	// This field clarifies which commit's data was used in the expression evaluation.
 	// +optional
-	ValidatedSha string `json:"validatedSha,omitempty"`
+	TargetedSha string `json:"targetedSha,omitempty"`
 
 	// Phase represents the current validation state of the commit.
 	// - "pending": validation has not completed, commit data is not yet available, or SHAs are empty
@@ -169,7 +169,7 @@ type GitCommitStatusEnvironmentStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Key",type=string,JSONPath=`.spec.key`
 // +kubebuilder:printcolumn:name="PromotionStrategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`
-// +kubebuilder:printcolumn:name="Validates",type=string,JSONPath=`.spec.validateCommit`
+// +kubebuilder:printcolumn:name="Validates",type=string,JSONPath=`.spec.target`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 
 // GitCommitStatus is the Schema for the gitcommitstatuses API.
@@ -177,7 +177,7 @@ type GitCommitStatusEnvironmentStatus struct {
 // It validates commits from PromotionStrategy environments using configurable expressions
 // and creates CommitStatus resources with the validation results.
 //
-// Use the ValidateCommit field to control which commit is validated:
+// Use the Target field to control which commit is validated:
 // - "active" (default): Validates the currently deployed commit
 // - "proposed": Validates the incoming commit
 //
@@ -186,7 +186,7 @@ type GitCommitStatusEnvironmentStatus struct {
 //
 // Workflow:
 //  1. Controller reads PromotionStrategy to get ProposedHydratedSha and ActiveHydratedSha
-//  2. Controller selects SHA to validate based on ValidateCommit field
+//  2. Controller selects SHA to validate based on Target field
 //  3. Controller fetches commit data (subject, body, author, trailers) for selected SHA
 //  4. Controller evaluates expression against selected commit data
 //  5. Controller creates/updates CommitStatus with result attached to PROPOSED SHA

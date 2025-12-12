@@ -7,7 +7,7 @@ The GitCommitStatus controller evaluates custom expressions against commit data 
 For each environment configured in a GitCommitStatus resource:
 
 1. The controller reads the PromotionStrategy to get commit SHAs
-2. The controller selects which commit to validate based on the `validateCommit` field:
+2. The controller selects which commit to validate based on the `target` field:
    - `active` (default): Validates the currently deployed commit
    - `proposed`: Validates the commit that will be promoted
 3. The controller fetches commit data (message, author, committer, trailers) from git
@@ -53,7 +53,7 @@ spec:
     name: webservice-tier-1
   key: revert-check
   description: "Block promotions if active commit is a revert"
-  validateCommit: active  # Validates currently deployed commit
+  target: active  # Validates currently deployed commit
   expression: '!(Commit.Subject startsWith "Revert" || Commit.Body startsWith "Revert")'
 ```
 
@@ -71,7 +71,7 @@ spec:
     name: webservice-tier-1
   key: hydrator-version
   description: "Verify active hydrator version is the latest"
-  validateCommit: active  # Validates currently deployed commit
+  target: active  # Validates currently deployed commit
   expression: '"Hydrator-version" in Commit.Trailers && Commit.Trailers["Hydrator-version"][0] == "v2.1.0"'
 ```
 
@@ -127,7 +127,7 @@ spec:
     name: webservice-tier-1
   key: production-specific-check
   description: "Extra validation for production"
-  validateCommit: proposed
+  target: proposed
   expression: '"Approved-for-production" in Commit.Trailers'
 ```
 
@@ -149,7 +149,7 @@ Each expression has access to a `Commit` object with the following fields:
 
 ## Field Reference
 
-### spec.validateCommit
+### spec.target
 
 Controls which commit SHA is validated by the expression.
 
@@ -192,7 +192,7 @@ status:
     - branch: environment/development
       proposedHydratedSha: abc123def456
       activeHydratedSha: bef859def431
-      validatedSha: bef859def431  # Which SHA was actually validated
+      targetedSha: bef859def431  # Which SHA was actually validated
       phase: success
       expressionMessage: "Expression evaluated to true"
       expressionResult: true
@@ -202,7 +202,7 @@ Fields:
 - `branch` - The environment branch being validated
 - `proposedHydratedSha` - The proposed commit SHA (where status is reported)
 - `activeHydratedSha` - The active commit SHA (currently deployed)
-- `validatedSha` - The commit SHA that was actually validated
+- `targetedSha` - The commit SHA that was actually validated
 - `phase` - Current validation status (`pending`, `success`, or `failure`)
 - `expressionMessage` - Human-readable result description
 - `expressionResult` - Boolean result of expression evaluation (nil if failed to evaluate)

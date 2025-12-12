@@ -532,8 +532,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:            "test-validation",
-					ValidateCommit: "active",
+					Key:    "test-validation",
+					Target: "active",
 					// Check if commit subject startsWith "feat:"
 					Expression: `Commit.Subject startsWith "feat:"`,
 				},
@@ -561,7 +561,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(devEnv).ToNot(BeNil())
 
 				// Verify it's checking the active SHA
-				g.Expect(devEnv.ValidatedSha).To(Equal(developmentActiveSHA))
+				g.Expect(devEnv.TargetedSha).To(Equal(developmentActiveSHA))
 				g.Expect(devEnv.Phase).ToNot(BeEmpty())
 				activePhase = devEnv.Phase
 
@@ -591,8 +591,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:            "test-validation",
-					ValidateCommit: "proposed",
+					Key:    "test-validation",
+					Target: "proposed",
 					// Check if commit subject starts with "feat:"
 					Expression: `Commit.Subject startsWith "feat:"`,
 				},
@@ -622,7 +622,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(devEnv).ToNot(BeNil())
 
 				// Verify it's checking the proposed SHA
-				g.Expect(devEnv.ValidatedSha).To(Equal(developmentProposedSHA))
+				g.Expect(devEnv.TargetedSha).To(Equal(developmentProposedSHA))
 				// Proposed commit subject starts with "feat:", so should succeed
 				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 				g.Expect(devEnv.ExpressionResult).ToNot(BeNil())
@@ -650,8 +650,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:            "test-validation",
-					ValidateCommit: "active",
+					Key:    "test-validation",
+					Target: "active",
 					// Check if commit subject does NOT start with "Revert" - if it does, fail
 					Expression: `!(Commit.Subject startsWith "Revert")`,
 				},
