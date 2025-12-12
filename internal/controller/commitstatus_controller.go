@@ -26,6 +26,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -168,6 +169,13 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		p, err = forgejo.NewForgejoCommitStatusProvider(r.Client, scmProvider, *secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Forgejo provider for domain %q with secret %q: %w", scmProvider.GetSpec().Forgejo.Domain, secret.Name, err)
+		}
+		return p, nil
+	case scmProvider.GetSpec().Gitea != nil:
+		var p *gitea.CommitStatus
+		p, err = gitea.NewGiteaCommitStatusProvider(r.Client, scmProvider, *secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Gitea provider for domain %q with secret %q: %w", scmProvider.GetSpec().Gitea.Domain, secret.Name, err)
 		}
 		return p, nil
 	case scmProvider.GetSpec().Fake != nil:

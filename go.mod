@@ -5,6 +5,7 @@ go 1.24.0
 toolchain go1.24.1
 
 require (
+	code.gitea.io/sdk/gitea v0.22.1
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.2.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
 	github.com/cespare/xxhash/v2 v2.3.0
