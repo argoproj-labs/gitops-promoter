@@ -54,10 +54,12 @@ spec:
                     description: Owner is the owner of the repository (can be a user
                       or workspace).
                     minLength: 1
+                    pattern: ^[a-zA-Z0-9_-]+$
                     type: string
                   repository:
                     description: Repository is the name of the repository.
-                    minLength: 1
+                    maxLength: 62
+                    pattern: ^[a-zA-Z0-9_-]+.$
                     type: string
                 required:
                 - owner
