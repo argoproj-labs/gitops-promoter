@@ -12,7 +12,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-const bitbucketBaseURL = "https://bitbucket.org"
+const BitbucketBaseURL = "https://bitbucket.org"
 
 // parseErrorStatusCode extracts the HTTP status code from a Bitbucket API error.
 // The Bitbucket client doesn't return HTTP response metadata, so we parse
@@ -75,7 +75,7 @@ func buildStateToPhase(buildState string) v1alpha1.CommitStatusPhase {
 
 func createCommitURL(repo *promoterv1alpha1.GitRepository, sha string) string {
 	return fmt.Sprintf("%s/%s/%s/commits/%s",
-		bitbucketBaseURL,
+		BitbucketBaseURL,
 		repo.Spec.BitbucketCloud.Workspace,
 		repo.Spec.BitbucketCloud.Repository,
 		sha,
