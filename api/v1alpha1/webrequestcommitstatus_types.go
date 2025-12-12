@@ -47,6 +47,26 @@ type WebRequestCommitStatusSpec struct {
 
 	// Description is a human-readable description of this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status description.
+	// Supports Go templates with environment-specific variables.
+	//
+	// Available template variables (DescriptionTemplateData):
+	//   - {{ .Environment }}: the environment branch name (e.g., "environment-staging")
+	//   - {{ .ProposedHydratedSha }}: proposed commit SHA for this environment
+	//   - {{ .ActiveHydratedSha }}: active/deployed commit SHA for this environment
+	//   - {{ .ReportedSha }}: the commit SHA being reported on
+	//   - {{ .LastSuccessfulSha }}: last SHA that achieved success for this environment
+	//   - {{ .Phase }}: current phase (success/pending/failure)
+	//   - {{ .Key }}: the WebRequestCommitStatus key
+	//   - {{ .Name }}: the WebRequestCommitStatus resource name
+	//   - {{ .Namespace }}: the WebRequestCommitStatus namespace
+	//   - {{ .Labels }}: map of labels (use: {{ index .Labels "key" }})
+	//   - {{ .Annotations }}: map of annotations (use: {{ index .Annotations "key" }})
+	//
+	// Examples:
+	//   - "External approval for {{ .Environment }}"
+	//   - "Checking deployment {{ .ReportedSha | trunc 7 }}"
+	//   - "{{ .Key }} validation - {{ .Phase }}"
+	//
 	// If not specified, defaults to empty string.
 	// +optional
 	Description string `json:"description,omitempty"`

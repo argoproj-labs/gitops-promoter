@@ -75,8 +75,8 @@ type ResponseData struct {
 	StatusCode int                 `expr:"StatusCode"`
 }
 
-// TemplateData represents the data available to Go templates in URL, Headers, and Body.
-type TemplateData struct {
+// WebRequestTemplateData represents the data available to Go templates in URL, Headers, and Body.
+type WebRequestTemplateData struct {
 	Labels              map[string]string
 	Annotations         map[string]string
 	ProposedHydratedSha string
@@ -84,6 +84,23 @@ type TemplateData struct {
 	Key                 string
 	Name                string
 	Namespace           string
+}
+
+// DescriptionTemplateData represents the data available to Go templates in the Description field.
+// This has access to environment-specific status information.
+type DescriptionTemplateData struct {
+	Labels      map[string]string
+	Annotations map[string]string
+	Key         string
+	Name        string
+	Namespace   string
+	// Environment-specific fields from WebRequestCommitStatusEnvironmentStatus
+	Environment         string // The environment branch name
+	ProposedHydratedSha string // Proposed SHA for this environment
+	ActiveHydratedSha   string // Active SHA for this environment
+	ReportedSha         string // The SHA being reported on
+	LastSuccessfulSha   string // Last SHA that achieved success
+	Phase               string // Current phase (success/pending/failure)
 }
 
 // WebRequestCommitStatusReconciler reconciles a WebRequestCommitStatus object
@@ -394,7 +411,7 @@ func (r *WebRequestCommitStatusReconciler) tryReuseSuccessfulStatus(
 		envStatus: *previousReconcileStatus,
 	}
 
-	cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, WebRequestPhaseSuccess, wrcs.Spec.Key)
+	cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, WebRequestPhaseSuccess, wrcs.Spec.Key, &result.envStatus)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 	}
@@ -510,8 +527,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 		logger.Info("Validation transitioned to success", "branch", branch, "sha", reportedSha)
 	}
 
-	// Create or update CommitStatus
-	cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, envResult.Phase, wrcs.Spec.Key)
+	// Create or update CommitStatus with full environment status
+	cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, envResult.Phase, wrcs.Spec.Key, &result.envStatus)
 	if err != nil {
 		return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 	}
@@ -539,8 +556,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 		LastRequestTime:     &now,
 	}
 
-	// Prepare template data
-	templateData := TemplateData{
+	// Prepare template data for request (URL, headers, body)
+	templateData := WebRequestTemplateData{
 		ProposedHydratedSha: proposedSha,
 		ActiveHydratedSha:   activeSha,
 		Key:                 wrcs.Spec.Key,
@@ -642,7 +659,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 }
 
 // renderTemplate renders a Go template with the given data
-func (r *WebRequestCommitStatusReconciler) renderTemplate(name, tmplStr string, data TemplateData) (string, error) {
+func (r *WebRequestCommitStatusReconciler) renderTemplate(name, tmplStr string, data any) (string, error) {
 	if tmplStr == "" {
 		return "", nil
 	}
@@ -900,7 +917,7 @@ func (r *WebRequestCommitStatusReconciler) touchChangeTransferPolicies(ctx conte
 }
 
 // upsertCommitStatus creates or updates a CommitStatus for the given environment
-func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha, phase, key string) (*promoterv1alpha1.CommitStatus, error) {
+func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha, phase, key string, envStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch))
 
@@ -915,6 +932,26 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		commitPhase = promoterv1alpha1.CommitPhasePending
 	}
 
+	// Render description with environment-specific context
+	descriptionData := DescriptionTemplateData{
+		Labels:              wrcs.Labels,
+		Annotations:         wrcs.Annotations,
+		Key:                 wrcs.Spec.Key,
+		Name:                wrcs.Name,
+		Namespace:           wrcs.Namespace,
+		Environment:         envStatus.Environment,
+		ProposedHydratedSha: envStatus.ProposedHydratedSha,
+		ActiveHydratedSha:   envStatus.ActiveHydratedSha,
+		ReportedSha:         envStatus.ReportedSha,
+		LastSuccessfulSha:   envStatus.LastSuccessfulSha,
+		Phase:               envStatus.Phase,
+	}
+
+	description, err := r.renderTemplate("description", wrcs.Spec.Description, descriptionData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to render description template: %w", err)
+	}
+
 	commitStatus := promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      commitStatusName,
@@ -923,7 +960,7 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	}
 
 	// Create or update the CommitStatus
-	_, err := ctrl.CreateOrUpdate(ctx, r.Client, &commitStatus, func() error {
+	_, err = ctrl.CreateOrUpdate(ctx, r.Client, &commitStatus, func() error {
 		// Set owner reference to the WebRequestCommitStatus
 		if err := ctrl.SetControllerReference(wrcs, &commitStatus, r.Scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference: %w", err)
@@ -940,7 +977,7 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		// Set the spec
 		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
 		commitStatus.Spec.Name = key
-		commitStatus.Spec.Description = wrcs.Spec.Description
+		commitStatus.Spec.Description = description
 		commitStatus.Spec.Phase = commitPhase
 		commitStatus.Spec.Sha = sha
 
