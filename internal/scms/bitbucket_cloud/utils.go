@@ -77,7 +77,7 @@ func createCommitURL(repo *v1alpha1.GitRepository, sha string) string {
 	return fmt.Sprintf("%s/%s/%s/commits/%s",
 		BitbucketBaseURL,
 		repo.Spec.BitbucketCloud.Owner,
-		repo.Spec.BitbucketCloud.Repository,
+		repo.Spec.BitbucketCloud.Name,
 		sha,
 	)
 }

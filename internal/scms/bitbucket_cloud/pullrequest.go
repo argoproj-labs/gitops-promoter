@@ -54,7 +54,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 
 	options := &bitbucket.PullRequestsOptions{
 		Owner:             repo.Spec.BitbucketCloud.Owner,
-		RepoSlug:          repo.Spec.BitbucketCloud.Repository,
+		RepoSlug:          repo.Spec.BitbucketCloud.Name,
 		SourceBranch:      head,
 		DestinationBranch: base,
 		Title:             title,
@@ -111,7 +111,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 
 	options := &bitbucket.PullRequestsOptions{
 		Owner:       repo.Spec.BitbucketCloud.Owner,
-		RepoSlug:    repo.Spec.BitbucketCloud.Repository,
+		RepoSlug:    repo.Spec.BitbucketCloud.Name,
 		ID:          prObj.Status.ID,
 		Title:       title,
 		Description: description,
@@ -150,7 +150,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 
 	options := &bitbucket.PullRequestsOptions{
 		Owner:    repo.Spec.BitbucketCloud.Owner,
-		RepoSlug: repo.Spec.BitbucketCloud.Repository,
+		RepoSlug: repo.Spec.BitbucketCloud.Name,
 		ID:       prObj.Status.ID,
 	}
 
@@ -187,7 +187,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 
 	options := &bitbucket.PullRequestsOptions{
 		Owner:             repo.Spec.BitbucketCloud.Owner,
-		RepoSlug:          repo.Spec.BitbucketCloud.Repository,
+		RepoSlug:          repo.Spec.BitbucketCloud.Name,
 		ID:                prObj.Status.ID,
 		CloseSourceBranch: false,
 	}
@@ -233,7 +233,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 
 	options := &bitbucket.PullRequestsOptions{
 		Owner:    repo.Spec.BitbucketCloud.Owner,
-		RepoSlug: repo.Spec.BitbucketCloud.Repository,
+		RepoSlug: repo.Spec.BitbucketCloud.Name,
 		Query:    query,
 	}
 
@@ -313,6 +313,6 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 
 	return fmt.Sprintf("https://bitbucket.org/%s/%s/pull-requests/%s",
 		repo.Spec.BitbucketCloud.Owner,
-		repo.Spec.BitbucketCloud.Repository,
+		repo.Spec.BitbucketCloud.Name,
 		prObj.Status.ID), nil
 }

@@ -94,18 +94,18 @@ type ForgejoRepo struct {
 	Name string `json:"name"`
 }
 
-// BitbucketCloudRepo is a repository in Bitbucket Cloud, identified by its workspace and repository.
+// BitbucketCloudRepo is a repository in Bitbucket Cloud, identified by its owner and name.
 type BitbucketCloudRepo struct {
 	// Owner is the owner of the repository (can be a user or workspace).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_-]+$"
 	Owner string `json:"owner"`
-	// Repository is the name of the repository.
+	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxLength=62
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_-]+.$"
-	Repository string `json:"repository"`
+	Name string `json:"name"`
 }
 
 // FakeRepo is a placeholder for a repository in the fake SCM provider, used for testing purposes.

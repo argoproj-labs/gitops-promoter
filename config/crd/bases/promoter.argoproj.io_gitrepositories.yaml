@@ -48,22 +48,22 @@ spec:
             properties:
               bitbucketCloud:
                 description: BitbucketCloudRepo is a repository in Bitbucket Cloud,
-                  identified by its workspace and repository.
+                  identified by its owner and name.
                 properties:
+                  name:
+                    description: Name is the name of the repository.
+                    maxLength: 62
+                    pattern: ^[a-zA-Z0-9_-]+.$
+                    type: string
                   owner:
                     description: Owner is the owner of the repository (can be a user
                       or workspace).
                     minLength: 1
                     pattern: ^[a-zA-Z0-9_-]+$
                     type: string
-                  repository:
-                    description: Repository is the name of the repository.
-                    maxLength: 62
-                    pattern: ^[a-zA-Z0-9_-]+.$
-                    type: string
                 required:
+                - name
                 - owner
-                - repository
                 type: object
               fake:
                 description: FakeRepo is a placeholder for a repository in the fake

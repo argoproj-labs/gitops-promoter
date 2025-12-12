@@ -313,8 +313,8 @@ metadata:
   name: <git-repository-ref-name>
 spec:
   bitbucketCloud:
-    workspace: <workspace-name>
-    repository: <repo-name>
+    owner: <owner-or-workspace-name>
+    name: <repo-name>
   scmProviderRef:
     name: <your-scmprovider-name>
 ```
