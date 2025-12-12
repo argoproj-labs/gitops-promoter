@@ -1,0 +1,22 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: external-approval
+  namespace: default
+spec:
+  promotionStrategyRef:
+    name: my-promotion-strategy
+  key: external-approval
+  description: "External approval system check"
+  reportOn: proposed
+  polling:
+    interval: 2m
+  httpRequest:
+    url: "https://api.example.com/approvals/{{ .ProposedHydratedSha }}"
+    method: GET
+    timeout: 30s
+    authSecretRef:
+      name: api-credentials
+      type: bearer
+  expression: 'Response.StatusCode == 200 && Response.Body.approved == true'
+

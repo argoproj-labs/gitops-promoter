@@ -170,14 +170,14 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 
 // calculateRequeue determines when to requeue based on reportOn mode and polling needs
 func (r *WebRequestCommitStatusReconciler) calculateRequeue(wrcs *promoterv1alpha1.WebRequestCommitStatus, needsPolling bool) ctrl.Result {
-	// If reportOn: active, always requeue at PollingInterval
+	// If reportOn: active, always requeue at Polling.Interval
 	if wrcs.Spec.ReportOn == ReportOnActive {
-		return ctrl.Result{RequeueAfter: wrcs.Spec.PollingInterval.Duration}
+		return ctrl.Result{RequeueAfter: wrcs.Spec.Polling.Interval.Duration}
 	}
 
 	// If reportOn: proposed, only requeue if any environment needs polling
 	if needsPolling {
-		return ctrl.Result{RequeueAfter: wrcs.Spec.PollingInterval.Duration}
+		return ctrl.Result{RequeueAfter: wrcs.Spec.Polling.Interval.Duration}
 	}
 
 	// All environments successful - no requeue, PromotionStrategy watch handles SHA changes
@@ -422,14 +422,16 @@ func (r *WebRequestCommitStatusReconciler) processSingleEnvironment(
 			ActiveHydratedSha:   activeSha,
 			ReportedSha:         "",
 			Phase:               WebRequestPhasePending,
-			ExpressionMessage:   fmt.Sprintf("Waiting for %s commit SHA", reportOn),
 		})
 		result.needsPolling = true
 		return result, nil
 	}
 
 	// Make HTTP request and evaluate expression
-	envResult := r.processEnvironmentRequest(ctx, wrcs, branch, proposedSha, activeSha, reportedSha)
+	envResult, err := r.processEnvironmentRequest(ctx, wrcs, branch, proposedSha, activeSha, reportedSha)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process environment request for %q: %w", branch, err)
+	}
 	wrcs.Status.Environments = append(wrcs.Status.Environments, envResult)
 
 	// Check if this validation transitioned to success
@@ -469,13 +471,13 @@ func (r *WebRequestCommitStatusReconciler) processSingleEnvironment(
 		"branch", branch,
 		"reportedSha", reportedSha,
 		"phase", envResult.Phase,
-		"statusCode", envResult.ResponseStatusCode)
+		"statusCode", envResult.Response.StatusCode)
 
 	return result, nil
 }
 
 // processEnvironmentRequest makes the HTTP request and evaluates the expression for a single environment
-func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, branch, proposedSha, activeSha, reportedSha string) promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus {
+func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, branch, proposedSha, activeSha, reportedSha string) (promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, error) {
 	logger := log.FromContext(ctx)
 	now := metav1.Now()
 
@@ -501,19 +503,13 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	// Render URL template
 	url, err := r.renderTemplate("url", wrcs.Spec.HTTPRequest.URL, templateData)
 	if err != nil {
-		result.Phase = WebRequestPhaseFailure
-		result.Error = fmt.Sprintf("Failed to render URL template: %v", err)
-		result.ExpressionMessage = result.Error
-		return result
+		return result, fmt.Errorf("failed to render URL template: %w", err)
 	}
 
 	// Render body template
 	body, err := r.renderTemplate("body", wrcs.Spec.HTTPRequest.Body, templateData)
 	if err != nil {
-		result.Phase = WebRequestPhaseFailure
-		result.Error = fmt.Sprintf("Failed to render body template: %v", err)
-		result.ExpressionMessage = result.Error
-		return result
+		return result, fmt.Errorf("failed to render body template: %w", err)
 	}
 
 	// Create HTTP request
@@ -524,20 +520,14 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 
 	req, err := http.NewRequestWithContext(ctx, wrcs.Spec.HTTPRequest.Method, url, reqBody)
 	if err != nil {
-		result.Phase = WebRequestPhasePending
-		result.Error = fmt.Sprintf("Failed to create HTTP request: %v", err)
-		result.ExpressionMessage = result.Error
-		return result
+		return result, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
 	// Render and add headers
 	for key, value := range wrcs.Spec.HTTPRequest.Headers {
 		renderedValue, err := r.renderTemplate("header-"+key, value, templateData)
 		if err != nil {
-			result.Phase = WebRequestPhaseFailure
-			result.Error = fmt.Sprintf("Failed to render header %q template: %v", key, err)
-			result.ExpressionMessage = result.Error
-			return result
+			return result, fmt.Errorf("failed to render header %q template: %w", key, err)
 		}
 		req.Header.Set(key, renderedValue)
 	}
@@ -545,10 +535,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	// Add authentication
 	if wrcs.Spec.HTTPRequest.AuthSecretRef != nil {
 		if err := r.addAuthentication(ctx, req, wrcs); err != nil {
-			result.Phase = WebRequestPhasePending
-			result.Error = fmt.Sprintf("Failed to add authentication: %v", err)
-			result.ExpressionMessage = result.Error
-			return result
+			return result, fmt.Errorf("failed to add authentication: %w", err)
 		}
 	}
 
@@ -565,24 +552,18 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	resp, err := client.Do(req)
 	if err != nil {
 		logger.Error(err, "HTTP request failed", "url", url)
-		result.Phase = WebRequestPhasePending
-		result.Error = fmt.Sprintf("HTTP request failed: %v", err)
-		result.ExpressionMessage = result.Error
-		return result
+		return result, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
-	result.ResponseStatusCode = ptr.To(resp.StatusCode)
+	result.Response.StatusCode = ptr.To(resp.StatusCode)
 
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		result.Phase = WebRequestPhasePending
-		result.Error = fmt.Sprintf("Failed to read response body: %v", err)
-		result.ExpressionMessage = result.Error
-		return result
+		return result, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Parse response body as JSON if possible
@@ -600,12 +581,14 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	}
 
 	// Evaluate expression
-	phase, message, exprResult := r.evaluateExpression(ctx, wrcs.Spec.Expression, responseData)
+	phase, exprResult, err := r.evaluateExpression(ctx, wrcs.Spec.Expression, responseData)
+	if err != nil {
+		return result, fmt.Errorf("failed to evaluate expression: %w", err)
+	}
 	result.Phase = phase
-	result.ExpressionMessage = message
 	result.ExpressionResult = exprResult
 
-	return result
+	return result, nil
 }
 
 // renderTemplate renders a Go template with the given data
@@ -670,7 +653,7 @@ func (r *WebRequestCommitStatusReconciler) addAuthentication(ctx context.Context
 }
 
 // evaluateExpression evaluates the expr expression against the response data
-func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Context, expression string, response ResponseData) (string, string, *bool) {
+func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Context, expression string, response ResponseData) (string, *bool, error) {
 	logger := log.FromContext(ctx)
 
 	// Try to get cached compiled expression
@@ -678,7 +661,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Contex
 	if cached, ok := r.expressionCache.Load(expression); ok {
 		program, ok = cached.(*vm.Program)
 		if !ok {
-			return WebRequestPhaseFailure, "Invalid cached expression program", nil
+			return WebRequestPhaseFailure, nil, fmt.Errorf("invalid cached expression program")
 		}
 	} else {
 		// Compile the expression
@@ -686,7 +669,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Contex
 		compiled, err := expr.Compile(expression, expr.Env(env), expr.AsBool())
 		if err != nil {
 			logger.Error(err, "Failed to compile expression", "expression", expression)
-			return WebRequestPhaseFailure, fmt.Sprintf("Expression compilation failed: %v", err), nil
+			return WebRequestPhaseFailure, nil, fmt.Errorf("expression compilation failed: %w", err)
 		}
 		program = compiled
 		r.expressionCache.Store(expression, program)
@@ -697,19 +680,19 @@ func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Contex
 	output, err := expr.Run(program, env)
 	if err != nil {
 		logger.Error(err, "Failed to evaluate expression", "expression", expression)
-		return WebRequestPhasePending, fmt.Sprintf("Expression evaluation failed: %v", err), nil
+		return WebRequestPhasePending, nil, fmt.Errorf("expression evaluation failed: %w", err)
 	}
 
 	// Check if output is boolean
 	result, ok := output.(bool)
 	if !ok {
-		return WebRequestPhaseFailure, fmt.Sprintf("Expression must return boolean, got %T", output), nil
+		return WebRequestPhaseFailure, nil, fmt.Errorf("expression must return boolean, got %T", output)
 	}
 
 	if result {
-		return WebRequestPhaseSuccess, "Expression evaluated to true", ptr.To(true)
+		return WebRequestPhaseSuccess, ptr.To(true), nil
 	}
-	return WebRequestPhasePending, "Expression evaluated to false", ptr.To(false)
+	return WebRequestPhasePending, ptr.To(false), nil
 }
 
 // touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies

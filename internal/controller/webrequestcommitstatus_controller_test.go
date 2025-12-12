@@ -27,6 +27,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -102,8 +103,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Method:  "GET",
 						Timeout: metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression:      `Response.StatusCode == 200 && Response.Body.approved == true`,
-					PollingInterval: metav1.Duration{Duration: 5 * time.Second},
+					Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 5 * time.Second},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
@@ -135,11 +138,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				g.Expect(wrcs.Status.Environments[0].ProposedHydratedSha).ToNot(BeEmpty())
 				g.Expect(wrcs.Status.Environments[0].ReportedSha).ToNot(BeEmpty())
 				g.Expect(wrcs.Status.Environments[0].LastSuccessfulSha).To(Equal(wrcs.Status.Environments[0].ReportedSha))
-				g.Expect(wrcs.Status.Environments[0].ResponseStatusCode).ToNot(BeNil())
-				g.Expect(*wrcs.Status.Environments[0].ResponseStatusCode).To(Equal(200))
+				g.Expect(wrcs.Status.Environments[0].Response.StatusCode).ToNot(BeNil())
+				g.Expect(*wrcs.Status.Environments[0].Response.StatusCode).To(Equal(200))
 				g.Expect(wrcs.Status.Environments[0].ExpressionResult).ToNot(BeNil())
 				g.Expect(*wrcs.Status.Environments[0].ExpressionResult).To(BeTrue())
-				g.Expect(wrcs.Status.Environments[0].ExpressionMessage).To(ContainSubstring("true"))
 
 				// Verify CommitStatus was created with success phase
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-webrequest")
@@ -220,8 +222,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Method:  "GET",
 						Timeout: metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression:      `Response.StatusCode == 200 && Response.Body.approved == true`,
-					PollingInterval: metav1.Duration{Duration: 5 * time.Second},
+					Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 5 * time.Second},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
@@ -251,7 +255,6 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				// Expression result should be false
 				g.Expect(wrcs.Status.Environments[0].ExpressionResult).ToNot(BeNil())
 				g.Expect(*wrcs.Status.Environments[0].ExpressionResult).To(BeFalse())
-				g.Expect(wrcs.Status.Environments[0].ExpressionMessage).To(ContainSubstring("false"))
 
 				// Verify CommitStatus was created with pending phase
 				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-webrequest")
@@ -334,8 +337,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Method:  "GET",
 						Timeout: metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression:      `Response.StatusCode == 200`,
-					PollingInterval: metav1.Duration{Duration: 5 * time.Second},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 5 * time.Second},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
@@ -463,8 +468,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 							Type: "bearer",
 						},
 					},
-					Expression:      `Response.StatusCode == 200 && Response.Body.approved == true`,
-					PollingInterval: metav1.Duration{Duration: 5 * time.Second},
+					Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 5 * time.Second},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
@@ -557,8 +564,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Method:  "GET",
 						Timeout: metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression:      `invalid syntax @#$%`,
-					PollingInterval: metav1.Duration{Duration: 5 * time.Second},
+					Expression: `invalid syntax @#$%`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 5 * time.Second},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
@@ -572,7 +581,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 		})
 
 		It("should report failure status when expression fails to compile", func() {
-			By("Waiting for WebRequestCommitStatus to report failure")
+			By("Waiting for WebRequestCommitStatus to report error in Ready condition")
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -581,19 +590,13 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
 
-				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseFailure))
-				g.Expect(wrcs.Status.Environments[0].ExpressionMessage).To(ContainSubstring("compilation failed"))
-
-				// Verify CommitStatus was created with failure phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-webrequest")
-				var cs promoterv1alpha1.CommitStatus
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      commitStatusName,
-					Namespace: "default",
-				}, &cs)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+				// Expression compilation errors should be reported in Ready condition
+				g.Expect(wrcs.Status.Conditions).ToNot(BeEmpty())
+				readyCondition := meta.FindStatusCondition(wrcs.Status.Conditions, "Ready")
+				g.Expect(readyCondition).ToNot(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(readyCondition.Message).To(ContainSubstring("failed to process environment request"))
+				g.Expect(readyCondition.Message).To(ContainSubstring("expression compilation failed"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -659,8 +662,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Method:  "GET",
 						Timeout: metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression:      `Response.StatusCode == 200`,
-					PollingInterval: metav1.Duration{Duration: 5 * time.Second},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 5 * time.Second},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
@@ -716,8 +721,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						URL:    "http://localhost:9999",
 						Method: "GET",
 					},
-					Expression:      `Response.StatusCode == 200`,
-					PollingInterval: metav1.Duration{Duration: 5 * time.Second},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 5 * time.Second},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
@@ -833,8 +840,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						}`,
 						Timeout: metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression:      `Response.StatusCode == 200`,
-					PollingInterval: metav1.Duration{Duration: 5 * time.Second},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 5 * time.Second},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())

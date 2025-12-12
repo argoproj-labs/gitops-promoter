@@ -94,6 +94,16 @@ duration before being promoted.
 {!internal/controller/testdata/TimedCommitStatus.yaml!}
 ```
 
+### WebRequestCommitStatus
+
+A WebRequestCommitStatus provides HTTP-based gating for environment promotions. It makes configurable HTTP requests to external endpoints and evaluates the response using expressions to determine if a promotion should proceed.
+
+This enables integration with external approval systems, monitoring platforms, feature flag services, or any HTTP-accessible endpoint to gate promotions.
+
+```yaml
+{!internal/controller/testdata/WebRequestCommitStatus.yaml!}
+```
+
 ### ControllerConfiguration
 
 A ControllerConfiguration is used to configure the behavior of the promoter.

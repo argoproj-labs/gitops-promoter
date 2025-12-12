@@ -33,7 +33,7 @@ spec:
           It makes HTTP requests to external endpoints and evaluates the response using expressions
           to create CommitStatus resources with the validation results.
 
-          The controller polls the configured URL at the specified PollingInterval.
+          The controller polls the configured URL at the specified Polling.Interval.
           When reportOn is "proposed", polling stops after success for a given SHA.
           When reportOn is "active", polling continues forever.
 
@@ -43,7 +43,7 @@ spec:
            3. Controller makes HTTP request with optional authentication
            4. Controller evaluates expression against response
            5. Controller creates/updates CommitStatus with result attached to the SHA specified by reportOn
-           6. Controller requeues based on PollingInterval and success state
+           6. Controller requeues based on Polling.Interval and success state
         properties:
           apiVersion:
             description: |-
@@ -70,7 +70,6 @@ spec:
                   Description is a human-readable description of this validation that will be shown in the SCM provider
                   (GitHub, GitLab, etc.) as the commit status description.
                   If not specified, defaults to empty string.
-                maxLength: 140
                 type: string
               expression:
                 description: |-
@@ -121,14 +120,14 @@ spec:
                   body:
                     description: |-
                       Body is the request body to send.
-                      Supports Go templates with the same variables as URL.
+                      Supports Go templates (see HTTPRequestSpec for available variables).
                     type: string
                   headers:
                     additionalProperties:
                       type: string
                     description: |-
                       Headers are additional HTTP headers to include in the request.
-                      Values support Go templates with the same variables as URL.
+                      Header values support Go templates (see HTTPRequestSpec for available variables).
                     type: object
                   method:
                     description: Method is the HTTP method to use.
@@ -146,12 +145,7 @@ spec:
                   url:
                     description: |-
                       URL is the HTTP endpoint to request.
-                      Supports Go templates with the following variables:
-                        - {{ .ProposedHydratedSha }}: the proposed commit SHA
-                        - {{ .ActiveHydratedSha }}: the active/deployed commit SHA
-                        - {{ .Key }}: the WebRequestCommitStatus key
-                        - {{ .Name }}: the WebRequestCommitStatus resource name
-                        - {{ .Namespace }}: the WebRequestCommitStatus namespace
+                      Supports Go templates (see HTTPRequestSpec for available variables).
                     type: string
                 required:
                 - method
@@ -164,15 +158,20 @@ spec:
                   This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses
                   to determine which environments this validation applies to.
                 maxLength: 63
+                minLength: 1
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
-              pollingInterval:
-                default: 1m
-                description: |-
-                  PollingInterval controls how often to retry the HTTP request while in pending state.
-                  When reportOn is "proposed": stops polling after success for a given SHA.
-                  When reportOn is "active": always polls at this interval.
-                type: string
+              polling:
+                description: Polling controls polling behavior for the HTTP request.
+                properties:
+                  interval:
+                    default: 1m
+                    description: |-
+                      Interval controls how often to retry the HTTP request while in pending state.
+                      When reportOn is "proposed": stops polling after success for a given SHA.
+                      When reportOn is "active": always polls at this interval.
+                    type: string
+                type: object
               promotionStrategyRef:
                 description: |-
                   PromotionStrategyRef references the PromotionStrategy this applies to.
@@ -290,14 +289,6 @@ spec:
                       description: Environment is the environment branch name being
                         validated.
                       type: string
-                    error:
-                      description: Error contains any error message from the HTTP
-                        request or expression evaluation.
-                      type: string
-                    expressionMessage:
-                      description: ExpressionMessage provides a human-readable description
-                        of the validation result.
-                      type: string
                     expressionResult:
                       description: |-
                         ExpressionResult contains the boolean result of the expression evaluation.
@@ -333,10 +324,14 @@ spec:
                       description: ReportedSha is the SHA where the CommitStatus was
                         reported (based on reportOn field).
                       type: string
-                    responseStatusCode:
-                      description: ResponseStatusCode is the HTTP status code from
-                        the last request.
-                      type: integer
+                    response:
+                      description: Response contains information about the HTTP response
+                        from the last request.
+                      properties:
+                        statusCode:
+                          description: StatusCode is the HTTP response status code.
+                          type: integer
+                      type: object
                   required:
                   - environment
                   - phase

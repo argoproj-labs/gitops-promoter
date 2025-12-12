@@ -40,6 +40,7 @@ type WebRequestCommitStatusSpec struct {
 	// This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses
 	// to determine which environments this validation applies to.
 	// +required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	Key string `json:"key"`
@@ -48,7 +49,6 @@ type WebRequestCommitStatusSpec struct {
 	// (GitHub, GitLab, etc.) as the commit status description.
 	// If not specified, defaults to empty string.
 	// +optional
-	// +kubebuilder:validation:MaxLength=140
 	Description string `json:"description,omitempty"`
 
 	// ReportOn specifies which commit SHA to report the CommitStatus on.
@@ -85,23 +85,36 @@ type WebRequestCommitStatusSpec struct {
 	// +required
 	Expression string `json:"expression"`
 
-	// PollingInterval controls how often to retry the HTTP request while in pending state.
+	// Polling controls polling behavior for the HTTP request.
+	// +optional
+	Polling PollingSpec `json:"polling,omitempty"`
+}
+
+// PollingSpec defines polling configuration.
+type PollingSpec struct {
+	// Interval controls how often to retry the HTTP request while in pending state.
 	// When reportOn is "proposed": stops polling after success for a given SHA.
 	// When reportOn is "active": always polls at this interval.
 	// +optional
 	// +kubebuilder:default="1m"
-	PollingInterval metav1.Duration `json:"pollingInterval,omitempty"`
+	Interval metav1.Duration `json:"interval,omitempty"`
 }
 
 // HTTPRequestSpec defines the HTTP request configuration.
+//
+// The URL, Headers, and Body fields support Go templates with the following variables:
+//   - {{ .ProposedHydratedSha }}: the proposed commit SHA
+//   - {{ .ActiveHydratedSha }}: the active/deployed commit SHA
+//   - {{ .Key }}: the WebRequestCommitStatus key
+//   - {{ .Name }}: the WebRequestCommitStatus resource name
+//   - {{ .Namespace }}: the WebRequestCommitStatus namespace
+//   - {{ .Labels }}: map of labels from the WebRequestCommitStatus resource
+//   - {{ .Annotations }}: map of annotations from the WebRequestCommitStatus resource
+//
+// Example accessing labels/annotations: {{ index .Labels "team" }} or {{ index .Annotations "slack-channel" }}
 type HTTPRequestSpec struct {
 	// URL is the HTTP endpoint to request.
-	// Supports Go templates with the following variables:
-	//   - {{ .ProposedHydratedSha }}: the proposed commit SHA
-	//   - {{ .ActiveHydratedSha }}: the active/deployed commit SHA
-	//   - {{ .Key }}: the WebRequestCommitStatus key
-	//   - {{ .Name }}: the WebRequestCommitStatus resource name
-	//   - {{ .Namespace }}: the WebRequestCommitStatus namespace
+	// Supports Go templates (see HTTPRequestSpec for available variables).
 	// +required
 	URL string `json:"url"`
 
@@ -111,12 +124,12 @@ type HTTPRequestSpec struct {
 	Method string `json:"method"`
 
 	// Headers are additional HTTP headers to include in the request.
-	// Values support Go templates with the same variables as URL.
+	// Header values support Go templates (see HTTPRequestSpec for available variables).
 	// +optional
 	Headers map[string]string `json:"headers,omitempty"`
 
 	// Body is the request body to send.
-	// Supports Go templates with the same variables as URL.
+	// Supports Go templates (see HTTPRequestSpec for available variables).
 	// +optional
 	Body string `json:"body,omitempty"`
 
@@ -200,22 +213,21 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	// +optional
 	LastRequestTime *metav1.Time `json:"lastRequestTime,omitempty"`
 
-	// ResponseStatusCode is the HTTP status code from the last request.
+	// Response contains information about the HTTP response from the last request.
 	// +optional
-	ResponseStatusCode *int `json:"responseStatusCode,omitempty"`
-
-	// ExpressionMessage provides a human-readable description of the validation result.
-	// +optional
-	ExpressionMessage string `json:"expressionMessage,omitempty"`
+	Response ResponseInfo `json:"response,omitempty"`
 
 	// ExpressionResult contains the boolean result of the expression evaluation.
 	// Only set when the expression successfully evaluates to a boolean.
 	// +optional
 	ExpressionResult *bool `json:"expressionResult,omitempty"`
+}
 
-	// Error contains any error message from the HTTP request or expression evaluation.
+// ResponseInfo contains information about the HTTP response.
+type ResponseInfo struct {
+	// StatusCode is the HTTP response status code.
 	// +optional
-	Error string `json:"error,omitempty"`
+	StatusCode *int `json:"statusCode,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -229,7 +241,7 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 // It makes HTTP requests to external endpoints and evaluates the response using expressions
 // to create CommitStatus resources with the validation results.
 //
-// The controller polls the configured URL at the specified PollingInterval.
+// The controller polls the configured URL at the specified Polling.Interval.
 // When reportOn is "proposed", polling stops after success for a given SHA.
 // When reportOn is "active", polling continues forever.
 //
@@ -239,7 +251,7 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 //  3. Controller makes HTTP request with optional authentication
 //  4. Controller evaluates expression against response
 //  5. Controller creates/updates CommitStatus with result attached to the SHA specified by reportOn
-//  6. Controller requeues based on PollingInterval and success state
+//  6. Controller requeues based on Polling.Interval and success state
 type WebRequestCommitStatus struct {
 	metav1.TypeMeta `json:",inline"`
 

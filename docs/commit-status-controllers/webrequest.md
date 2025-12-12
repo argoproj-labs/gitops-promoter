@@ -37,7 +37,8 @@ spec:
   key: external-approval
   description: "External approval check"
   reportOn: proposed
-  pollingInterval: 2m
+  polling:
+    interval: 2m
   httpRequest:
     url: "https://api.example.com/approvals/check"
     method: GET
@@ -52,7 +53,9 @@ This configuration:
 
 ### Using Template Variables
 
-The URL, headers, and body support Go templates with SHA context:
+Template variables are supported in the `url`, `headers` (values), and `body` fields of `httpRequest`.
+
+The following example shows templates in the URL:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -65,7 +68,8 @@ spec:
   key: deployment-check
   description: "Deployment verification"
   reportOn: active
-  pollingInterval: 1m
+  polling:
+    interval: 1m
   httpRequest:
     url: "https://api.example.com/deployments/{{ .ActiveHydratedSha }}/status"
     method: GET
@@ -84,6 +88,8 @@ Available template variables:
 - `{{ .Labels }}` - Map of labels from the WebRequestCommitStatus resource
 - `{{ .Annotations }}` - Map of annotations from the WebRequestCommitStatus resource
 
+**Note:** To access specific label or annotation values, use the `index` function: `{{ index .Labels "key-name" }}` or `{{ index .Annotations "key-name" }}`
+
 ### POST Request with Body
 
 ```yaml
@@ -97,7 +103,8 @@ spec:
   key: validation-check
   description: "Validation service check"
   reportOn: proposed
-  pollingInterval: 5m
+  polling:
+    interval: 5m
   httpRequest:
     url: "https://api.example.com/validate"
     method: POST
@@ -134,7 +141,8 @@ spec:
   key: deployment-check
   description: "Deployment verification with metadata"
   reportOn: proposed
-  pollingInterval: 2m
+  polling:
+    interval: 2m
   httpRequest:
     url: "https://api.example.com/deployments/validate"
     method: POST
@@ -319,7 +327,8 @@ status:
       lastSuccessfulSha: abc123def456
       phase: success
       lastRequestTime: "2024-01-15T10:00:00Z"
-      responseStatusCode: 200
+      response:
+        statusCode: 200
       expressionResult: true
       expressionMessage: "Expression evaluated to true"
 ```
@@ -332,10 +341,10 @@ Fields:
 - `lastSuccessfulSha` - The last SHA that achieved success
 - `phase` - Current gate status (`pending`, `success`, or `failure`)
 - `lastRequestTime` - When the last HTTP request was made
-- `responseStatusCode` - The HTTP response status code
+- `response.statusCode` - The HTTP response status code from the last request
 - `expressionResult` - The boolean result of the expression evaluation
-- `expressionMessage` - Human-readable description of the result
-- `error` - Any error message from the request or evaluation
+
+**Note:** Errors during HTTP requests or expression evaluation are reported in the resource's `Ready` condition rather than in the environment status.
 
 ## Use Cases
 
