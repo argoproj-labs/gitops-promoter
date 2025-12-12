@@ -148,8 +148,14 @@ build-all: build-dashboard build-extension build ## Build dashboard UI, extensio
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go controller
 
+.PHONY: run-dashboard-dev
+run-dashboard-dev: 
+	cd ui/dashboard && npm install && npm run dev &
+	sleep 2
+	go run ./cmd/main.go dashboard
+
 .PHONY: run-dashboard
-run-dashboard: build-dashboard ## Run dashboard from your host.
+run-dashboard: build-dashboard 
 	go run ./cmd/main.go dashboard
 
 .PHONY: lint-dashboard

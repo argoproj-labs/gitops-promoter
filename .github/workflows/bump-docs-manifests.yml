@@ -28,7 +28,7 @@ jobs:
           ./hack/bump-docs-manifests.sh ${{ github.event.inputs.new_version }}
           git add docs/getting-started.md docs/tutorial-argocd-apps.md docs/argocd-integrations.md
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
           title: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
