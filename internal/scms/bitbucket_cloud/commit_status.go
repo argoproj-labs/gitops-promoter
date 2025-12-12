@@ -58,10 +58,14 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		Revision: commitStatus.Spec.Sha,
 	}
 
+	commitUrl := commitStatus.Spec.Url
+	if commitUrl == "" {
+		commitUrl = createCommitURL(repo, commitStatus.Spec.Sha)
+	}
 	commitStatusOptions := &bitbucket.CommitStatusOptions{
 		State:       phaseToBuildState(commitStatus.Spec.Phase),
 		Key:         utils.TruncateString(commitStatus.Spec.Name, maxKeyFieldLength),
-		Url:         commitStatus.Spec.Url,
+		Url:         commitUrl,
 		Description: commitStatus.Spec.Description,
 	}
 

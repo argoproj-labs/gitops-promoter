@@ -2,13 +2,17 @@ package bitbucket_cloud
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/ktrysmt/go-bitbucket"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
+
+const BitbucketBaseURL = "https://bitbucket.org"
 
 // parseErrorStatusCode extracts the HTTP status code from a Bitbucket API error.
 // The Bitbucket client doesn't return HTTP response metadata, so we parse
@@ -67,4 +71,13 @@ func buildStateToPhase(buildState string) v1alpha1.CommitStatusPhase {
 	default:
 		return v1alpha1.CommitPhaseFailure
 	}
+}
+
+func createCommitURL(repo *promoterv1alpha1.GitRepository, sha string) string {
+	return fmt.Sprintf("%s/%s/%s/commits/%s",
+		BitbucketBaseURL,
+		repo.Spec.BitbucketCloud.Workspace,
+		repo.Spec.BitbucketCloud.Repository,
+		sha,
+	)
 }
