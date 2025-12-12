@@ -12,6 +12,8 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+const bitbucketBaseURL = "https://bitbucket.org"
+
 // parseErrorStatusCode extracts the HTTP status code from a Bitbucket API error.
 // The Bitbucket client doesn't return HTTP response metadata, so we parse
 // the error message to determine status codes (e.g., "400 Bad Request").
@@ -72,7 +74,8 @@ func buildStateToPhase(buildState string) v1alpha1.CommitStatusPhase {
 }
 
 func createCommitURL(repo *promoterv1alpha1.GitRepository, sha string) string {
-	return fmt.Sprintf("https://bitbucket.org/%s/%s/commits/%s",
+	return fmt.Sprintf("%s/%s/%s/commits/%s",
+		bitbucketBaseURL,
 		repo.Spec.BitbucketCloud.Workspace,
 		repo.Spec.BitbucketCloud.Repository,
 		sha,
