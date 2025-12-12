@@ -96,11 +96,11 @@ type ForgejoRepo struct {
 
 // BitbucketCloudRepo is a repository in Bitbucket Cloud, identified by its workspace and repository.
 type BitbucketCloudRepo struct {
-	// Workspace is the workspace of the repository.
+	// Owner is the owner of the repository (can be a user or workspace).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
-	Workspace string `json:"workspace"`
-	// Repository is the repository of the repository.
+	Owner string `json:"owner"`
+	// Repository is the name of the repository.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Repository string `json:"repository"`

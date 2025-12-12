@@ -76,7 +76,7 @@ func buildStateToPhase(buildState string) v1alpha1.CommitStatusPhase {
 func createCommitURL(repo *v1alpha1.GitRepository, sha string) string {
 	return fmt.Sprintf("%s/%s/%s/commits/%s",
 		BitbucketBaseURL,
-		repo.Spec.BitbucketCloud.Workspace,
+		repo.Spec.BitbucketCloud.Owner,
 		repo.Spec.BitbucketCloud.Repository,
 		sha,
 	)

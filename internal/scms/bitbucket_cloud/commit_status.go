@@ -53,7 +53,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 	}
 
 	commitOptions := &bitbucket.CommitsOptions{
-		Owner:    repo.Spec.BitbucketCloud.Workspace,
+		Owner:    repo.Spec.BitbucketCloud.Owner,
 		RepoSlug: repo.Spec.BitbucketCloud.Repository,
 		Revision: commitStatus.Spec.Sha,
 	}

@@ -3186,17 +3186,18 @@ spec:
                 description: BitbucketCloudRepo is a repository in Bitbucket Cloud,
                   identified by its workspace and repository.
                 properties:
+                  owner:
+                    description: Owner is the owner of the repository (can be a user
+                      or workspace).
+                    minLength: 1
+                    type: string
                   repository:
                     description: Repository is the repository of the repository.
                     minLength: 1
                     type: string
-                  workspace:
-                    description: Workspace is the workspace of the repository.
-                    minLength: 1
-                    type: string
                 required:
+                - owner
                 - repository
-                - workspace
                 type: object
               fake:
                 description: FakeRepo is a placeholder for a repository in the fake
