@@ -14,8 +14,8 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/google/go-github/v71 v71.0.0
 	github.com/ktrysmt/go-bitbucket v0.9.87
-	github.com/onsi/ginkgo/v2 v2.27.2
-	github.com/onsi/gomega v1.38.2
+	github.com/onsi/ginkgo/v2 v2.27.3
+	github.com/onsi/gomega v1.38.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/relvacode/iso8601 v1.7.0
 	github.com/sosedoff/gitkit v0.4.0

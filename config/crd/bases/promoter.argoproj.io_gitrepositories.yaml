@@ -53,7 +53,7 @@ spec:
                   name:
                     description: Name is the name of the repository.
                     maxLength: 62
-                    pattern: ^[a-zA-Z0-9_-]+.$
+                    pattern: ^[a-zA-Z0-9_-.]+$
                     type: string
                   owner:
                     description: Owner is the owner of the repository (can be a user
