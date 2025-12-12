@@ -8,10 +8,10 @@ import (
 
 	"github.com/ktrysmt/go-bitbucket"
 
-	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	v1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+// BitbucketBaseURL is the base URL for Bitbucket Cloud
 const BitbucketBaseURL = "https://bitbucket.org"
 
 // parseErrorStatusCode extracts the HTTP status code from a Bitbucket API error.
@@ -73,7 +73,7 @@ func buildStateToPhase(buildState string) v1alpha1.CommitStatusPhase {
 	}
 }
 
-func createCommitURL(repo *promoterv1alpha1.GitRepository, sha string) string {
+func createCommitURL(repo *v1alpha1.GitRepository, sha string) string {
 	return fmt.Sprintf("%s/%s/%s/commits/%s",
 		BitbucketBaseURL,
 		repo.Spec.BitbucketCloud.Workspace,
