@@ -17,6 +17,10 @@ spec:
     name:
     owner:
 
+  bitbucketCloud:
+    owner:
+    repository:
+
   scmProviderRef:
     kind: ScmProvider
     name: example-scm-provider
