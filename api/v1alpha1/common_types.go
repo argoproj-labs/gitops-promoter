@@ -103,7 +103,8 @@ type BitbucketCloudRepo struct {
 	Owner string `json:"owner"`
 	// Repository is the name of the repository.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=62
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_-]+.$"
 	Repository string `json:"repository"`
 }
 
