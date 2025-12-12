@@ -37,7 +37,7 @@ func NewBitbucketCloudGitAuthenticationProvider(scmProvider v1alpha1.GenericScmP
 
 // GetGitHttpsRepoUrl constructs the HTTPS URL for a Bitbucket Cloud repository based on the provided GitRepository object.
 func (GitAuthenticationProvider) GetGitHttpsRepoUrl(repo v1alpha1.GitRepository) string {
-	repoUrl := fmt.Sprintf("https://%s/%s/%s.git", BitbucketBaseURL, repo.Spec.BitbucketCloud.Workspace, repo.Spec.BitbucketCloud.Repository)
+	repoUrl := fmt.Sprintf("%s/%s/%s.git", BitbucketBaseURL, repo.Spec.BitbucketCloud.Workspace, repo.Spec.BitbucketCloud.Repository)
 	if _, err := url.Parse(repoUrl); err != nil {
 		return ""
 	}
