@@ -99,6 +99,7 @@ type BitbucketCloudRepo struct {
 	// Owner is the owner of the repository (can be a user or workspace).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_-]+$"
 	Owner string `json:"owner"`
 	// Repository is the name of the repository.
 	// +kubebuilder:validation:Required
