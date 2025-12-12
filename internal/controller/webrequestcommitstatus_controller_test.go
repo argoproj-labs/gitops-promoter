@@ -463,9 +463,13 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						URL:     testServer.URL,
 						Method:  "GET",
 						Timeout: metav1.Duration{Duration: 10 * time.Second},
-						AuthSecretRef: &promoterv1alpha1.AuthSecretRef{
-							Name: name + "-auth",
-							Type: "bearer",
+						Authentication: &promoterv1alpha1.HttpAuthentication{
+							Bearer: &promoterv1alpha1.BearerAuth{
+								SecretRef: promoterv1alpha1.BearerAuthSecretRef{
+									Name: name + "-auth",
+									Key:  "token",
+								},
+							},
 						},
 					},
 					Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
