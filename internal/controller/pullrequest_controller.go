@@ -96,7 +96,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}
 
-	if deleted, err := r.handleFinalizer(ctx, &pr, provider); err != nil || deleted {
+	found, prID, prCreationTime, err := provider.FindOpen(ctx, pr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
+	}
+
+	if deleted, err := r.handleFinalizer(ctx, &pr, provider, found); err != nil || deleted {
 		return ctrl.Result{}, err
 	}
 
@@ -106,7 +111,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Sync state from provider
-	if deleted, err := r.syncStateFromProvider(ctx, &pr, provider); deleted || err != nil {
+	if deleted, err := r.syncStateFromProvider(ctx, &pr, provider, found, prID, prCreationTime); deleted || err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -164,14 +169,10 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 
 // syncStateFromProvider syncs the PullRequest state from the SCM provider.
 // Returns (deleted=true, nil) if PR was deleted, (false, nil) if not deleted, or (false, err) on error.
-func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
+func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, found bool, prID string, prCreationTime time.Time) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	logger.Info("Checking for open PR on provider")
-	found, prID, prCreationTime, err := provider.FindOpen(ctx, *pr)
-	if err != nil {
-		return false, fmt.Errorf("failed to check for open PR: %w", err)
-	}
 
 	// Calculate the state of the PR based on the provider, if found we have to be open
 	if found {
@@ -297,7 +298,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	}
 }
 
-func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
+func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, found bool) (bool, error) {
 	finalizer := promoterv1alpha1.PullRequestFinalizer
 
 	if pr.DeletionTimestamp.IsZero() {
@@ -326,7 +327,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 
 	// If status.ID is empty, it means the PullRequest never took control of any PR on the SCM.
 	// In this case, we can just remove the finalizer without attempting to close the PR.
-	if pr.Status.ID != "" {
+	if pr.Status.ID != "" && found {
 		if err := r.closePullRequest(ctx, pr, provider); err != nil {
 			return false, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
 		}
