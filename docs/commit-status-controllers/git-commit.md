@@ -194,7 +194,6 @@ status:
       activeHydratedSha: bef859def431
       targetedSha: bef859def431  # Which SHA was actually validated
       phase: success
-      expressionMessage: "Expression evaluated to true"
       expressionResult: true
 ```
 
@@ -204,5 +203,4 @@ Fields:
 - `activeHydratedSha` - The active commit SHA (currently deployed)
 - `targetedSha` - The commit SHA that was actually validated
 - `phase` - Current validation status (`pending`, `success`, or `failure`)
-- `expressionMessage` - Human-readable result description
 - `expressionResult` - Boolean result of expression evaluation (nil if failed to evaluate)
