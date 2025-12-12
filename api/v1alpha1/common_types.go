@@ -104,7 +104,7 @@ type BitbucketCloudRepo struct {
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxLength=62
-	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_-.]+$"
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_.-]+$"
 	Name string `json:"name"`
 }
 
