@@ -53,7 +53,7 @@ spec:
     name: webservice-tier-1
   key: revert-check
   description: "Block promotions if active commit is a revert"
-  target: active  # Validates currently deployed commit
+  target: active  # Targets currently deployed commit
   expression: '!(Commit.Subject startsWith "Revert" || Commit.Body startsWith "Revert")'
 ```
 
@@ -71,7 +71,7 @@ spec:
     name: webservice-tier-1
   key: hydrator-version
   description: "Verify active hydrator version is the latest"
-  target: active  # Validates currently deployed commit
+  target: active  # Targets currently deployed commit
   expression: '"Hydrator-version" in Commit.Trailers && Commit.Trailers["Hydrator-version"][0] == "v2.1.0"'
 ```
 
