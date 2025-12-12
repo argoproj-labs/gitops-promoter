@@ -28,6 +28,9 @@ type GitLab struct {
 	Domain string `json:"domain,omitempty"`
 }
 
+// BitbucketCloud is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings.
+type BitbucketCloud struct{}
+
 // Forgejo is a Forgejo SCM provider configuration. It is used to configure the Forgejo settings.
 type Forgejo struct {
 	// Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
@@ -88,6 +91,20 @@ type ForgejoRepo struct {
 	Owner string `json:"owner"`
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+}
+
+// BitbucketCloudRepo is a repository in Bitbucket Cloud, identified by its owner and name.
+type BitbucketCloudRepo struct {
+	// Owner is the owner of the repository (can be a user or workspace).
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_-]+$"
+	Owner string `json:"owner"`
+	// Name is the name of the repository.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=62
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_.-]+$"
 	Name string `json:"name"`
 }
 
