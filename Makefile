@@ -115,7 +115,7 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 
 .PHONY: nilaway-no-test
 nilaway-no-test: nilaway ## Run nilaway to remove nil checks from the code
-	GOMEMLIMIT=2GiB $(NILAWAY) -test=false ./internal/scms/...
+	GOMEMLIMIT=2GiB $(NILAWAY) -test=false $(PKG)
 
 ##@ Build
 

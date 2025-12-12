@@ -13,6 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Check system resource usage
+        run: |
+          echo "--- CPU Information ---"
+          nproc
+          lscpu | grep 'Model name:'
+          echo "--- Memory Usage ---"
+          free -h
+          echo "--- Disk Usage ---"
+          df -h
+        shell: bash
       - name: Checkout Repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # pin@v4
       - name: Set up Go
@@ -69,7 +79,15 @@ jobs:
           skip-cache: false
       # We want to enable this but github seems to cancel the job, might be related to memory limits on the runner.
       - name: Nilaway
-        run: make nilaway-no-test
+        strategy:
+          matrix:
+            pkg:
+              - ./internal/controller/...
+              - ./internal/scms/...
+              - ./internal/git/...
+              - ./internal/utils/...
+              - ./api/...
+        run: make nilaway-no-test PKG=${{ matrix.pkg }}
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
