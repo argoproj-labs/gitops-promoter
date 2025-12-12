@@ -19,6 +19,8 @@ package controller
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -31,6 +33,7 @@ import (
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
+	"golang.org/x/oauth2/clientcredentials"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -249,30 +252,30 @@ func (r *WebRequestCommitStatusReconciler) enqueueWebRequestCommitStatusForPromo
 	})
 }
 
-// checkKeyInSelectors checks if a key exists in a list of commit status selectors
-func checkKeyInSelectors(key string, selectors []promoterv1alpha1.CommitStatusSelector) bool {
-	for _, selector := range selectors {
-		if selector.Key == key {
-			return true
-		}
-	}
-	return false
-}
-
 // appliesToEnvironment checks if the WebRequestCommitStatus applies to the given environment
 func (r *WebRequestCommitStatusReconciler) appliesToEnvironment(wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, psEnv promoterv1alpha1.Environment) bool {
+	// Helper to check if key exists in a list of commit status selectors
+	keyInSelectors := func(selectors []promoterv1alpha1.CommitStatusSelector) bool {
+		for _, selector := range selectors {
+			if selector.Key == wrcs.Spec.Key {
+				return true
+			}
+		}
+		return false
+	}
+
 	// Check global commit statuses
-	if checkKeyInSelectors(wrcs.Spec.Key, ps.Spec.ProposedCommitStatuses) {
+	if keyInSelectors(ps.Spec.ProposedCommitStatuses) {
 		return true
 	}
-	if checkKeyInSelectors(wrcs.Spec.Key, ps.Spec.ActiveCommitStatuses) {
+	if keyInSelectors(ps.Spec.ActiveCommitStatuses) {
 		return true
 	}
 	// Check environment-specific commit statuses
-	if checkKeyInSelectors(wrcs.Spec.Key, psEnv.ProposedCommitStatuses) {
+	if keyInSelectors(psEnv.ProposedCommitStatuses) {
 		return true
 	}
-	if checkKeyInSelectors(wrcs.Spec.Key, psEnv.ActiveCommitStatuses) {
+	if keyInSelectors(psEnv.ActiveCommitStatuses) {
 		return true
 	}
 	return false
@@ -374,27 +377,6 @@ type environmentProcessResult struct {
 	needsPolling bool
 }
 
-// determineShasToReport extracts and determines which SHAs to track
-func determineShasToReport(
-	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	promoterEnvStatus *promoterv1alpha1.EnvironmentStatus,
-) (proposedSha, activeSha, reportedSha, reportOn string) {
-	proposedSha = promoterEnvStatus.Proposed.Hydrated.Sha
-	activeSha = promoterEnvStatus.Active.Hydrated.Sha
-
-	reportOn = wrcs.Spec.ReportOn
-	if reportOn == "" {
-		reportOn = ReportOnProposed
-	}
-
-	reportedSha = proposedSha
-	if reportOn == ReportOnActive {
-		reportedSha = activeSha
-	}
-
-	return proposedSha, activeSha, reportedSha, reportOn
-}
-
 // tryReuseSuccessfulStatus checks if we can skip the request and reuse previous success.
 // Returns the result and true if status was reused, nil and false otherwise.
 func (r *WebRequestCommitStatusReconciler) tryReuseSuccessfulStatus(
@@ -433,7 +415,12 @@ func detectTransitionToSuccess(
 	return previousPhase != WebRequestPhaseSuccess && currentPhase == WebRequestPhaseSuccess
 }
 
-// determineLastSuccessfulSha determines what LastSuccessfulSha should be
+// determineLastSuccessfulSha determines what LastSuccessfulSha should be for an environment.
+// This preserves the most recent successful SHA across reconciliations:
+// - If the current phase is success, we update to the current reportedSha
+// - If the current phase is not success (pending/failure), we preserve the last successful SHA from previous reconciliation
+// - If there's no previous reconciliation, we return empty string (no success yet)
+// This allows tracking the last known good state even when the current validation is failing.
 func determineLastSuccessfulSha(
 	currentPhase, reportedSha string,
 	previousReconcileStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus,
@@ -464,8 +451,20 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 ) (*environmentProcessResult, error) {
 	logger := log.FromContext(ctx)
 
-	// Extract SHA information
-	proposedSha, activeSha, reportedSha, reportOn := determineShasToReport(wrcs, promoterEnvStatus)
+	// Extract both SHAs from the environment status
+	proposedSha := promoterEnvStatus.Proposed.Hydrated.Sha
+	activeSha := promoterEnvStatus.Active.Hydrated.Sha
+
+	// Get the report mode (Kubernetes defaults to "proposed" via CRD validation)
+	reportOn := wrcs.Spec.ReportOn
+
+	// Select the SHA to report on based on the mode
+	reportedSha := proposedSha
+	if reportOn == ReportOnActive {
+		reportedSha = activeSha
+	}
+
+	// Find status from last reconciliation for this same environment
 	previousReconcileStatus := findPreviousReconcileStatus(previousWebRequestCommitStatus, branch)
 
 	// Try to reuse successful status if applicable
@@ -583,24 +582,24 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 		req.Header.Set(key, renderedValue)
 	}
 
-	// Add authentication
-	if wrcs.Spec.HTTPRequest.AuthSecretRef != nil {
-		if err := r.addAuthentication(ctx, req, wrcs); err != nil {
-			return result, fmt.Errorf("failed to add authentication: %w", err)
+	// Use the timeout from spec (Kubernetes defaults to 30s via CRD validation)
+	timeout := wrcs.Spec.HTTPRequest.Timeout.Duration
+
+	// Create HTTP client with appropriate configuration
+	httpClient, err := r.createHTTPClient(ctx, wrcs, timeout)
+	if err != nil {
+		return result, fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+
+	// Apply authentication (except TLS which is handled in client creation)
+	if wrcs.Spec.HTTPRequest.Authentication != nil {
+		if err := r.applyAuth(ctx, req, httpClient, wrcs.Spec.HTTPRequest.Authentication, wrcs.Namespace); err != nil {
+			return result, fmt.Errorf("failed to apply authentication: %w", err)
 		}
 	}
 
-	// Set timeout from spec if provided
-	timeout := 30 * time.Second
-	if wrcs.Spec.HTTPRequest.Timeout.Duration > 0 {
-		timeout = wrcs.Spec.HTTPRequest.Timeout.Duration
-	}
-
-	// Create a client with the specific timeout for this request
-	client := &http.Client{Timeout: timeout}
-
 	// Make the HTTP request
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		logger.Error(err, "HTTP request failed", "url", url)
 		return result, fmt.Errorf("HTTP request failed: %w", err)
@@ -661,46 +660,178 @@ func (r *WebRequestCommitStatusReconciler) renderTemplate(name, tmplStr string, 
 	return buf.String(), nil
 }
 
-// addAuthentication adds authentication to the HTTP request based on the AuthSecretRef
-func (r *WebRequestCommitStatusReconciler) addAuthentication(ctx context.Context, req *http.Request, wrcs *promoterv1alpha1.WebRequestCommitStatus) error {
-	authRef := wrcs.Spec.HTTPRequest.AuthSecretRef
-	if authRef == nil || authRef.Type == "none" {
-		return nil
+// createHTTPClient creates an HTTP client with appropriate configuration including TLS.
+func (r *WebRequestCommitStatusReconciler) createHTTPClient(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, timeout time.Duration) (*http.Client, error) {
+	transport := &http.Transport{}
+
+	// Configure TLS if TLS auth is specified
+	if wrcs.Spec.HTTPRequest.Authentication != nil && wrcs.Spec.HTTPRequest.Authentication.TLS != nil {
+		tlsConfig, err := r.buildTLSConfig(ctx, wrcs.Namespace, wrcs.Spec.HTTPRequest.Authentication.TLS)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build TLS config: %w", err)
+		}
+		transport.TLSClientConfig = tlsConfig
 	}
 
-	// Fetch the secret
-	var secret corev1.Secret
-	if err := r.Get(ctx, client.ObjectKey{Namespace: wrcs.Namespace, Name: authRef.Name}, &secret); err != nil {
-		return fmt.Errorf("failed to get auth secret %q: %w", authRef.Name, err)
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+	}, nil
+}
+
+// applyAuth applies authentication to the request based on the Authentication configuration.
+func (r *WebRequestCommitStatusReconciler) applyAuth(ctx context.Context, req *http.Request, httpClient *http.Client, auth *promoterv1alpha1.HttpAuthentication, namespace string) error {
+	if auth.Basic != nil {
+		return r.applyBasicAuth(ctx, req, auth.Basic, namespace)
 	}
-
-	switch authRef.Type {
-	case "basic":
-		username := string(secret.Data["username"])
-		password := string(secret.Data["password"])
-		if username == "" || password == "" {
-			return errors.New("basic auth secret must contain 'username' and 'password' keys")
-		}
-		auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
-		req.Header.Set("Authorization", "Basic "+auth)
-
-	case "bearer":
-		token := string(secret.Data["token"])
-		if token == "" {
-			return errors.New("bearer auth secret must contain 'token' key")
-		}
-		req.Header.Set("Authorization", "Bearer "+token)
-
-	case "header":
-		for key, value := range secret.Data {
-			req.Header.Set(key, string(value))
-		}
-
-	default:
-		return fmt.Errorf("unknown auth type: %s", authRef.Type)
+	if auth.Bearer != nil {
+		return r.applyBearerAuth(ctx, req, auth.Bearer, namespace)
 	}
-
+	if auth.OAuth2 != nil {
+		return r.applyOAuth2Auth(ctx, req, auth.OAuth2, namespace)
+	}
+	// TLS auth is handled in createHTTPClient
 	return nil
+}
+
+// applyBasicAuth applies HTTP Basic Authentication.
+func (r *WebRequestCommitStatusReconciler) applyBasicAuth(ctx context.Context, req *http.Request, auth *promoterv1alpha1.BasicAuth, namespace string) error {
+	usernameKey := auth.SecretRef.UsernameKey
+	if usernameKey == "" {
+		usernameKey = "username"
+	}
+	passwordKey := auth.SecretRef.PasswordKey
+	if passwordKey == "" {
+		passwordKey = "password"
+	}
+
+	var secret corev1.Secret
+	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: auth.SecretRef.Name}, &secret); err != nil {
+		return fmt.Errorf("failed to get secret %q: %w", auth.SecretRef.Name, err)
+	}
+
+	username := string(secret.Data[usernameKey])
+	password := string(secret.Data[passwordKey])
+	if username == "" || password == "" {
+		return fmt.Errorf("basic auth secret must contain %q and %q keys", usernameKey, passwordKey)
+	}
+
+	credentials := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	req.Header.Set("Authorization", "Basic "+credentials)
+	return nil
+}
+
+// applyBearerAuth applies Bearer token authentication.
+func (r *WebRequestCommitStatusReconciler) applyBearerAuth(ctx context.Context, req *http.Request, auth *promoterv1alpha1.BearerAuth, namespace string) error {
+	key := auth.SecretRef.Key
+	if key == "" {
+		key = "token"
+	}
+
+	var secret corev1.Secret
+	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: auth.SecretRef.Name}, &secret); err != nil {
+		return fmt.Errorf("failed to get secret %q: %w", auth.SecretRef.Name, err)
+	}
+
+	token := string(secret.Data[key])
+	if token == "" {
+		return fmt.Errorf("bearer auth secret must contain %q key", key)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	return nil
+}
+
+// applyOAuth2Auth applies OAuth2 client credentials authentication.
+func (r *WebRequestCommitStatusReconciler) applyOAuth2Auth(ctx context.Context, req *http.Request, auth *promoterv1alpha1.OAuth2Auth, namespace string) error {
+	clientIDKey := auth.SecretRef.ClientIDKey
+	if clientIDKey == "" {
+		clientIDKey = "clientID"
+	}
+	clientSecretKey := auth.SecretRef.ClientSecretKey
+	if clientSecretKey == "" {
+		clientSecretKey = "clientSecret"
+	}
+
+	var secret corev1.Secret
+	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: auth.SecretRef.Name}, &secret); err != nil {
+		return fmt.Errorf("failed to get secret %q: %w", auth.SecretRef.Name, err)
+	}
+
+	clientID := string(secret.Data[clientIDKey])
+	clientSecret := string(secret.Data[clientSecretKey])
+	if clientID == "" || clientSecret == "" {
+		return fmt.Errorf("OAuth2 auth secret must contain %q and %q keys", clientIDKey, clientSecretKey)
+	}
+
+	// Create OAuth2 config
+	config := clientcredentials.Config{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		TokenURL:     auth.TokenURL,
+		Scopes:       auth.Scopes,
+	}
+
+	// Get token
+	token, err := config.Token(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get OAuth2 token: %w", err)
+	}
+
+	// Set Authorization header
+	token.SetAuthHeader(req)
+	return nil
+}
+
+// buildTLSConfig builds TLS configuration from secrets.
+func (r *WebRequestCommitStatusReconciler) buildTLSConfig(ctx context.Context, namespace string, auth *promoterv1alpha1.TLSAuth) (*tls.Config, error) {
+	certKey := auth.SecretRef.CertKey
+	if certKey == "" {
+		certKey = "tls.crt"
+	}
+	keyKey := auth.SecretRef.KeyKey
+	if keyKey == "" {
+		keyKey = "tls.key"
+	}
+	caKey := auth.SecretRef.CAKey
+	if caKey == "" {
+		caKey = "ca.crt"
+	}
+
+	var secret corev1.Secret
+	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: auth.SecretRef.Name}, &secret); err != nil {
+		return nil, fmt.Errorf("failed to get secret %q: %w", auth.SecretRef.Name, err)
+	}
+
+	// Get certificate and key
+	certPEM := secret.Data[certKey]
+	keyPEM := secret.Data[keyKey]
+	if len(certPEM) == 0 || len(keyPEM) == 0 {
+		return nil, fmt.Errorf("TLS secret must contain %q and %q keys", certKey, keyKey)
+	}
+
+	// Parse certificate
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse certificate: %w", err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	// Optionally add CA certificate
+	caPEM := secret.Data[caKey]
+	if len(caPEM) > 0 {
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caPEM) {
+			return nil, errors.New("failed to parse CA certificate")
+		}
+		tlsConfig.RootCAs = caCertPool
+	}
+
+	return tlsConfig, nil
 }
 
 // evaluateExpression evaluates the expr expression against the response data

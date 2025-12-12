@@ -92,30 +92,171 @@ spec:
                   HTTPRequest defines the HTTP request configuration.
                   Supports Go templates in URL, Headers, and Body fields.
                 properties:
-                  authSecretRef:
-                    description: AuthSecretRef references a Kubernetes Secret containing
-                      authentication credentials.
+                  authentication:
+                    description: |-
+                      Authentication specifies authentication configuration for the HTTP request.
+
+                      Supports multiple authentication methods:
+                      - Basic Auth: HTTP Basic Authentication with username/password
+                      - Bearer Token: Bearer token authentication (e.g., API keys, JWTs)
+                      - OAuth2: OAuth2 client credentials flow for obtaining access tokens
+                      - TLS: Mutual TLS (mTLS) with client certificates
+
+                      All credentials must be stored in Kubernetes secrets and referenced via secretRef fields.
+
+                      Examples:
+                        # Basic Auth
+                        authentication:
+                          basic:
+                            secretRef:
+                              name: my-creds
+
+                        # Bearer Token
+                        authentication:
+                          bearer:
+                            secretRef:
+                              name: api-token
+
+                        # OAuth2 Client Credentials
+                        authentication:
+                          oauth2:
+                            tokenURL: "https://auth.example.com/oauth/token"
+                            secretRef:
+                              name: oauth-creds
+
+                        # TLS Client Certificate
+                        authentication:
+                          tls:
+                            secretRef:
+                              name: my-tls-cert
                     properties:
-                      name:
-                        description: Name is the name of the Secret in the same namespace
-                          as the WebRequestCommitStatus.
-                        type: string
-                      type:
+                      basic:
                         description: |-
-                          Type specifies how to use the Secret for authentication.
-                          - "none": No authentication (Secret is ignored)
-                          - "basic": Uses 'username' and 'password' keys from the Secret for HTTP Basic Auth
-                          - "bearer": Uses 'token' key from the Secret for Bearer token authentication
-                          - "header": Uses all keys from the Secret as custom HTTP headers
-                        enum:
-                        - none
-                        - basic
-                        - bearer
-                        - header
-                        type: string
-                    required:
-                    - name
-                    - type
+                          Basic specifies HTTP Basic Authentication.
+                          Credentials can be provided inline (with secret references) or via secretRef.
+                        properties:
+                          secretRef:
+                            description: SecretRef references a secret containing
+                              username and password.
+                            properties:
+                              name:
+                                description: Name of the secret.
+                                type: string
+                              passwordKey:
+                                description: |-
+                                  PasswordKey is the key in the secret containing the password.
+                                  Defaults to "password".
+                                type: string
+                              usernameKey:
+                                description: |-
+                                  UsernameKey is the key in the secret containing the username.
+                                  Defaults to "username".
+                                type: string
+                            required:
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                      bearer:
+                        description: |-
+                          Bearer specifies Bearer token authentication.
+                          Token can be provided inline (with secret reference) or via secretRef.
+                        properties:
+                          secretRef:
+                            description: SecretRef references a secret containing
+                              the bearer token.
+                            properties:
+                              key:
+                                description: |-
+                                  Key is the key in the secret containing the token.
+                                  Defaults to "token".
+                                type: string
+                              name:
+                                description: Name of the secret.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                      oauth2:
+                        description: |-
+                          OAuth2 specifies OAuth2 client credentials authentication.
+                          The controller will automatically obtain access tokens from the specified tokenURL.
+                        properties:
+                          scopes:
+                            description: |-
+                              Scopes to request from the OAuth2 provider.
+                              Optional - some providers don't require scopes for client credentials.
+                              Example: ["read:api", "write:api"]
+                            items:
+                              type: string
+                            type: array
+                          secretRef:
+                            description: SecretRef references a secret containing
+                              clientID and clientSecret.
+                            properties:
+                              clientIDKey:
+                                description: |-
+                                  ClientIDKey is the key in the secret containing the client ID.
+                                  Defaults to "clientID".
+                                type: string
+                              clientSecretKey:
+                                description: |-
+                                  ClientSecretKey is the key in the secret containing the client secret.
+                                  Defaults to "clientSecret".
+                                type: string
+                              name:
+                                description: Name of the secret.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          tokenURL:
+                            description: |-
+                              TokenURL is the OAuth2 token endpoint where access tokens are obtained.
+                              Example: "https://auth.example.com/oauth/token"
+                            type: string
+                        required:
+                        - secretRef
+                        - tokenURL
+                        type: object
+                      tls:
+                        description: |-
+                          TLS specifies TLS client certificate authentication (mutual TLS).
+                          Requires a secret containing the client certificate and private key.
+                        properties:
+                          secretRef:
+                            description: |-
+                              SecretRef references a secret containing TLS certificate and key.
+                              The secret should be of type kubernetes.io/tls or contain the required keys.
+                            properties:
+                              caKey:
+                                description: |-
+                                  CAKey is the key in the secret containing the CA certificate (optional).
+                                  Defaults to "ca.crt".
+                                type: string
+                              certKey:
+                                description: |-
+                                  CertKey is the key in the secret containing the client certificate.
+                                  Defaults to "tls.crt".
+                                type: string
+                              keyKey:
+                                description: |-
+                                  KeyKey is the key in the secret containing the private key.
+                                  Defaults to "tls.key".
+                                type: string
+                              name:
+                                description: Name of the secret.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
                     type: object
                   body:
                     description: |-

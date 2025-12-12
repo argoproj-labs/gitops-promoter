@@ -90,6 +90,193 @@ Available template variables:
 
 **Note:** To access specific label or annotation values, use the `index` function: `{{ index .Labels "key-name" }}` or `{{ index .Annotations "key-name" }}`
 
+## Authentication
+
+The WebRequestCommitStatus controller supports multiple authentication methods for securing HTTP requests to external endpoints. All credentials must be stored in Kubernetes secrets and referenced via `secretRef` fields.
+
+### Authentication Methods
+
+#### 1. Basic Authentication
+
+HTTP Basic Authentication encodes username and password as base64 and sends them in the Authorization header.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: basic-auth-example
+spec:
+  promotionStrategyRef:
+    name: my-strategy
+  key: approval-check
+  httpRequest:
+    url: "https://api.example.com/check"
+    method: GET
+    authentication:
+      basic:
+        secretRef:
+          name: my-basic-auth-secret
+          usernameKey: username  # Optional, defaults to "username"
+          passwordKey: password  # Optional, defaults to "password"
+  expression: 'Response.StatusCode == 200'
+```
+
+The secret should contain:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-basic-auth-secret
+  namespace: default
+stringData:
+  username: admin
+  password: supersecret
+```
+
+#### 2. Bearer Token Authentication
+
+Bearer tokens are commonly used for API authentication with API keys, JWTs, or personal access tokens.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: bearer-auth-example
+spec:
+  promotionStrategyRef:
+    name: my-strategy
+  key: api-check
+  httpRequest:
+    url: "https://api.example.com/status"
+    method: GET
+    authentication:
+      bearer:
+        secretRef:
+          name: my-bearer-token
+          key: token  # Optional, defaults to "token"
+  expression: 'Response.StatusCode == 200'
+```
+
+The secret should contain:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-bearer-token
+  namespace: default
+stringData:
+  token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+#### 3. OAuth2 Client Credentials
+
+OAuth2 client credentials flow is ideal for server-to-server authentication. The controller automatically obtains and refreshes access tokens.
+
+**How it works:**
+1. Controller requests an access token from the tokenURL using client credentials
+2. Token is cached and automatically refreshed when it expires
+3. Token is added to requests as `Authorization: Bearer <access-token>`
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: oauth2-example
+spec:
+  promotionStrategyRef:
+    name: my-strategy
+  key: oauth-api-check
+  httpRequest:
+    url: "https://api.example.com/secure/endpoint"
+    method: GET
+    authentication:
+      oauth2:
+        tokenURL: "https://auth.example.com/oauth/token"
+        scopes: ["read:api", "write:api"]
+        secretRef:
+          name: oauth-credentials
+          clientIDKey: client-id      # Optional, defaults to "clientID"
+          clientSecretKey: client-secret  # Optional, defaults to "clientSecret"
+  expression: 'Response.StatusCode == 200'
+```
+
+The secret should contain:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: oauth-credentials
+  namespace: default
+stringData:
+  client-id: my-client-id
+  client-secret: my-client-secret
+```
+
+**Note:** This uses the OAuth2 client credentials grant type (RFC 6749 Section 4.4). It does NOT support authorization code flow or user-interactive flows.
+
+#### 4. TLS Client Certificate (Mutual TLS)
+
+Mutual TLS (mTLS) authentication uses client certificates to prove identity. This is configured at the transport layer, not as an HTTP header.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: mtls-example
+spec:
+  promotionStrategyRef:
+    name: my-strategy
+  key: secure-api-check
+  httpRequest:
+    url: "https://secure-api.example.com/check"
+    method: GET
+    authentication:
+      tls:
+        secretRef:
+          name: my-client-cert
+          certKey: tls.crt   # Optional, defaults to "tls.crt"
+          keyKey: tls.key    # Optional, defaults to "tls.key"
+          caKey: ca.crt      # Optional, defaults to "ca.crt"
+  expression: 'Response.StatusCode == 200'
+```
+
+The secret should contain:
+```yaml
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/tls  # Or Opaque
+metadata:
+  name: my-client-cert
+  namespace: default
+data:
+  tls.crt: <base64-encoded-certificate>
+  tls.key: <base64-encoded-private-key>
+  ca.crt: <base64-encoded-ca-certificate>  # Optional, for custom CAs
+```
+
+You can create the secret from certificate files:
+```bash
+kubectl create secret tls my-client-cert \
+  --cert=client.crt \
+  --key=client.key \
+  -n default
+
+# Optionally add CA certificate
+kubectl patch secret my-client-cert -n default \
+  --type='json' \
+  -p='[{"op":"add","path":"/data/ca.crt","value":"'$(base64 -w0 < ca.crt)'"}]'
+```
+
+### Authentication Priority
+
+If multiple authentication methods are specified, only one will be used in this order:
+1. Basic Auth
+2. Bearer Token
+3. OAuth2
+4. TLS
+
+However, it's recommended to specify only one authentication method per WebRequestCommitStatus resource for clarity.
+
 ### POST Request with Body
 
 ```yaml

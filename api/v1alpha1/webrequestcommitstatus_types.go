@@ -138,25 +138,269 @@ type HTTPRequestSpec struct {
 	// +kubebuilder:default="30s"
 	Timeout metav1.Duration `json:"timeout,omitempty"`
 
-	// AuthSecretRef references a Kubernetes Secret containing authentication credentials.
+	// Authentication specifies authentication configuration for the HTTP request.
+	//
+	// Supports multiple authentication methods:
+	// - Basic Auth: HTTP Basic Authentication with username/password
+	// - Bearer Token: Bearer token authentication (e.g., API keys, JWTs)
+	// - OAuth2: OAuth2 client credentials flow for obtaining access tokens
+	// - TLS: Mutual TLS (mTLS) with client certificates
+	//
+	// All credentials must be stored in Kubernetes secrets and referenced via secretRef fields.
+	//
+	// Examples:
+	//   # Basic Auth
+	//   authentication:
+	//     basic:
+	//       secretRef:
+	//         name: my-creds
+	//
+	//   # Bearer Token
+	//   authentication:
+	//     bearer:
+	//       secretRef:
+	//         name: api-token
+	//
+	//   # OAuth2 Client Credentials
+	//   authentication:
+	//     oauth2:
+	//       tokenURL: "https://auth.example.com/oauth/token"
+	//       secretRef:
+	//         name: oauth-creds
+	//
+	//   # TLS Client Certificate
+	//   authentication:
+	//     tls:
+	//       secretRef:
+	//         name: my-tls-cert
+	//
 	// +optional
-	AuthSecretRef *AuthSecretRef `json:"authSecretRef,omitempty"`
+	Authentication *HttpAuthentication `json:"authentication,omitempty"`
 }
 
-// AuthSecretRef references a Kubernetes Secret for HTTP authentication.
-type AuthSecretRef struct {
-	// Name is the name of the Secret in the same namespace as the WebRequestCommitStatus.
+// HttpAuthentication defines authentication options for HTTP requests.
+//
+// Only one authentication method should be specified. If multiple methods are provided,
+// the first one found in this order will be used: Basic, Bearer, OAuth2, TLS.
+//
+// Authentication methods:
+//
+//  1. Basic Auth - Traditional username/password authentication
+//     Applied as: Authorization: Basic <base64(username:password)>
+//
+//  2. Bearer Token - Token-based authentication
+//     Applied as: Authorization: Bearer <token>
+//
+//  3. OAuth2 - Automatically obtains and refreshes access tokens using client credentials flow
+//     Applied as: Authorization: Bearer <access-token>
+//
+//  4. TLS - Mutual TLS authentication using client certificates
+//     Applied at: Transport layer (not as HTTP header)
+type HttpAuthentication struct {
+	// Basic specifies HTTP Basic Authentication.
+	// Credentials can be provided inline (with secret references) or via secretRef.
+	// +optional
+	Basic *BasicAuth `json:"basic,omitempty"`
+
+	// Bearer specifies Bearer token authentication.
+	// Token can be provided inline (with secret reference) or via secretRef.
+	// +optional
+	Bearer *BearerAuth `json:"bearer,omitempty"`
+
+	// OAuth2 specifies OAuth2 client credentials authentication.
+	// The controller will automatically obtain access tokens from the specified tokenURL.
+	// +optional
+	OAuth2 *OAuth2Auth `json:"oauth2,omitempty"`
+
+	// TLS specifies TLS client certificate authentication (mutual TLS).
+	// Requires a secret containing the client certificate and private key.
+	// +optional
+	TLS *TLSAuth `json:"tls,omitempty"`
+}
+
+// BasicAuth defines HTTP Basic Authentication.
+//
+// HTTP Basic Auth encodes the username and password as base64 and sends them
+// in the Authorization header: "Authorization: Basic <base64(username:password)>"
+//
+// Credentials must be stored in a Kubernetes secret and referenced via secretRef:
+//
+//	basic:
+//	  secretRef:
+//	    name: my-basic-auth-secret
+//	    usernameKey: username  # optional, defaults to "username"
+//	    passwordKey: password  # optional, defaults to "password"
+type BasicAuth struct {
+	// SecretRef references a secret containing username and password.
+	// +required
+	SecretRef BasicAuthSecretRef `json:"secretRef"`
+}
+
+// BasicAuthSecretRef references a secret for basic authentication.
+type BasicAuthSecretRef struct {
+	// Name of the secret.
 	// +required
 	Name string `json:"name"`
 
-	// Type specifies how to use the Secret for authentication.
-	// - "none": No authentication (Secret is ignored)
-	// - "basic": Uses 'username' and 'password' keys from the Secret for HTTP Basic Auth
-	// - "bearer": Uses 'token' key from the Secret for Bearer token authentication
-	// - "header": Uses all keys from the Secret as custom HTTP headers
+	// UsernameKey is the key in the secret containing the username.
+	// Defaults to "username".
+	// +optional
+	UsernameKey string `json:"usernameKey,omitempty"`
+
+	// PasswordKey is the key in the secret containing the password.
+	// Defaults to "password".
+	// +optional
+	PasswordKey string `json:"passwordKey,omitempty"`
+}
+
+// BearerAuth defines Bearer token authentication.
+//
+// Bearer tokens are commonly used for API authentication. The token is sent
+// in the Authorization header: "Authorization: Bearer <token>"
+//
+// Common use cases:
+// - API keys
+// - JWT tokens
+// - Personal access tokens
+// - Static authentication tokens
+//
+// The token must be stored in a Kubernetes secret and referenced via secretRef:
+//
+//	bearer:
+//	  secretRef:
+//	    name: my-bearer-token-secret
+//	    key: token  # optional, defaults to "token"
+type BearerAuth struct {
+	// SecretRef references a secret containing the bearer token.
 	// +required
-	// +kubebuilder:validation:Enum=none;basic;bearer;header
-	Type string `json:"type"`
+	SecretRef BearerAuthSecretRef `json:"secretRef"`
+}
+
+// BearerAuthSecretRef references a secret for bearer token authentication.
+type BearerAuthSecretRef struct {
+	// Name of the secret.
+	// +required
+	Name string `json:"name"`
+
+	// Key is the key in the secret containing the token.
+	// Defaults to "token".
+	// +optional
+	Key string `json:"key,omitempty"`
+}
+
+// OAuth2Auth defines OAuth2 client credentials authentication.
+//
+// The OAuth2 client credentials flow is used for server-to-server authentication.
+// The controller automatically:
+// 1. Requests an access token from the tokenURL using client credentials
+// 2. Caches the token until it expires
+// 3. Automatically refreshes the token when needed
+// 4. Adds the token to requests as: "Authorization: Bearer <access-token>"
+//
+// This is ideal for:
+// - Service-to-service authentication
+// - APIs that require OAuth2 but don't involve user interaction
+// - Systems that provide machine credentials (client ID/secret)
+//
+// Example:
+//
+//	oauth2:
+//	  tokenURL: "https://auth.example.com/oauth/token"
+//	  scopes: ["read:api", "write:api"]
+//	  secretRef:
+//	    name: oauth-creds
+//
+// Note: This uses the OAuth2 client credentials grant type (RFC 6749 Section 4.4).
+// It does NOT support authorization code flow or user-interactive flows.
+type OAuth2Auth struct {
+	// TokenURL is the OAuth2 token endpoint where access tokens are obtained.
+	// Example: "https://auth.example.com/oauth/token"
+	// +required
+	TokenURL string `json:"tokenURL"`
+
+	// Scopes to request from the OAuth2 provider.
+	// Optional - some providers don't require scopes for client credentials.
+	// Example: ["read:api", "write:api"]
+	// +optional
+	Scopes []string `json:"scopes,omitempty"`
+
+	// SecretRef references a secret containing clientID and clientSecret.
+	// +required
+	SecretRef OAuth2AuthSecretRef `json:"secretRef"`
+}
+
+// OAuth2AuthSecretRef references a secret for OAuth2 authentication.
+type OAuth2AuthSecretRef struct {
+	// Name of the secret.
+	// +required
+	Name string `json:"name"`
+
+	// ClientIDKey is the key in the secret containing the client ID.
+	// Defaults to "clientID".
+	// +optional
+	ClientIDKey string `json:"clientIDKey,omitempty"`
+
+	// ClientSecretKey is the key in the secret containing the client secret.
+	// Defaults to "clientSecret".
+	// +optional
+	ClientSecretKey string `json:"clientSecretKey,omitempty"`
+}
+
+// TLSAuth defines TLS client certificate authentication (mutual TLS / mTLS).
+//
+// Mutual TLS authentication proves the client's identity using a certificate,
+// rather than a password or token. This is configured at the TLS transport layer,
+// not as an HTTP header.
+//
+// Use cases:
+// - High-security environments requiring certificate-based authentication
+// - APIs that require client certificates for access
+// - Service mesh authentication
+// - Zero-trust network architectures
+//
+// The secret must contain:
+// - Client certificate (default key: "tls.crt")
+// - Private key (default key: "tls.key")
+// - Optional CA certificate for custom CAs (default key: "ca.crt")
+//
+// Example:
+//
+//	tls:
+//	  secretRef:
+//	    name: my-client-cert
+//	    certKey: tls.crt  # optional, defaults to "tls.crt"
+//	    keyKey: tls.key   # optional, defaults to "tls.key"
+//	    caKey: ca.crt     # optional, defaults to "ca.crt"
+//
+// Note: TLS auth is applied at the HTTP client transport layer, unlike other
+// authentication methods which are applied as HTTP headers.
+type TLSAuth struct {
+	// SecretRef references a secret containing TLS certificate and key.
+	// The secret should be of type kubernetes.io/tls or contain the required keys.
+	// +required
+	SecretRef TLSAuthSecretRef `json:"secretRef"`
+}
+
+// TLSAuthSecretRef references a secret for TLS client certificate authentication.
+type TLSAuthSecretRef struct {
+	// Name of the secret.
+	// +required
+	Name string `json:"name"`
+
+	// CertKey is the key in the secret containing the client certificate.
+	// Defaults to "tls.crt".
+	// +optional
+	CertKey string `json:"certKey,omitempty"`
+
+	// KeyKey is the key in the secret containing the private key.
+	// Defaults to "tls.key".
+	// +optional
+	KeyKey string `json:"keyKey,omitempty"`
+
+	// CAKey is the key in the secret containing the CA certificate (optional).
+	// Defaults to "ca.crt".
+	// +optional
+	CAKey string `json:"caKey,omitempty"`
 }
 
 // WebRequestCommitStatusStatus defines the observed state of WebRequestCommitStatus.
