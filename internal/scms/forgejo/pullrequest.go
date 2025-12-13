@@ -97,7 +97,7 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 	start := time.Now()
 	_, resp, err := pr.foregejoClient.EditPullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationUpdate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
@@ -137,7 +137,7 @@ func (pr *PullRequest) Close(ctx context.Context, prObj promoterv1alpha1.PullReq
 	start := time.Now()
 	_, resp, err := pr.foregejoClient.EditPullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
@@ -178,7 +178,7 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj promoterv1alpha1.PullReq
 	start := time.Now()
 	_, resp, err := pr.foregejoClient.MergePullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID, options)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
@@ -206,7 +206,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest promoterv1alpha
 	start := time.Now()
 	prs, resp, err := pr.foregejoClient.ListRepoPullRequests(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, options)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
@@ -230,7 +230,7 @@ func checkOpenPR(ctx context.Context, pr PullRequest, repo *promoterv1alpha1.Git
 	start := time.Now()
 	existingPr, resp, err := pr.foregejoClient.GetPullRequest(repo.Spec.Forgejo.Owner, repo.Spec.Forgejo.Name, prID)
 	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
 		return true, fmt.Errorf("failed to get pull request: %w", err)
