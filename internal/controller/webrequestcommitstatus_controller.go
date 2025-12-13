@@ -430,18 +430,6 @@ func (r *WebRequestCommitStatusReconciler) tryReuseSuccessfulStatus(
 	return result, true, nil
 }
 
-// detectTransitionToSuccess checks if the environment just transitioned to success
-func detectTransitionToSuccess(
-	previousReconcileStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus,
-	currentPhase string,
-) bool {
-	var previousPhase string
-	if previousReconcileStatus != nil {
-		previousPhase = previousReconcileStatus.Phase
-	}
-	return previousPhase != WebRequestPhaseSuccess && currentPhase == WebRequestPhaseSuccess
-}
-
 // determineLastSuccessfulSha determines what LastSuccessfulSha should be for an environment.
 // This preserves the most recent successful SHA across reconciliations:
 // - If the current phase is success, we update to the current reportedSha
@@ -459,11 +447,6 @@ func determineLastSuccessfulSha(
 		return previousReconcileStatus.LastSuccessfulSha
 	}
 	return ""
-}
-
-// shouldPollEnvironment determines if this environment needs continued polling
-func shouldPollEnvironment(phase, reportOn string) bool {
-	return phase != WebRequestPhaseSuccess || reportOn == ReportOnActive
 }
 
 // processEnvironment processes a single environment, making HTTP requests and evaluating conditions.
@@ -524,16 +507,29 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 		return nil, fmt.Errorf("failed to process environment request for %q: %w", branch, err)
 	}
 
+	// Determine if this environment needs continued polling:
+	// - Always poll if not yet successful (pending/failure)
+	// - Always poll if reportOn="active" (continuous monitoring)
+	// - Stop polling if reportOn="proposed" and successful (optimization)
+	needsPolling := envResult.Phase != WebRequestPhaseSuccess || reportOn == ReportOnActive
+
+	// Detect if environment just transitioned to success (was not success before, is success now)
+	var previousPhase string
+	if previousReconcileStatus != nil {
+		previousPhase = previousReconcileStatus.Phase
+	}
+	transitioned := previousPhase != WebRequestPhaseSuccess && envResult.Phase == WebRequestPhaseSuccess
+
 	// Build result
 	result = &environmentProcessResult{
 		envStatus:    envResult,
-		transitioned: detectTransitionToSuccess(previousReconcileStatus, envResult.Phase),
-		needsPolling: shouldPollEnvironment(envResult.Phase, reportOn),
+		transitioned: transitioned,
+		needsPolling: needsPolling,
 	}
 	result.envStatus.LastSuccessfulSha = determineLastSuccessfulSha(envResult.Phase, reportedSha, previousReconcileStatus)
 
 	// Log transition if detected
-	if result.transitioned {
+	if transitioned {
 		logger.Info("Validation transitioned to success", "branch", branch, "sha", reportedSha)
 	}
 
