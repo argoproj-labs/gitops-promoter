@@ -309,15 +309,6 @@ func findPreviousReconcileStatus(previousWebRequestCommitStatus *promoterv1alpha
 }
 
 // shouldSkipRequest checks if we should skip the HTTP request for this environment
-func shouldSkipRequest(reportOn string, previousReconcileStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, reportedSha string) bool {
-	if reportOn != ReportOnProposed || previousReconcileStatus == nil {
-		return false
-	}
-	return previousReconcileStatus.Phase == WebRequestPhaseSuccess &&
-		previousReconcileStatus.ReportedSha == reportedSha &&
-		previousReconcileStatus.LastSuccessfulSha == reportedSha
-}
-
 // calculateStatus processes each environment from the PromotionStrategy,
 // making HTTP requests and evaluating expressions, then updates wrcs.Status.
 // Returns transitioned environments, commit statuses, whether polling is needed, and any error.
@@ -394,8 +385,9 @@ type environmentProcessResult struct {
 	needsPolling bool
 }
 
-// tryReuseSuccessfulStatus checks if we can skip the request and reuse previous success.
-// Returns the result and true if status was reused, nil and false otherwise.
+// tryReuseSuccessfulStatus checks if we can skip the web request and reuse previous success.
+// When reportOn=proposed and we've already successfully validated a SHA, we can skip re-validating.
+// Returns the result and true if status was reused, nil and false if web request is needed.
 func (r *WebRequestCommitStatusReconciler) tryReuseSuccessfulStatus(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
@@ -403,14 +395,32 @@ func (r *WebRequestCommitStatusReconciler) tryReuseSuccessfulStatus(
 	branch, reportedSha, reportOn string,
 	previousReconcileStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus,
 ) (*environmentProcessResult, bool, error) {
-	if !shouldSkipRequest(reportOn, previousReconcileStatus, reportedSha) {
+	// Determine if we need to make a web request for validation.
+	// We can skip (reuse) only when ALL of these conditions are met:
+	// - reportOn is "proposed" (not "active", which requires continuous polling)
+	// - previousReconcileStatus exists (we've processed this environment before)
+	// - previousReconcileStatus.Phase is "success" (previous validation passed)
+	// - previousReconcileStatus.ReportedSha matches current reportedSha (same SHA)
+	// - previousReconcileStatus.LastSuccessfulSha matches reportedSha (successful for this SHA)
+	//
+	// This allows us to skip re-validating the same proposed SHA that already succeeded.
+	// For reportOn="active", we always make the request to enable continuous health monitoring.
+	needsWebRequest := reportOn != ReportOnProposed || previousReconcileStatus == nil ||
+		previousReconcileStatus.Phase != WebRequestPhaseSuccess ||
+		previousReconcileStatus.ReportedSha != reportedSha ||
+		previousReconcileStatus.LastSuccessfulSha != reportedSha
+
+	// If we need to make a web request, don't reuse
+	if needsWebRequest {
 		return nil, false, nil
 	}
 
+	// We can skip the web request - reuse the previous successful status
 	result := &environmentProcessResult{
 		envStatus: *previousReconcileStatus,
 	}
 
+	// Still need to ensure CommitStatus resource exists
 	cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, WebRequestPhaseSuccess, wrcs.Spec.Key, &result.envStatus)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
