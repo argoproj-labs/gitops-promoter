@@ -49,7 +49,7 @@ jobs:
         run: go mod download
       - name: Restore build output from cache
         id: cache-build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: bin/manager
           key: ${{ runner.os }}-go-build-${{ hashFiles('**/*.go', 'go.sum') }}
@@ -67,9 +67,6 @@ jobs:
           version: v2.1.0
           args: --timeout=5m
           skip-cache: false
-#      # We want to enable this but github seems to cancel the job, might be related to memory limits on the runner.
-#      - name: Nilaway
-#        run: make nilaway-no-test
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make

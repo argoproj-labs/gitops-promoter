@@ -115,7 +115,7 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 
 .PHONY: nilaway-no-test
 nilaway-no-test: nilaway ## Run nilaway to remove nil checks from the code
-	$(NILAWAY) --test=false ./...
+	GOMEMLIMIT=8GiB $(NILAWAY) -test=false
 
 ##@ Build
 
