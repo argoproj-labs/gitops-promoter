@@ -32,7 +32,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+const testNamespace = "test-namespace"
+
 func TestHTTPClient(t *testing.T) {
+	t.Parallel()
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "HTTPClient Auth Suite")
 }
@@ -47,7 +50,7 @@ var _ = Describe("ApplyBasicAuth", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		namespace = "test-namespace"
+		namespace = testNamespace
 
 		scheme = runtime.NewScheme()
 		Expect(corev1.AddToScheme(scheme)).To(Succeed())
@@ -72,7 +75,7 @@ var _ = Describe("ApplyBasicAuth", func() {
 		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
 		// Create a request
-		req, err := http.NewRequest("GET", "http://example.com", nil)
+		req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Apply basic auth
@@ -104,7 +107,7 @@ var _ = Describe("ApplyBasicAuth", func() {
 		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
 		// Create a request
-		req, err := http.NewRequest("GET", "http://example.com", nil)
+		req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Apply basic auth with custom keys
@@ -124,7 +127,7 @@ var _ = Describe("ApplyBasicAuth", func() {
 	})
 
 	It("should return error when secret is missing", func() {
-		req, err := http.NewRequest("GET", "http://example.com", nil)
+		req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		auth := &promoterv1alpha1.BasicAuth{
@@ -149,7 +152,7 @@ var _ = Describe("ApplyBasicAuth", func() {
 		}
 		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-		req, err := http.NewRequest("GET", "http://example.com", nil)
+		req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		auth := &promoterv1alpha1.BasicAuth{
@@ -173,7 +176,7 @@ var _ = Describe("ApplyBearerAuth", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		namespace = "test-namespace"
+		namespace = testNamespace
 
 		scheme = runtime.NewScheme()
 		Expect(corev1.AddToScheme(scheme)).To(Succeed())
@@ -195,7 +198,7 @@ var _ = Describe("ApplyBearerAuth", func() {
 		}
 		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-		req, err := http.NewRequest("GET", "http://example.com", nil)
+		req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		auth := &promoterv1alpha1.BearerAuth{
@@ -222,7 +225,7 @@ var _ = Describe("ApplyBearerAuth", func() {
 		}
 		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-		req, err := http.NewRequest("GET", "http://example.com", nil)
+		req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		auth := &promoterv1alpha1.BearerAuth{
@@ -250,7 +253,7 @@ var _ = Describe("ApplyBearerAuth", func() {
 		}
 		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-		req, err := http.NewRequest("GET", "http://example.com", nil)
+		req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		auth := &promoterv1alpha1.BearerAuth{
@@ -274,7 +277,7 @@ var _ = Describe("ApplyAuth", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		namespace = "test-namespace"
+		namespace = testNamespace
 
 		scheme = runtime.NewScheme()
 		Expect(corev1.AddToScheme(scheme)).To(Succeed())
@@ -297,7 +300,7 @@ var _ = Describe("ApplyAuth", func() {
 		}
 		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-		req, err := http.NewRequest("GET", "http://example.com", nil)
+		req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		auth := &promoterv1alpha1.HttpAuthentication{
@@ -324,7 +327,7 @@ var _ = Describe("ApplyAuth", func() {
 		}
 		Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
-		req, err := http.NewRequest("GET", "http://example.com", nil)
+		req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		auth := &promoterv1alpha1.HttpAuthentication{
@@ -340,7 +343,7 @@ var _ = Describe("ApplyAuth", func() {
 	})
 
 	It("should handle nil auth without error", func() {
-		req, err := http.NewRequest("GET", "http://example.com", nil)
+		req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		// Empty auth should not error and should not set any headers
