@@ -292,6 +292,15 @@ func runController(
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create TimedCommitStatus controller")
 	}
+	if err := (&controller.WebRequestCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("WebRequestCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		panic("unable to create WebRequestCommitStatus controller")
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {
