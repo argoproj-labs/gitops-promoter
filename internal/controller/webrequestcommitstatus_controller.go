@@ -95,7 +95,7 @@ type DescriptionTemplateData struct {
 	Name        string
 	Namespace   string
 	// Environment-specific fields from WebRequestCommitStatusEnvironmentStatus
-	Environment         string // The environment branch name
+	Branch              string // The environment branch name
 	ProposedHydratedSha string // Proposed SHA for this environment
 	ActiveHydratedSha   string // Active SHA for this environment
 	ReportedSha         string // The SHA being reported on
@@ -301,7 +301,7 @@ func (r *WebRequestCommitStatusReconciler) appliesToEnvironment(wrcs *promoterv1
 // findPreviousEnvStatus finds the previous status for a given environment branch
 func findPreviousReconcileStatus(previousWebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatusStatus, branch string) *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus {
 	for i := range previousWebRequestCommitStatus.Environments {
-		if previousWebRequestCommitStatus.Environments[i].Environment == branch {
+		if previousWebRequestCommitStatus.Environments[i].Branch == branch {
 			return &previousWebRequestCommitStatus.Environments[i]
 		}
 	}
@@ -498,7 +498,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 		logger.V(4).Info("Reported SHA not yet available", "branch", branch, "reportOn", reportOn)
 		return &environmentProcessResult{
 			envStatus: promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
-				Environment:         branch,
+				Branch:              branch,
 				ProposedHydratedSha: proposedSha,
 				ActiveHydratedSha:   activeSha,
 				ReportedSha:         "",
@@ -549,7 +549,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	now := metav1.Now()
 
 	result := promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
-		Environment:         branch,
+		Branch:              branch,
 		ProposedHydratedSha: proposedSha,
 		ActiveHydratedSha:   activeSha,
 		ReportedSha:         reportedSha,
@@ -610,7 +610,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 
 	// Apply authentication (except TLS which is handled in client creation)
 	if wrcs.Spec.HTTPRequest.Authentication != nil {
-		if err := r.applyAuth(ctx, req, httpClient, wrcs.Spec.HTTPRequest.Authentication, wrcs.Namespace); err != nil {
+		if err := r.applyAuth(ctx, req, wrcs.Spec.HTTPRequest.Authentication, wrcs.Namespace); err != nil {
 			return result, fmt.Errorf("failed to apply authentication: %w", err)
 		}
 	}
@@ -697,7 +697,7 @@ func (r *WebRequestCommitStatusReconciler) createHTTPClient(ctx context.Context,
 }
 
 // applyAuth applies authentication to the request based on the Authentication configuration.
-func (r *WebRequestCommitStatusReconciler) applyAuth(ctx context.Context, req *http.Request, httpClient *http.Client, auth *promoterv1alpha1.HttpAuthentication, namespace string) error {
+func (r *WebRequestCommitStatusReconciler) applyAuth(ctx context.Context, req *http.Request, auth *promoterv1alpha1.HttpAuthentication, namespace string) error {
 	if auth.Basic != nil {
 		return r.applyBasicAuth(ctx, req, auth.Basic, namespace)
 	}
@@ -860,7 +860,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Contex
 	if cached, ok := r.expressionCache.Load(expression); ok {
 		program, ok = cached.(*vm.Program)
 		if !ok {
-			return WebRequestPhaseFailure, nil, fmt.Errorf("invalid cached expression program")
+			return WebRequestPhaseFailure, nil, errors.New("invalid cached expression program")
 		}
 	} else {
 		// Compile the expression
@@ -939,7 +939,7 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		Key:                 wrcs.Spec.Key,
 		Name:                wrcs.Name,
 		Namespace:           wrcs.Namespace,
-		Environment:         envStatus.Environment,
+		Branch:              envStatus.Branch,
 		ProposedHydratedSha: envStatus.ProposedHydratedSha,
 		ActiveHydratedSha:   envStatus.ActiveHydratedSha,
 		ReportedSha:         envStatus.ReportedSha,

@@ -72,7 +72,7 @@ spec:
                   Supports Go templates with environment-specific variables.
 
                   Available template variables (DescriptionTemplateData):
-                    - {{ .Environment }}: the environment branch name (e.g., "environment-staging")
+                    - {{ .Branch }}: the environment branch name (e.g., "environment-staging")
                     - {{ .ProposedHydratedSha }}: proposed commit SHA for this environment
                     - {{ .ActiveHydratedSha }}: active/deployed commit SHA for this environment
                     - {{ .ReportedSha }}: the commit SHA being reported on
@@ -85,7 +85,7 @@ spec:
                     - {{ .Annotations }}: map of annotations (use: {{ index .Annotations "key" }})
 
                   Examples:
-                    - "External approval for {{ .Environment }}"
+                    - "External approval for {{ .Branch }}"
                     - "Checking deployment {{ .ReportedSha | trunc 7 }}"
                     - "{{ .Key }} validation - {{ .Phase }}"
 
@@ -446,9 +446,8 @@ spec:
                       description: ActiveHydratedSha is the active hydrated commit
                         SHA from the PromotionStrategy.
                       type: string
-                    environment:
-                      description: Environment is the environment branch name being
-                        validated.
+                    branch:
+                      description: Branch is the environment branch name being validated.
                       type: string
                     expressionResult:
                       description: |-
@@ -494,13 +493,13 @@ spec:
                           type: integer
                       type: object
                   required:
-                  - environment
+                  - branch
                   - phase
                   - proposedHydratedSha
                   type: object
                 type: array
                 x-kubernetes-list-map-keys:
-                - environment
+                - branch
                 x-kubernetes-list-type: map
             type: object
         required:

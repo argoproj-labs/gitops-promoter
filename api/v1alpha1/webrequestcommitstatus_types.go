@@ -50,7 +50,7 @@ type WebRequestCommitStatusSpec struct {
 	// Supports Go templates with environment-specific variables.
 	//
 	// Available template variables (DescriptionTemplateData):
-	//   - {{ .Environment }}: the environment branch name (e.g., "environment-staging")
+	//   - {{ .Branch }}: the environment branch name (e.g., "environment-staging")
 	//   - {{ .ProposedHydratedSha }}: proposed commit SHA for this environment
 	//   - {{ .ActiveHydratedSha }}: active/deployed commit SHA for this environment
 	//   - {{ .ReportedSha }}: the commit SHA being reported on
@@ -63,7 +63,7 @@ type WebRequestCommitStatusSpec struct {
 	//   - {{ .Annotations }}: map of annotations (use: {{ index .Annotations "key" }})
 	//
 	// Examples:
-	//   - "External approval for {{ .Environment }}"
+	//   - "External approval for {{ .Branch }}"
 	//   - "Checking deployment {{ .ReportedSha | trunc 7 }}"
 	//   - "{{ .Key }} validation - {{ .Phase }}"
 	//
@@ -429,7 +429,7 @@ type WebRequestCommitStatusStatus struct {
 	// Each entry corresponds to an environment from the PromotionStrategy where the Key matches
 	// either global or environment-specific proposedCommitStatuses/activeCommitStatuses.
 	// +listType=map
-	// +listMapKey=environment
+	// +listMapKey=branch
 	// +optional
 	Environments []WebRequestCommitStatusEnvironmentStatus `json:"environments,omitempty"`
 
@@ -443,9 +443,9 @@ type WebRequestCommitStatusStatus struct {
 
 // WebRequestCommitStatusEnvironmentStatus defines the observed status for a specific environment.
 type WebRequestCommitStatusEnvironmentStatus struct {
-	// Environment is the environment branch name being validated.
+	// Branch is the environment branch name being validated.
 	// +required
-	Environment string `json:"environment"`
+	Branch string `json:"branch"`
 
 	// ProposedHydratedSha is the proposed hydrated commit SHA from the PromotionStrategy.
 	// +required

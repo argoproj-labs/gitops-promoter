@@ -131,7 +131,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 
 				// Should have status for dev environment
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Environment).To(Equal(testEnvironmentDevelopment))
+				g.Expect(wrcs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
 				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
 
 				// Validate status fields are populated
@@ -249,7 +249,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Environment).To(Equal(testEnvironmentDevelopment))
+				g.Expect(wrcs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
 				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhasePending))
 
 				// Expression result should be false
