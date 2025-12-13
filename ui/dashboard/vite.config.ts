@@ -8,6 +8,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   plugins: [react()],
   server: {
+    hmr: {
+      host: 'localhost',
+      port: 5173,
+    },
     proxy: {
       '/list': {
         target: 'http://localhost:8080',

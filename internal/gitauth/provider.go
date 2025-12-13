@@ -7,6 +7,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
@@ -22,7 +23,7 @@ import (
 // Parameters:
 //   - ctx: Context for logging and cancellation
 //   - k8sClient: Kubernetes client for fetching resources (needed by GitHub provider)
-//   - scmProvider: The SCM provider configuration (GitHub, GitLab, Forgejo, or Fake)
+//   - scmProvider: The SCM provider configuration (GitHub, GitLab, Forgejo, Bitbucket Cloud, or Fake)
 //   - secret: The secret containing authentication credentials
 //   - repoObjectKey: The namespace/name reference to the GitRepository resource
 //
@@ -60,6 +61,14 @@ func CreateGitOperationsProvider(
 	case scmProvider.GetSpec().Forgejo != nil:
 		logger.V(4).Info("Creating Forgejo git authentication provider")
 		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), nil
+
+	case scmProvider.GetSpec().BitbucketCloud != nil:
+		logger.V(4).Info("Creating Bitbucket Cloud git authentication provider")
+		provider, err := bitbucket_cloud.NewBitbucketCloudGitAuthenticationProvider(scmProvider, secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Bitbucket Cloud Auth Provider: %w", err)
+		}
+		return provider, nil
 
 	default:
 		return nil, errors.New("no supported git authentication provider found")
