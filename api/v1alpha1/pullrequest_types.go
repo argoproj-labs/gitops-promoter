@@ -102,7 +102,7 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 
 // PullRequest is the Schema for the pullrequests API
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
-// +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.ID`
+// +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.id`
 // +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.spec.sourceBranch`,priority=1
 // +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.targetBranch`,priority=1
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`

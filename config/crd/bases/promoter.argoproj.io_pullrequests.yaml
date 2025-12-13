@@ -18,7 +18,7 @@ spec:
     - jsonPath: .status.state
       name: State
       type: string
-    - jsonPath: .status.ID
+    - jsonPath: .status.id
       name: ID
       type: string
     - jsonPath: .spec.sourceBranch

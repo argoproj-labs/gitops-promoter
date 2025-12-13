@@ -3103,7 +3103,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						if promotionStrategy.Annotations == nil {
 							promotionStrategy.Annotations = make(map[string]string)
 						}
-						promotionStrategy.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = metav1.Now().Format(time.RFC3339)
+						// Use a test annotation to trigger reconciliation by modifying the object
+						promotionStrategy.Annotations["test-trigger"] = metav1.Now().Format(time.RFC3339)
 						err = k8sClient.Patch(ctx, promotionStrategy, client.MergeFrom(orig))
 						g.Expect(err).To(Succeed())
 					}, constants.EventuallyTimeout).Should(Succeed())

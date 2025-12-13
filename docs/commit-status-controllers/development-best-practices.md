@@ -16,7 +16,7 @@ All commit status controllers should set the following standard labels on the `C
 commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = "your-controller-key"
 ```
 
-**Purpose:** This label identifies which controller created the commit status. The value should match the `key` used in the PromotionStrategy's `activeCommitStatuses` or `proposedCommitStatuses` configuration.
+**Purpose:** This label identifies which controller created the commit status. The value should match the `key` used in the PromotionStrategy's `proposedCommitStatuses` configuration.
 
 **Examples:**
 - `"argocd-health"` - Used by ArgoCDCommitStatus controller
@@ -115,44 +115,62 @@ When your commit status controller detects important state transitions (e.g., a 
 
 ### The Pattern
 
-Touch the **specific ChangeTransferPolicy** for the environment that changed:
+Use the `EnqueueCTP` function to trigger reconciliation of the **specific ChangeTransferPolicy** for the environment that changed. This approach directly enqueues a reconcile request without modifying the CTP object.
 
+#### Controller Setup
 
-### Important Considerations
-
-1. **Only Trigger on Real Changes**: Don't touch annotations on every reconciliation, only when state actually changes
-2. **Handle Not Found Gracefully**: The ChangeTransferPolicy might not exist yet (or might have been deleted)
-3. **Use Patch, Not Update**: Patching is safer for concurrent modifications
-4. **Log Actions**: Always log when you trigger reconciliation for debugging
-
-### Testing
-
-When writing tests for this pattern, verify:
+Add the `EnqueueCTP` field to your reconciler struct:
 
 ```go
-It("should add ReconcileAtAnnotation to ChangeTransferPolicy when state transitions", func() {
-    Eventually(func(g Gomega) {
-        // Get the ChangeTransferPolicy for the environment
-        ctpName := utils.KubeSafeUniqueName(ctx, 
-            utils.GetChangeTransferPolicyName(ps.Name, "environment/development"))
-        
-        var ctp promoterv1alpha1.ChangeTransferPolicy
-        err := k8sClient.Get(ctx, types.NamespacedName{
-            Name:      ctpName,
-            Namespace: "default",
-        }, &ctp)
-        g.Expect(err).NotTo(HaveOccurred())
-        
-        // Verify the annotation is present
-        g.Expect(ctp.Annotations).To(
-            HaveKey(promoterv1alpha1.ReconcileAtAnnotation))
-        
-        // Verify it's a valid timestamp
-        annotationValue := ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation]
-        _, err = time.Parse(time.RFC3339Nano, annotationValue)
-        g.Expect(err).NotTo(HaveOccurred())
-    }, constants.EventuallyTimeout).Should(Succeed())
-})
+type MyCommitStatusReconciler struct {
+    client.Client
+    Scheme      *runtime.Scheme
+    Recorder    record.EventRecorder
+    SettingsMgr *settings.Manager
+
+    // EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
+    EnqueueCTP CTPEnqueueFunc
+}
+```
+
+#### Triggering Reconciliation
+
+Create a method to trigger CTP reconciliation when state transitions:
+
+```go
+func (r *MyCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
+    logger := log.FromContext(ctx)
+
+    for _, envBranch := range transitionedEnvironments {
+        // Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
+        ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
+
+        logger.Info("Triggering ChangeTransferPolicy reconciliation",
+            "changeTransferPolicy", ctpName,
+            "branch", envBranch)
+
+        // Use the enqueue function to trigger reconciliation
+        if r.EnqueueCTP != nil {
+            r.EnqueueCTP(ps.Namespace, ctpName)
+        }
+    }
+}
+```
+
+#### Wiring in main.go
+
+Pass the enqueue function when creating your controller:
+
+```go
+if err := (&controller.MyCommitStatusReconciler{
+    Client:      localManager.GetClient(),
+    Scheme:      localManager.GetScheme(),
+    Recorder:    localManager.GetEventRecorderFor("MyCommitStatus"),
+    SettingsMgr: settingsMgr,
+    EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+    panic(fmt.Errorf("unable to create MyCommitStatus controller: %w", err))
+}
 ```
 
 ## Validation

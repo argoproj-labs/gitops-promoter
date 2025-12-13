@@ -16,7 +16,7 @@ spec:
   versions:
   - additionalPrinterColumns:
     - jsonPath: .spec.promotionStrategyRef.name
-      name: Strategy
+      name: PromotionStrategy
       priority: 1
       type: string
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
