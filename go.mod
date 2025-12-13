@@ -1,8 +1,6 @@
 module github.com/argoproj-labs/gitops-promoter
 
-go 1.24.0
-
-toolchain go1.24.1
+go 1.25.5
 
 require (
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.2.0
