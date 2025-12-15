@@ -109,7 +109,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					},
 					Key:         "test-validation",
 					Description: "Test validation check",
-					Expression:  `Commit.Author == Commit.Committer`, // Should pass - same author/committer
+					Expression:  `Commit.Author != ""`, // Should pass - author is always present
 				},
 			}
 			Expect(k8sClient.Create(ctx, gitCommitStatus)).To(Succeed())

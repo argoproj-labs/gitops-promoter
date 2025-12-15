@@ -143,7 +143,6 @@ Each expression has access to a `Commit` object with the following fields:
 - `Commit.Subject` (string): The first line of the commit message
 - `Commit.Body` (string): The commit message body (everything after the subject line)
 - `Commit.Author` (string): Commit author email address
-- `Commit.Committer` (string): Committer email address
 - `Commit.Trailers` (map[string][]string): Git trailers parsed from commit message
 
 

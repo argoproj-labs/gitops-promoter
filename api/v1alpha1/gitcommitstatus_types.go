@@ -92,7 +92,6 @@ type GitCommitStatusSpec struct {
 	//   - Commit.Subject (string): the first line of the commit message
 	//   - Commit.Body (string): the commit message body (everything after the subject line)
 	//   - Commit.Author (string): commit author email address
-	//   - Commit.Committer (string): committer email address
 	//   - Commit.Trailers (map[string][]string): git trailers parsed from commit message
 	//
 	// +required

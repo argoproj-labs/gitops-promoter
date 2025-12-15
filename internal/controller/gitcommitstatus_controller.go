@@ -24,8 +24,6 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
-	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -73,7 +71,7 @@ type GitCommitStatusReconciler struct {
 //
 // For each configured environment in the GitCommitStatus, the controller:
 // 1. Fetches the PromotionStrategy to get the proposed hydrated commit SHA
-// 2. Retrieves commit details (message, author, trailers) from git
+// 2. Retrieves commit details (message, author, trailers) from the PromotionStrategy status
 // 3. Evaluates the configured expression against the commit data
 // 4. Creates/updates a CommitStatus resource with the validation result
 func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
@@ -166,12 +164,11 @@ func (r *GitCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ct
 
 // CommitData represents the data structure available to expressions during validation.
 type CommitData struct {
-	Trailers  map[string][]string `expr:"Trailers"`
-	SHA       string              `expr:"SHA"`
-	Subject   string              `expr:"Subject"`
-	Body      string              `expr:"Body"`
-	Author    string              `expr:"Author"`
-	Committer string              `expr:"Committer"`
+	Trailers map[string][]string `expr:"Trailers"`
+	SHA      string              `expr:"SHA"`
+	Subject  string              `expr:"Subject"`
+	Body     string              `expr:"Body"`
+	Author   string              `expr:"Author"`
 }
 
 // getApplicableEnvironments returns the environments from the PromotionStrategy that this GitCommitStatus applies to.
@@ -316,60 +313,59 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 	return transitionedEnvironments, commitStatuses, nil
 }
 
-// getCommitData retrieves commit details from git for the given SHA.
+// getCommitData retrieves commit details from the PromotionStrategy status.
+// This function pulls data from the already-computed status rather than making git calls,
+// significantly improving performance and reducing git operations.
 func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, sha string, branch string) (*CommitData, error) {
-	// Get the GitRepository and SCM provider
-	gitAuthProvider, repositoryRef, err := r.getGitAuthProvider(ctx, gcs, ps)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get git auth provider: %w", err)
+	logger := log.FromContext(ctx)
+
+	// Find the environment status in the PromotionStrategy
+	var envStatus *promoterv1alpha1.EnvironmentStatus
+	for i := range ps.Status.Environments {
+		if ps.Status.Environments[i].Branch == branch {
+			envStatus = &ps.Status.Environments[i]
+			break
+		}
+	}
+	if envStatus == nil {
+		return nil, fmt.Errorf("environment status for branch %q not found in PromotionStrategy", branch)
 	}
 
-	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: gcs.GetNamespace(), Name: repositoryRef.Name})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	// Determine which commit state to use based on the target
+	var commitState *promoterv1alpha1.CommitShaState
+	if gcs.Spec.Target == "proposed" {
+		commitState = &envStatus.Proposed.Hydrated
+	} else {
+		// Default to active
+		commitState = &envStatus.Active.Hydrated
 	}
 
-	// Create environment operations for git access
-	envOps := git.NewEnvironmentOperations(gitRepo, gitAuthProvider, branch)
-
-	// Clone the repo if needed
-	err = envOps.CloneRepo(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to clone repository: %w", err)
+	// Validate that the SHA matches what we expect
+	if commitState.Sha != sha {
+		return nil, fmt.Errorf("SHA mismatch: expected %q from PromotionStrategy status but got %q", commitState.Sha, sha)
 	}
 
-	// We don't need to explicitly fetch/checkout since GetShaMetadataFromGit will work with the SHA directly
-
-	// Get commit metadata
-	commitMeta, err := envOps.GetShaMetadataFromGit(ctx, sha)
+	// Parse trailers from the commit body without needing git operations.
+	// The Body field contains everything after the subject line, including trailers.
+	trailers, err := git.ParseTrailersFromMessage(ctx, commitState.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get commit metadata for SHA %q: %w", sha, err)
+		return nil, fmt.Errorf("failed to parse trailers from commit message: %w", err)
 	}
 
-	// Get author and committer emails
-	authorEmail, err := r.getCommitAuthorEmail(ctx, envOps, sha)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get author email: %w", err)
-	}
-
-	committerEmail, err := r.getCommitCommitterEmail(ctx, envOps, sha)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get committer email: %w", err)
-	}
-
-	// Get trailers using git interpret-trailers
-	trailers, err := envOps.GetTrailers(ctx, sha)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get trailers: %w", err)
-	}
+	logger.V(4).Info("Retrieved commit data from PromotionStrategy status",
+		"sha", sha,
+		"branch", branch,
+		"target", gcs.Spec.Target,
+		"subject", commitState.Subject,
+		"author", commitState.Author,
+		"trailerCount", len(trailers))
 
 	return &CommitData{
-		SHA:       sha,
-		Subject:   commitMeta.Subject,
-		Body:      commitMeta.Body,
-		Author:    authorEmail,
-		Committer: committerEmail,
-		Trailers:  trailers,
+		SHA:      sha,
+		Subject:  commitState.Subject,
+		Body:     commitState.Body,
+		Author:   commitState.Author,
+		Trailers: trailers,
 	}, nil
 }
 
@@ -505,21 +501,6 @@ func (r *GitCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Cont
 	}
 }
 
-// getGitAuthProvider retrieves the git authentication provider for accessing the repository.
-func (r *GitCommitStatusReconciler) getGitAuthProvider(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy) (scms.GitOperationsProvider, promoterv1alpha1.ObjectReference, error) {
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ps.Spec.RepositoryReference, gcs)
-	if err != nil {
-		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", ps.Spec.RepositoryReference.Name, err)
-	}
-
-	provider, err := gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: gcs.Namespace, Name: ps.Spec.RepositoryReference.Name})
-	if err != nil {
-		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create git operations provider: %w", err)
-	}
-
-	return provider, ps.Spec.RepositoryReference, nil
-}
-
 // enqueueGitCommitStatusForPromotionStrategy returns a handler that enqueues all GitCommitStatus resources
 // that reference a PromotionStrategy when that PromotionStrategy changes.
 func (r *GitCommitStatusReconciler) enqueueGitCommitStatusForPromotionStrategy() handler.EventHandler {
@@ -548,22 +529,4 @@ func (r *GitCommitStatusReconciler) enqueueGitCommitStatusForPromotionStrategy()
 
 		return requests
 	})
-}
-
-// getCommitAuthorEmail retrieves the author email for a commit.
-func (r *GitCommitStatusReconciler) getCommitAuthorEmail(ctx context.Context, envOps *git.EnvironmentOperations, sha string) (string, error) {
-	email, err := envOps.GitShow(ctx, sha, "%ae")
-	if err != nil {
-		return "", fmt.Errorf("failed to get author email: %w", err)
-	}
-	return email, nil
-}
-
-// getCommitCommitterEmail retrieves the committer email for a commit.
-func (r *GitCommitStatusReconciler) getCommitCommitterEmail(ctx context.Context, envOps *git.EnvironmentOperations, sha string) (string, error) {
-	email, err := envOps.GitShow(ctx, sha, "%ce")
-	if err != nil {
-		return "", fmt.Errorf("failed to get committer email: %w", err)
-	}
-	return email, nil
 }
