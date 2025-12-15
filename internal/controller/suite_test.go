@@ -429,6 +429,7 @@ var _ = BeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorderFor("GitCommitStatus"),
 		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

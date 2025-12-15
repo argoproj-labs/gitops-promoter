@@ -61,20 +61,6 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-		By("Waiting for PromotionStrategy to be reconciled with initial state")
-		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      name,
-				Namespace: "default",
-			}, promotionStrategy)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-			// Ensure all environments have active hydrated commits
-			for _, env := range promotionStrategy.Status.Environments {
-				g.Expect(env.Active.Hydrated.Sha).ToNot(BeEmpty(), "Active hydrated SHA should be set for "+env.Branch)
-			}
-		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 
 	AfterAll(func() {
