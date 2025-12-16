@@ -63,7 +63,8 @@ func GetScmProviderFromGitRepository(ctx context.Context, k8sClient client.Clien
 		(repositoryRef.Spec.GitLab != nil && provider.GetSpec().GitLab == nil) ||
 		(repositoryRef.Spec.Forgejo != nil && provider.GetSpec().Forgejo == nil) ||
 		(repositoryRef.Spec.Fake != nil && provider.GetSpec().Fake == nil) ||
-		(repositoryRef.Spec.BitbucketCloud != nil && provider.GetSpec().BitbucketCloud == nil) {
+		(repositoryRef.Spec.BitbucketCloud != nil && provider.GetSpec().BitbucketCloud == nil) ||
+		(repositoryRef.Spec.AzureDevOps != nil && provider.GetSpec().AzureDevOps == nil) {
 		return nil, errors.New("wrong ScmProvider configured for Repository")
 	}
 
