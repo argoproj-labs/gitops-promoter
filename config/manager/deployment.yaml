@@ -35,6 +35,8 @@ spec:
             - controller
           args:
             - --leader-elect
+            # Uncomment to enable pure JSON log output for log aggregation systems
+            # - --json-logs
           image: quay.io/argoprojlabs/gitops-promoter:latest
           name: manager
           securityContext:

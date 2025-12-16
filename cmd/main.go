@@ -26,6 +26,7 @@ import (
 	"runtime/debug"
 	"syscall"
 
+	"github.com/go-logr/logr"
 	"go.uber.org/zap/zapcore"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 
@@ -409,6 +410,7 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 
 func newCommand() *cobra.Command {
 	var clientConfig clientcmd.ClientConfig
+	var jsonLogs bool
 
 	opts := zap.Options{
 		Development: true,
@@ -419,9 +421,40 @@ func newCommand() *cobra.Command {
 		Use:   "promoter",
 		Short: "GitOps Promoter",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+			// Configure logger based on flags
+			var logger logr.Logger
+			if jsonLogs {
+				// Pure JSON mode: override all settings for JSON-only output
+				jsonOpts := zap.Options{
+					Development: false,
+					TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
+					Encoder: zapcore.NewJSONEncoder(zapcore.EncoderConfig{
+						TimeKey:        "ts",
+						LevelKey:       "level",
+						NameKey:        "logger",
+						CallerKey:      "caller",
+						FunctionKey:    zapcore.OmitKey,
+						MessageKey:     "msg",
+						StacktraceKey:  "stacktrace",
+						LineEnding:     zapcore.DefaultLineEnding,
+						EncodeLevel:    zapcore.LowercaseLevelEncoder,
+						EncodeTime:     zapcore.RFC3339NanoTimeEncoder,
+						EncodeDuration: zapcore.SecondsDurationEncoder,
+						EncodeCaller:   zapcore.ShortCallerEncoder,
+					}),
+				}
+				logger = zap.New(zap.UseFlagOptions(&jsonOpts))
+			} else {
+				// Use standard zap options with flag overrides
+				logger = zap.New(zap.UseFlagOptions(&opts))
+			}
+			ctrl.SetLogger(logger)
 		},
 	}
+
+	// Add json-logs flag
+	cmd.PersistentFlags().BoolVar(&jsonLogs, "json-logs", false,
+		"Enable pure JSON log output (sets encoder to JSON and disables development mode)")
 
 	// Zap only operates on go-type flags. Cobra doesn't give us direct access to those flags.
 	// So we apply the zap flags to a temp go flags set and then transfer them to the cobra flags.
