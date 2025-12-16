@@ -12,8 +12,6 @@ export interface CardProps {
 }
 
 const Card: React.FC<CardProps> = ({ environments }) => {
-  const isHorizontalLayout = environments.length >= 4;
-  
   const [historyMode, setHistoryMode] = useState<{ [branch: string]: number }>({});
   const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
   
