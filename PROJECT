@@ -106,4 +106,13 @@ resources:
   kind: TimedCommitStatus
   path: github.com/argoproj-labs/gitops-promoter/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: argoproj.io
+  group: promoter
+  kind: GitCommitStatus
+  path: github.com/argoproj-labs/gitops-promoter/api/v1alpha1
+  version: v1alpha1
 version: "3"

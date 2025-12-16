@@ -289,52 +289,74 @@ var _ = BeforeSuite(func() {
 					},
 				},
 			},
-			TimedCommitStatus: promoterv1alpha1.TimedCommitStatusConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Second * 1},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
+		TimedCommitStatus: promoterv1alpha1.TimedCommitStatusConfiguration{
+			WorkQueue: promoterv1alpha1.WorkQueue{
+				RequeueDuration:         metav1.Duration{Duration: time.Second * 1},
+				MaxConcurrentReconciles: 10,
+				RateLimiter: promoterv1alpha1.RateLimiter{
+					MaxOf: []promoterv1alpha1.RateLimiterTypes{
+						{
+							Bucket: &promoterv1alpha1.Bucket{
+								Qps:    10,
+								Bucket: 100,
 							},
 						},
-					},
-				},
-			},
-			WebRequestCommitStatus: promoterv1alpha1.WebRequestCommitStatusConfiguration{
-				WorkQueue: promoterv1alpha1.WorkQueue{
-					RequeueDuration:         metav1.Duration{Duration: time.Second * 1},
-					MaxConcurrentReconciles: 10,
-					RateLimiter: promoterv1alpha1.RateLimiter{
-						MaxOf: []promoterv1alpha1.RateLimiterTypes{
-							{
-								Bucket: &promoterv1alpha1.Bucket{
-									Qps:    10,
-									Bucket: 100,
-								},
-							},
-							{
-								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
-									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
-									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
-								},
+						{
+							ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+								BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+								MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
 							},
 						},
 					},
 				},
 			},
 		},
-	}
+		WebRequestCommitStatus: promoterv1alpha1.WebRequestCommitStatusConfiguration{
+			WorkQueue: promoterv1alpha1.WorkQueue{
+				RequeueDuration:         metav1.Duration{Duration: time.Second * 1},
+				MaxConcurrentReconciles: 10,
+				RateLimiter: promoterv1alpha1.RateLimiter{
+					MaxOf: []promoterv1alpha1.RateLimiterTypes{
+						{
+							Bucket: &promoterv1alpha1.Bucket{
+								Qps:    10,
+								Bucket: 100,
+							},
+						},
+						{
+							ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+								BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+								MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
+							},
+						},
+					},
+				},
+			},
+		},
+		GitCommitStatus: promoterv1alpha1.GitCommitStatusConfiguration{
+			WorkQueue: promoterv1alpha1.WorkQueue{
+				RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
+				MaxConcurrentReconciles: 10,
+				RateLimiter: promoterv1alpha1.RateLimiter{
+					MaxOf: []promoterv1alpha1.RateLimiterTypes{
+						{
+							Bucket: &promoterv1alpha1.Bucket{
+								Qps:    10,
+								Bucket: 100,
+							},
+						},
+						{
+							ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+								BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+								MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
+							},
+						},
+					},
+				},
+			},
+		},
+	},
+}
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
 
 	settingsMgr := settings.NewManager(k8sManager.GetClient(), k8sManager.GetAPIReader(), settings.ManagerConfig{
@@ -430,6 +452,15 @@ var _ = BeforeSuite(func() {
 		KubeConfigProvider: kubeconfigProvider,
 		Recorder:           k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
 	}).SetupWithManager(ctx, multiClusterManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&GitCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorderFor("GitCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()

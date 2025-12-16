@@ -570,8 +570,52 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 	return note, nil
 }
 
+// ParseTrailersFromMessage parses git trailers from a commit message using git interpret-trailers.
+// Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
+func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[string][]string, error) {
+	logger := log.FromContext(ctx)
+
+	// Pipe the message to git interpret-trailers using stdin
+	cmd := exec.CommandContext(ctx, "git", "interpret-trailers", "--only-trailers")
+	cmd.Stdin = strings.NewReader(commitMessage)
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	err := cmd.Run()
+	stderr := stderrBuf.String()
+	if err != nil {
+		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)
+		return nil, fmt.Errorf("failed to run git interpret-trailers: %w", err)
+	}
+	stdout := stdoutBuf.String()
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	trailers := make(map[string][]string)
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		if strings.Contains(line, ":") {
+			key, value, found := strings.Cut(line, ":")
+			if found {
+				trimmedKey := strings.TrimSpace(key)
+				trimmedValue := strings.TrimSpace(value)
+				trailers[trimmedKey] = append(trailers[trimmedKey], trimmedValue)
+			} else {
+				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
+			}
+		}
+	}
+	logger.V(4).Info("Parsed trailers from message", "trailers", trailers)
+	return trailers, nil
+}
+
 // GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
-func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string]string, error) {
+// Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
+func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string][]string, error) {
 	logger := log.FromContext(ctx)
 	// run git interpret-trailers to get the trailers from the last commit
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -588,36 +632,26 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 		logger.V(4).Info("git log returned an error", "stderr", stderr)
 	}
 
-	// Then pipe it to git interpret-trailers using stdin
-	cmd := exec.CommandContext(ctx, "git", "interpret-trailers", "--only-trailers")
-	cmd.Dir = gitPath
-	cmd.Stdin = strings.NewReader(msgStdout)
+	// Use the standalone parser
+	return ParseTrailersFromMessage(ctx, msgStdout)
+}
 
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
+// GitShow runs git show with a specific format string for a commit SHA.
+// The format parameter uses git's pretty-format placeholders (e.g., %ae for author email, %ce for committer email).
+// See https://git-scm.com/docs/git-show#_pretty_formats for available format options.
+func (g *EnvironmentOperations) GitShow(ctx context.Context, sha, format string) (string, error) {
+	logger := log.FromContext(ctx)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
 
-	err = cmd.Run()
-	stderr = stderrBuf.String()
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "show", "-s", "--format="+format, sha)
 	if err != nil {
-		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)
-		return nil, fmt.Errorf("failed to run git interpret-trailers: %w", err)
+		logger.Error(err, "could not git show", "gitError", stderr, "sha", sha, "format", format)
+		return "", fmt.Errorf("failed to run git show for sha %q with format %q: %w", sha, format, err)
 	}
-	stdout := stdoutBuf.String()
+	logger.V(4).Info("Git show completed", "sha", sha, "format", format)
 
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	trailers := make(map[string]string, len(lines))
-	for _, line := range lines {
-		if strings.Contains(line, ":") {
-			key, value, found := strings.Cut(line, ":")
-			if found {
-				trailers[strings.TrimSpace(key)] = strings.TrimSpace(value)
-			} else {
-				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
-			}
-		}
-	}
-	logger.V(4).Info("Got trailers", "sha", sha, "trailers", trailers)
-	return trailers, nil
+	return strings.TrimSpace(stdout), nil
 }

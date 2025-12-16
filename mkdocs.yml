@@ -33,6 +33,7 @@ nav:
   - Gating Promotions: gating-promotions.md
   - CommitStatus Controllers:
       - Argo CD: commit-status-controllers/argocd.md
+      - Git Commit: commit-status-controllers/git-commit.md
       - Timed: commit-status-controllers/timed.md
       - Web Request: commit-status-controllers/webrequest.md
       - Development Best Practices: commit-status-controllers/development-best-practices.md
