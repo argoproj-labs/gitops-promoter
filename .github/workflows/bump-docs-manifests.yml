@@ -17,22 +17,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6.0.1
       - name: Set up Git
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
       - name: Bump manifest versions in docs
         run: |
           chmod +x hack/bump-docs-manifests.sh
           ./hack/bump-docs-manifests.sh ${{ github.event.inputs.new_version }}
           git add docs/getting-started.md docs/tutorial-argocd-apps.md docs/argocd-integrations.md
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
           title: "docs: bump manifest versions to v${{ github.event.inputs.new_version }}"
           body: "Automated PR to bump manifest versions in documentation."
           branch: "bump-docs-manifests/v${{ github.event.inputs.new_version }}"
           delete-branch: true
+          signoff: true
 

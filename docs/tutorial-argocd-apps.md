@@ -66,7 +66,7 @@ Connect with this password for the `admin` user.
 > See [Getting Started](./getting-started.md)
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.17.0/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.18.3/install.yaml
 ```
 
 > [!NOTE]
@@ -97,7 +97,7 @@ Fill up the form with the following (leave non specified to defaults):
 | GitHub App name                                        | A unique name of your choice (unique across the whole world) |
 | Homepage URL                                           | The URL of your profile                                      |
 | Webhook > Active                                       | False                                                        |
-| Permissions > Repository Permissions > Commit statuses | Read and write                                               |
+| Permissions > Repository Permissions > Checks          | Read and write                                               |
 | Permissions > Repository Permissions > Content         | Read and write                                               |
 | Permissions > Repository Permissions > Pull requests   | Read and write                                               |
 

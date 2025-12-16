@@ -83,11 +83,32 @@ type CommitBranchState struct {
 	Dry CommitShaState `json:"dry,omitempty"`
 	// Hydrated is the hydrated state of the branch, which is the commit that is currently being worked on.
 	Hydrated CommitShaState `json:"hydrated,omitempty"`
+	// Note is the hydrator metadata from the git note attached to the hydrated commit.
+	Note *HydratorMetadata `json:"note,omitempty"`
 	// CommitStatuses is a list of commit statuses that are being monitored for this branch.
 	// +kubebuilder:validation:Optional
 	// +listType:=map
 	// +listMapKey=key
 	CommitStatuses []ChangeRequestPolicyCommitStatusPhase `json:"commitStatuses,omitempty"`
+}
+
+// HydratorMetadata contains metadata about the hydrated commit.
+// This is extracted from the git note or metadata file.
+type HydratorMetadata struct {
+	// RepoURL is the URL of the repository where the commit is located.
+	RepoURL string `json:"repoURL,omitempty"`
+	// DrySha is the SHA of the commit that was used as the dry source for hydration.
+	DrySha string `json:"drySha,omitempty"`
+	// Author is the author of the dry commit that was used to hydrate the branch.
+	Author string `json:"author,omitempty"`
+	// Date is the date of the dry commit that was used to hydrate the branch.
+	Date metav1.Time `json:"date,omitempty"`
+	// Subject is the subject line of the dry commit that was used to hydrate the branch.
+	Subject string `json:"subject,omitempty"`
+	// Body is the body of the dry commit that was used to hydrate the branch without the subject.
+	Body string `json:"body,omitempty"`
+	// References are the references to other commits, that went into the hydration of the branch.
+	References []RevisionReference `json:"references,omitempty"`
 }
 
 // CommitShaState defines the state of a commit in a branch.

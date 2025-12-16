@@ -60,7 +60,7 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationCreate, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return "", fmt.Errorf("failed to create pull request: %w", err)
+		return "", err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -134,7 +134,7 @@ func (pr *PullRequest) Close(ctx context.Context, pullRequest v1alpha1.PullReque
 		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationClose, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return fmt.Errorf("failed to close pull request: %w", err)
+		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,
@@ -176,7 +176,7 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationMerge, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
 	}
 	if err != nil {
-		return fmt.Errorf("failed to merge pull request: %w", err)
+		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
 	logger.Info("github rate limit",
 		"limit", response.Rate.Limit,

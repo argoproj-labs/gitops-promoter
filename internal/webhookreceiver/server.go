@@ -23,23 +23,30 @@ var logger = ctrl.Log.WithName("webhookReceiver")
 
 // Provider type constants
 const (
-	ProviderGitHub  = "github"
-	ProviderGitLab  = "gitlab"
-	ProviderForgejo = "forgejo"
-	ProviderUnknown = ""
+	ProviderGitHub         = "github"
+	ProviderGitLab         = "gitlab"
+	ProviderForgejo        = "forgejo"
+	ProviderBitbucketCloud = "bitbucketCloud"
+	ProviderUnknown        = ""
 )
+
+// EnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
+// without modifying the CTP object. This matches controller.CTPEnqueueFunc.
+type EnqueueFunc func(namespace, name string)
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
-	mgr       controllerruntime.Manager
-	k8sClient client.Client
+	mgr        controllerruntime.Manager
+	k8sClient  client.Client
+	enqueueCTP EnqueueFunc
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
-func NewWebhookReceiver(mgr controllerruntime.Manager) WebhookReceiver {
+func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) WebhookReceiver {
 	return WebhookReceiver{
-		mgr:       mgr,
-		k8sClient: mgr.GetClient(),
+		mgr:        mgr,
+		k8sClient:  mgr.GetClient(),
+		enqueueCTP: enqueueCTP,
 	}
 }
 
@@ -75,7 +82,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 }
 
 // DetectProvider determines the SCM provider based on webhook headers.
-// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, or ProviderUnknown.
+// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderBitbucketCloud, or ProviderUnknown.
 func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for GitHub webhook headers
 	if r.Header.Get("X-Github-Event") != "" || r.Header.Get("X-Github-Delivery") != "" {
@@ -90,6 +97,11 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for Forgejo/Gitea webhook headers
 	if r.Header.Get("X-Forgejo-Event") != "" || r.Header.Get("X-Gitea-Event") != "" {
 		return ProviderForgejo
+	}
+
+	// Check for Bitbucket Cloud webhook headers
+	if r.Header.Get("X-Hook-Uuid") != "" {
+		return ProviderBitbucketCloud
 	}
 
 	return ProviderUnknown
@@ -152,22 +164,12 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 
 	ctpFound = true
 
-	orig := ctp.DeepCopy()
-
-	if ctp.Annotations == nil {
-		ctp.Annotations = make(map[string]string)
-	}
-	ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339)
-
+	// Use the enqueue function to trigger reconciliation.
 	startUpdate := time.Now()
-	err = wr.k8sClient.Patch(r.Context(), ctp, client.MergeFrom(orig))
-	updateDuration = time.Since(startUpdate)
-	if err != nil {
-		logger.Error(err, fmt.Sprintf("failed to update ChangeTransferPolicy annotations '%s/%s' from webhook", ctp.Namespace, ctp.Name))
-		responseCode = http.StatusInternalServerError
-		http.Error(w, "could not cause reconcile of ChangeTransferPolicy", responseCode)
-		return
+	if wr.enqueueCTP != nil {
+		wr.enqueueCTP(ctp.Namespace, ctp.Name)
 	}
+	updateDuration = time.Since(startUpdate)
 	logger.Info("Triggered reconcile of ChangeTransferPolicy via webhook", "namespace", ctp.Namespace, "name", ctp.Name)
 
 	responseCode = http.StatusNoContent
@@ -192,6 +194,20 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 		if gjson.GetBytes(jsonBytes, "before").Exists() && gjson.GetBytes(jsonBytes, "user_name").Exists() {
 			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
 			ref = gjson.GetBytes(jsonBytes, "ref").String()
+		}
+	case ProviderBitbucketCloud:
+		// Bitbucket Cloud webhook format
+		if gjson.GetBytes(jsonBytes, "push.changes").Exists() && gjson.GetBytes(jsonBytes, "actor").Exists() {
+			changes := gjson.GetBytes(jsonBytes, "push.changes")
+			if changes.IsArray() && len(changes.Array()) > 0 {
+				firstChange := changes.Array()[0]
+				beforeSha = firstChange.Get("old.target.hash").String()
+				if newName := firstChange.Get("new.name"); newName.Exists() {
+					ref = "refs/heads/" + newName.String()
+				} else if oldName := firstChange.Get("old.name"); oldName.Exists() {
+					ref = "refs/heads/" + oldName.String()
+				}
+			}
 		}
 	default:
 		logger.V(4).Info("unsupported provider", "provider", provider)
@@ -253,6 +269,16 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 		return id
 	}
 	if id := r.Header.Get("X-Gitea-Delivery"); id != "" {
+		return id
+	}
+	// Bitbucket Cloud
+	// X-Request-UUID: Unique identifier for the webhook request
+	// X-Hook-UUID: Unique identifier for the webhook itself (also used for provider detection)
+	// Note: Go's http.Header.Get is case-insensitive, so this will match X-Request-UUID correctly
+	if id := r.Header.Get("X-Request-Uuid"); id != "" {
+		return id
+	}
+	if id := r.Header.Get("X-Hook-Uuid"); id != "" {
 		return id
 	}
 	return ""
