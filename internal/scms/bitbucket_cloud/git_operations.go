@@ -61,7 +61,10 @@ func GetClient(secret v1.Secret) (*bitbucket.Client, error) {
 		return nil, fmt.Errorf("secret %q is missing required data key 'token'", secret.Name)
 	}
 
-	client := bitbucket.NewOAuthbearerToken(token)
+	client, err := bitbucket.NewOAuthbearerToken(token)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Bitbucket client: %w", err)
+	}
 
 	return client, nil
 }
