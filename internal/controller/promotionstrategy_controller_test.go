@@ -4176,4 +4176,306 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(reason).To(ContainSubstring("commit status"))
 		})
 	})
+
+	Describe("enqueueOutOfSyncCTPs", func() {
+		var reconciler *PromotionStrategyReconciler
+		var ctx context.Context
+		var enqueuedCTPs []types.NamespacedName
+
+		BeforeEach(func() {
+			ctx = context.Background()
+			enqueuedCTPs = []types.NamespacedName{}
+
+			// Create a mock enqueue function that tracks what was enqueued
+			reconciler = &PromotionStrategyReconciler{
+				EnqueueCTP: func(namespace, name string) {
+					enqueuedCTPs = append(enqueuedCTPs, types.NamespacedName{
+						Namespace: namespace,
+						Name:      name,
+					})
+				},
+			}
+		})
+
+		Context("when there are no CTPs", func() {
+			It("should return false", func() {
+				result := reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{})
+				Expect(result).To(BeFalse())
+				Expect(enqueuedCTPs).To(BeEmpty())
+			})
+		})
+
+		Context("when no CTPs have notes (not in notes mode)", func() {
+			It("should return false and not enqueue any CTPs", func() {
+				ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "ctp-1",
+							Namespace: "test",
+						},
+						Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{
+									Sha: "abc123",
+								},
+								Hydrated: promoterv1alpha1.CommitShaState{
+									CommitTime: metav1.NewTime(time.Now()),
+								},
+								Note: nil, // No note
+							},
+						},
+					},
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "ctp-2",
+							Namespace: "test",
+						},
+						Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{
+									Sha: "def456",
+								},
+								Hydrated: promoterv1alpha1.CommitShaState{
+									CommitTime: metav1.NewTime(time.Now()),
+								},
+								Note: nil, // No note
+							},
+						},
+					},
+				}
+
+				result := reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+				Expect(result).To(BeFalse(), "should return false when not in notes mode")
+				Expect(enqueuedCTPs).To(BeEmpty(), "should not enqueue any CTPs")
+			})
+		})
+
+		Context("when in notes mode and all CTPs are in sync", func() {
+			It("should return false and not enqueue any CTPs", func() {
+				now := time.Now()
+				ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "ctp-1",
+							Namespace: "test",
+						},
+						Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{
+									Sha: "abc123",
+								},
+								Hydrated: promoterv1alpha1.CommitShaState{
+									CommitTime: metav1.NewTime(now),
+								},
+								Note: &promoterv1alpha1.HydratorMetadata{
+									DrySha: "abc123", // Matches Proposed.Dry.Sha
+								},
+							},
+						},
+					},
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "ctp-2",
+							Namespace: "test",
+						},
+						Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{
+									Sha: "abc123",
+								},
+								Hydrated: promoterv1alpha1.CommitShaState{
+									CommitTime: metav1.NewTime(now.Add(1 * time.Second)),
+								},
+								Note: &promoterv1alpha1.HydratorMetadata{
+									DrySha: "abc123", // Matches Proposed.Dry.Sha
+								},
+							},
+						},
+					},
+				}
+
+				result := reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+				Expect(result).To(BeFalse(), "should return false when all CTPs are in sync")
+				Expect(enqueuedCTPs).To(BeEmpty(), "should not enqueue any CTPs")
+			})
+		})
+
+		Context("when in notes mode and some CTPs are out of sync", func() {
+			It("should enqueue CTPs that are missing notes or have mismatched notes", func() {
+				now := time.Now()
+				ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "ctp-in-sync",
+							Namespace: "test",
+						},
+						Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{
+									Sha: "abc123",
+								},
+								Hydrated: promoterv1alpha1.CommitShaState{
+									CommitTime: metav1.NewTime(now.Add(2 * time.Second)),
+								},
+								Note: &promoterv1alpha1.HydratorMetadata{
+									DrySha: "abc123", // In sync
+								},
+							},
+						},
+					},
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "ctp-missing-note",
+							Namespace: "test",
+						},
+						Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{
+									Sha: "def456",
+								},
+								Hydrated: promoterv1alpha1.CommitShaState{
+									CommitTime: metav1.NewTime(now.Add(1 * time.Second)),
+								},
+								Note: nil, // Missing note
+							},
+						},
+					},
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "ctp-mismatched-note",
+							Namespace: "test",
+						},
+						Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{
+									Sha: "ghi789",
+								},
+								Hydrated: promoterv1alpha1.CommitShaState{
+									CommitTime: metav1.NewTime(now),
+								},
+								Note: &promoterv1alpha1.HydratorMetadata{
+									DrySha: "old123", // Mismatched
+								},
+							},
+						},
+					},
+				}
+
+				result := reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+				Expect(result).To(BeTrue(), "should return true when CTPs are enqueued")
+				Expect(enqueuedCTPs).To(HaveLen(2), "should enqueue 2 out-of-sync CTPs")
+				Expect(enqueuedCTPs).To(ContainElements(
+					types.NamespacedName{Namespace: "test", Name: "ctp-missing-note"},
+					types.NamespacedName{Namespace: "test", Name: "ctp-mismatched-note"},
+				))
+			})
+		})
+
+		Context("when in progressive delivery with different SHAs", func() {
+			It("should enqueue CTPs based on targetSha comparison", func() {
+				now := time.Now()
+				ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "wave-1-behind",
+							Namespace: "test",
+						},
+						Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{
+									Sha: "old123", // Behind
+								},
+								Hydrated: promoterv1alpha1.CommitShaState{
+									CommitTime: metav1.NewTime(now),
+								},
+								Note: &promoterv1alpha1.HydratorMetadata{
+									DrySha: "old123", // Note matches its own SHA
+								},
+							},
+						},
+					},
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "wave-2-ahead",
+							Namespace: "test",
+						},
+						Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{
+									Sha: "new456", // Ahead - has newest commit time
+								},
+								Hydrated: promoterv1alpha1.CommitShaState{
+									CommitTime: metav1.NewTime(now.Add(10 * time.Second)), // Newest
+								},
+								Note: &promoterv1alpha1.HydratorMetadata{
+									DrySha: "new456", // Note matches its own SHA
+								},
+							},
+						},
+					},
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "wave-3-behind",
+							Namespace: "test",
+						},
+						Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{
+									Sha: "old123", // Behind
+								},
+								Hydrated: promoterv1alpha1.CommitShaState{
+									CommitTime: metav1.NewTime(now.Add(1 * time.Second)),
+								},
+								Note: &promoterv1alpha1.HydratorMetadata{
+									DrySha: "old123", // Note matches its own SHA
+								},
+							},
+						},
+					},
+				}
+
+				result := reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+				Expect(result).To(BeTrue(), "should return true when CTPs are enqueued")
+				Expect(enqueuedCTPs).To(HaveLen(2), "should enqueue waves that don't match targetSha")
+				Expect(enqueuedCTPs).To(ContainElements(
+					types.NamespacedName{Namespace: "test", Name: "wave-1-behind"},
+					types.NamespacedName{Namespace: "test", Name: "wave-3-behind"},
+				))
+				// wave-2-ahead should not be enqueued as it is the target
+				Expect(enqueuedCTPs).NotTo(ContainElement(
+					types.NamespacedName{Namespace: "test", Name: "wave-2-ahead"},
+				))
+			})
+		})
+
+		Context("when CTPs have empty note objects", func() {
+			It("should treat empty note as no note (not in notes mode)", func() {
+				ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+					{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "ctp-with-empty-note",
+							Namespace: "test",
+						},
+						Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+							Proposed: promoterv1alpha1.CommitBranchState{
+								Dry: promoterv1alpha1.CommitShaState{
+									Sha: "abc123",
+								},
+								Hydrated: promoterv1alpha1.CommitShaState{
+									CommitTime: metav1.NewTime(time.Now()),
+								},
+								Note: &promoterv1alpha1.HydratorMetadata{
+									DrySha: "", // Empty string, not populated
+								},
+							},
+						},
+					},
+				}
+
+				result := reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+				Expect(result).To(BeFalse(), "should return false when notes are empty")
+				Expect(enqueuedCTPs).To(BeEmpty(), "should not enqueue any CTPs")
+			})
+		})
+	})
 })
