@@ -20,6 +20,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -848,6 +849,48 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		})
 
 		It("should gate production promotion when its GitCommitStatus fails while dev and staging pass", func() {
+			By("Making a change and hydrating the repo to create proposed commits")
+			gitPath, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath) }()
+
+			drySha, shortSha := makeChangeAndHydrateRepo(gitPath, gatingName, gatingName, "test commit for gating", "hydrated commit for gating")
+			GinkgoLogr.Info("Created hydrated commit", "drySha", drySha, "shortSha", shortSha)
+
+			By("Waiting for PromotionStrategy to pick up the hydrated commits with correct SHAs")
+			var devProposedSha, stagingProposedSha, prodProposedSha string
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      gatingName,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(ps.Status.Environments).To(HaveLen(3))
+
+				for _, env := range ps.Status.Environments {
+					g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty(),
+						"Proposed hydrated SHA should be set for "+env.Branch)
+					g.Expect(env.Active.Hydrated.Sha).ToNot(BeEmpty(),
+						"Active hydrated SHA should be set for "+env.Branch)
+
+					switch env.Branch {
+					case testEnvironmentDevelopment:
+						devProposedSha = env.Proposed.Hydrated.Sha
+					case testEnvironmentStaging:
+						stagingProposedSha = env.Proposed.Hydrated.Sha
+					case testEnvironmentProduction:
+						prodProposedSha = env.Proposed.Hydrated.Sha
+					}
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			GinkgoLogr.Info("PromotionStrategy has proposed SHAs",
+				"drySha", drySha,
+				"devProposedSha", devProposedSha,
+				"stagingProposedSha", stagingProposedSha,
+				"prodProposedSha", prodProposedSha)
+
 			By("Creating GitCommitStatus for development - PASSING (author exists)")
 			devGCS = &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
@@ -899,23 +942,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}
 			Expect(k8sClient.Create(ctx, prodGCS)).To(Succeed())
 
-			By("Waiting for PromotionStrategy to have all environments reconciled")
-			Eventually(func(g Gomega) {
-				var ps promoterv1alpha1.PromotionStrategy
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      gatingName,
-					Namespace: "default",
-				}, &ps)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(ps.Status.Environments).To(HaveLen(3))
-
-				for _, env := range ps.Status.Environments {
-					g.Expect(env.Active.Hydrated.Sha).ToNot(BeEmpty(),
-						"Active hydrated SHA should be set for "+env.Branch)
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Verifying development GitCommitStatus passes")
+			By("Verifying development GitCommitStatus passes with correct SHA")
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -927,9 +954,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
 				g.Expect(gcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 					"Development gate should pass")
+				g.Expect(gcs.Status.Environments[0].ProposedHydratedSha).To(Equal(devProposedSha),
+					"Development GitCommitStatus should be evaluating the correct proposed SHA")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying staging GitCommitStatus passes")
+			By("Verifying staging GitCommitStatus passes with correct SHA")
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -941,9 +970,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testEnvironmentStaging))
 				g.Expect(gcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 					"Staging gate should pass")
+				g.Expect(gcs.Status.Environments[0].ProposedHydratedSha).To(Equal(stagingProposedSha),
+					"Staging GitCommitStatus should be evaluating the correct proposed SHA")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying production GitCommitStatus FAILS")
+			By("Verifying production GitCommitStatus FAILS with correct SHA")
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -955,12 +986,14 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testEnvironmentProduction))
 				g.Expect(gcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)),
 					"Production gate should FAIL")
+				g.Expect(gcs.Status.Environments[0].ProposedHydratedSha).To(Equal(prodProposedSha),
+					"Production GitCommitStatus should be evaluating the correct proposed SHA")
 				g.Expect(gcs.Status.Environments[0].ExpressionResult).ToNot(BeNil())
 				g.Expect(*gcs.Status.Environments[0].ExpressionResult).To(BeFalse(),
 					"Production expression should evaluate to false")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying CommitStatus for development is success")
+			By("Verifying CommitStatus for development is success with correct SHA")
 			devCommitStatusName := utils.KubeSafeUniqueName(ctx,
 				gatingName+"-dev-gate-"+testEnvironmentDevelopment+"-dev-gate")
 			Eventually(func(g Gomega) {
@@ -972,9 +1005,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
 					"Development CommitStatus should be success")
+				g.Expect(cs.Spec.Sha).To(Equal(devProposedSha),
+					"Development CommitStatus should have correct SHA")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying CommitStatus for staging is success")
+			By("Verifying CommitStatus for staging is success with correct SHA")
 			stagingCommitStatusName := utils.KubeSafeUniqueName(ctx,
 				gatingName+"-staging-gate-"+testEnvironmentStaging+"-staging-gate")
 			Eventually(func(g Gomega) {
@@ -986,9 +1021,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
 					"Staging CommitStatus should be success")
+				g.Expect(cs.Spec.Sha).To(Equal(stagingProposedSha),
+					"Staging CommitStatus should have correct SHA")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying CommitStatus for production is FAILURE - this gates the promotion")
+			By("Verifying CommitStatus for production is FAILURE with correct SHA - this gates the promotion")
 			prodCommitStatusName := utils.KubeSafeUniqueName(ctx,
 				gatingName+"-prod-gate-"+testEnvironmentProduction+"-prod-gate")
 			Eventually(func(g Gomega) {
@@ -1000,6 +1037,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure),
 					"Production CommitStatus should be FAILURE - this gates the promotion")
+				g.Expect(cs.Spec.Sha).To(Equal(prodProposedSha),
+					"Production CommitStatus should have correct SHA")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying ChangeTransferPolicy for production has failing commit status")
@@ -1029,7 +1068,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					"Should find prod-gate in CTP proposed commit statuses")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Verifying PromotionStrategy status reflects commit status phases for all environments")
+			By("Verifying PromotionStrategy status reflects commit status phases and SHAs for all environments")
 			Eventually(func(g Gomega) {
 				var ps promoterv1alpha1.PromotionStrategy
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1043,6 +1082,9 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 					// Check Proposed commit statuses - these gate whether a PR can be merged
 					switch envStatus.Branch {
 					case testEnvironmentDevelopment:
+						// Verify SHA matches what we captured earlier
+						g.Expect(envStatus.Proposed.Hydrated.Sha).To(Equal(devProposedSha),
+							"Development proposed SHA should match captured SHA")
 						// Dev should have passing commit status on proposed
 						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
 							"Development should have proposed commit statuses")
@@ -1058,6 +1100,9 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 							"Should find dev-gate in PromotionStrategy development environment")
 
 					case testEnvironmentStaging:
+						// Verify SHA matches what we captured earlier
+						g.Expect(envStatus.Proposed.Hydrated.Sha).To(Equal(stagingProposedSha),
+							"Staging proposed SHA should match captured SHA")
 						// Staging should have passing commit status on proposed
 						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
 							"Staging should have proposed commit statuses")
@@ -1073,6 +1118,9 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 							"Should find staging-gate in PromotionStrategy staging environment")
 
 					case testEnvironmentProduction:
+						// Verify SHA matches what we captured earlier
+						g.Expect(envStatus.Proposed.Hydrated.Sha).To(Equal(prodProposedSha),
+							"Production proposed SHA should match captured SHA")
 						// Production should have FAILING commit status on proposed - this gates the promotion
 						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
 							"Production should have proposed commit statuses")
@@ -1090,35 +1138,134 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Demonstrating the gating behavior: dev and staging pass, production fails")
-			// Final summary verification
-			var devCS, stagingCS, prodCS promoterv1alpha1.CommitStatus
+			By("Waiting for production gate to reach FAILURE state")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      gatingName,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
 
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      devCommitStatusName,
-				Namespace: "default",
-			}, &devCS)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(devCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				// Find production environment and verify it's in failure state
+				for _, envStatus := range ps.Status.Environments {
+					if envStatus.Branch == testEnvironmentProduction {
+						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
+							"Production should have proposed commit statuses")
+						for _, cs := range envStatus.Proposed.CommitStatuses {
+							if cs.Key == "prod-gate" {
+								g.Expect(cs.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)),
+									"Production gate should be FAILURE")
+							}
+						}
+					}
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
 
-			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      stagingCommitStatusName,
-				Namespace: "default",
-			}, &stagingCS)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(stagingCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			By("Verifying production gate CONSISTENTLY stays in FAILURE for 5 seconds (gating is stable)")
+			Consistently(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      gatingName,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
 
-			err = k8sClient.Get(ctx, types.NamespacedName{
-				Name:      prodCommitStatusName,
-				Namespace: "default",
-			}, &prodCS)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(prodCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+				// Find production environment
+				for _, envStatus := range ps.Status.Environments {
+					if envStatus.Branch == testEnvironmentProduction {
+						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
+							"Production should have proposed commit statuses")
+						for _, cs := range envStatus.Proposed.CommitStatuses {
+							if cs.Key == "prod-gate" {
+								g.Expect(cs.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)),
+									"Production gate should CONSISTENTLY be FAILURE")
+							}
+						}
+					}
+				}
+			}, 5*time.Second, 500*time.Millisecond).Should(Succeed())
 
-			GinkgoLogr.Info("Promotion gating test complete",
-				"dev", devCS.Spec.Phase,
-				"staging", stagingCS.Spec.Phase,
-				"production", prodCS.Spec.Phase)
+			GinkgoLogr.Info("Production gate consistently failed for 5 seconds - gating is working")
+
+			By("Updating production GitCommitStatus to use a passing expression")
+			Eventually(func(g Gomega) {
+				var gcs promoterv1alpha1.GitCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      gatingName + "-prod-gate",
+					Namespace: "default",
+				}, &gcs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Change expression to one that passes
+				gcs.Spec.Expression = `Commit.Author != ""` // Now passes - commits always have authors
+				gcs.Spec.Description = "Production gate - now approved"
+				err = k8sClient.Update(ctx, &gcs)
+				g.Expect(err).NotTo(HaveOccurred())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying production GitCommitStatus now passes")
+			Eventually(func(g Gomega) {
+				var gcs promoterv1alpha1.GitCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      gatingName + "-prod-gate",
+					Namespace: "default",
+				}, &gcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(gcs.Status.Environments).To(HaveLen(1))
+				g.Expect(gcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
+					"Production gate should now PASS after expression update")
+				g.Expect(gcs.Status.Environments[0].ExpressionResult).ToNot(BeNil())
+				g.Expect(*gcs.Status.Environments[0].ExpressionResult).To(BeTrue(),
+					"Production expression should now evaluate to true")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying PromotionStrategy now shows production gate as SUCCESS")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      gatingName,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Find production environment and verify gate is now passing
+				for _, envStatus := range ps.Status.Environments {
+					if envStatus.Branch == testEnvironmentProduction {
+						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
+							"Production should have proposed commit statuses")
+						var foundProdGate bool
+						for _, cs := range envStatus.Proposed.CommitStatuses {
+							if cs.Key == "prod-gate" {
+								foundProdGate = true
+								g.Expect(cs.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
+									"Production gate in PromotionStrategy should now be SUCCESS")
+							}
+						}
+						g.Expect(foundProdGate).To(BeTrue(),
+							"Should find prod-gate in PromotionStrategy production environment")
+					}
+				}
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying CommitStatus for production is now SUCCESS")
+			Eventually(func(g Gomega) {
+				var cs promoterv1alpha1.CommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      prodCommitStatusName,
+					Namespace: "default",
+				}, &cs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess),
+					"Production CommitStatus should now be SUCCESS after gate approval")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			GinkgoLogr.Info("Promotion gating test complete - gate transitioned from FAILURE to SUCCESS",
+				"drySha", drySha,
+				"shortSha", shortSha,
+				"devProposedSha", devProposedSha,
+				"stagingProposedSha", stagingProposedSha,
+				"prodProposedSha", prodProposedSha)
 		})
 	})
 })
