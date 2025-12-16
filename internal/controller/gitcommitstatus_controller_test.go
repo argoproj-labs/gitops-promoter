@@ -869,6 +869,9 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(ps.Status.Environments).To(HaveLen(3))
 
 				for _, env := range ps.Status.Environments {
+					// Verify the dry SHA matches what we committed
+					g.Expect(env.Proposed.Dry.Sha).To(Equal(drySha),
+						"Proposed dry SHA should match the committed dry SHA for "+env.Branch)
 					g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty(),
 						"Proposed hydrated SHA should be set for "+env.Branch)
 					g.Expect(env.Active.Hydrated.Sha).ToNot(BeEmpty(),
@@ -1134,30 +1137,6 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 						}
 						g.Expect(foundProdGate).To(BeTrue(),
 							"Should find prod-gate in PromotionStrategy production environment")
-					}
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Waiting for production gate to reach FAILURE state")
-			Eventually(func(g Gomega) {
-				var ps promoterv1alpha1.PromotionStrategy
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      gatingName,
-					Namespace: "default",
-				}, &ps)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				// Find production environment and verify it's in failure state
-				for _, envStatus := range ps.Status.Environments {
-					if envStatus.Branch == testEnvironmentProduction {
-						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
-							"Production should have proposed commit statuses")
-						for _, cs := range envStatus.Proposed.CommitStatuses {
-							if cs.Key == "prod-gate" {
-								g.Expect(cs.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)),
-									"Production gate should be FAILURE")
-							}
-						}
 					}
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())

@@ -571,8 +571,6 @@ func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string)
 }
 
 // ParseTrailersFromMessage parses git trailers from a commit message using git interpret-trailers.
-// This function does not require a git repository and works entirely via stdin.
-// The commitMessage can be the full commit message (subject + body) or just the body.
 // Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
 func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[string][]string, error) {
 	logger := log.FromContext(ctx)
