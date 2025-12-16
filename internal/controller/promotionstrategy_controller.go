@@ -349,6 +349,22 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		return false
 	}
 
+	// First, check if any CTP has a note. If at least one has a note, we're in "notes mode"
+	// and should check for out-of-sync notes across environments.
+	hasAnyNote := false
+	for _, ctp := range ctps {
+		if ctp.Status.Proposed.Note != nil && ctp.Status.Proposed.Note.DrySha != "" {
+			hasAnyNote = true
+			break
+		}
+	}
+
+	// If no CTPs have notes, we can assume webhooks will trigger reconciliation when needed.
+	// No need to enqueue CTPs in this case.
+	if !hasAnyNote {
+		return false
+	}
+
 	// Get the effective dry SHA for each CTP (Note.DrySha if set, otherwise Proposed.Dry.Sha)
 	getEffectiveDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
 		if ctp.Status.Proposed.Note != nil && ctp.Status.Proposed.Note.DrySha != "" {
