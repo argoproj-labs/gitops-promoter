@@ -314,8 +314,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 }
 
 // getCommitData retrieves commit details from the PromotionStrategy status.
-// This function pulls data from the already-computed status rather than making git calls,
-// significantly improving performance and reducing git operations.
+// This function pulls data from the already-computed status rather than making git calls.
 func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *promoterv1alpha1.GitCommitStatus, ps *promoterv1alpha1.PromotionStrategy, sha string, branch string) (*CommitData, error) {
 	logger := log.FromContext(ctx)
 
