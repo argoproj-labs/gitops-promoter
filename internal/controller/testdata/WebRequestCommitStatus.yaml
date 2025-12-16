@@ -15,8 +15,9 @@ spec:
     url: "https://api.example.com/approvals/{{ .ProposedHydratedSha }}"
     method: GET
     timeout: 30s
-    authSecretRef:
-      name: api-credentials
-      type: bearer
+    authentication:
+      bearer:
+        secretRef:
+          name: api-credentials
   expression: 'Response.StatusCode == 200 && Response.Body.approved == true'
 
