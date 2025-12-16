@@ -785,6 +785,12 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		// - Dev and staging have passing expressions (check author exists - always true)
 		// - Production has a failing expression (check for non-existent author)
 		// - The production PR should NOT be merged because the commit status is failing
+		const (
+			devGateKey     = "dev-gate"
+			stagingGateKey = "staging-gate"
+			prodGateKey    = "prod-gate"
+		)
+
 		var (
 			devGCS     *promoterv1alpha1.GitCommitStatus
 			stagingGCS *promoterv1alpha1.GitCommitStatus
@@ -803,16 +809,18 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				switch env.Branch {
 				case testEnvironmentDevelopment:
 					env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-						{Key: "dev-gate"},
+						{Key: devGateKey},
 					}
 				case testEnvironmentStaging:
 					env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-						{Key: "staging-gate"},
+						{Key: stagingGateKey},
 					}
 				case testEnvironmentProduction:
 					env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-						{Key: "prod-gate"},
+						{Key: prodGateKey},
 					}
+				default:
+					// No commit status requirements for other environments
 				}
 			}
 
@@ -884,6 +892,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 						stagingProposedSha = env.Proposed.Hydrated.Sha
 					case testEnvironmentProduction:
 						prodProposedSha = env.Proposed.Hydrated.Sha
+					default:
+						// Other environments not tracked
 					}
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -897,14 +907,14 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			By("Creating GitCommitStatus for development - PASSING (author exists)")
 			devGCS = &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      gatingName + "-dev-gate",
+					Name:      gatingName + "-" + devGateKey,
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: gatingName,
 					},
-					Key:         "dev-gate",
+					Key:         devGateKey,
 					Description: "Development gate - validates author exists",
 					Expression:  `Commit.Author != ""`, // Passes - commits always have authors
 				},
@@ -914,14 +924,14 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			By("Creating GitCommitStatus for staging - PASSING (subject exists)")
 			stagingGCS = &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      gatingName + "-staging-gate",
+					Name:      gatingName + "-" + stagingGateKey,
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: gatingName,
 					},
-					Key:         "staging-gate",
+					Key:         stagingGateKey,
 					Description: "Staging gate - validates subject exists",
 					Expression:  `Commit.Subject != ""`, // Passes - commits always have subjects
 				},
@@ -931,14 +941,14 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			By("Creating GitCommitStatus for production - FAILING (requires non-existent author)")
 			prodGCS = &promoterv1alpha1.GitCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      gatingName + "-prod-gate",
+					Name:      gatingName + "-" + prodGateKey,
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.GitCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: gatingName,
 					},
-					Key:         "prod-gate",
+					Key:         prodGateKey,
 					Description: "Production gate - requires approval (non-existent author)",
 					Expression:  `Commit.Author == "prod-approver@example.com"`, // Fails - this author doesn't exist
 				},
@@ -949,7 +959,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      gatingName + "-dev-gate",
+					Name:      gatingName + "-" + devGateKey,
 					Namespace: "default",
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -965,7 +975,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      gatingName + "-staging-gate",
+					Name:      gatingName + "-" + stagingGateKey,
 					Namespace: "default",
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -981,7 +991,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      gatingName + "-prod-gate",
+					Name:      gatingName + "-" + prodGateKey,
 					Namespace: "default",
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -998,7 +1008,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus for development is success with correct SHA")
 			devCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-dev-gate-"+testEnvironmentDevelopment+"-dev-gate")
+				gatingName+"-"+devGateKey+"-"+testEnvironmentDevelopment+"-"+devGateKey)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1014,7 +1024,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus for staging is success with correct SHA")
 			stagingCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-staging-gate-"+testEnvironmentStaging+"-staging-gate")
+				gatingName+"-"+stagingGateKey+"-"+testEnvironmentStaging+"-"+stagingGateKey)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1030,7 +1040,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus for production is FAILURE with correct SHA - this gates the promotion")
 			prodCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-prod-gate-"+testEnvironmentProduction+"-prod-gate")
+				gatingName+"-"+prodGateKey+"-"+testEnvironmentProduction+"-"+prodGateKey)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1061,7 +1071,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				// Find the prod-gate status
 				var foundProdGate bool
 				for _, status := range ctp.Status.Proposed.CommitStatuses {
-					if status.Key == "prod-gate" {
+					if status.Key == prodGateKey {
 						foundProdGate = true
 						g.Expect(status.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)),
 							"Production gate in CTP should be FAILURE")
@@ -1093,7 +1103,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 							"Development should have proposed commit statuses")
 						var foundDevGate bool
 						for _, cs := range envStatus.Proposed.CommitStatuses {
-							if cs.Key == "dev-gate" {
+							if cs.Key == devGateKey {
 								foundDevGate = true
 								g.Expect(cs.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 									"Development gate in PromotionStrategy should be SUCCESS")
@@ -1111,7 +1121,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 							"Staging should have proposed commit statuses")
 						var foundStagingGate bool
 						for _, cs := range envStatus.Proposed.CommitStatuses {
-							if cs.Key == "staging-gate" {
+							if cs.Key == stagingGateKey {
 								foundStagingGate = true
 								g.Expect(cs.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 									"Staging gate in PromotionStrategy should be SUCCESS")
@@ -1129,7 +1139,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 							"Production should have proposed commit statuses")
 						var foundProdGate bool
 						for _, cs := range envStatus.Proposed.CommitStatuses {
-							if cs.Key == "prod-gate" {
+							if cs.Key == prodGateKey {
 								foundProdGate = true
 								g.Expect(cs.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)),
 									"Production gate in PromotionStrategy should be FAILURE - this gates promotion")
@@ -1137,6 +1147,8 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 						}
 						g.Expect(foundProdGate).To(BeTrue(),
 							"Should find prod-gate in PromotionStrategy production environment")
+					default:
+						// Other environments not checked
 					}
 				}
 			}, constants.EventuallyTimeout).Should(Succeed())
@@ -1156,7 +1168,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
 							"Production should have proposed commit statuses")
 						for _, cs := range envStatus.Proposed.CommitStatuses {
-							if cs.Key == "prod-gate" {
+							if cs.Key == prodGateKey {
 								g.Expect(cs.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)),
 									"Production gate should CONSISTENTLY be FAILURE")
 							}
@@ -1171,7 +1183,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      gatingName + "-prod-gate",
+					Name:      gatingName + "-" + prodGateKey,
 					Namespace: "default",
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -1187,7 +1199,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var gcs promoterv1alpha1.GitCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      gatingName + "-prod-gate",
+					Name:      gatingName + "-" + prodGateKey,
 					Namespace: "default",
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -1215,7 +1227,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 							"Production should have proposed commit statuses")
 						var foundProdGate bool
 						for _, cs := range envStatus.Proposed.CommitStatuses {
-							if cs.Key == "prod-gate" {
+							if cs.Key == prodGateKey {
 								foundProdGate = true
 								g.Expect(cs.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 									"Production gate in PromotionStrategy should now be SUCCESS")
