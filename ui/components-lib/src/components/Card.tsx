@@ -40,7 +40,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
   
   return (
     <div className="env-cards-container">
-      <div className={`env-cards-wrapper ${isHorizontalLayout ? 'horizontal-layout' : ''}`}>
+      <div className="env-cards-wrapper">
         {enrichedEnvs.map((env: EnrichedEnvDetails) => {
           const branch = env.branch;
           const proposedStatus = env.promotionStatus;
