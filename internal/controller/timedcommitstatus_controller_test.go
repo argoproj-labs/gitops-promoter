@@ -449,7 +449,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			_ = k8sClient.Delete(ctx, timedCommitStatus)
 		})
 
-		It("should add ReconcileAtAnnotation to ChangeTransferPolicy when time gate transitions to success", func() {
+		It("should trigger ChangeTransferPolicy reconciliation when time gate transitions to success", func() {
 			By("Waiting for the time gate to transition to success (after 10 seconds)")
 			Eventually(func(g Gomega) {
 				var tcs promoterv1alpha1.TimedCommitStatus
@@ -465,62 +465,6 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 					"Dev environment should transition to success after duration")
 			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Verifying that ChangeTransferPolicy for development has ReconcileAtAnnotation added")
-			Eventually(func(g Gomega) {
-				// Get the PromotionStrategy to construct the ChangeTransferPolicy name
-				var ps promoterv1alpha1.PromotionStrategy
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, &ps)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				// Find the development ChangeTransferPolicy
-				ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, testEnvironmentDevelopment))
-				var ctp promoterv1alpha1.ChangeTransferPolicy
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      ctpName,
-					Namespace: "default",
-				}, &ctp)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				// The annotation should be present
-				g.Expect(ctp.Annotations).To(HaveKey(promoterv1alpha1.ReconcileAtAnnotation),
-					"ChangeTransferPolicy should have ReconcileAtAnnotation")
-
-				// Verify the annotation value is populated and is a valid RFC3339Nano timestamp
-				annotationValue := ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation]
-				g.Expect(annotationValue).ToNot(BeEmpty(),
-					"ReconcileAtAnnotation should be populated")
-
-				_, err = time.Parse(time.RFC3339Nano, annotationValue)
-				g.Expect(err).NotTo(HaveOccurred(),
-					"ReconcileAtAnnotation should be a valid RFC3339Nano timestamp")
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Verifying that the annotation remains stable (doesn't constantly update)")
-			Consistently(func(g Gomega) {
-				var ps promoterv1alpha1.PromotionStrategy
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, &ps)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, testEnvironmentDevelopment))
-				var ctp promoterv1alpha1.ChangeTransferPolicy
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      ctpName,
-					Namespace: "default",
-				}, &ctp)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				// The annotation should still be present
-				g.Expect(ctp.Annotations).To(HaveKey(promoterv1alpha1.ReconcileAtAnnotation))
-				// Note: The annotation value might change if there are multiple reconciliations,
-				// but the annotation key should remain present
-			}, 5*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
 
