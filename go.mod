@@ -8,7 +8,7 @@ require (
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.2.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
 	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/expr-lang/expr v1.17.6
+	github.com/expr-lang/expr v1.17.7
 	github.com/gin-contrib/gzip v1.2.5
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-logr/logr v1.4.3
