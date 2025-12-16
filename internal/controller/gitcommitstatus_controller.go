@@ -119,11 +119,7 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&gcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// Update status
-	err = r.Status().Update(ctx, &gcs)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update GitCommitStatus status: %w", err)
-	}
+	// Note: Status update is handled by HandleReconciliationResult (deferred at the start of this function).
 
 	// If any validations transitioned to success, touch the corresponding ChangeTransferPolicies
 	if len(transitionedEnvironments) > 0 {

@@ -116,10 +116,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to merge PRs: %w", err)
 	}
 
-	err = r.Status().Update(ctx, &ps)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
-	}
+	// Note: Status update is handled by HandleReconciliationResult (deferred at the start of this function).
 
 	// Check if any environments need to refresh their git notes.
 	// GitHub doesn't send webhooks when git notes are pushed, so we need to

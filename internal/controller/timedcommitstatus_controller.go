@@ -117,13 +117,9 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// 5. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&tcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// 6. Update status
-	err = r.Status().Update(ctx, &tcs)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update TimedCommitStatus status: %w", err)
-	}
+	// Note: Status update is handled by HandleReconciliationResult (deferred at the start of this function).
 
-	// 7. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
+	// 6. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
 	if len(transitionedEnvironments) > 0 {
 		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
 	}

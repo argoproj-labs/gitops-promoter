@@ -112,10 +112,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
 	}
 
-	err = r.Status().Update(ctx, &cs)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus status %q: %w", req.Name, err)
-	}
+	// Note: Status update is handled by HandleReconciliationResult (deferred at the start of this function).
 
 	err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
 	if err != nil {

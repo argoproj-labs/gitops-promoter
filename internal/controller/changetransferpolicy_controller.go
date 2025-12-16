@@ -175,10 +175,8 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	// calculateHistory is done at a best effort so we do not return any errors here, we just log them instead.
 	r.calculateHistory(ctx, &ctp, gitOperations)
 
-	err = r.Status().Update(ctx, &ctp)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
-	}
+	// Note: Status update is handled by HandleReconciliationResult (deferred at the start of this function).
+	// This ensures a single status update with retry, avoiding race conditions from multiple Status().Update() calls.
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
