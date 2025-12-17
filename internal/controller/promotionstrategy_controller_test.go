@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
@@ -4174,6 +4175,327 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			Expect(isPending).To(BeTrue(), "should block when previous env commit statuses are not passing")
 			Expect(reason).To(ContainSubstring("commit status"))
+		})
+	})
+
+	Context("Rate limiting for enqueueOutOfSyncCTPs", func() {
+		var (
+			reconciler       *PromotionStrategyReconciler
+			enqueuedCTPs     []client.ObjectKey
+			enqueueCallTimes []time.Time
+			enqueueMutex     sync.Mutex
+		)
+
+		BeforeEach(func() {
+			// Reset tracking
+			enqueuedCTPs = []client.ObjectKey{}
+			enqueueCallTimes = []time.Time{}
+
+			// Create reconciler with mock enqueue function
+			reconciler = &PromotionStrategyReconciler{
+				EnqueueCTP: func(namespace, name string) {
+					enqueueMutex.Lock()
+					defer enqueueMutex.Unlock()
+					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
+					enqueueCallTimes = append(enqueueCallTimes, time.Now())
+				},
+			}
+		})
+
+		It("should enqueue CTP on first call", func() {
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-ctp",
+						Namespace: "test-ns",
+					},
+					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+						Proposed: promoterv1alpha1.CommitBranchState{
+							Dry: promoterv1alpha1.CommitShaState{
+								Sha: "abc123",
+							},
+							Hydrated: promoterv1alpha1.CommitShaState{
+								CommitTime: metav1.Now(),
+							},
+							Note: &promoterv1alpha1.HydratorMetadata{
+								DrySha: "old123", // Different from Proposed.Dry.Sha
+							},
+						},
+					},
+				},
+			}
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			enqueueMutex.Lock()
+			Expect(enqueuedCTPs).To(HaveLen(1))
+			Expect(enqueuedCTPs[0].Name).To(Equal("test-ctp"))
+			Expect(enqueuedCTPs[0].Namespace).To(Equal("test-ns"))
+			enqueueMutex.Unlock()
+		})
+
+		It("should rate limit second call within threshold", func() {
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-ctp",
+						Namespace: "test-ns",
+					},
+					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+						Proposed: promoterv1alpha1.CommitBranchState{
+							Dry: promoterv1alpha1.CommitShaState{
+								Sha: "abc123",
+							},
+							Hydrated: promoterv1alpha1.CommitShaState{
+								CommitTime: metav1.Now(),
+							},
+							Note: &promoterv1alpha1.HydratorMetadata{
+								DrySha: "old123",
+							},
+						},
+					},
+				},
+			}
+
+			// First call
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			firstCallCount := len(enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCallCount).To(Equal(1))
+
+			// Second call immediately after (within 15s threshold)
+			time.Sleep(100 * time.Millisecond)
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			secondCallCount := len(enqueuedCTPs)
+			enqueueMutex.Unlock()
+
+			// Should still be 1 - rate limited
+			Expect(secondCallCount).To(Equal(1), "second call should be rate limited")
+		})
+
+		It("should schedule delayed enqueue on rate limited call", func() {
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-ctp",
+						Namespace: "test-ns",
+					},
+					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+						Proposed: promoterv1alpha1.CommitBranchState{
+							Dry: promoterv1alpha1.CommitShaState{
+								Sha: "abc123",
+							},
+							Hydrated: promoterv1alpha1.CommitShaState{
+								CommitTime: metav1.Now(),
+							},
+							Note: &promoterv1alpha1.HydratorMetadata{
+								DrySha: "old123",
+							},
+						},
+					},
+				},
+			}
+
+			// First call
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			firstCount := len(enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCount).To(Equal(1))
+
+			// Second call - should be rate limited and schedule delayed enqueue
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			// Wait for delayed enqueue to fire (15s + small buffer)
+			time.Sleep(16 * time.Second)
+
+			enqueueMutex.Lock()
+			finalCount := len(enqueuedCTPs)
+			enqueueMutex.Unlock()
+
+			// Should now be 2 - original + delayed
+			Expect(finalCount).To(Equal(2), "delayed enqueue should have fired")
+		})
+
+		It("should not accumulate multiple delayed enqueues", func() {
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-ctp",
+						Namespace: "test-ns",
+					},
+					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+						Proposed: promoterv1alpha1.CommitBranchState{
+							Dry: promoterv1alpha1.CommitShaState{
+								Sha: "abc123",
+							},
+							Hydrated: promoterv1alpha1.CommitShaState{
+								CommitTime: metav1.Now(),
+							},
+							Note: &promoterv1alpha1.HydratorMetadata{
+								DrySha: "old123",
+							},
+						},
+					},
+				},
+			}
+
+			// First call
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			// Multiple rapid calls - should only schedule ONE delayed enqueue
+			for i := 0; i < 5; i++ {
+				time.Sleep(100 * time.Millisecond)
+				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			}
+
+			// Wait for delayed enqueue to fire
+			time.Sleep(16 * time.Second)
+
+			enqueueMutex.Lock()
+			finalCount := len(enqueuedCTPs)
+			enqueueMutex.Unlock()
+
+			// Should be 2, not 6 (original + one delayed, not 5 delayed)
+			Expect(finalCount).To(Equal(2), "should only have one delayed enqueue, not accumulate")
+		})
+
+		It("should rate limit multiple CTPs independently", func() {
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "ctp-1",
+						Namespace: "test-ns",
+					},
+					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+						Proposed: promoterv1alpha1.CommitBranchState{
+							Dry: promoterv1alpha1.CommitShaState{
+								Sha: "abc123",
+							},
+							Hydrated: promoterv1alpha1.CommitShaState{
+								CommitTime: metav1.Now(),
+							},
+							Note: &promoterv1alpha1.HydratorMetadata{
+								DrySha: "old123",
+							},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "ctp-2",
+						Namespace: "test-ns",
+					},
+					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+						Proposed: promoterv1alpha1.CommitBranchState{
+							Dry: promoterv1alpha1.CommitShaState{
+								Sha: "abc123",
+							},
+							Hydrated: promoterv1alpha1.CommitShaState{
+								CommitTime: metav1.Now(),
+							},
+							Note: &promoterv1alpha1.HydratorMetadata{
+								DrySha: "old456",
+							},
+						},
+					},
+				},
+			}
+
+			// First call - both should enqueue
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			firstCount := len(enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCount).To(Equal(2))
+
+			// Second call immediately - both should be rate limited
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			secondCount := len(enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(secondCount).To(Equal(2), "both should be rate limited")
+
+			// Wait for delayed enqueues
+			time.Sleep(16 * time.Second)
+
+			enqueueMutex.Lock()
+			finalCount := len(enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(finalCount).To(Equal(4), "both delayed enqueues should fire")
+		})
+
+		It("should rate limit one CTP while allowing others through", func() {
+			ctx := context.Background()
+
+			ctp1 := &promoterv1alpha1.ChangeTransferPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ctp-1",
+					Namespace: "test-ns",
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha: "abc123",
+						},
+						Hydrated: promoterv1alpha1.CommitShaState{
+							CommitTime: metav1.Now(),
+						},
+						Note: &promoterv1alpha1.HydratorMetadata{
+							DrySha: "old123",
+						},
+					},
+				},
+			}
+
+			ctp2 := &promoterv1alpha1.ChangeTransferPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ctp-2",
+					Namespace: "test-ns",
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha: "abc123",
+						},
+						Hydrated: promoterv1alpha1.CommitShaState{
+							CommitTime: metav1.Now(),
+						},
+						Note: &promoterv1alpha1.HydratorMetadata{
+							DrySha: "old456",
+						},
+					},
+				},
+			}
+
+			// First call - enqueue ctp-1 only
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1})
+			enqueueMutex.Lock()
+			firstCount := len(enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCount).To(Equal(1), "ctp-1 should enqueue")
+
+			// Immediately call again with both CTPs
+			// ctp-1 should be rate limited, ctp-2 should enqueue (first time)
+			time.Sleep(100 * time.Millisecond)
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2})
+
+			enqueueMutex.Lock()
+			secondCount := len(enqueuedCTPs)
+			lastEnqueuedName := enqueuedCTPs[len(enqueuedCTPs)-1].Name
+			enqueueMutex.Unlock()
+
+			// Should be 2 total now (ctp-1 from first call, ctp-2 from second call)
+			// ctp-1 was rate limited in the second call
+			Expect(secondCount).To(Equal(2), "only ctp-2 should have enqueued in second call")
+			Expect(lastEnqueuedName).To(Equal("ctp-2"), "ctp-2 should be the last enqueued")
 		})
 	})
 })

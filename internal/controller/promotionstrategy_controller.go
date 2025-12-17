@@ -343,12 +343,11 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // different values need to reconcile to fetch updated git notes or proposed dry sha. This is needed
 // because GitHub doesn't send webhooks when git notes are pushed.
 // Rate limiting: Only enqueues a CTP once per 15 seconds. If rate limited, schedules a delayed enqueue.
-// Returns true if any CTPs were enqueued or rate-limited (indicating we need to requeue to check again).
-func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) bool {
+func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
 	logger := log.FromContext(ctx)
 
 	if len(ctps) == 0 {
-		return false
+		return
 	}
 
 	// Initialize state map lazily
@@ -399,12 +398,11 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 	}
 
 	if targetSha == "" {
-		return false
+		return
 	}
 
 	// Trigger reconcile only for CTPs that have a different effective dry SHA.
 	// Rate limiting: Only enqueue if not enqueued recently.
-	needsRequeue := false
 	now := time.Now()
 
 	for _, ctp := range ctps {
@@ -429,7 +427,6 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 					"effectiveSha", effectiveSha,
 					"targetSha", targetSha,
 					"lastEnqueuedAgo", timeSinceLastEnqueue)
-				needsRequeue = true
 				continue
 			}
 
@@ -471,7 +468,6 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 				}
 			})
 
-			needsRequeue = true
 			continue
 		}
 
@@ -488,10 +484,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		if r.EnqueueCTP != nil {
 			r.EnqueueCTP(ctp.Namespace, ctp.Name)
 		}
-		needsRequeue = true
 	}
-
-	return needsRequeue
 }
 
 func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
