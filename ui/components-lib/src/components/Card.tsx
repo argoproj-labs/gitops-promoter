@@ -17,7 +17,6 @@ const Card: React.FC<CardProps> = ({ environments }) => {
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
   const wrapperRef = useRef<HTMLDivElement>(null);
   
-  // Detect flex-direction of the wrapper
   useEffect(() => {
     const detectFlexDirection = () => {
       if (wrapperRef.current) {
