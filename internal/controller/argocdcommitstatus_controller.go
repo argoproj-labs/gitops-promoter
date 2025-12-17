@@ -73,12 +73,6 @@ type aggregate struct {
 	commitStatus *promoterv1alpha1.CommitStatus
 }
 
-type appRevisionKey struct {
-	clusterName string
-	namespace   string
-	name        string
-}
-
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
 	Manager                mcmanager.Manager
