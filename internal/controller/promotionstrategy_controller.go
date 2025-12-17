@@ -134,7 +134,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Check if any environments need to refresh their git notes.
-	// GitHub doesn't send webhooks when git notes are pushed, so we need to
+	// SCM's do not send webhooks when git notes are pushed, so we need to
 	// trigger CTP reconciliation when we detect stale NoteDrySha values.
 	// This is done AFTER updating the PromotionStrategy status to avoid conflicts.
 	// When CTPs reconcile and update their status, the .Owns() watch will automatically
