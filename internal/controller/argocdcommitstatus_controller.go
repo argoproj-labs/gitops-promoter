@@ -658,7 +658,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		}
 
 		// Set the URL in the CommitStatus
-		logger.Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
+		logger.V(4).Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
 		desiredCommitStatus.Spec.Url = renderedURL
 	}
 
