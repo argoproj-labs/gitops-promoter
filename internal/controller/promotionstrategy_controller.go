@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -45,6 +46,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// ctpEnqueueState tracks rate limiting state for enqueuing out-of-sync CTPs.
+type ctpEnqueueState struct {
+	lastEnqueueTime   time.Time
+	hasScheduledRetry bool
+}
+
 // PromotionStrategyReconciler reconciles a PromotionStrategy object
 type PromotionStrategyReconciler struct {
 	client.Client
@@ -54,6 +61,11 @@ type PromotionStrategyReconciler struct {
 
 	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
 	EnqueueCTP CTPEnqueueFunc
+
+	// enqueueStates tracks rate limiting state for out-of-sync CTP enqueues.
+	// Key is client.ObjectKey of the CTP. Protected by enqueueStateMutex.
+	enqueueStates     map[client.ObjectKey]*ctpEnqueueState
+	enqueueStateMutex sync.Mutex
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies,verbs=get;list;watch;create;update;patch;delete
@@ -341,7 +353,8 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // (Note.DrySha if set, otherwise Proposed.Dry.Sha). If they differ, the CTPs with
 // different values need to reconcile to fetch updated git notes or proposed dry sha. This is needed
 // because GitHub doesn't send webhooks when git notes are pushed.
-// Returns true if any CTPs were enqueued for reconciliation.
+// Rate limiting: Only enqueues a CTP once per 15 seconds. If rate limited, schedules a delayed enqueue.
+// Returns true if any CTPs were enqueued or rate-limited (indicating we need to requeue to check again).
 func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) bool {
 	logger := log.FromContext(ctx)
 
@@ -349,12 +362,33 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		return false
 	}
 
+	// Initialize state map lazily
+	if r.enqueueStates == nil {
+		r.enqueueStateMutex.Lock()
+		if r.enqueueStates == nil {
+			r.enqueueStates = make(map[client.ObjectKey]*ctpEnqueueState)
+		}
+		r.enqueueStateMutex.Unlock()
+	}
+
+	const enqueueThreshold = 15 * time.Second
+
 	// Get the effective dry SHA for each CTP (Note.DrySha if set, otherwise Proposed.Dry.Sha)
 	getEffectiveDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
 		if ctp.Status.Proposed.Note != nil && ctp.Status.Proposed.Note.DrySha != "" {
 			return ctp.Status.Proposed.Note.DrySha
 		}
 		return ctp.Status.Proposed.Dry.Sha
+	}
+
+	// Helper to get or create state for a CTP (must be called with lock held)
+	getOrCreateState := func(key client.ObjectKey) *ctpEnqueueState {
+		state := r.enqueueStates[key]
+		if state == nil {
+			state = &ctpEnqueueState{}
+			r.enqueueStates[key] = state
+		}
+		return state
 	}
 
 	// Find the target SHA - the Proposed.Dry.Sha from the CTP with the newest proposed hydrated commit.
@@ -380,21 +414,88 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 	}
 
 	// Trigger reconcile only for CTPs that have a different effective dry SHA.
-	// We use the EnqueueCTP function to add the CTP to the reconcile queue without
-	// modifying the object, which avoids conflicts.
+	// Rate limiting: Only enqueue if not enqueued recently.
 	needsRequeue := false
+	now := time.Now()
+
 	for _, ctp := range ctps {
 		effectiveSha := getEffectiveDrySha(ctp)
 		if effectiveSha == targetSha {
 			continue
 		}
 
-		logger.V(4).Info("Enqueueing out-of-sync CTP for reconciliation",
+		key := client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}
+
+		r.enqueueStateMutex.Lock()
+		state := getOrCreateState(key)
+
+		// Check if rate limited
+		timeSinceLastEnqueue := now.Sub(state.lastEnqueueTime)
+		if timeSinceLastEnqueue < enqueueThreshold {
+			// Already have a delayed enqueue scheduled, nothing to do
+			if state.hasScheduledRetry {
+				r.enqueueStateMutex.Unlock()
+				logger.V(4).Info("Rate limited, delayed enqueue already scheduled",
+					"ctp", ctp.Name,
+					"effectiveSha", effectiveSha,
+					"targetSha", targetSha,
+					"lastEnqueuedAgo", timeSinceLastEnqueue)
+				needsRequeue = true
+				continue
+			}
+
+			// Schedule a delayed enqueue
+			state.hasScheduledRetry = true
+			capturedLastEnqueueTime := state.lastEnqueueTime
+			timeUntilThreshold := enqueueThreshold - timeSinceLastEnqueue
+			r.enqueueStateMutex.Unlock()
+
+			logger.V(4).Info("Rate limited, scheduling delayed enqueue",
+				"ctp", ctp.Name,
+				"effectiveSha", effectiveSha,
+				"targetSha", targetSha,
+				"lastEnqueuedAgo", timeSinceLastEnqueue,
+				"retryIn", timeUntilThreshold)
+
+			time.AfterFunc(timeUntilThreshold, func() {
+				r.enqueueStateMutex.Lock()
+				state := getOrCreateState(key)
+
+				// Skip if someone else enqueued more recently
+				if state.lastEnqueueTime.After(capturedLastEnqueueTime) {
+					state.hasScheduledRetry = false
+					r.enqueueStateMutex.Unlock()
+					logger.V(4).Info("Skipping delayed enqueue, already enqueued more recently",
+						"ctp", key.Name)
+					return
+				}
+
+				// Update state and enqueue
+				state.lastEnqueueTime = time.Now()
+				state.hasScheduledRetry = false
+				r.enqueueStateMutex.Unlock()
+
+				if r.EnqueueCTP != nil {
+					r.EnqueueCTP(key.Namespace, key.Name)
+					logger.V(4).Info("Delayed enqueue succeeded",
+						"ctp", key.Name)
+				}
+			})
+
+			needsRequeue = true
+			continue
+		}
+
+		// Not rate limited - enqueue immediately
+		state.lastEnqueueTime = now
+		state.hasScheduledRetry = false
+		r.enqueueStateMutex.Unlock()
+
+		logger.V(4).Info("Enqueueing out-of-sync CTP",
 			"ctp", ctp.Name,
 			"effectiveSha", effectiveSha,
 			"targetSha", targetSha)
 
-		// Use the enqueue function to trigger reconciliation.
 		if r.EnqueueCTP != nil {
 			r.EnqueueCTP(ctp.Namespace, ctp.Name)
 		}
