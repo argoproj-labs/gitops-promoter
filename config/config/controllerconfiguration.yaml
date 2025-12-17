@@ -5,7 +5,7 @@ metadata:
     app.kubernetes.io/name: promoter
     app.kubernetes.io/part-of: promoter
     app.kubernetes.io/managed-by: kustomize
-  name: controller-configuration
+  name: promoter-controller-configuration
 spec:
   promotionStrategy:
     workQueue:

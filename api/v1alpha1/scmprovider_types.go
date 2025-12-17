@@ -31,7 +31,7 @@ import (
 var ScmProviderKind = reflect.TypeOf(ScmProvider{}).Name()
 
 // ScmProviderSpec defines the desired state of ScmProvider
-// +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;bitbucketCloud;fake
+// +kubebuilder:validation:ExactlyOneOf=github;gitlab;forgejo;bitbucketCloud;fake;azureDevOps;
 type ScmProviderSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
