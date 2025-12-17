@@ -4182,6 +4182,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	// This ensures complete test isolation because enqueueOutOfSyncCTPs schedules background
 	// timers (time.AfterFunc) that may fire during other tests. With isolated state per test,
 	// background timers from one test cannot contaminate another test's assertions.
+	//
+	// Mutex locking pattern: After each call to enqueueOutOfSyncCTPs, tests acquire the lock,
+	// read enqueuedCTPs, then immediately release the lock before calling enqueueOutOfSyncCTPs
+	// again. This fine-grained locking is required because background timer goroutines need to
+	// acquire the lock to append to enqueuedCTPs during time.Sleep() calls. Using defer to hold
+	// the lock for an entire test would cause deadlock: the test would wait for timers to fire,
+	// but timers would block waiting for the lock that won't release until the test completes.
 	Context("Rate limiting for enqueueOutOfSyncCTPs", func() {
 		// Helper to create out-of-sync CTP that will trigger rate limiting.
 		// Creates a CTP where the git note SHA differs from the target SHA.
