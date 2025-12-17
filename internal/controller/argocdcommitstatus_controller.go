@@ -75,11 +75,6 @@ var (
 	revMap  = make(map[appRevisionKey]string)
 )
 
-type aggregate struct {
-	application  *argocd.Application
-	commitStatus *promoterv1alpha1.CommitStatus
-}
-
 type appRevisionKey struct {
 	clusterName string
 	namespace   string
@@ -256,7 +251,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 // If the most recent last transition time is within the threshold, the phase is set to Pending, and the requeue time is
 // set to the time remaining until the threshold is met for all the given applications or the current
 // maxTimeUntilThreshold, whichever is greater.
-func getRequeueTimeAndPhase(appsInEnvironment []*aggregate, resolvedPhase promoterv1alpha1.CommitStatusPhase, maxTimeUntilThreshold time.Duration) (promoterv1alpha1.CommitStatusPhase, time.Duration) {
+func getRequeueTimeAndPhase(appsInEnvironment []*argocd.Application, resolvedPhase promoterv1alpha1.CommitStatusPhase, maxTimeUntilThreshold time.Duration) (promoterv1alpha1.CommitStatusPhase, time.Duration) {
 	mostRecentLastTransitionTime := getMostRecentLastTransitionTime(appsInEnvironment)
 
 	if mostRecentLastTransitionTime == nil {
@@ -311,59 +306,40 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShasForBranches(ctx context.Contex
 // groupArgoCDApplicationsWithPhase returns a map. The key is a branch name. The value is a list of apps configured for that target branch, along with the commit status for that one app.
 // As a side-effect, this function updates argoCDCommitStatus to represent the aggregate status
 // of all matching apps.
-func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps []ApplicationsInEnvironment) (map[string][]*aggregate, error) {
-	aggregates := map[string][]*aggregate{}
+func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps []ApplicationsInEnvironment) (map[string][]*argocd.Application, error) {
+	aggregates := map[string][]*argocd.Application{}
 	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
 	repo := ""
 
 	for _, clusterApps := range apps {
 		for _, application := range clusterApps.Items {
 			if application.Spec.SourceHydrator == nil {
-				return map[string][]*aggregate{}, fmt.Errorf("application %s/%s does not have a SourceHydrator configured", application.GetNamespace(), application.GetName())
+				return nil, fmt.Errorf("application %s/%s does not have a SourceHydrator configured", application.GetNamespace(), application.GetName())
 			}
 
 			// Check that all the applications are configured with the same repo
 			if repo == "" {
 				repo = application.Spec.SourceHydrator.DrySource.RepoURL
 			} else if repo != application.Spec.SourceHydrator.DrySource.RepoURL {
-				return map[string][]*aggregate{}, errors.New("all applications must have the same repo configured")
+				return nil, errors.New("all applications must have the same repo configured")
 			}
 
 			// Check that TargetBranch is not empty
 			if application.Spec.SourceHydrator.SyncSource.TargetBranch == "" {
-				return map[string][]*aggregate{}, fmt.Errorf("application %s/%s spec.sourceHydrator.syncSource.targetBranch must not be empty", application.GetNamespace(), application.GetName())
+				return nil, fmt.Errorf("application %s/%s spec.sourceHydrator.syncSource.targetBranch must not be empty", application.GetNamespace(), application.GetName())
 			}
 
-			aggregateItem := &aggregate{
-				application: &application,
-			}
-
-			phase := promoterv1alpha1.CommitPhasePending
-			if application.Status.Health.Status == argocd.HealthStatusHealthy && application.Status.Sync.Status == argocd.SyncStatusCodeSynced {
-				phase = promoterv1alpha1.CommitPhaseSuccess
-			} else if application.Status.Health.Status == argocd.HealthStatusDegraded {
-				phase = promoterv1alpha1.CommitPhaseFailure
-			}
-
-			// This is an in memory version of the desired CommitStatus for a single application, this will be used to figure out
-			// the aggregated phase of all applications for a particular environment
-			aggregateItem.commitStatus = &promoterv1alpha1.CommitStatus{
-				Spec: promoterv1alpha1.CommitStatusSpec{
-					Sha:   application.Status.Sync.Revision,
-					Phase: phase,
-				},
-			}
 			argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.ApplicationsSelected{
 				Namespace:          application.GetNamespace(),
 				Name:               application.GetName(),
-				Phase:              phase,
+				Phase:              calculateApplicationPhase(&application),
 				Sha:                application.Status.Sync.Revision,
 				LastTransitionTime: application.Status.Health.LastTransitionTime,
 				Environment:        application.Spec.SourceHydrator.SyncSource.TargetBranch,
 				ClusterName:        clusterApps.ClusterName,
 			})
 
-			aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], aggregateItem)
+			aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], &application)
 		}
 	}
 
@@ -395,19 +371,20 @@ func sortApplicationsSelected(promotionStrategy *promoterv1alpha1.PromotionStrat
 	})
 }
 
-func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(appsInEnvironment []*aggregate, resolvedSha string) (promoterv1alpha1.CommitStatusPhase, string) {
+func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(appsInEnvironment []*argocd.Application, resolvedSha string) (promoterv1alpha1.CommitStatusPhase, string) {
 	var desc string
 	resolvedPhase := promoterv1alpha1.CommitPhasePending
 	pending := 0
 	healthy := 0
 	degraded := 0
-	for _, s := range appsInEnvironment {
+	for _, app := range appsInEnvironment {
 		switch {
-		case s.commitStatus.Spec.Sha != resolvedSha:
+		case app.Status.Sync.Revision != resolvedSha:
+			// App is not synced to the most recent SHA on the branch.
 			pending++
-		case s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess:
+		case calculateApplicationPhase(app) == promoterv1alpha1.CommitPhaseSuccess:
 			healthy++
-		case s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseFailure:
+		case calculateApplicationPhase(app) == promoterv1alpha1.CommitPhaseFailure:
 			degraded++
 		default:
 			// Count other phases (pending, unknown, etc.) as pending
@@ -429,13 +406,13 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(ap
 	return resolvedPhase, desc
 }
 
-func getMostRecentLastTransitionTime(aggregateItem []*aggregate) *metav1.Time {
+func getMostRecentLastTransitionTime(apps []*argocd.Application) *metav1.Time {
 	var mostRecentLastTransitionTime *metav1.Time
-	for _, s := range aggregateItem {
+	for _, app := range apps {
 		// Find the most recent last transition time
-		if s.application.Status.Health.LastTransitionTime != nil &&
-			(mostRecentLastTransitionTime == nil || s.application.Status.Health.LastTransitionTime.After(mostRecentLastTransitionTime.Time)) {
-			mostRecentLastTransitionTime = s.application.Status.Health.LastTransitionTime
+		if app.Status.Health.LastTransitionTime != nil &&
+			(mostRecentLastTransitionTime == nil || app.Status.Health.LastTransitionTime.After(mostRecentLastTransitionTime.Time)) {
+			mostRecentLastTransitionTime = app.Status.Health.LastTransitionTime
 		}
 	}
 	return mostRecentLastTransitionTime
@@ -724,4 +701,15 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 
 func hash(data []byte) string {
 	return strconv.FormatUint(xxhash.Sum64(data), 8)
+}
+
+// calculateApplicationPhase determines the commit status phase for an Argo CD Application
+// based on its health and sync status.
+func calculateApplicationPhase(app *argocd.Application) promoterv1alpha1.CommitStatusPhase {
+	if app.Status.Health.Status == argocd.HealthStatusHealthy && app.Status.Sync.Status == argocd.SyncStatusCodeSynced {
+		return promoterv1alpha1.CommitPhaseSuccess
+	} else if app.Status.Health.Status == argocd.HealthStatusDegraded {
+		return promoterv1alpha1.CommitPhaseFailure
+	}
+	return promoterv1alpha1.CommitPhasePending
 }
