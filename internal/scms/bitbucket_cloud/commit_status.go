@@ -30,7 +30,7 @@ type CommitStatus struct {
 var _ scms.CommitStatusProvider = &CommitStatus{}
 
 // NewBitbucketCloudCommitStatusProvider creates a new instance of CommitStatus for Bitbucket Cloud.
-func NewBitbucketCloudCommitStatusProvider(k8sClient client.Client, secret v1.Secret, domain string) (*CommitStatus, error) {
+func NewBitbucketCloudCommitStatusProvider(k8sClient client.Client, secret v1.Secret) (*CommitStatus, error) {
 	client, err := GetClient(secret)
 	if err != nil {
 		return nil, err
