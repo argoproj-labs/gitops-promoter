@@ -403,6 +403,7 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(ap
 	degraded := 0
 	for _, s := range appsInEnvironment {
 		switch {
+		// Source of truth for s.commitStatus.Spec.Sha is the Application resource, resolvedSha is from the Git repo
 		case s.commitStatus.Spec.Sha != resolvedSha:
 			pending++
 		case s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess:
@@ -558,7 +559,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
 			mcbuilder.WithEngageWithProviderClusters(true),
-			mcbuilder.WithPredicates(applicationPredicate())).
+			mcbuilder.WithPredicates(applicationPredicate)).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -569,38 +570,36 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 // applicationPredicate returns a predicate that filters Argo CD Application events.
 // It only allows events through when relevant fields have changed (health status, sync status, or revision).
-func applicationPredicate() predicate.Predicate {
-	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			// Always process new applications
-			return true
-		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			oldApp, oldOk := e.ObjectOld.(*argocd.Application)
-			newApp, newOk := e.ObjectNew.(*argocd.Application)
+var applicationPredicate predicate.Predicate = predicate.Funcs{
+	CreateFunc: func(e event.CreateEvent) bool {
+		// Always process new applications
+		return true
+	},
+	UpdateFunc: func(e event.UpdateEvent) bool {
+		oldApp, oldOk := e.ObjectOld.(*argocd.Application)
+		newApp, newOk := e.ObjectNew.(*argocd.Application)
 
-			if !oldOk || !newOk {
-				// If we can't assert the types, let it through to be safe
-				return true
-			}
-
-			// Only process updates when relevant fields have changed
-			healthChanged := oldApp.Status.Health.Status != newApp.Status.Health.Status
-			syncChanged := oldApp.Status.Sync.Status != newApp.Status.Sync.Status
-			revisionChanged := oldApp.Status.Sync.Revision != newApp.Status.Sync.Revision
-			lastTransitionTimeChanged := !oldApp.Status.Health.LastTransitionTime.Equal(newApp.Status.Health.LastTransitionTime)
-
-			return healthChanged || syncChanged || revisionChanged || lastTransitionTimeChanged
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			// Process deletions
+		if !oldOk || !newOk {
+			// If we can't assert the types, let it through to be safe
 			return true
-		},
-		GenericFunc: func(e event.GenericEvent) bool {
-			// Process generic events
-			return true
-		},
-	}
+		}
+
+		// Only process updates when relevant fields have changed
+		healthChanged := oldApp.Status.Health.Status != newApp.Status.Health.Status
+		syncChanged := oldApp.Status.Sync.Status != newApp.Status.Sync.Status
+		revisionChanged := oldApp.Status.Sync.Revision != newApp.Status.Sync.Revision
+		lastTransitionTimeChanged := !oldApp.Status.Health.LastTransitionTime.Equal(newApp.Status.Health.LastTransitionTime)
+
+		return healthChanged || syncChanged || revisionChanged || lastTransitionTimeChanged
+	},
+	DeleteFunc: func(e event.DeleteEvent) bool {
+		// Process deletions
+		return true
+	},
+	GenericFunc: func(e event.GenericEvent) bool {
+		// Process generic events
+		return true
+	},
 }
 
 // updateAggregatedCommitStatus creates or updates a CommitStatus object for the given target branch and sha.
