@@ -154,7 +154,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                 </div>
               </div>
               {index < enrichedEnvs.length - 1 && (
-                <div>
+                <div className="arrow-separator">
                   <svg 
                     width="24" 
                     height="24" 
