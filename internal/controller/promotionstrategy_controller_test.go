@@ -4178,52 +4178,50 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 	})
 
+	// Note: Each test creates its own reconciler and state instead of using shared BeforeEach setup.
+	// This ensures complete test isolation because enqueueOutOfSyncCTPs schedules background
+	// timers (time.AfterFunc) that may fire during other tests. With isolated state per test,
+	// background timers from one test cannot contaminate another test's assertions.
 	Context("Rate limiting for enqueueOutOfSyncCTPs", func() {
-		var (
-			reconciler       *PromotionStrategyReconciler
-			enqueuedCTPs     []client.ObjectKey
-			enqueueCallTimes []time.Time
-			enqueueMutex     sync.Mutex
-		)
+		// Helper to create minimal CTP with only fields needed for rate limiting
+		makeCTP := func(name, noteDrySha, targetSha string) *promoterv1alpha1.ChangeTransferPolicy {
+			return &promoterv1alpha1.ChangeTransferPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "test-ns",
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha: targetSha,
+						},
+						Hydrated: promoterv1alpha1.CommitShaState{
+							CommitTime: metav1.Now(),
+						},
+						Note: &promoterv1alpha1.HydratorMetadata{
+							DrySha: noteDrySha,
+						},
+					},
+				},
+			}
+		}
 
-		BeforeEach(func() {
-			// Reset tracking
-			enqueuedCTPs = []client.ObjectKey{}
-			enqueueCallTimes = []time.Time{}
+		It("should enqueue CTP on first call", func() {
+			// Each test has its own isolated state
+			var enqueuedCTPs []client.ObjectKey
+			var enqueueMutex sync.Mutex
 
-			// Create reconciler with mock enqueue function
-			reconciler = &PromotionStrategyReconciler{
+			reconciler := &PromotionStrategyReconciler{
 				EnqueueCTP: func(namespace, name string) {
 					enqueueMutex.Lock()
 					defer enqueueMutex.Unlock()
 					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
-					enqueueCallTimes = append(enqueueCallTimes, time.Now())
 				},
 			}
-		})
 
-		It("should enqueue CTP on first call", func() {
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-ctp",
-						Namespace: "test-ns",
-					},
-					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-						Proposed: promoterv1alpha1.CommitBranchState{
-							Dry: promoterv1alpha1.CommitShaState{
-								Sha: "abc123",
-							},
-							Hydrated: promoterv1alpha1.CommitShaState{
-								CommitTime: metav1.Now(),
-							},
-							Note: &promoterv1alpha1.HydratorMetadata{
-								DrySha: "old123", // Different from Proposed.Dry.Sha
-							},
-						},
-					},
-				},
+				makeCTP("test-ctp", "old123", "abc123"),
 			}
 
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
@@ -4236,27 +4234,20 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 
 		It("should rate limit second call within threshold", func() {
+			var enqueuedCTPs []client.ObjectKey
+			var enqueueMutex sync.Mutex
+
+			reconciler := &PromotionStrategyReconciler{
+				EnqueueCTP: func(namespace, name string) {
+					enqueueMutex.Lock()
+					defer enqueueMutex.Unlock()
+					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
+				},
+			}
+
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-ctp",
-						Namespace: "test-ns",
-					},
-					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-						Proposed: promoterv1alpha1.CommitBranchState{
-							Dry: promoterv1alpha1.CommitShaState{
-								Sha: "abc123",
-							},
-							Hydrated: promoterv1alpha1.CommitShaState{
-								CommitTime: metav1.Now(),
-							},
-							Note: &promoterv1alpha1.HydratorMetadata{
-								DrySha: "old123",
-							},
-						},
-					},
-				},
+				makeCTP("test-ctp", "old123", "abc123"),
 			}
 
 			// First call
@@ -4275,33 +4266,23 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			// Should still be 1 - rate limited (delayed enqueue scheduled for later)
 			Expect(secondCallCount).To(Equal(1), "second call should be rate limited")
-
-			// Wait for delayed enqueue to complete to avoid interfering with next test
-			time.Sleep(16 * time.Second)
 		})
 
 		It("should schedule delayed enqueue on rate limited call", func() {
+			var enqueuedCTPs []client.ObjectKey
+			var enqueueMutex sync.Mutex
+
+			reconciler := &PromotionStrategyReconciler{
+				EnqueueCTP: func(namespace, name string) {
+					enqueueMutex.Lock()
+					defer enqueueMutex.Unlock()
+					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
+				},
+			}
+
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-ctp",
-						Namespace: "test-ns",
-					},
-					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-						Proposed: promoterv1alpha1.CommitBranchState{
-							Dry: promoterv1alpha1.CommitShaState{
-								Sha: "abc123",
-							},
-							Hydrated: promoterv1alpha1.CommitShaState{
-								CommitTime: metav1.Now(),
-							},
-							Note: &promoterv1alpha1.HydratorMetadata{
-								DrySha: "old123",
-							},
-						},
-					},
-				},
+				makeCTP("test-ctp", "old123", "abc123"),
 			}
 
 			// First call
@@ -4326,27 +4307,20 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 
 		It("should not accumulate multiple delayed enqueues", func() {
+			var enqueuedCTPs []client.ObjectKey
+			var enqueueMutex sync.Mutex
+
+			reconciler := &PromotionStrategyReconciler{
+				EnqueueCTP: func(namespace, name string) {
+					enqueueMutex.Lock()
+					defer enqueueMutex.Unlock()
+					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
+				},
+			}
+
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-ctp",
-						Namespace: "test-ns",
-					},
-					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-						Proposed: promoterv1alpha1.CommitBranchState{
-							Dry: promoterv1alpha1.CommitShaState{
-								Sha: "abc123",
-							},
-							Hydrated: promoterv1alpha1.CommitShaState{
-								CommitTime: metav1.Now(),
-							},
-							Note: &promoterv1alpha1.HydratorMetadata{
-								DrySha: "old123",
-							},
-						},
-					},
-				},
+				makeCTP("test-ctp", "old123", "abc123"),
 			}
 
 			// First call
@@ -4370,46 +4344,21 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 
 		It("should rate limit multiple CTPs independently", func() {
+			var enqueuedCTPs []client.ObjectKey
+			var enqueueMutex sync.Mutex
+
+			reconciler := &PromotionStrategyReconciler{
+				EnqueueCTP: func(namespace, name string) {
+					enqueueMutex.Lock()
+					defer enqueueMutex.Unlock()
+					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
+				},
+			}
+
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "ctp-1",
-						Namespace: "test-ns",
-					},
-					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-						Proposed: promoterv1alpha1.CommitBranchState{
-							Dry: promoterv1alpha1.CommitShaState{
-								Sha: "abc123",
-							},
-							Hydrated: promoterv1alpha1.CommitShaState{
-								CommitTime: metav1.Now(),
-							},
-							Note: &promoterv1alpha1.HydratorMetadata{
-								DrySha: "old123",
-							},
-						},
-					},
-				},
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "ctp-2",
-						Namespace: "test-ns",
-					},
-					Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-						Proposed: promoterv1alpha1.CommitBranchState{
-							Dry: promoterv1alpha1.CommitShaState{
-								Sha: "abc123",
-							},
-							Hydrated: promoterv1alpha1.CommitShaState{
-								CommitTime: metav1.Now(),
-							},
-							Note: &promoterv1alpha1.HydratorMetadata{
-								DrySha: "old456",
-							},
-						},
-					},
-				},
+				makeCTP("ctp-1", "old123", "abc123"),
+				makeCTP("ctp-2", "old456", "abc123"),
 			}
 
 			// First call - both should enqueue
@@ -4436,47 +4385,20 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 
 		It("should rate limit one CTP while allowing others through", func() {
+			var enqueuedCTPs []client.ObjectKey
+			var enqueueMutex sync.Mutex
+
+			reconciler := &PromotionStrategyReconciler{
+				EnqueueCTP: func(namespace, name string) {
+					enqueueMutex.Lock()
+					defer enqueueMutex.Unlock()
+					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
+				},
+			}
+
 			ctx := context.Background()
-
-			ctp1 := &promoterv1alpha1.ChangeTransferPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "ctp-1",
-					Namespace: "test-ns",
-				},
-				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-					Proposed: promoterv1alpha1.CommitBranchState{
-						Dry: promoterv1alpha1.CommitShaState{
-							Sha: "abc123",
-						},
-						Hydrated: promoterv1alpha1.CommitShaState{
-							CommitTime: metav1.Now(),
-						},
-						Note: &promoterv1alpha1.HydratorMetadata{
-							DrySha: "old123",
-						},
-					},
-				},
-			}
-
-			ctp2 := &promoterv1alpha1.ChangeTransferPolicy{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "ctp-2",
-					Namespace: "test-ns",
-				},
-				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
-					Proposed: promoterv1alpha1.CommitBranchState{
-						Dry: promoterv1alpha1.CommitShaState{
-							Sha: "abc123",
-						},
-						Hydrated: promoterv1alpha1.CommitShaState{
-							CommitTime: metav1.Now(),
-						},
-						Note: &promoterv1alpha1.HydratorMetadata{
-							DrySha: "old456",
-						},
-					},
-				},
-			}
+			ctp1 := makeCTP("ctp-1", "old123", "abc123")
+			ctp2 := makeCTP("ctp-2", "old456", "abc123")
 
 			// First call - enqueue ctp-1 only
 			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1})
