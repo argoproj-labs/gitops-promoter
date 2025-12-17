@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -39,6 +40,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -72,6 +74,11 @@ type ChangeTransferPolicyReconciler struct {
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
 	// It allows other controllers to enqueue CTP reconcile requests.
 	enqueueFunc CTPEnqueueFunc
+
+	// lastEnqueueTime tracks when each CTP was last enqueued for reconciliation.
+	// This is used to throttle enqueue requests and prevent hammering the workqueue
+	// when a hydrator is slow to process notes or during reconciliation loops.
+	lastEnqueueTime sync.Map // map[types.NamespacedName]time.Time
 }
 
 // GetEnqueueFunc returns a function that can be used to enqueue CTP reconcile requests.
@@ -474,18 +481,39 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 	// Store the enqueue function so it can be retrieved by other controllers.
 	// This is a blocking send - callers will wait if the channel buffer is full.
 	r.enqueueFunc = func(namespace, name string) {
+		// Throttle enqueue requests to prevent hammering the workqueue when
+		// a hydrator is slow or during reconciliation loops. Check if we've
+		// enqueued this CTP recently and skip if so.
+		const minEnqueueInterval = 15 * time.Second
+		ctpKey := types.NamespacedName{Namespace: namespace, Name: name}
+		now := time.Now()
+
+		if lastEnqueueTimeRaw, ok := r.lastEnqueueTime.Load(ctpKey); ok {
+			lastEnqueueTime := lastEnqueueTimeRaw.(time.Time)
+			if now.Sub(lastEnqueueTime) < minEnqueueInterval {
+				log.FromContext(ctx).V(4).Info("Skipping CTP enqueue (throttled)",
+					"namespace", namespace,
+					"name", name,
+					"lastEnqueueTime", lastEnqueueTime,
+					"minInterval", minEnqueueInterval)
+				return
+			}
+		}
+
 		ctp := &promoterv1alpha1.ChangeTransferPolicy{}
 		ctp.SetNamespace(namespace)
 		ctp.SetName(name)
 
 		select {
 		case externalEnqueueChan <- event.GenericEvent{Object: ctp}:
-			// Sent successfully
+			// Sent successfully, update last enqueue time
+			r.lastEnqueueTime.Store(ctpKey, now)
 		default:
 			// Channel is full, log a warning and block until space is available
 			log.FromContext(ctx).Info("CTP enqueue channel is full, blocking until space is available",
 				"namespace", namespace, "name", name)
 			externalEnqueueChan <- event.GenericEvent{Object: ctp}
+			r.lastEnqueueTime.Store(ctpKey, now)
 		}
 	}
 
