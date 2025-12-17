@@ -17,17 +17,14 @@ const (
 	// This guid is fixed for Azure DevOps and should not be changed, see https://learn.microsoft.com/en-us/rest/api/azure/devops/tokens
 	azureDevOpsScope = "499b84ac-1321-427f-aa17-267ca6975798/.default"
 	// defaultServiceAccountTokenPath is the default path to the service account token
-	defaultServiceAccountTokenPath = "/var/run/secrets/azure/tokens/azure-identity-token"
+	// defaultServiceAccountTokenPath = "/var/run/secrets/azure/tokens/azure-identity-token"
 )
 
 // GitAuthenticationProvider provides methods to authenticate with Azure DevOps.
 type GitAuthenticationProvider struct {
 	scmProvider v1alpha1.GenericScmProvider
-	// tokenManager manages workload identity tokens with automatic refresh
-	tokenManager *TokenManager
-	token        string
-	// authType indicates the authentication method being used
-	authType AuthType
+	token       string
+	authType    AuthType
 }
 
 // AuthType represents the authentication method

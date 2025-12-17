@@ -30,13 +30,13 @@ var _ scms.PullRequestProvider = &PullRequest{}
 
 // NewAzdoPullRequestProvider creates a new instance of PullRequest for Azure DevOps.
 func NewAzdoPullRequestProvider(k8sClient client.Client, secret v1.Secret, scmProvider v1alpha1.GenericScmProvider, org string) (*PullRequest, error) {
-	client, _, err := GetClient(context.Background(), scmProvider, secret, org)
+	prClient, _, err := GetClient(context.Background(), scmProvider, secret, org)
 	if err != nil {
 		return nil, err
 	}
 
 	return &PullRequest{
-		client:    client,
+		client:    prClient,
 		k8sClient: k8sClient,
 	}, nil
 }
@@ -378,7 +378,7 @@ func (pr *PullRequest) generatePullRequestUrl(ctx context.Context, prObj v1alpha
 
 // mapAzureDevOpsPRStatusToState maps Azure DevOps PullRequestStatus to GitOps Promoter PullRequestState
 func mapAzureDevOpsPRStatusToState(status git.PullRequestStatus) v1alpha1.PullRequestState {
-	switch status {
+	switch status { //nolint:revive,identical-switch-branches
 	case git.PullRequestStatusValues.Active:
 		return v1alpha1.PullRequestOpen
 	case git.PullRequestStatusValues.Completed:

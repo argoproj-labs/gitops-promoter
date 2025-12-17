@@ -19,6 +19,8 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
+const azureDevopsDomain = "dev.azure.com"
+
 // CommitStatus implements the scms.CommitStatusProvider interface for Azure DevOps.
 type CommitStatus struct {
 	client    *azuredevops.Connection
@@ -50,6 +52,17 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
+	scmProvider, _, err := utils.GetScmProviderAndSecretFromRepositoryReference(
+		ctx,
+		cs.k8sClient,
+		commitStatus.Namespace,
+		commitStatus.Spec.RepositoryReference,
+		commitStatus,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SCM provider and secret: %w", err)
+	}
+
 	// Get Git client from Azure DevOps connection
 	gitClient, err := git.NewClient(ctx, cs.client)
 	if err != nil {
@@ -67,8 +80,6 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 	// Map GitOps Promoter status phase to Azure DevOps status state
 	var state git.GitStatusState
 	switch commitStatus.Spec.Phase {
-	case v1alpha1.CommitPhasePending:
-		state = git.GitStatusStateValues.Pending
 	case v1alpha1.CommitPhaseSuccess:
 		state = git.GitStatusStateValues.Succeeded
 	case v1alpha1.CommitPhaseFailure:
@@ -79,12 +90,10 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 
 	// Create Git commit status
 	genre := "promoter"
-	fmt.Println("URL", commitStatus.Spec.Url)
 
 	if commitStatus.Spec.Url == "" {
-		commitStatus.Spec.Url = createCommitURL(gitRepo, commitStatus.Spec.Sha)
+		commitStatus.Spec.Url = createCommitURL(gitRepo, commitStatus.Spec.Sha, scmProvider.GetSpec().AzureDevOps.Organization)
 	}
-	fmt.Println("URL2", commitStatus.Spec.Url)
 	gitCommitStatus := git.GitStatus{
 		Context: &git.GitStatusContext{
 			Name:  &commitStatus.Spec.Name,
@@ -130,23 +139,22 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 
 // mapAzureDevOpsStateToPhase maps Azure DevOps GitStatusState to GitOps Promoter CommitStatusPhase
 func mapAzureDevOpsStateToPhase(state git.GitStatusState) v1alpha1.CommitStatusPhase {
-	switch state {
+	switch state { //nolint:revive,identical-switch-branches
 	case git.GitStatusStateValues.Pending:
 		return v1alpha1.CommitPhasePending
 	case git.GitStatusStateValues.Succeeded:
 		return v1alpha1.CommitPhaseSuccess
-	case git.GitStatusStateValues.Failed:
+	case git.GitStatusStateValues.Failed, git.GitStatusStateValues.Error:
 		return v1alpha1.CommitPhaseFailure
-	case git.GitStatusStateValues.Error:
-		return v1alpha1.CommitPhaseFailure // Map error to failure as we only have 3 states
 	default:
 		return v1alpha1.CommitPhasePending
 	}
 }
 
-func createCommitURL(repo *v1alpha1.GitRepository, sha string) string {
-	return fmt.Sprintf("https://dev.azure.com/%s/%s/_git/%s/commit/%s",
-		repo.Spec.AzureDevOps.Project,
+func createCommitURL(repo *v1alpha1.GitRepository, org string, sha string) string {
+	return fmt.Sprintf("https://%s/%s/%s/_git/%s/commit/%s",
+		azureDevopsDomain,
+		org,
 		repo.Spec.AzureDevOps.Project,
 		repo.Spec.AzureDevOps.Name,
 		sha)
