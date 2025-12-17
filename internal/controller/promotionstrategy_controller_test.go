@@ -4273,8 +4273,11 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			secondCallCount := len(enqueuedCTPs)
 			enqueueMutex.Unlock()
 
-			// Should still be 1 - rate limited
+			// Should still be 1 - rate limited (delayed enqueue scheduled for later)
 			Expect(secondCallCount).To(Equal(1), "second call should be rate limited")
+
+			// Wait for delayed enqueue to complete to avoid interfering with next test
+			time.Sleep(16 * time.Second)
 		})
 
 		It("should schedule delayed enqueue on rate limited call", func() {
