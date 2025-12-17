@@ -4183,8 +4183,9 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	// timers (time.AfterFunc) that may fire during other tests. With isolated state per test,
 	// background timers from one test cannot contaminate another test's assertions.
 	Context("Rate limiting for enqueueOutOfSyncCTPs", func() {
-		// Helper to create minimal CTP with only fields needed for rate limiting
-		makeCTP := func(name, noteDrySha, targetSha string) *promoterv1alpha1.ChangeTransferPolicy {
+		// Helper to create out-of-sync CTP that will trigger rate limiting.
+		// Creates a CTP where the git note SHA differs from the target SHA.
+		makeCTP := func(name string) *promoterv1alpha1.ChangeTransferPolicy {
 			return &promoterv1alpha1.ChangeTransferPolicy{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -4193,13 +4194,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
 					Proposed: promoterv1alpha1.CommitBranchState{
 						Dry: promoterv1alpha1.CommitShaState{
-							Sha: targetSha,
+							Sha: "abc123", // Proposed dry SHA (becomes target since newest)
 						},
 						Hydrated: promoterv1alpha1.CommitShaState{
 							CommitTime: metav1.Now(),
 						},
 						Note: &promoterv1alpha1.HydratorMetadata{
-							DrySha: noteDrySha,
+							DrySha: "old123", // Git note SHA (out-of-sync with target)
 						},
 					},
 				},
@@ -4227,7 +4228,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeCTP("test-ctp", "old123", "abc123"),
+				makeCTP("test-ctp"),
 			}
 
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
@@ -4244,7 +4245,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeCTP("test-ctp", "old123", "abc123"),
+				makeCTP("test-ctp"),
 			}
 
 			// First call
@@ -4270,7 +4271,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeCTP("test-ctp", "old123", "abc123"),
+				makeCTP("test-ctp"),
 			}
 
 			// First call
@@ -4299,7 +4300,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeCTP("test-ctp", "old123", "abc123"),
+				makeCTP("test-ctp"),
 			}
 
 			// First call
@@ -4327,8 +4328,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
-				makeCTP("ctp-1", "old123", "abc123"),
-				makeCTP("ctp-2", "old456", "abc123"),
+				makeCTP("ctp-1"),
+				makeCTP("ctp-2"),
 			}
 
 			// First call - both should enqueue
@@ -4358,8 +4359,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctx := context.Background()
-			ctp1 := makeCTP("ctp-1", "old123", "abc123")
-			ctp2 := makeCTP("ctp-2", "old456", "abc123")
+			ctp1 := makeCTP("ctp-1")
+			ctp2 := makeCTP("ctp-2")
 
 			// First call - enqueue ctp-1 only
 			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1})
