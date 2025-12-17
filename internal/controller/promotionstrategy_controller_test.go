@@ -4206,18 +4206,24 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}
 		}
 
-		It("should enqueue CTP on first call", func() {
-			// Each test has its own isolated state
-			var enqueuedCTPs []client.ObjectKey
-			var enqueueMutex sync.Mutex
+		// Helper to create reconciler with enqueue tracking
+		makeReconciler := func() (*PromotionStrategyReconciler, *[]client.ObjectKey, *sync.Mutex) {
+			enqueuedCTPs := &[]client.ObjectKey{}
+			mutex := &sync.Mutex{}
 
 			reconciler := &PromotionStrategyReconciler{
 				EnqueueCTP: func(namespace, name string) {
-					enqueueMutex.Lock()
-					defer enqueueMutex.Unlock()
-					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
+					mutex.Lock()
+					defer mutex.Unlock()
+					*enqueuedCTPs = append(*enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
 				},
 			}
+
+			return reconciler, enqueuedCTPs, mutex
+		}
+
+		It("should enqueue CTP on first call", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
@@ -4227,23 +4233,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 
 			enqueueMutex.Lock()
-			Expect(enqueuedCTPs).To(HaveLen(1))
-			Expect(enqueuedCTPs[0].Name).To(Equal("test-ctp"))
-			Expect(enqueuedCTPs[0].Namespace).To(Equal("test-ns"))
+			Expect(*enqueuedCTPs).To(HaveLen(1))
+			Expect((*enqueuedCTPs)[0].Name).To(Equal("test-ctp"))
+			Expect((*enqueuedCTPs)[0].Namespace).To(Equal("test-ns"))
 			enqueueMutex.Unlock()
 		})
 
 		It("should rate limit second call within threshold", func() {
-			var enqueuedCTPs []client.ObjectKey
-			var enqueueMutex sync.Mutex
-
-			reconciler := &PromotionStrategyReconciler{
-				EnqueueCTP: func(namespace, name string) {
-					enqueueMutex.Lock()
-					defer enqueueMutex.Unlock()
-					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
-				},
-			}
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
@@ -4253,7 +4250,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// First call
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			enqueueMutex.Lock()
-			firstCallCount := len(enqueuedCTPs)
+			firstCallCount := len(*enqueuedCTPs)
 			enqueueMutex.Unlock()
 			Expect(firstCallCount).To(Equal(1))
 
@@ -4261,7 +4258,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			time.Sleep(100 * time.Millisecond)
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			enqueueMutex.Lock()
-			secondCallCount := len(enqueuedCTPs)
+			secondCallCount := len(*enqueuedCTPs)
 			enqueueMutex.Unlock()
 
 			// Should still be 1 - rate limited (delayed enqueue scheduled for later)
@@ -4269,16 +4266,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 
 		It("should schedule delayed enqueue on rate limited call", func() {
-			var enqueuedCTPs []client.ObjectKey
-			var enqueueMutex sync.Mutex
-
-			reconciler := &PromotionStrategyReconciler{
-				EnqueueCTP: func(namespace, name string) {
-					enqueueMutex.Lock()
-					defer enqueueMutex.Unlock()
-					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
-				},
-			}
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
@@ -4288,7 +4276,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// First call
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			enqueueMutex.Lock()
-			firstCount := len(enqueuedCTPs)
+			firstCount := len(*enqueuedCTPs)
 			enqueueMutex.Unlock()
 			Expect(firstCount).To(Equal(1))
 
@@ -4299,7 +4287,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			time.Sleep(16 * time.Second)
 
 			enqueueMutex.Lock()
-			finalCount := len(enqueuedCTPs)
+			finalCount := len(*enqueuedCTPs)
 			enqueueMutex.Unlock()
 
 			// Should now be 2 - original + delayed
@@ -4307,16 +4295,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 
 		It("should not accumulate multiple delayed enqueues", func() {
-			var enqueuedCTPs []client.ObjectKey
-			var enqueueMutex sync.Mutex
-
-			reconciler := &PromotionStrategyReconciler{
-				EnqueueCTP: func(namespace, name string) {
-					enqueueMutex.Lock()
-					defer enqueueMutex.Unlock()
-					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
-				},
-			}
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
@@ -4336,7 +4315,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			time.Sleep(16 * time.Second)
 
 			enqueueMutex.Lock()
-			finalCount := len(enqueuedCTPs)
+			finalCount := len(*enqueuedCTPs)
 			enqueueMutex.Unlock()
 
 			// Should be 2, not 6 (original + one delayed, not 5 delayed)
@@ -4344,16 +4323,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		})
 
 		It("should rate limit multiple CTPs independently", func() {
-			var enqueuedCTPs []client.ObjectKey
-			var enqueueMutex sync.Mutex
-
-			reconciler := &PromotionStrategyReconciler{
-				EnqueueCTP: func(namespace, name string) {
-					enqueueMutex.Lock()
-					defer enqueueMutex.Unlock()
-					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
-				},
-			}
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
@@ -4364,14 +4334,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// First call - both should enqueue
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			enqueueMutex.Lock()
-			firstCount := len(enqueuedCTPs)
+			firstCount := len(*enqueuedCTPs)
 			enqueueMutex.Unlock()
 			Expect(firstCount).To(Equal(2))
 
 			// Second call immediately - both should be rate limited
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
 			enqueueMutex.Lock()
-			secondCount := len(enqueuedCTPs)
+			secondCount := len(*enqueuedCTPs)
 			enqueueMutex.Unlock()
 			Expect(secondCount).To(Equal(2), "both should be rate limited")
 
@@ -4379,22 +4349,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			time.Sleep(16 * time.Second)
 
 			enqueueMutex.Lock()
-			finalCount := len(enqueuedCTPs)
+			finalCount := len(*enqueuedCTPs)
 			enqueueMutex.Unlock()
 			Expect(finalCount).To(Equal(4), "both delayed enqueues should fire")
 		})
 
 		It("should rate limit one CTP while allowing others through", func() {
-			var enqueuedCTPs []client.ObjectKey
-			var enqueueMutex sync.Mutex
-
-			reconciler := &PromotionStrategyReconciler{
-				EnqueueCTP: func(namespace, name string) {
-					enqueueMutex.Lock()
-					defer enqueueMutex.Unlock()
-					enqueuedCTPs = append(enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
-				},
-			}
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
 			ctx := context.Background()
 			ctp1 := makeCTP("ctp-1", "old123", "abc123")
@@ -4403,7 +4364,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// First call - enqueue ctp-1 only
 			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1})
 			enqueueMutex.Lock()
-			firstCount := len(enqueuedCTPs)
+			firstCount := len(*enqueuedCTPs)
 			enqueueMutex.Unlock()
 			Expect(firstCount).To(Equal(1), "ctp-1 should enqueue")
 
@@ -4413,8 +4374,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2})
 
 			enqueueMutex.Lock()
-			secondCount := len(enqueuedCTPs)
-			lastEnqueuedName := enqueuedCTPs[len(enqueuedCTPs)-1].Name
+			secondCount := len(*enqueuedCTPs)
+			lastEnqueuedName := (*enqueuedCTPs)[len(*enqueuedCTPs)-1].Name
 			enqueueMutex.Unlock()
 
 			// Should be 2 total now (ctp-1 from first call, ctp-2 from second call)
