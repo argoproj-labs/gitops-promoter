@@ -26,7 +26,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
@@ -69,21 +68,9 @@ import (
 // This helps avoid premature acceptance of a transitive healthy state.
 const lastTransitionTimeThreshold = 5 * time.Second
 
-// var syncMap sync.Map
-var (
-	rwMutex sync.RWMutex
-	revMap  = make(map[appRevisionKey]string)
-)
-
 type aggregate struct {
 	application  *argocd.Application
 	commitStatus *promoterv1alpha1.CommitStatus
-}
-
-type appRevisionKey struct {
-	clusterName string
-	namespace   string
-	name        string
 }
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
@@ -451,38 +438,13 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 
 			application := &argocd.Application{}
 
-			// if clusterName is empty, then cluster == local cluster
-			appKey := appRevisionKey{
-				clusterName: clusterName,
-				namespace:   application.GetNamespace(),
-				name:        application.GetName(),
-			}
-
 			// fetch the ArgoCDApplication from the cluster
 			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
 				if k8s_errors.IsNotFound(err) {
-					rwMutex.Lock()
-					delete(revMap, appKey)
-					rwMutex.Unlock()
 					return nil
 				}
 				logger.Error(err, "failed to get ArgoCDApplication")
 				return nil
-			}
-
-			rwMutex.RLock()
-			appRef := revMap[appKey]
-			rwMutex.RUnlock()
-
-			if appRef == application.Status.Sync.Revision && (application.Status.Health.LastTransitionTime == nil || time.Since(application.Status.Health.LastTransitionTime.Time) >= 10*time.Second) {
-				// No change in-app revision, and the last transition time is more than 10 seconds ago, let's not add this to the queue
-				return nil
-			}
-
-			if appRef != application.Status.Sync.Revision {
-				rwMutex.Lock()
-				revMap[appKey] = application.Status.Sync.Revision
-				rwMutex.Unlock()
 			}
 
 			// lookup the ArgoCDCommitStatus objects in the local cluster
