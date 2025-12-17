@@ -136,21 +136,10 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Check if any environments need to refresh their git notes.
 	// GitHub doesn't send webhooks when git notes are pushed, so we need to
 	// trigger CTP reconciliation when we detect stale NoteDrySha values.
-	// This is done AFTER updating the PromotionStrategy status to avoid conflicts
-	// since triggering CTP reconciles will cause them to update, which triggers
-	// the PromotionStrategy to requeue.
-	needsRequeueForNotes := r.enqueueOutOfSyncCTPs(ctx, ctps)
-
-	// If we triggered CTP reconciles for stale shas, requeue to check if the shas have been updated.
-	// This is more of a safety net because the CTP reconciling will cause the PromotionStrategy to requeue automatically.
-	// However, we do not know how long the CTP reconciling will take, so we requeue after a short period of time.
-	if needsRequeueForNotes {
-		logger.V(4).Info("Requeuing PromotionStrategy to check for updated git notes")
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: 30 * time.Second, // Don't want to make this configurable yet, but might in future.
-		}, nil
-	}
+	// This is done AFTER updating the PromotionStrategy status to avoid conflicts.
+	// When CTPs reconcile and update their status, the .Owns() watch will automatically
+	// trigger this PromotionStrategy to reconcile again.
+	r.enqueueOutOfSyncCTPs(ctx, ctps)
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.PromotionStrategyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
