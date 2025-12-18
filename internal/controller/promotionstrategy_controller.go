@@ -363,7 +363,25 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 	if r.enqueueStates == nil {
 		r.enqueueStates = make(map[client.ObjectKey]*ctpEnqueueState)
 
-		// Start self-rescheduling cleanup timer
+		// Start self-rescheduling cleanup timer to prevent memory leak from deleted CTPs.
+		//
+		// Memory footprint per entry (64-bit system, measured with unsafe.Sizeof):
+		//   - client.ObjectKey (2 strings): ~96 bytes
+		//       * Struct: 32 bytes (2 string headers, 16 bytes each)
+		//       * String content: namespace (32 chars) + name (32 chars) = 64 bytes
+		//   - *ctpEnqueueState pointer: 8 bytes
+		//   - ctpEnqueueState struct: 32 bytes
+		//       * time.Time: 24 bytes
+		//       * bool: 1 byte + 7 bytes padding = 8 bytes
+		//   - Map overhead: ~8 bytes per entry
+		//   Total: ~144 bytes per CTP
+		//
+		// Memory bounds (assuming 32-char namespace and name):
+		//   - 100 stale entries = ~14 KB
+		//   - 1,000 stale entries = ~144 KB
+		//   - 10,000 stale entries = ~1.4 MB
+		//
+		// With 1 hour cleanup interval, worst case is 1 hour of deleted CTPs in memory.
 		var scheduleCleanup func()
 		scheduleCleanup = func() {
 			time.AfterFunc(1*time.Hour, func() {
