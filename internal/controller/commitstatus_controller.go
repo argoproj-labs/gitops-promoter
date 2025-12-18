@@ -166,7 +166,7 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		return p, nil
 	case scmProvider.GetSpec().BitbucketCloud != nil:
 		var p *bitbucket_cloud.CommitStatus
-		p, err = bitbucket_cloud.NewBitbucketCloudCommitStatusProvider(r.Client, *secret, "")
+		p, err = bitbucket_cloud.NewBitbucketCloudCommitStatusProvider(r.Client, *secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Bitbucket Cloud provider with secret %q: %w", secret.Name, err)
 		}
