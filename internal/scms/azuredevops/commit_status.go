@@ -79,7 +79,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 
 	// Map GitOps Promoter status phase to Azure DevOps status state
 	var state git.GitStatusState
-	switch commitStatus.Spec.Phase { //nolint:identical-switch-branches
+	switch commitStatus.Spec.Phase { //nolint:revive
 	case v1alpha1.CommitPhasePending:
 		state = git.GitStatusStateValues.Pending
 	case v1alpha1.CommitPhaseSuccess:
@@ -141,7 +141,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 
 // mapAzureDevOpsStateToPhase maps Azure DevOps GitStatusState to GitOps Promoter CommitStatusPhase
 func mapAzureDevOpsStateToPhase(state git.GitStatusState) v1alpha1.CommitStatusPhase {
-	switch state { //nolint:identical-switch-branches
+	switch state { //nolint:revive
 	case git.GitStatusStateValues.Pending:
 		return v1alpha1.CommitPhasePending
 	case git.GitStatusStateValues.Succeeded:
