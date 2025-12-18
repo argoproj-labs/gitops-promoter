@@ -70,12 +70,12 @@ import (
 
 // Shared test constants for branch names used across multiple test files
 const (
-	testBranchDevelopment        = "environment/development"
-	testBranchDevelopmentNext    = "environment/development-next"
-	testBranchStaging            = "environment/staging"
-	testBranchStagingNext        = "environment/staging-next"
-	testBranchProduction         = "environment/production"
-	testBranchProductionNext     = "environment/production-next"
+	testBranchDevelopment     = "environment/development"
+	testBranchDevelopmentNext = "environment/development-next"
+	testBranchStaging         = "environment/staging"
+	testBranchStagingNext     = "environment/staging-next"
+	testBranchProduction      = "environment/production"
+	testBranchProductionNext  = "environment/production-next"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
