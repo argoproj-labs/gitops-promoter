@@ -344,8 +344,6 @@ func (r *PromotionStrategyReconciler) calculateStatus(ps *promoterv1alpha1.Promo
 // because GitHub doesn't send webhooks when git notes are pushed.
 // Rate limiting: Only enqueues a CTP once per 15 seconds. If rate limited, schedules a delayed enqueue.
 func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, ctps []*promoterv1alpha1.ChangeTransferPolicy) {
-	logger := log.FromContext(ctx)
-
 	if len(ctps) == 0 {
 		return
 	}
@@ -358,39 +356,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		}
 		r.enqueueStateMutex.Unlock()
 
-		// Start self-rescheduling cleanup timer to prevent memory leak from deleted CTPs.
-		//
-		// Memory footprint per entry (64-bit system, measured with unsafe.Sizeof):
-		//   - client.ObjectKey (2 strings): ~96 bytes
-		//       * Struct: 32 bytes (2 string headers, 16 bytes each)
-		//       * String content: namespace (32 chars) + name (32 chars) = 64 bytes
-		//   - *ctpEnqueueState pointer: 8 bytes
-		//   - ctpEnqueueState struct: 32 bytes
-		//       * time.Time: 24 bytes
-		//       * bool: 1 byte + 7 bytes padding = 8 bytes
-		//   - Map overhead: ~8 bytes per entry
-		//   Total: ~144 bytes per CTP
-		//
-		// Memory bounds (assuming 32-char namespace and name):
-		//   - 100 stale entries = ~14 KB
-		//   - 1,000 stale entries = ~144 KB
-		//   - 10,000 stale entries = ~1.4 MB
-		//
-		// With 1 hour cleanup interval, worst case is 1 hour of deleted CTPs in memory.
-		var scheduleCleanup func()
-		scheduleCleanup = func() {
-			time.AfterFunc(1*time.Hour, func() {
-				r.enqueueStateMutex.Lock()
-				for key, state := range r.enqueueStates {
-					if time.Since(state.lastEnqueueTime) > 1*time.Hour {
-						delete(r.enqueueStates, key)
-					}
-				}
-				r.enqueueStateMutex.Unlock()
-				scheduleCleanup() // Reschedule for next hour
-			})
-		}
-		scheduleCleanup()
+		r.startCleanupTimer()
 	}
 
 	const enqueueThreshold = 15 * time.Second
@@ -401,16 +367,6 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 			return ctp.Status.Proposed.Note.DrySha
 		}
 		return ctp.Status.Proposed.Dry.Sha
-	}
-
-	// Helper to get or create state for a CTP (must be called with lock held)
-	getOrCreateState := func(key client.ObjectKey) *ctpEnqueueState {
-		state := r.enqueueStates[key]
-		if state == nil {
-			state = &ctpEnqueueState{}
-			r.enqueueStates[key] = state
-		}
-		return state
 	}
 
 	// Find the target SHA - the Proposed.Dry.Sha from the CTP with the newest proposed hydrated commit.
@@ -447,67 +403,132 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 
 		key := client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}
 
-		r.enqueueStateMutex.Lock()
-		state := getOrCreateState(key)
+		r.handleRateLimitedEnqueue(ctx, key, ctp.Name, effectiveSha, targetSha, now, enqueueThreshold)
+	}
+}
 
-		// Check if rate limited
-		timeSinceLastEnqueue := now.Sub(state.lastEnqueueTime)
-		if timeSinceLastEnqueue < enqueueThreshold {
-			// Already have a delayed enqueue scheduled, nothing to do
-			if state.hasScheduledRetry {
-				r.enqueueStateMutex.Unlock()
-				logger.V(4).Info("Rate limited, delayed enqueue already scheduled",
-					"ctp", ctp.Name,
-					"effectiveSha", effectiveSha,
-					"targetSha", targetSha,
-					"lastEnqueuedAgo", timeSinceLastEnqueue)
-				continue
+// startCleanupTimer starts a self-rescheduling background timer to remove stale entries
+// from the enqueueStates map, preventing memory leaks from deleted CTPs.
+func (r *PromotionStrategyReconciler) startCleanupTimer() {
+	// Memory footprint per entry (64-bit system, measured with unsafe.Sizeof):
+	//   - client.ObjectKey (2 strings): ~96 bytes
+	//       * Struct: 32 bytes (2 string headers, 16 bytes each)
+	//       * String content: namespace (32 chars) + name (32 chars) = 64 bytes
+	//   - *ctpEnqueueState pointer: 8 bytes
+	//   - ctpEnqueueState struct: 32 bytes
+	//       * time.Time: 24 bytes
+	//       * bool: 1 byte + 7 bytes padding = 8 bytes
+	//   - Map overhead: ~8 bytes per entry
+	//   Total: ~144 bytes per CTP
+	//
+	// Memory bounds (assuming 32-char namespace and name):
+	//   - 100 stale entries = ~14 KB
+	//   - 1,000 stale entries = ~144 KB
+	//   - 10,000 stale entries = ~1.4 MB
+	//
+	// With 1 hour cleanup interval, worst case is 1 hour of deleted CTPs in memory.
+	var scheduleCleanup func()
+	scheduleCleanup = func() {
+		time.AfterFunc(1*time.Hour, func() {
+			r.enqueueStateMutex.Lock()
+			for key, state := range r.enqueueStates {
+				if time.Since(state.lastEnqueueTime) > 1*time.Hour {
+					delete(r.enqueueStates, key)
+				}
 			}
-
-			// Schedule a delayed enqueue
-			state.hasScheduledRetry = true
-			timeUntilThreshold := enqueueThreshold - timeSinceLastEnqueue
 			r.enqueueStateMutex.Unlock()
+			scheduleCleanup() // Reschedule for next hour
+		})
+	}
+	scheduleCleanup()
+}
 
-			logger.V(4).Info("Rate limited, scheduling delayed enqueue",
-				"ctp", ctp.Name,
+// handleRateLimitedEnqueue applies rate limiting to a CTP enqueue request.
+// It checks if the CTP was enqueued recently and either:
+// - Skips if a delayed retry is already scheduled
+// - Schedules a delayed retry if within the rate limit threshold
+// - Enqueues immediately if not rate limited
+func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
+	ctx context.Context,
+	key client.ObjectKey,
+	ctpName string,
+	effectiveSha string,
+	targetSha string,
+	now time.Time,
+	enqueueThreshold time.Duration,
+) {
+	logger := log.FromContext(ctx)
+
+	// Helper to get or create state for a CTP (must be called with lock held)
+	getOrCreateState := func(key client.ObjectKey) *ctpEnqueueState {
+		state := r.enqueueStates[key]
+		if state == nil {
+			state = &ctpEnqueueState{}
+			r.enqueueStates[key] = state
+		}
+		return state
+	}
+
+	r.enqueueStateMutex.Lock()
+	state := getOrCreateState(key)
+
+	// Check if rate limited
+	timeSinceLastEnqueue := now.Sub(state.lastEnqueueTime)
+	if timeSinceLastEnqueue < enqueueThreshold {
+		// Already have a delayed enqueue scheduled, nothing to do
+		if state.hasScheduledRetry {
+			r.enqueueStateMutex.Unlock()
+			logger.V(4).Info("Rate limited, delayed enqueue already scheduled",
+				"ctp", ctpName,
 				"effectiveSha", effectiveSha,
 				"targetSha", targetSha,
-				"lastEnqueuedAgo", timeSinceLastEnqueue,
-				"retryIn", timeUntilThreshold)
-
-			time.AfterFunc(timeUntilThreshold, func() {
-				r.enqueueStateMutex.Lock()
-				state := getOrCreateState(key)
-
-				// Update state and enqueue
-				state.lastEnqueueTime = time.Now()
-				state.hasScheduledRetry = false
-				r.enqueueStateMutex.Unlock()
-
-				if r.EnqueueCTP != nil {
-					r.EnqueueCTP(key.Namespace, key.Name)
-					logger.V(4).Info("Delayed enqueue succeeded",
-						"ctp", key.Name)
-				}
-			})
-
-			continue
+				"lastEnqueuedAgo", timeSinceLastEnqueue)
+			return
 		}
 
-		// Not rate limited - enqueue immediately
-		state.lastEnqueueTime = now
-		state.hasScheduledRetry = false
+		// Schedule a delayed enqueue
+		state.hasScheduledRetry = true
+		timeUntilThreshold := enqueueThreshold - timeSinceLastEnqueue
 		r.enqueueStateMutex.Unlock()
 
-		logger.V(4).Info("Enqueueing out-of-sync CTP",
-			"ctp", ctp.Name,
+		logger.V(4).Info("Rate limited, scheduling delayed enqueue",
+			"ctp", ctpName,
 			"effectiveSha", effectiveSha,
-			"targetSha", targetSha)
+			"targetSha", targetSha,
+			"lastEnqueuedAgo", timeSinceLastEnqueue,
+			"retryIn", timeUntilThreshold)
 
-		if r.EnqueueCTP != nil {
-			r.EnqueueCTP(ctp.Namespace, ctp.Name)
-		}
+		time.AfterFunc(timeUntilThreshold, func() {
+			r.enqueueStateMutex.Lock()
+			state := getOrCreateState(key)
+
+			// Update state and enqueue
+			state.lastEnqueueTime = time.Now()
+			state.hasScheduledRetry = false
+			r.enqueueStateMutex.Unlock()
+
+			if r.EnqueueCTP != nil {
+				r.EnqueueCTP(key.Namespace, key.Name)
+				logger.V(4).Info("Delayed enqueue succeeded",
+					"ctp", key.Name)
+			}
+		})
+
+		return
+	}
+
+	// Not rate limited - enqueue immediately
+	state.lastEnqueueTime = now
+	state.hasScheduledRetry = false
+	r.enqueueStateMutex.Unlock()
+
+	logger.V(4).Info("Enqueueing out-of-sync CTP",
+		"ctp", ctpName,
+		"effectiveSha", effectiveSha,
+		"targetSha", targetSha)
+
+	if r.EnqueueCTP != nil {
+		r.EnqueueCTP(key.Namespace, key.Name)
 	}
 }
 
