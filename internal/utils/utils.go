@@ -275,7 +275,7 @@ func HandleReconciliationResult(
 	}
 
 	// If the deletion timestamp is set on the object, bail out early.
-	if obj.GetDeletionTimestamp() != nil {
+	if !obj.GetDeletionTimestamp().IsZero() {
 		logger.V(4).Info("resource deleted, skipping handling of the reconciliation result")
 		return
 	}
