@@ -173,7 +173,9 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			// Clone the repo to a work tree so we can read and make commits
 			workTreePath, err := os.MkdirTemp("", "*")
 			Expect(err).ToNot(HaveOccurred())
-			defer os.RemoveAll(workTreePath)
+			defer func() {
+				_ = os.RemoveAll(workTreePath)
+			}()
 
 			_, err = runGitCmd(ctx, workTreePath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name), ".")
 			Expect(err).ToNot(HaveOccurred())
@@ -269,7 +271,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Step 2: Create a new commit in the git repository
 			testFile := workTreePath + "/test-change.txt"
-			err = os.WriteFile(testFile, []byte("test change for bug reproduction"), 0644)
+			err = os.WriteFile(testFile, []byte("test change for bug reproduction"), 0x644)
 			Expect(err).ToNot(HaveOccurred())
 			_, err = runGitCmd(ctx, workTreePath, "add", "test-change.txt")
 			Expect(err).ToNot(HaveOccurred())
