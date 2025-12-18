@@ -126,8 +126,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling ArgoCDCommitStatus", "cluster", req.ClusterName, "namespace", req.Namespace, "name", req.Name)
 	startTime := time.Now()
-	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 
+	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, &err)
 
 	err = r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
@@ -225,11 +226,6 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	utils.InheritNotReadyConditionFromObjects(&argoCDCommitStatus, promoterConditions.CommitStatusesNotReady, commitStatuses...)
-
-	err = r.localClient.Status().Update(ctx, &argoCDCommitStatus)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status: %w", err)
-	}
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ArgoCDCommitStatusConfiguration](ctx, r.SettingsMgr)
 	if err != nil {

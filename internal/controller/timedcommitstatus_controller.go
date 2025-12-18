@@ -69,6 +69,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	startTime := time.Now()
 
 	var tcs promoterv1alpha1.TimedCommitStatus
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &tcs, r.Client, r.Recorder, &err)
 
 	// 1. Fetch the TimedCommitStatus instance
@@ -116,8 +117,6 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// 5. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&tcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
-
-	// Note: Status update is handled by HandleReconciliationResult (deferred at the start of this function).
 
 	// 6. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
 	if len(transitionedEnvironments) > 0 {

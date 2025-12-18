@@ -80,6 +80,7 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	startTime := time.Now()
 
 	var gcs promoterv1alpha1.GitCommitStatus
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &gcs, r.Client, r.Recorder, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &gcs, &client.GetOptions{})
@@ -118,8 +119,6 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&gcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
-
-	// Note: Status update is handled by HandleReconciliationResult (deferred at the start of this function).
 
 	// If any validations transitioned to success, touch the corresponding ChangeTransferPolicies
 	if len(transitionedEnvironments) > 0 {

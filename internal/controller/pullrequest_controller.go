@@ -73,6 +73,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	startTime := time.Now()
 
 	var pr promoterv1alpha1.PullRequest
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
@@ -119,8 +120,6 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if done, err := r.handleStateTransitions(ctx, &pr, provider); done || err != nil {
 		return ctrl.Result{}, err
 	}
-
-	// Note: Status update is handled by HandleReconciliationResult (deferred at the start of this function).
 
 	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
 
