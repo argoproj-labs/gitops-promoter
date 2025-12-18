@@ -432,7 +432,6 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 
 			// Schedule a delayed enqueue
 			state.hasScheduledRetry = true
-			capturedLastEnqueueTime := state.lastEnqueueTime
 			timeUntilThreshold := enqueueThreshold - timeSinceLastEnqueue
 			r.enqueueStateMutex.Unlock()
 
@@ -446,15 +445,6 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 			time.AfterFunc(timeUntilThreshold, func() {
 				r.enqueueStateMutex.Lock()
 				state := getOrCreateState(key)
-
-				// Skip if someone else enqueued more recently
-				if state.lastEnqueueTime.After(capturedLastEnqueueTime) {
-					state.hasScheduledRetry = false
-					r.enqueueStateMutex.Unlock()
-					logger.V(4).Info("Skipping delayed enqueue, already enqueued more recently",
-						"ctp", key.Name)
-					return
-				}
 
 				// Update state and enqueue
 				state.lastEnqueueTime = time.Now()
