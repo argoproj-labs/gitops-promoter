@@ -271,7 +271,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Step 2: Create a new commit in the git repository
 			testFile := workTreePath + "/test-change.txt"
-			err = os.WriteFile(testFile, []byte("test change for bug reproduction"), 0x644)
+			err = os.WriteFile(testFile, []byte("test change for bug reproduction"), 0o644)
 			Expect(err).ToNot(HaveOccurred())
 			_, err = runGitCmd(ctx, workTreePath, "add", "test-change.txt")
 			Expect(err).ToNot(HaveOccurred())
