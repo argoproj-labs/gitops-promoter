@@ -26,7 +26,6 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	ginkgov2 "github.com/onsi/ginkgo/v2"
 	"k8s.io/apimachinery/pkg/api/meta"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -36,6 +35,11 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+)
+
+const (
+	testBranchDevelopment     = "environment/development"
+	testBranchDevelopmentNext = "environment/development-next"
 )
 
 //go:embed testdata/PullRequest.yaml
@@ -609,8 +613,8 @@ var _ = Describe("PullRequest Controller", func() {
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "status-persist-merge-test")
 
 				// Override branches to use ones that exist in the test git server setup
-				pullRequest.Spec.TargetBranch = "environment/development"
-				pullRequest.Spec.SourceBranch = "environment/development-next"
+				pullRequest.Spec.TargetBranch = testBranchDevelopment
+				pullRequest.Spec.SourceBranch = testBranchDevelopmentNext
 
 				// Get the actual SHA of the source branch to use as mergeSha
 				typeNamespacedName = types.NamespacedName{
@@ -642,6 +646,7 @@ var _ = Describe("PullRequest Controller", func() {
 				// This proves the two-step process works correctly.
 				mergedStatusObserved := make(chan bool, 1)
 				stopPolling := make(chan bool)
+
 				go func() {
 					defer GinkgoRecover()
 					ticker := time.NewTicker(1 * time.Millisecond)
@@ -774,7 +779,7 @@ func getGitBranchSHA(ctx context.Context, owner, name, branch string) string {
 		_ = os.RemoveAll(gitPath)
 	}()
 
-	gitServerPort := 5000 + ginkgov2.GinkgoParallelProcess()
+	gitServerPort := 5000 + GinkgoParallelProcess()
 	_, err = runGitCmd(ctx, gitPath, "clone", "--filter=blob:none", "-b", branch,
 		fmt.Sprintf("http://localhost:%d/%s/%s", gitServerPort, owner, name), ".")
 	Expect(err).NotTo(HaveOccurred())

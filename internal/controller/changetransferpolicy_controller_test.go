@@ -69,7 +69,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					Namespace: "default", // TODO(user):Modify as needed
 				}
 
-				changeTransferPolicy.Spec.ProposedBranch = "environment/development-next" //nolint:goconst
+				changeTransferPolicy.Spec.ProposedBranch = "environment/development-next"
 				changeTransferPolicy.Spec.ActiveBranch = testEnvironmentDevelopment
 				// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
