@@ -359,6 +359,27 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		r.enqueueStateMutex.Unlock()
 	}
 
+	// Lazy initialize map and start background cleanup timer
+	if r.enqueueStates == nil {
+		r.enqueueStates = make(map[client.ObjectKey]*ctpEnqueueState)
+
+		// Start self-rescheduling cleanup timer
+		var scheduleCleanup func()
+		scheduleCleanup = func() {
+			time.AfterFunc(1*time.Hour, func() {
+				r.enqueueStateMutex.Lock()
+				for key, state := range r.enqueueStates {
+					if time.Since(state.lastEnqueueTime) > 1*time.Hour {
+						delete(r.enqueueStates, key)
+					}
+				}
+				r.enqueueStateMutex.Unlock()
+				scheduleCleanup() // Reschedule for next hour
+			})
+		}
+		scheduleCleanup()
+	}
+
 	const enqueueThreshold = 15 * time.Second
 
 	// Get the effective dry SHA for each CTP (Note.DrySha if set, otherwise Proposed.Dry.Sha)
