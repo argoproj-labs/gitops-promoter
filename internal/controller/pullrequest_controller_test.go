@@ -19,9 +19,14 @@ package controller
 import (
 	"context"
 	_ "embed"
+	"fmt"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	ginkgov2 "github.com/onsi/ginkgo/v2"
 	"k8s.io/apimachinery/pkg/api/meta"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -589,6 +594,110 @@ var _ = Describe("PullRequest Controller", func() {
 				}, constants.EventuallyTimeout)
 			})
 		})
+
+		Context("When merge persists status before deletion", func() {
+			var name string
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var pullRequest *promoterv1alpha1.PullRequest
+			var typeNamespacedName types.NamespacedName
+			var mergeSha string
+
+			BeforeEach(func() {
+				By("Creating test resources with branches that exist in test setup")
+				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "status-persist-merge-test")
+
+				// Override branches to use ones that exist in the test git server setup
+				pullRequest.Spec.TargetBranch = "environment/development"
+				pullRequest.Spec.SourceBranch = "environment/development-next"
+
+				// Get the actual SHA of the source branch to use as mergeSha
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+				By("Waiting for PullRequest to be open and getting actual merge SHA")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+				}, constants.EventuallyTimeout)
+
+				// Get the actual SHA of the source branch for the merge
+				mergeSha = getGitBranchSHA(ctx, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, pullRequest.Spec.SourceBranch)
+			})
+
+			It("should persist merged status before deletion via defer", func() {
+				// Start polling for merged status in a goroutine BEFORE we request the merge.
+				// We poll very frequently (1ms) to catch the narrow window where:
+				//   1. Status has been persisted as "merged"
+				//   2. But PR hasn't been deleted yet
+				// This proves the two-step process works correctly.
+				mergedStatusObserved := make(chan bool, 1)
+				stopPolling := make(chan bool)
+				go func() {
+					defer GinkgoRecover()
+					ticker := time.NewTicker(1 * time.Millisecond)
+					defer ticker.Stop()
+					timeout := time.After(constants.EventuallyTimeout)
+					for {
+						select {
+						case <-ticker.C:
+							var currentPR promoterv1alpha1.PullRequest
+							err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
+							if err == nil && currentPR.Status.State == promoterv1alpha1.PullRequestMerged {
+								// Success! We observed merged state while PR still exists
+								GinkgoT().Logf("Observed merged status at resourceVersion %s", currentPR.ResourceVersion)
+								mergedStatusObserved <- true
+								return
+							}
+						case <-stopPolling:
+							return
+						case <-timeout:
+							return
+						}
+					}
+				}()
+
+				By("Requesting merge by setting spec.state to merged with correct SHA")
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+					pullRequest.Spec.MergeSha = mergeSha
+					pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
+					g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying status.state was observed as merged WHILE PR still existed")
+				// This is the critical assertion: we MUST have observed status.state = merged
+				// with the PR resource still present in the cluster. This proves:
+				// 1. The merge reconciliation updated status in memory
+				// 2. The deferred HandleReconciliationResult persisted it to etcd
+				// 3. The PR was NOT deleted in that same reconciliation (done=true caused requeue)
+				// 4. Our polling goroutine caught the state between persist and delete
+				// If the old code (inline delete) were active, we'd never observe this state
+				// because the PR would be deleted before the status could be persisted.
+				Eventually(mergedStatusObserved, constants.EventuallyTimeout).Should(Receive(Equal(true)),
+					"Should have observed merged status before deletion")
+
+				close(stopPolling)
+
+				By("Verifying the PullRequest is then deleted on next reconciliation")
+				// Now that we've proven the status was persisted, the NEXT reconciliation
+				// should see status.state = merged in cleanupTerminalStates and delete it.
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+					g.Expect(err).To(HaveOccurred())
+					g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
 	})
 })
 
@@ -656,4 +765,22 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 	}
 
 	return name, scmSecret, scmProvider, gitRepo, pullRequest
+}
+
+func getGitBranchSHA(ctx context.Context, owner, name, branch string) string {
+	gitPath, err := os.MkdirTemp("", "*")
+	Expect(err).NotTo(HaveOccurred())
+	defer func() {
+		_ = os.RemoveAll(gitPath)
+	}()
+
+	gitServerPort := 5000 + ginkgov2.GinkgoParallelProcess()
+	_, err = runGitCmd(ctx, gitPath, "clone", "--filter=blob:none", "-b", branch,
+		fmt.Sprintf("http://localhost:%d/%s/%s", gitServerPort, owner, name), ".")
+	Expect(err).NotTo(HaveOccurred())
+
+	sha, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
+	Expect(err).NotTo(HaveOccurred())
+
+	return strings.TrimSpace(sha)
 }
