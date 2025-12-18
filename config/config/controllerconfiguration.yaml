@@ -10,7 +10,7 @@ spec:
   promotionStrategy:
     workQueue:
       maxConcurrentReconciles: 10
-      requeueDuration: "5s"
+      requeueDuration: "5m"
       rateLimiter:
         maxOf:
           - bucket:
@@ -23,7 +23,7 @@ spec:
   changeTransferPolicy:
     workQueue:
       maxConcurrentReconciles: 10
-      requeueDuration: "5s"
+      requeueDuration: "5m"
       rateLimiter:
         maxOf:
           - bucket:
@@ -36,7 +36,7 @@ spec:
   pullRequest:
     workQueue:
       maxConcurrentReconciles: 10
-      requeueDuration: "5s"
+      requeueDuration: "5m"
       rateLimiter:
         maxOf:
           - bucket:
@@ -52,7 +52,7 @@ spec:
   commitStatus:
     workQueue:
       maxConcurrentReconciles: 10
-      requeueDuration: "5s"
+      requeueDuration: "5m"
       rateLimiter:
         maxOf:
           - bucket:
@@ -66,7 +66,7 @@ spec:
     watchLocalApplications: true
     workQueue:
       maxConcurrentReconciles: 10
-      requeueDuration: "5s"
+      requeueDuration: "5m"
       rateLimiter:
         maxOf:
           - bucket:
@@ -79,7 +79,7 @@ spec:
   timedCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10
-      requeueDuration: "5s"
+      requeueDuration: "5m"
       rateLimiter:
         maxOf:
           - bucket:
@@ -92,7 +92,7 @@ spec:
   gitCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10
-      requeueDuration: "5s"
+      requeueDuration: "5m"
       rateLimiter:
         maxOf:
           - bucket:
