@@ -357,11 +357,6 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 			r.enqueueStates = make(map[client.ObjectKey]*ctpEnqueueState)
 		}
 		r.enqueueStateMutex.Unlock()
-	}
-
-	// Lazy initialize map and start background cleanup timer
-	if r.enqueueStates == nil {
-		r.enqueueStates = make(map[client.ObjectKey]*ctpEnqueueState)
 
 		// Start self-rescheduling cleanup timer to prevent memory leak from deleted CTPs.
 		//
