@@ -62,7 +62,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 					},
 					Environments: []promoterv1alpha1.Environment{
 						{
-							Branch: testEnvironmentStaging,
+							Branch: testBranchStaging,
 						},
 					},
 				},
@@ -144,7 +144,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Simplify to just one environment for this test
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
-				{Branch: testEnvironmentStaging},
+				{Branch: testBranchStaging},
 			}
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -185,7 +185,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Checkout the staging branch
-			_, err = runGitCmd(ctx, workTreePath, "checkout", testEnvironmentStaging)
+			_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get initial git commit SHA
@@ -213,7 +213,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				Spec: argocd.ApplicationSpec{
 					SourceHydrator: &argocd.SourceHydrator{
 						SyncSource: argocd.SyncSource{
-							TargetBranch: testEnvironmentStaging,
+							TargetBranch: testBranchStaging,
 						},
 						DrySource: argocd.DrySource{
 							RepoURL: fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name),

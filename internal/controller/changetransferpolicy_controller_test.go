@@ -70,7 +70,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
-				changeTransferPolicy.Spec.ActiveBranch = testEnvironmentDevelopment
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
 				// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
@@ -111,7 +111,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 					g.Expect(err).To(Succeed())
-					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testEnvironmentDevelopment)))
+					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -125,7 +125,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 						Namespace: "default",
 					}, &pr)
 					g.Expect(err).To(Succeed())
-					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testEnvironmentDevelopment)))
+					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -172,7 +172,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
-				changeTransferPolicy.Spec.ActiveBranch = testEnvironmentDevelopment
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
 				// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
@@ -277,7 +277,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}
 
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
-				changeTransferPolicy.Spec.ActiveBranch = testEnvironmentDevelopment
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
 				// We set auto merge to false to avoid the PR being merged automatically so we can run checks on it
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
@@ -321,7 +321,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					}
 					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
 					g.Expect(err).To(Succeed())
-					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testEnvironmentDevelopment)))
+					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -335,7 +335,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 						Namespace: "default",
 					}, &pr)
 					g.Expect(err).To(Succeed())
-					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testEnvironmentDevelopment)))
+					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
 					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(pr.Name).To(Equal(utils.KubeSafeUniqueName(ctx, prName)))
 				}, constants.EventuallyTimeout).Should(Succeed())
@@ -374,7 +374,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				_, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-merge-sha", "default")
 
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
-				changeTransferPolicy.Spec.ActiveBranch = testEnvironmentDevelopment
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
 				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
 
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())

@@ -48,12 +48,6 @@ import (
 //go:embed testdata/PromotionStrategy.yaml
 var testPromotionStrategyYAML string
 
-const (
-	testEnvironmentDevelopment = "environment/development"
-	testEnvironmentStaging     = "environment/staging"
-	testEnvironmentProduction  = "environment/production"
-)
-
 var _ = Describe("PromotionStrategy Controller", func() {
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the PromotionStrategy resource", func() {
@@ -212,7 +206,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
 					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
@@ -223,7 +217,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -234,7 +228,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -480,7 +474,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
 					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
@@ -491,7 +485,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -502,7 +496,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -662,7 +656,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
 					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
@@ -673,7 +667,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -684,7 +678,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -863,7 +857,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
 					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
@@ -874,7 +868,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -885,7 +879,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -2277,11 +2271,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						}, &commitStatus)
 						g.Expect(err).To(Succeed())
 						switch environment.Branch {
-						case testEnvironmentDevelopment:
+						case testBranchDevelopment:
 							g.Expect(commitStatus.Spec.Url).To(Equal("https://dev.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
-						case testEnvironmentStaging:
+						case testBranchStaging:
 							g.Expect(commitStatus.Spec.Url).To(Equal("https://staging.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
-						case testEnvironmentProduction:
+						case testBranchProduction:
 							g.Expect(commitStatus.Spec.Url).To(Equal("https://prod.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
 						default:
 							Fail("Unexpected environment branch: " + environment.Branch)
@@ -2882,9 +2876,9 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 				Name: name,
 			},
 			Environments: []promoterv1alpha1.Environment{
-				{Branch: testEnvironmentDevelopment},
-				{Branch: testEnvironmentStaging},
-				{Branch: testEnvironmentProduction},
+				{Branch: testBranchDevelopment},
+				{Branch: testBranchStaging},
+				{Branch: testBranchProduction},
 			},
 		},
 	}
@@ -3246,15 +3240,15 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					// Fix the typo in branch names
 					promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
 						{
-							Branch:    testEnvironmentDevelopment, // "environment/development"
+							Branch:    testBranchDevelopment, // "environment/development"
 							AutoMerge: ptr.To(true),
 						},
 						{
-							Branch:    testEnvironmentStaging, // "environment/staging"
+							Branch:    testBranchStaging, // "environment/staging"
 							AutoMerge: ptr.To(true),
 						},
 						{
-							Branch:    testEnvironmentProduction, // "environment/production"
+							Branch:    testBranchProduction, // "environment/production"
 							AutoMerge: ptr.To(true),
 						},
 					}
@@ -3269,29 +3263,29 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				newCtpProd := &promoterv1alpha1.ChangeTransferPolicy{}
 
 				Eventually(func(g Gomega) {
-					newCtpDevName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentDevelopment))
+					newCtpDevName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment))
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      newCtpDevName,
 						Namespace: "default",
 					}, newCtpDev)
 					g.Expect(err).To(Succeed())
-					g.Expect(newCtpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
+					g.Expect(newCtpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
 
-					newCtpStagingName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentStaging))
+					newCtpStagingName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchStaging))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      newCtpStagingName,
 						Namespace: "default",
 					}, newCtpStaging)
 					g.Expect(err).To(Succeed())
-					g.Expect(newCtpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(newCtpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 
-					newCtpProdName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentProduction))
+					newCtpProdName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchProduction))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      newCtpProdName,
 						Namespace: "default",
 					}, newCtpProd)
 					g.Expect(err).To(Succeed())
-					g.Expect(newCtpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(newCtpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying old ChangeTransferPolicies are deleted")

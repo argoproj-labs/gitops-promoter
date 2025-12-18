@@ -70,8 +70,12 @@ import (
 
 // Shared test constants for branch names used across multiple test files
 const (
-	testBranchDevelopment     = "environment/development"
-	testBranchDevelopmentNext = "environment/development-next"
+	testBranchDevelopment        = "environment/development"
+	testBranchDevelopmentNext    = "environment/development-next"
+	testBranchStaging            = "environment/staging"
+	testBranchStagingNext        = "environment/staging-next"
+	testBranchProduction         = "environment/production"
+	testBranchProductionNext     = "environment/production-next"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -596,7 +600,7 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction} {
+	for _, environment := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "--orphan", environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "rm", "-rf", "--ignore-unmatch", ".")
@@ -718,7 +722,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	_, err = runGitCmd(ctx, gitPath, "config", "pull.rebase", "false")
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction, "environment/development-next", "environment/staging-next", "environment/production-next"} {
+	for _, environment := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction, "environment/development-next", "environment/staging-next", "environment/production-next"} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "pull")
