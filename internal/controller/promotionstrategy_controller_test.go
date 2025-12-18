@@ -213,7 +213,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -481,7 +481,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -663,7 +663,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -864,7 +864,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
 					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -3511,7 +3511,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Now hydrating dev-next with the second dry SHA")
-			err = hydrateEnvironment(ctx, gitPath2, "environment/development-next", secondDrySha, "hydrate dev for second dry sha")
+			err = hydrateEnvironment(ctx, gitPath2, testBranchDevelopmentNext, secondDrySha, "hydrate dev for second dry sha")
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying dev now has the new proposed dry SHA")
@@ -3677,7 +3677,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Adding ONLY a git note to dev's existing hydrated commit (no new commit)")
 			// This simulates the hydrator saying "the manifests haven't changed, but I've processed this dry SHA"
-			err = addNoteToEnvironment(ctx, gitPath2, "environment/development-next", secondDrySha)
+			err = addNoteToEnvironment(ctx, gitPath2, testBranchDevelopmentNext, secondDrySha)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Waiting for dev CTP to pick up the git note")
@@ -3824,7 +3824,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Adding git note to dev's existing hydrated commit for commit B (no new commit)")
 			// Dev's manifests haven't changed for B, so just update the git note
-			err = addNoteToEnvironment(ctx, gitPath2, "environment/development-next", secondDrySha)
+			err = addNoteToEnvironment(ctx, gitPath2, testBranchDevelopmentNext, secondDrySha)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Waiting for dev CTP to pick up the git note for B")

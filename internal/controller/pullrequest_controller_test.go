@@ -37,11 +37,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-const (
-	testBranchDevelopment     = "environment/development"
-	testBranchDevelopmentNext = "environment/development-next"
-)
-
 //go:embed testdata/PullRequest.yaml
 var testPullRequestYAML string
 

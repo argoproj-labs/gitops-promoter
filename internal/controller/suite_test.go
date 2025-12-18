@@ -68,6 +68,12 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
+// Shared test constants for branch names used across multiple test files
+const (
+	testBranchDevelopment     = "environment/development"
+	testBranchDevelopmentNext = "environment/development-next"
+)
+
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
