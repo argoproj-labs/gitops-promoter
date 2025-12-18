@@ -31,13 +31,13 @@ var _ scms.CommitStatusProvider = &CommitStatus{}
 
 // NewAzureDevopsCommitStatusProvider creates a new instance of CommitStatus for Azure DevOps.
 func NewAzureDevopsCommitStatusProvider(ctx context.Context, k8sClient client.Client, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, org string) (*CommitStatus, error) {
-	client, _, err := GetClient(ctx, scmProvider, secret, org)
+	azureClient, _, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {
 		return nil, err
 	}
 
 	return &CommitStatus{
-		client:    client,
+		client:    azureClient,
 		k8sClient: k8sClient,
 	}, nil
 }
@@ -79,7 +79,9 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 
 	// Map GitOps Promoter status phase to Azure DevOps status state
 	var state git.GitStatusState
-	switch commitStatus.Spec.Phase {
+	switch commitStatus.Spec.Phase { //nolint:revive,identical-switch-branches
+	case v1alpha1.CommitPhasePending:
+		state = git.GitStatusStateValues.Pending
 	case v1alpha1.CommitPhaseSuccess:
 		state = git.GitStatusStateValues.Succeeded
 	case v1alpha1.CommitPhaseFailure:
@@ -92,7 +94,7 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 	genre := "promoter"
 
 	if commitStatus.Spec.Url == "" {
-		commitStatus.Spec.Url = createCommitURL(gitRepo, commitStatus.Spec.Sha, scmProvider.GetSpec().AzureDevOps.Organization)
+		commitStatus.Spec.Url = createCommitURL(gitRepo, scmProvider.GetSpec().AzureDevOps.Organization, commitStatus.Spec.Sha)
 	}
 	gitCommitStatus := git.GitStatus{
 		Context: &git.GitStatusContext{

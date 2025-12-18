@@ -250,9 +250,6 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		PullRequestId:          &prId,
 		Project:                &gitRepo.Spec.AzureDevOps.Project,
 	})
-	fmt.Println("PR", prId, "merged with message:", gitPullRequest)
-	fmt.Println("REpo", gitRepo.Spec.AzureDevOps.Name)
-	fmt.Println("Project", gitRepo.Spec.AzureDevOps.Project)
 
 	// Record metrics and handle response
 	statusCode := 200
