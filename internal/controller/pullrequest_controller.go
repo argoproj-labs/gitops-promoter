@@ -116,7 +116,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Handle state transitions
-	done, err := r.handleStateTransitions(ctx, &pr, provider)
+	cleanupRequired, err := r.handleStateTransitions(ctx, &pr, provider)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -129,7 +129,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// 5. cleanupTerminalStates (which runs earlier in the loop) handles deletion
 	// Previously, merge/close would delete inline, but this was problematic because the status
 	// update would be lost. Now we ensure the status is persisted before deletion occurs.
-	if done {
+	if cleanupRequired {
 		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, err
 	}
 
