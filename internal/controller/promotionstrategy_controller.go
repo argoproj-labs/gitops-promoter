@@ -399,7 +399,12 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 			continue
 		}
 
-		r.handleRateLimitedEnqueue(ctx, ctp, effectiveSha, targetSha, enqueueThreshold)
+		// Add SHA information to context for logging
+		ctxWithLog := log.IntoContext(ctx, log.FromContext(ctx).WithValues(
+			"effectiveSha", effectiveSha,
+			"targetSha", targetSha,
+		))
+		r.handleRateLimitedEnqueue(ctxWithLog, ctp, enqueueThreshold)
 	}
 }
 
@@ -447,8 +452,6 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctx context.Context,
 	ctp *promoterv1alpha1.ChangeTransferPolicy,
-	effectiveSha string,
-	targetSha string,
 	enqueueThreshold time.Duration,
 ) {
 	logger := log.FromContext(ctx)
@@ -476,8 +479,6 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 			r.enqueueStateMutex.Unlock()
 			logger.V(4).Info("Rate limited, delayed enqueue already scheduled",
 				"ctp", ctp.Name,
-				"effectiveSha", effectiveSha,
-				"targetSha", targetSha,
 				"lastEnqueuedAgo", timeSinceLastEnqueue)
 			return
 		}
@@ -489,8 +490,6 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 
 		logger.V(4).Info("Rate limited, scheduling delayed enqueue",
 			"ctp", ctp.Name,
-			"effectiveSha", effectiveSha,
-			"targetSha", targetSha,
 			"lastEnqueuedAgo", timeSinceLastEnqueue,
 			"retryIn", timeUntilThreshold)
 
@@ -519,9 +518,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	r.enqueueStateMutex.Unlock()
 
 	logger.V(4).Info("Enqueueing out-of-sync CTP",
-		"ctp", ctp.Name,
-		"effectiveSha", effectiveSha,
-		"targetSha", targetSha)
+		"ctp", ctp.Name)
 
 	if r.EnqueueCTP != nil {
 		r.EnqueueCTP(key.Namespace, key.Name)
