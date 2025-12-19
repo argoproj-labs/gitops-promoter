@@ -133,7 +133,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus was created with custom description")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-simple-"+testEnvironmentDevelopment+"-test-validation")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-simple-"+testBranchDevelopment+"-test-validation")
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -142,7 +142,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
 				g.Expect(cs.Spec.Description).To(Equal("Test validation check"))
-				g.Expect(cs.Spec.Name).To(Equal("test-validation/" + testEnvironmentDevelopment))
+				g.Expect(cs.Spec.Name).To(Equal("test-validation/" + testBranchDevelopment))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -238,7 +238,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus was created with failure phase")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-fail-"+testEnvironmentDevelopment+"-test-validation")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-fail-"+testBranchDevelopment+"-test-validation")
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -350,7 +350,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Waiting for CommitStatus to be created")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testEnvironmentDevelopment+"-test-validation")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchDevelopment+"-test-validation")
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -366,7 +366,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		// The ownership relationship is correctly established (tested above),
 		// but K8s GC in test env may not cleanup within reasonable timeout
 		PIt("should cleanup CommitStatus resources when GitCommitStatus is deleted", func() {
-			commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testEnvironmentDevelopment+"-test-validation")
+			commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchDevelopment+"-test-validation")
 
 			By("Deleting the GitCommitStatus")
 			Expect(k8sClient.Delete(ctx, gitCommitStatus)).To(Succeed())
@@ -421,7 +421,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying CommitStatus created for each environment")
-			for _, envBranch := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction} {
+			for _, envBranch := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 				Eventually(func(g Gomega) {
 					commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-multi-env-"+envBranch+"-test-validation")
 					var cs promoterv1alpha1.CommitStatus
@@ -460,7 +460,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus has empty description")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-no-desc-"+testEnvironmentDevelopment+"-test-validation")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-no-desc-"+testBranchDevelopment+"-test-validation")
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -498,7 +498,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 				// Check development environment
 				for _, env := range ps.Status.Environments {
-					if env.Branch == testEnvironmentDevelopment {
+					if env.Branch == testBranchDevelopment {
 						g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
 						g.Expect(env.Active.Hydrated.Sha).ToNot(BeEmpty())
 						developmentProposedSHA = env.Proposed.Hydrated.Sha
@@ -540,7 +540,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 				var devEnv *promoterv1alpha1.GitCommitStatusEnvironmentStatus
 				for i, env := range retrieved.Status.Environments {
-					if env.Branch == testEnvironmentDevelopment {
+					if env.Branch == testBranchDevelopment {
 						devEnv = &retrieved.Status.Environments[i]
 						break
 					}
@@ -601,7 +601,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 				var devEnv *promoterv1alpha1.GitCommitStatusEnvironmentStatus
 				for i, env := range retrieved.Status.Environments {
-					if env.Branch == testEnvironmentDevelopment {
+					if env.Branch == testBranchDevelopment {
 						devEnv = &retrieved.Status.Environments[i]
 						break
 					}
@@ -683,7 +683,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Checkout the staging active branch
-			_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testEnvironmentStaging, "origin/"+testEnvironmentStaging)
+			_, err = runGitCmd(ctx, gitPath, "checkout", "-B", testBranchStaging, "origin/"+testBranchStaging)
 			Expect(err).NotTo(HaveOccurred())
 
 			// First, create a commit that we can revert
@@ -705,7 +705,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			commitToRevert = strings.TrimSpace(commitToRevert)
 
 			// Get the SHA before we make the revert for the webhook
-			beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", testEnvironmentStaging)
+			beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", testBranchStaging)
 			Expect(err).NotTo(HaveOccurred())
 			beforeSha = strings.TrimSpace(beforeSha)
 
@@ -714,11 +714,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Push the revert commit
-			_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", testEnvironmentStaging)
+			_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", testBranchStaging)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Send webhook to trigger reconciliation
-			sendWebhookForPush(ctx, beforeSha, testEnvironmentStaging)
+			sendWebhookForPush(ctx, beforeSha, testBranchStaging)
 
 			By("Verifying staging environment fails due to revert detection")
 			Eventually(func(g Gomega) {
@@ -736,11 +736,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 				for i, env := range retrieved.Status.Environments {
 					switch env.Branch {
-					case testEnvironmentDevelopment:
+					case testBranchDevelopment:
 						devEnv = &retrieved.Status.Environments[i]
-					case testEnvironmentStaging:
+					case testBranchStaging:
 						stagingEnv = &retrieved.Status.Environments[i]
-					case testEnvironmentProduction:
+					case testBranchProduction:
 						prodEnv = &retrieved.Status.Environments[i]
 					default:
 						// Ignore unknown environments
@@ -767,7 +767,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying the CommitStatus for staging shows failure")
 			Eventually(func(g Gomega) {
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-revert-check-"+testEnvironmentStaging+"-test-validation")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-revert-check-"+testBranchStaging+"-test-validation")
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -807,15 +807,15 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			for i := range gatingPS.Spec.Environments {
 				env := &gatingPS.Spec.Environments[i]
 				switch env.Branch {
-				case testEnvironmentDevelopment:
+				case testBranchDevelopment:
 					env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 						{Key: devGateKey},
 					}
-				case testEnvironmentStaging:
+				case testBranchStaging:
 					env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 						{Key: stagingGateKey},
 					}
-				case testEnvironmentProduction:
+				case testBranchProduction:
 					env.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
 						{Key: prodGateKey},
 					}
@@ -886,11 +886,11 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 						"Active hydrated SHA should be set for "+env.Branch)
 
 					switch env.Branch {
-					case testEnvironmentDevelopment:
+					case testBranchDevelopment:
 						devProposedSha = env.Proposed.Hydrated.Sha
-					case testEnvironmentStaging:
+					case testBranchStaging:
 						stagingProposedSha = env.Proposed.Hydrated.Sha
-					case testEnvironmentProduction:
+					case testBranchProduction:
 						prodProposedSha = env.Proposed.Hydrated.Sha
 					default:
 						// Other environments not tracked
@@ -964,7 +964,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(gcs.Status.Environments).To(HaveLen(1))
-				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
+				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testBranchDevelopment))
 				g.Expect(gcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 					"Development gate should pass")
 				g.Expect(gcs.Status.Environments[0].ProposedHydratedSha).To(Equal(devProposedSha),
@@ -980,7 +980,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(gcs.Status.Environments).To(HaveLen(1))
-				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testEnvironmentStaging))
+				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testBranchStaging))
 				g.Expect(gcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 					"Staging gate should pass")
 				g.Expect(gcs.Status.Environments[0].ProposedHydratedSha).To(Equal(stagingProposedSha),
@@ -996,7 +996,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				}, &gcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(gcs.Status.Environments).To(HaveLen(1))
-				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testEnvironmentProduction))
+				g.Expect(gcs.Status.Environments[0].Branch).To(Equal(testBranchProduction))
 				g.Expect(gcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)),
 					"Production gate should FAIL")
 				g.Expect(gcs.Status.Environments[0].ProposedHydratedSha).To(Equal(prodProposedSha),
@@ -1008,7 +1008,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus for development is success with correct SHA")
 			devCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-"+devGateKey+"-"+testEnvironmentDevelopment+"-"+devGateKey)
+				gatingName+"-"+devGateKey+"-"+testBranchDevelopment+"-"+devGateKey)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1024,7 +1024,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus for staging is success with correct SHA")
 			stagingCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-"+stagingGateKey+"-"+testEnvironmentStaging+"-"+stagingGateKey)
+				gatingName+"-"+stagingGateKey+"-"+testBranchStaging+"-"+stagingGateKey)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1040,7 +1040,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 			By("Verifying CommitStatus for production is FAILURE with correct SHA - this gates the promotion")
 			prodCommitStatusName := utils.KubeSafeUniqueName(ctx,
-				gatingName+"-"+prodGateKey+"-"+testEnvironmentProduction+"-"+prodGateKey)
+				gatingName+"-"+prodGateKey+"-"+testBranchProduction+"-"+prodGateKey)
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1055,7 +1055,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying ChangeTransferPolicy for production has failing commit status")
-			ctpProdName := utils.KubeSafeUniqueName(ctx, gatingName+"-"+testEnvironmentProduction)
+			ctpProdName := utils.KubeSafeUniqueName(ctx, gatingName+"-"+testBranchProduction)
 			Eventually(func(g Gomega) {
 				var ctp promoterv1alpha1.ChangeTransferPolicy
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1094,7 +1094,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 				for _, envStatus := range ps.Status.Environments {
 					// Check Proposed commit statuses - these gate whether a PR can be merged
 					switch envStatus.Branch {
-					case testEnvironmentDevelopment:
+					case testBranchDevelopment:
 						// Verify SHA matches what we captured earlier
 						g.Expect(envStatus.Proposed.Hydrated.Sha).To(Equal(devProposedSha),
 							"Development proposed SHA should match captured SHA")
@@ -1112,7 +1112,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 						g.Expect(foundDevGate).To(BeTrue(),
 							"Should find dev-gate in PromotionStrategy development environment")
 
-					case testEnvironmentStaging:
+					case testBranchStaging:
 						// Verify SHA matches what we captured earlier
 						g.Expect(envStatus.Proposed.Hydrated.Sha).To(Equal(stagingProposedSha),
 							"Staging proposed SHA should match captured SHA")
@@ -1130,7 +1130,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 						g.Expect(foundStagingGate).To(BeTrue(),
 							"Should find staging-gate in PromotionStrategy staging environment")
 
-					case testEnvironmentProduction:
+					case testBranchProduction:
 						// Verify SHA matches what we captured earlier
 						g.Expect(envStatus.Proposed.Hydrated.Sha).To(Equal(prodProposedSha),
 							"Production proposed SHA should match captured SHA")
@@ -1164,7 +1164,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 				// Find production environment
 				for _, envStatus := range ps.Status.Environments {
-					if envStatus.Branch == testEnvironmentProduction {
+					if envStatus.Branch == testBranchProduction {
 						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
 							"Production should have proposed commit statuses")
 						for _, cs := range envStatus.Proposed.CommitStatuses {
@@ -1222,7 +1222,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 
 				// Find production environment and verify gate is now passing
 				for _, envStatus := range ps.Status.Environments {
-					if envStatus.Branch == testEnvironmentProduction {
+					if envStatus.Branch == testBranchProduction {
 						g.Expect(envStatus.Proposed.CommitStatuses).ToNot(BeEmpty(),
 							"Production should have proposed commit statuses")
 						var foundProdGate bool
