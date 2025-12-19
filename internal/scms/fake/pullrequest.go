@@ -271,7 +271,7 @@ func (pr *PullRequest) sendWebhook(ctx context.Context, pullRequest v1alpha1.Pul
 		return
 	}
 	if resp == nil {
-		fmt.Printf("Webhook receiver returned nil response after PR merge\n")
+		fmt.Println("Webhook receiver returned nil response after PR merge")
 		return
 	}
 
