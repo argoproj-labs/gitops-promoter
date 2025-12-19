@@ -182,7 +182,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to get Application: %w", err)
 	}
 
-	resolvedShas, err := r.getHeadShasForBranches(ctx, argoCDCommitStatus, slices.Collect(maps.Keys(groupedArgoCDApps)))
+	resolvedShas, err := r.getHeadShasForBranches(ctx, argoCDCommitStatus, slices.Sorted(maps.Keys(groupedArgoCDApps)))
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get head shas for target branches: %w", err)
 	}
