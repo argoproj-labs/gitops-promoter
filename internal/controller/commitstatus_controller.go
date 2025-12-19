@@ -77,6 +77,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	startTime := time.Now()
 
 	var cs promoterv1alpha1.CommitStatus
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
@@ -110,11 +111,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	_, err = commitStatusProvider.Set(ctx, &cs)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
-	}
-
-	err = r.Status().Update(ctx, &cs)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus status %q: %w", req.Name, err)
 	}
 
 	err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
