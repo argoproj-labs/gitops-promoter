@@ -357,7 +357,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 	})
 
 	Context("When multiple applications provide nondeterministic branch ordering", func() {
-		It("should produce a deterministic, sorted branch list in the error message", func() {
+		It("should produce a deterministic, sorted branch list across multiple reconciliations", func() {
 			ctx := context.TODO()
 
 			// Create a fake SCM provider
@@ -490,7 +490,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				Expect(k8sClient.Create(ctx, app)).To(Succeed())
 			}
 
-			// Wait for reconcile to occur and check for ls-remote error with sorted branches
+			// Wait for first reconciliation and capture the error message
+			var firstErrorMessage string
 			Eventually(func(g Gomega) {
 				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: "sorting-test", Namespace: "default"}, updated)
@@ -499,13 +500,43 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				g.Expect(updated.Status.Conditions).ToNot(BeEmpty())
 				c := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
 				g.Expect(c).ToNot(BeNil())
-				// The error message should contain the sorted branch list
-				g.Expect(c.Message).To(ContainSubstring("env/argocd/east"))
-				g.Expect(c.Message).To(ContainSubstring("env/argocd/north"))
-				g.Expect(c.Message).To(ContainSubstring("env/argocd/west"))
-				// Verify the branches are sorted alphabetically in the error message
-				g.Expect(c.Message).To(MatchRegexp(`env/argocd/east.*env/argocd/north.*env/argocd/west`))
+				g.Expect(c.Message).To(ContainSubstring("env/argocd/"))
+
+				firstErrorMessage = c.Message
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Verify the first error message has sorted branches
+			Expect(firstErrorMessage).To(MatchRegexp(`env/argocd/east.*env/argocd/north.*env/argocd/west`))
+
+			// Force multiple reconciliations and verify they ALL produce identical error messages
+			// This catches nondeterministic behavior that the controller's map iteration would cause
+			for i := 0; i < 5; i++ {
+				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "sorting-test", Namespace: "default"}, updated)).To(Succeed())
+
+				// Trigger reconciliation by updating an annotation
+				if updated.Annotations == nil {
+					updated.Annotations = make(map[string]string)
+				}
+				updated.Annotations["test-iteration"] = fmt.Sprintf("%d", i)
+				Expect(k8sClient.Update(ctx, updated)).To(Succeed())
+
+				// Wait for reconciliation and verify error message is IDENTICAL to the first one
+				Eventually(func(g Gomega) {
+					recon := &promoterv1alpha1.ArgoCDCommitStatus{}
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: "sorting-test", Namespace: "default"}, recon)
+					g.Expect(err).ToNot(HaveOccurred())
+
+					c := meta.FindStatusCondition(recon.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(c).ToNot(BeNil())
+
+					// The error message must be EXACTLY the same as the first one
+					// Without the slices.Sorted fix, this will fail because map iteration is nondeterministic
+					g.Expect(c.Message).To(Equal(firstErrorMessage),
+						fmt.Sprintf("Reconciliation %d produced different error message.\nExpected: %s\nGot: %s",
+							i, firstErrorMessage, c.Message))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
 
 			// Clean up
 			Expect(k8sClient.Delete(ctx, cr)).To(Succeed())
