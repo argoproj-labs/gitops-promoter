@@ -21,6 +21,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
@@ -518,7 +519,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				if updated.Annotations == nil {
 					updated.Annotations = make(map[string]string)
 				}
-				updated.Annotations["test-iteration"] = fmt.Sprintf("%d", i)
+				updated.Annotations["test-iteration"] = strconv.Itoa(i)
 				Expect(k8sClient.Update(ctx, updated)).To(Succeed())
 
 				// Wait for reconciliation and verify error message is IDENTICAL to the first one
