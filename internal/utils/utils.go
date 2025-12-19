@@ -275,6 +275,12 @@ func HandleReconciliationResult(
 		return
 	}
 
+	// If the deletion timestamp is set on the object, bail out early.
+	if !obj.GetDeletionTimestamp().IsZero() {
+		logger.V(4).Info("resource deleted, skipping handling of the reconciliation result")
+		return
+	}
+
 	conditions := obj.GetConditions() // GetConditions() is guaranteed to be non-nil for our CRDs.
 	readyCondition := meta.FindStatusCondition(*conditions, string(promoterConditions.Ready))
 	if readyCondition == nil {

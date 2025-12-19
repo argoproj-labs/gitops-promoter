@@ -117,8 +117,21 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Handle state transitions
-	if done, err := r.handleStateTransitions(ctx, &pr, provider); done || err != nil {
+	cleanupRequired, err := r.handleStateTransitions(ctx, &pr, provider)
+	if err != nil {
 		return ctrl.Result{}, err
+	}
+	// If a state transition was performed (merge or close), requeue immediately to trigger
+	// cleanup on the next reconciliation. The flow is:
+	// 1. handleStateTransitions updates pr.Status.State to Merged/Closed in memory
+	// 2. We return here with RequeueAfter
+	// 3. The deferred HandleReconciliationResult persists the status update to the cluster
+	// 4. The next reconciliation sees the persisted Merged/Closed state
+	// 5. cleanupTerminalStates (which runs earlier in the loop) handles deletion
+	// Previously, merge/close would delete inline, but this was problematic because the status
+	// update would be lost. Now we ensure the status is persisted before deletion occurs.
+	if cleanupRequired {
+		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, err
 	}
 
 	if err := r.Status().Update(ctx, &pr); err != nil {
@@ -228,17 +241,11 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 		if err := r.mergePullRequest(ctx, pr, provider); err != nil {
 			return false, fmt.Errorf("failed to merge pull request: %w", err) // Top-level wrap for merge errors
 		}
-		if err := r.Delete(ctx, pr); err != nil {
-			return false, fmt.Errorf("failed to delete PullRequest: %w", err)
-		}
 		return true, nil
 	case promoterv1alpha1.PullRequestClosed:
 		logger.Info("Closing PullRequest")
 		if err := r.closePullRequest(ctx, pr, provider); err != nil {
 			return false, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
-		}
-		if err := r.Delete(ctx, pr); err != nil {
-			return false, fmt.Errorf("failed to delete PullRequest: %w", err)
 		}
 		return true, nil
 	default:

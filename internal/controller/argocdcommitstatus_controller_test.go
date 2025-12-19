@@ -21,6 +21,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
@@ -28,6 +29,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -62,7 +64,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 					},
 					Environments: []promoterv1alpha1.Environment{
 						{
-							Branch: testEnvironmentStaging,
+							Branch: testBranchStaging,
 						},
 					},
 				},
@@ -144,7 +146,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Simplify to just one environment for this test
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
-				{Branch: testEnvironmentStaging},
+				{Branch: testBranchStaging},
 			}
 
 			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
@@ -185,7 +187,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Checkout the staging branch
-			_, err = runGitCmd(ctx, workTreePath, "checkout", testEnvironmentStaging)
+			_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
 			Expect(err).ToNot(HaveOccurred())
 
 			// Get initial git commit SHA
@@ -213,7 +215,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				Spec: argocd.ApplicationSpec{
 					SourceHydrator: &argocd.SourceHydrator{
 						SyncSource: argocd.SyncSource{
-							TargetBranch: testEnvironmentStaging,
+							TargetBranch: testBranchStaging,
 						},
 						DrySource: argocd.DrySource{
 							RepoURL: fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name),
@@ -352,6 +354,208 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+		})
+	})
+
+	Context("When multiple applications provide nondeterministic branch ordering", func() {
+		It("should produce a deterministic, sorted branch list across multiple reconciliations", func() {
+			ctx := context.TODO()
+
+			// Create a fake SCM provider
+			scmProvider := &promoterv1alpha1.ScmProvider{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "fake-scm-provider",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.ScmProviderSpec{
+					Fake: &promoterv1alpha1.Fake{},
+					SecretRef: &v1.LocalObjectReference{
+						Name: "fake-scm-secret",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+
+			// Create a secret for the SCM provider
+			scmSecret := &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "fake-scm-secret",
+					Namespace: "default",
+				},
+				Data: map[string][]byte{
+					"token": []byte("fake-token"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+
+			// Create a GitRepository with an INVALID URL to trigger ls-remote error
+			gitRepo := &promoterv1alpha1.GitRepository{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "invalid-repo",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.GitRepositorySpec{
+					Fake: &promoterv1alpha1.FakeRepo{
+						Owner: "nonexistent",
+						Name:  "invalid-repo-12345",
+					},
+					ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
+						Kind: "ScmProvider",
+						Name: "fake-scm-provider",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+
+			// Create a PromotionStrategy
+			promotionStrategy := &promoterv1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "sorting-test-strategy",
+				},
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{
+						Name: "invalid-repo",
+					},
+					Environments: []promoterv1alpha1.Environment{
+						{
+							Branch: "env/argocd/west",
+						},
+						{
+							Branch: "env/argocd/east",
+						},
+						{
+							Branch: "env/argocd/north",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			// Create the ArgoCDCommitStatus
+			cr := &promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "sorting-test",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: "sorting-test-strategy",
+					},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"argocd.com/argocd-commitstatus-selector": "sorting-test",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
+
+			// Create Argo CD Applications with the correct branches
+			branches := []string{
+				"env/argocd/west",
+				"env/argocd/east",
+				"env/argocd/north",
+			}
+
+			for _, branch := range branches {
+				app := &argocd.Application{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "app-" + strings.ReplaceAll(branch, "/", "-"),
+						Labels: map[string]string{
+							"argocd.com/argocd-commitstatus-selector": "sorting-test",
+						},
+					},
+					Spec: argocd.ApplicationSpec{
+						SourceHydrator: &argocd.SourceHydrator{
+							SyncSource: argocd.SyncSource{
+								TargetBranch: branch,
+							},
+							DrySource: argocd.DrySource{
+								RepoURL: "http://localhost:" + gitServerPort + "/nonexistent/invalid-repo-12345",
+							},
+						},
+					},
+					Status: argocd.ApplicationStatus{
+						Health: argocd.HealthStatus{
+							Status: "Healthy",
+						},
+						Sync: argocd.SyncStatus{
+							Status:   "Synced",
+							Revision: "abc123",
+						},
+					},
+				}
+
+				Expect(k8sClient.Create(ctx, app)).To(Succeed())
+			}
+
+			// Wait for first reconciliation and capture the error message
+			var firstErrorMessage string
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: "sorting-test", Namespace: "default"}, updated)
+				g.Expect(err).ToNot(HaveOccurred())
+
+				g.Expect(updated.Status.Conditions).ToNot(BeEmpty())
+				c := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
+				g.Expect(c).ToNot(BeNil())
+				g.Expect(c.Message).To(ContainSubstring("env/argocd/"))
+
+				firstErrorMessage = c.Message
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Verify the first error message has sorted branches
+			Expect(firstErrorMessage).To(MatchRegexp(`env/argocd/east.*env/argocd/north.*env/argocd/west`))
+
+			// Force multiple reconciliations and verify they ALL produce identical error messages
+			// This catches nondeterministic behavior that the controller's map iteration would cause
+			for i := 0; i < 5; i++ {
+				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "sorting-test", Namespace: "default"}, updated)).To(Succeed())
+
+				// Trigger reconciliation by updating the spec (annotations won't work due to GenerationChangedPredicate)
+				// We toggle the URL template field to force generation increment
+				if i%2 == 0 {
+					updated.Spec.URL.Template = "http://example.com/test-" + strconv.Itoa(i)
+				} else {
+					updated.Spec.URL.Template = "http://example.com/test-alt-" + strconv.Itoa(i)
+				}
+				Expect(k8sClient.Update(ctx, updated)).To(Succeed())
+
+				// Wait for reconciliation and verify error message is IDENTICAL to the first one
+				Eventually(func(g Gomega) {
+					recon := &promoterv1alpha1.ArgoCDCommitStatus{}
+					err := k8sClient.Get(ctx, types.NamespacedName{Name: "sorting-test", Namespace: "default"}, recon)
+					g.Expect(err).ToNot(HaveOccurred())
+
+					c := meta.FindStatusCondition(recon.Status.Conditions, string(promoterConditions.Ready))
+					g.Expect(c).ToNot(BeNil())
+
+					// The error message must be EXACTLY the same as the first one
+					// Without the slices.Sorted fix, this will fail because map iteration is nondeterministic
+					g.Expect(c.Message).To(Equal(firstErrorMessage),
+						fmt.Sprintf("Reconciliation %d produced different error message.\nExpected: %s\nGot: %s",
+							i, firstErrorMessage, c.Message))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+
+			// Clean up
+			Expect(k8sClient.Delete(ctx, cr)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			for _, branch := range branches {
+				app := &argocd.Application{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "app-" + strings.ReplaceAll(branch, "/", "-"),
+					},
+				}
+				Expect(k8sClient.Delete(ctx, app)).To(Succeed())
+			}
 		})
 	})
 })

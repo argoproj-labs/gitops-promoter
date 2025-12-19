@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
@@ -47,12 +48,6 @@ import (
 
 //go:embed testdata/PromotionStrategy.yaml
 var testPromotionStrategyYAML string
-
-const (
-	testEnvironmentDevelopment = "environment/development"
-	testEnvironmentStaging     = "environment/staging"
-	testEnvironmentProduction  = "environment/production"
-)
 
 var _ = Describe("PromotionStrategy Controller", func() {
 	Context("When unmarshalling the test data", func() {
@@ -212,8 +207,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -223,7 +218,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -234,7 +229,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -480,8 +475,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -491,7 +486,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -502,7 +497,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -662,8 +657,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -673,7 +668,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -684,7 +679,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -863,8 +858,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -874,7 +869,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -885,7 +880,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -2277,11 +2272,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						}, &commitStatus)
 						g.Expect(err).To(Succeed())
 						switch environment.Branch {
-						case testEnvironmentDevelopment:
+						case testBranchDevelopment:
 							g.Expect(commitStatus.Spec.Url).To(Equal("https://dev.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
-						case testEnvironmentStaging:
+						case testBranchStaging:
 							g.Expect(commitStatus.Spec.Url).To(Equal("https://staging.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
-						case testEnvironmentProduction:
+						case testBranchProduction:
 							g.Expect(commitStatus.Spec.Url).To(Equal("https://prod.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
 						default:
 							Fail("Unexpected environment branch: " + environment.Branch)
@@ -2882,9 +2877,9 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 				Name: name,
 			},
 			Environments: []promoterv1alpha1.Environment{
-				{Branch: testEnvironmentDevelopment},
-				{Branch: testEnvironmentStaging},
-				{Branch: testEnvironmentProduction},
+				{Branch: testBranchDevelopment},
+				{Branch: testBranchStaging},
+				{Branch: testBranchProduction},
 			},
 		},
 	}
@@ -3246,15 +3241,15 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					// Fix the typo in branch names
 					promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
 						{
-							Branch:    testEnvironmentDevelopment, // "environment/development"
+							Branch:    testBranchDevelopment, // "environment/development"
 							AutoMerge: ptr.To(true),
 						},
 						{
-							Branch:    testEnvironmentStaging, // "environment/staging"
+							Branch:    testBranchStaging, // "environment/staging"
 							AutoMerge: ptr.To(true),
 						},
 						{
-							Branch:    testEnvironmentProduction, // "environment/production"
+							Branch:    testBranchProduction, // "environment/production"
 							AutoMerge: ptr.To(true),
 						},
 					}
@@ -3269,29 +3264,29 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				newCtpProd := &promoterv1alpha1.ChangeTransferPolicy{}
 
 				Eventually(func(g Gomega) {
-					newCtpDevName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentDevelopment))
+					newCtpDevName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment))
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      newCtpDevName,
 						Namespace: "default",
 					}, newCtpDev)
 					g.Expect(err).To(Succeed())
-					g.Expect(newCtpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
+					g.Expect(newCtpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
 
-					newCtpStagingName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentStaging))
+					newCtpStagingName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchStaging))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      newCtpStagingName,
 						Namespace: "default",
 					}, newCtpStaging)
 					g.Expect(err).To(Succeed())
-					g.Expect(newCtpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(newCtpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 
-					newCtpProdName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentProduction))
+					newCtpProdName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchProduction))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      newCtpProdName,
 						Namespace: "default",
 					}, newCtpProd)
 					g.Expect(err).To(Succeed())
-					g.Expect(newCtpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(newCtpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying old ChangeTransferPolicies are deleted")
@@ -3511,7 +3506,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Now hydrating dev-next with the second dry SHA")
-			err = hydrateEnvironment(ctx, gitPath2, "environment/development-next", secondDrySha, "hydrate dev for second dry sha")
+			err = hydrateEnvironment(ctx, gitPath2, testBranchDevelopmentNext, secondDrySha, "hydrate dev for second dry sha")
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Verifying dev now has the new proposed dry SHA")
@@ -3677,7 +3672,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Adding ONLY a git note to dev's existing hydrated commit (no new commit)")
 			// This simulates the hydrator saying "the manifests haven't changed, but I've processed this dry SHA"
-			err = addNoteToEnvironment(ctx, gitPath2, "environment/development-next", secondDrySha)
+			err = addNoteToEnvironment(ctx, gitPath2, testBranchDevelopmentNext, secondDrySha)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Waiting for dev CTP to pick up the git note")
@@ -3824,7 +3819,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			By("Adding git note to dev's existing hydrated commit for commit B (no new commit)")
 			// Dev's manifests haven't changed for B, so just update the git note
-			err = addNoteToEnvironment(ctx, gitPath2, "environment/development-next", secondDrySha)
+			err = addNoteToEnvironment(ctx, gitPath2, testBranchDevelopmentNext, secondDrySha)
 			Expect(err).NotTo(HaveOccurred())
 
 			By("Waiting for dev CTP to pick up the git note for B")
@@ -4174,6 +4169,221 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			Expect(isPending).To(BeTrue(), "should block when previous env commit statuses are not passing")
 			Expect(reason).To(ContainSubstring("commit status"))
+		})
+	})
+
+	// Note: Each test creates its own reconciler and state instead of using shared BeforeEach setup.
+	// This ensures complete test isolation because enqueueOutOfSyncCTPs schedules background
+	// timers (time.AfterFunc) that may fire during other tests. With isolated state per test,
+	// background timers from one test cannot contaminate another test's assertions.
+	//
+	// Mutex locking pattern: After each call to enqueueOutOfSyncCTPs, tests acquire the lock,
+	// read enqueuedCTPs, then immediately release the lock before calling enqueueOutOfSyncCTPs
+	// again. This fine-grained locking is required because background timer goroutines need to
+	// acquire the lock to append to enqueuedCTPs during time.Sleep() calls. Using defer to hold
+	// the lock for an entire test would cause deadlock: the test would wait for timers to fire,
+	// but timers would block waiting for the lock that won't release until the test completes.
+	Context("Rate limiting for enqueueOutOfSyncCTPs", func() {
+		// Helper to create out-of-sync CTP that will trigger rate limiting.
+		// Creates a CTP where the git note SHA differs from the target SHA.
+		makeCTP := func(name string) *promoterv1alpha1.ChangeTransferPolicy {
+			return &promoterv1alpha1.ChangeTransferPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "test-ns",
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha: "abc123", // Proposed dry SHA (becomes target since newest)
+						},
+						Hydrated: promoterv1alpha1.CommitShaState{
+							CommitTime: metav1.Now(),
+						},
+						Note: &promoterv1alpha1.HydratorMetadata{
+							DrySha: "old123", // Git note SHA (out-of-sync with target)
+						},
+					},
+				},
+			}
+		}
+
+		// Helper to create reconciler with enqueue tracking
+		makeReconciler := func() (*PromotionStrategyReconciler, *[]client.ObjectKey, *sync.Mutex) {
+			enqueuedCTPs := &[]client.ObjectKey{}
+			mutex := &sync.Mutex{}
+
+			reconciler := &PromotionStrategyReconciler{
+				EnqueueCTP: func(namespace, name string) {
+					mutex.Lock()
+					defer mutex.Unlock()
+					*enqueuedCTPs = append(*enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
+				},
+			}
+
+			return reconciler, enqueuedCTPs, mutex
+		}
+
+		It("should enqueue CTP on first call", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTP("test-ctp"),
+			}
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			enqueueMutex.Lock()
+			Expect(*enqueuedCTPs).To(HaveLen(1))
+			Expect((*enqueuedCTPs)[0].Name).To(Equal("test-ctp"))
+			Expect((*enqueuedCTPs)[0].Namespace).To(Equal("test-ns"))
+			enqueueMutex.Unlock()
+		})
+
+		It("should rate limit second call within threshold", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTP("test-ctp"),
+			}
+
+			// First call
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			firstCallCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCallCount).To(Equal(1))
+
+			// Second call immediately after (within 15s threshold)
+			time.Sleep(100 * time.Millisecond)
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			secondCallCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+
+			// Should still be 1 - rate limited (delayed enqueue scheduled for later)
+			Expect(secondCallCount).To(Equal(1), "second call should be rate limited")
+		})
+
+		It("should schedule delayed enqueue on rate limited call", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTP("test-ctp"),
+			}
+
+			// First call
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			firstCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCount).To(Equal(1))
+
+			// Second call - should be rate limited and schedule delayed enqueue
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			// Wait for delayed enqueue to fire (15s + small buffer)
+			time.Sleep(16 * time.Second)
+
+			enqueueMutex.Lock()
+			finalCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+
+			// Should now be 2 - original + delayed
+			Expect(finalCount).To(Equal(2), "delayed enqueue should have fired")
+		})
+
+		It("should not accumulate multiple delayed enqueues", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTP("test-ctp"),
+			}
+
+			// First call
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			// Multiple rapid calls - should only schedule ONE delayed enqueue
+			for i := 0; i < 5; i++ {
+				time.Sleep(100 * time.Millisecond)
+				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			}
+
+			// Wait for delayed enqueue to fire
+			time.Sleep(16 * time.Second)
+
+			enqueueMutex.Lock()
+			finalCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+
+			// Should be 2, not 6 (original + one delayed, not 5 delayed)
+			Expect(finalCount).To(Equal(2), "should only have one delayed enqueue, not accumulate")
+		})
+
+		It("should rate limit multiple CTPs independently", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTP("ctp-1"),
+				makeCTP("ctp-2"),
+			}
+
+			// First call - both should enqueue
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			firstCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCount).To(Equal(2))
+
+			// Second call immediately - both should be rate limited
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			secondCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(secondCount).To(Equal(2), "both should be rate limited")
+
+			// Wait for delayed enqueues
+			time.Sleep(16 * time.Second)
+
+			enqueueMutex.Lock()
+			finalCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(finalCount).To(Equal(4), "both delayed enqueues should fire")
+		})
+
+		It("should rate limit one CTP while allowing others through", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctp1 := makeCTP("ctp-1")
+			ctp2 := makeCTP("ctp-2")
+
+			// First call - enqueue ctp-1 only
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1})
+			enqueueMutex.Lock()
+			firstCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCount).To(Equal(1), "ctp-1 should enqueue")
+
+			// Immediately call again with both CTPs
+			// ctp-1 should be rate limited, ctp-2 should enqueue (first time)
+			time.Sleep(100 * time.Millisecond)
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2})
+
+			enqueueMutex.Lock()
+			secondCount := len(*enqueuedCTPs)
+			lastEnqueuedName := (*enqueuedCTPs)[len(*enqueuedCTPs)-1].Name
+			enqueueMutex.Unlock()
+
+			// Should be 2 total now (ctp-1 from first call, ctp-2 from second call)
+			// ctp-1 was rate limited in the second call
+			Expect(secondCount).To(Equal(2), "only ctp-2 should have enqueued in second call")
+			Expect(lastEnqueuedName).To(Equal("ctp-2"), "ctp-2 should be the last enqueued")
 		})
 	})
 })

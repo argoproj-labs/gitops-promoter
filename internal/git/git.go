@@ -176,7 +176,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 
 	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", sha+":hydrator.metadata")
 	if err != nil {
-		logger.Error(err, "could not git show file", "gitError", stderr)
+		logger.V(4).Info("could not git show file", "sha", sha, "gitError", stderr, "err", err)
 		return v1alpha1.CommitShaState{}, nil
 	}
 	logger.V(4).Info("Got metadata file", "sha", sha, "file", metadataFileStdout)
