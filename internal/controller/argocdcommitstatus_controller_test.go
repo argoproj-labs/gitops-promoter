@@ -515,11 +515,13 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
 				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "sorting-test", Namespace: "default"}, updated)).To(Succeed())
 
-				// Trigger reconciliation by updating an annotation
-				if updated.Annotations == nil {
-					updated.Annotations = make(map[string]string)
+				// Trigger reconciliation by updating the spec (annotations won't work due to GenerationChangedPredicate)
+				// We toggle the URL template field to force generation increment
+				if i%2 == 0 {
+					updated.Spec.URL.Template = "http://example.com/test-" + strconv.Itoa(i)
+				} else {
+					updated.Spec.URL.Template = "http://example.com/test-alt-" + strconv.Itoa(i)
 				}
-				updated.Annotations["test-iteration"] = strconv.Itoa(i)
 				Expect(k8sClient.Update(ctx, updated)).To(Succeed())
 
 				// Wait for reconciliation and verify error message is IDENTICAL to the first one
