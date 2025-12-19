@@ -20,7 +20,6 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -768,19 +767,15 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 }
 
 func getGitBranchSHA(ctx context.Context, owner, name, branch string) string {
-	gitPath, err := os.MkdirTemp("", "*")
-	Expect(err).NotTo(HaveOccurred())
-	defer func() {
-		_ = os.RemoveAll(gitPath)
-	}()
-
 	gitServerPort := 5000 + GinkgoParallelProcess()
-	_, err = runGitCmd(ctx, gitPath, "clone", "--filter=blob:none", "-b", branch,
-		fmt.Sprintf("http://localhost:%d/%s/%s", gitServerPort, owner, name), ".")
+	repoURL := fmt.Sprintf("http://localhost:%d/%s/%s", gitServerPort, owner, name)
+
+	output, err := runGitCmd(ctx, "", "ls-remote", repoURL, fmt.Sprintf("refs/heads/%s", branch))
 	Expect(err).NotTo(HaveOccurred())
 
-	sha, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
-	Expect(err).NotTo(HaveOccurred())
+	// Output format: "<sha>\trefs/heads/<branch>"
+	parts := strings.Fields(output)
+	Expect(parts).To(HaveLen(2), "Expected ls-remote output to have 2 fields")
 
-	return strings.TrimSpace(sha)
+	return strings.TrimSpace(parts[0])
 }
