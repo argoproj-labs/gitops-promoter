@@ -54,6 +54,7 @@ func (r *GitRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	startTime := time.Now()
 
 	var gitRepo promoterv1alpha1.GitRepository
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &gitRepo, r.Client, r.Recorder, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &gitRepo); err != nil {

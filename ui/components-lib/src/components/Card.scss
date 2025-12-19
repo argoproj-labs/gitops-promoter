@@ -11,18 +11,20 @@
   box-sizing: border-box;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
   border: 1px solid $argo-color-gray-4;
-  min-height: 400px;
+  min-height: 270px;
   transition: min-height 0.3s ease;
   display: flex;
   flex-direction: column;
+  max-height: fit-content;
   
   &.single-commit-group {
     min-height: 250px;
-    height: auto;
   }
 }
 
-
+.env-cards-wrapper {
+  width: 100%;
+}
 
 .env-card__title {
   display: flex;
@@ -94,16 +96,10 @@
   min-height: 32px;
 }
 
-
-
 @media (max-width: 1600px) {
   @include layouts.horizontal-layout;
 }
 
-.env-cards-wrapper:has(.env-card-column:nth-child(n+4)) {
-  @include layouts.horizontal-layout;
-}
-
-.env-cards-wrapper.horizontal-layout {
+:has(.env-cards-container > .env-cards-wrapper > :nth-child(4 of .env-card-column)) {
   @include layouts.horizontal-layout;
 }
