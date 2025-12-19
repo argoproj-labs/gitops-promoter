@@ -15,7 +15,7 @@ GitHub, GitHub Enterprise, GitLab, Bitbucket Cloud, and Forgejo (including Codeb
 To install GitOps Promoter, you can use the following command:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.19.0/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.19.1/install.yaml
 ```
 
 ## GitHub App Configuration
