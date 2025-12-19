@@ -393,8 +393,6 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 
 	// Trigger reconcile only for CTPs that have a different effective dry SHA.
 	// Rate limiting: Only enqueue if not enqueued recently.
-	now := time.Now()
-
 	for _, ctp := range ctps {
 		effectiveSha := getEffectiveDrySha(ctp)
 		if effectiveSha == targetSha {
@@ -403,7 +401,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 
 		key := client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}
 
-		r.handleRateLimitedEnqueue(ctx, key, ctp.Name, effectiveSha, targetSha, now, enqueueThreshold)
+		r.handleRateLimitedEnqueue(ctx, key, ctp.Name, effectiveSha, targetSha, enqueueThreshold)
 	}
 }
 
@@ -454,10 +452,10 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctpName string,
 	effectiveSha string,
 	targetSha string,
-	now time.Time,
 	enqueueThreshold time.Duration,
 ) {
 	logger := log.FromContext(ctx)
+	now := time.Now()
 
 	// Helper to get or create state for a CTP (must be called with lock held)
 	getOrCreateState := func(key client.ObjectKey) *ctpEnqueueState {
