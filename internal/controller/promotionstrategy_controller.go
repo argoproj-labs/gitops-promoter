@@ -399,9 +399,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 			continue
 		}
 
-		key := client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}
-
-		r.handleRateLimitedEnqueue(ctx, key, ctp.Name, effectiveSha, targetSha, enqueueThreshold)
+		r.handleRateLimitedEnqueue(ctx, ctp, effectiveSha, targetSha, enqueueThreshold)
 	}
 }
 
@@ -448,14 +446,14 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 // - Enqueues immediately if not rate limited
 func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctx context.Context,
-	key client.ObjectKey,
-	ctpName string,
+	ctp *promoterv1alpha1.ChangeTransferPolicy,
 	effectiveSha string,
 	targetSha string,
 	enqueueThreshold time.Duration,
 ) {
 	logger := log.FromContext(ctx)
 	now := time.Now()
+	key := client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}
 
 	// Helper to get or create state for a CTP (must be called with lock held)
 	getOrCreateState := func(key client.ObjectKey) *ctpEnqueueState {
@@ -477,7 +475,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 		if state.hasScheduledRetry {
 			r.enqueueStateMutex.Unlock()
 			logger.V(4).Info("Rate limited, delayed enqueue already scheduled",
-				"ctp", ctpName,
+				"ctp", ctp.Name,
 				"effectiveSha", effectiveSha,
 				"targetSha", targetSha,
 				"lastEnqueuedAgo", timeSinceLastEnqueue)
@@ -490,7 +488,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 		r.enqueueStateMutex.Unlock()
 
 		logger.V(4).Info("Rate limited, scheduling delayed enqueue",
-			"ctp", ctpName,
+			"ctp", ctp.Name,
 			"effectiveSha", effectiveSha,
 			"targetSha", targetSha,
 			"lastEnqueuedAgo", timeSinceLastEnqueue,
@@ -521,7 +519,7 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	r.enqueueStateMutex.Unlock()
 
 	logger.V(4).Info("Enqueueing out-of-sync CTP",
-		"ctp", ctpName,
+		"ctp", ctp.Name,
 		"effectiveSha", effectiveSha,
 		"targetSha", targetSha)
 
