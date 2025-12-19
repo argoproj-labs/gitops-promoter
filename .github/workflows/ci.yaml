@@ -67,6 +67,9 @@ jobs:
           version: v2.1.0
           args: --timeout=5m
           skip-cache: false
+      # We want to enable this but github seems to cancel the job, might be related to memory limits on the runner.
+      - name: Nilaway
+        run: make nilaway-no-test
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make

@@ -270,6 +270,11 @@ func (pr *PullRequest) sendWebhook(ctx context.Context, pullRequest v1alpha1.Pul
 		fmt.Printf("Failed to send webhook request after PR merge: %v\n", err)
 		return
 	}
+	if resp == nil {
+		fmt.Printf("Webhook receiver returned nil response after PR merge\n")
+		return
+	}
+
 	defer func() {
 		_ = resp.Body.Close()
 	}()
