@@ -359,8 +359,6 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 		r.startCleanupTimer()
 	}
 
-	const enqueueThreshold = 15 * time.Second
-
 	// Get the effective dry SHA for each CTP (Note.DrySha if set, otherwise Proposed.Dry.Sha)
 	getEffectiveDrySha := func(ctp *promoterv1alpha1.ChangeTransferPolicy) string {
 		if ctp.Status.Proposed.Note != nil && ctp.Status.Proposed.Note.DrySha != "" {
@@ -404,7 +402,7 @@ func (r *PromotionStrategyReconciler) enqueueOutOfSyncCTPs(ctx context.Context, 
 			"effectiveSha", effectiveSha,
 			"targetSha", targetSha,
 		))
-		r.handleRateLimitedEnqueue(ctxWithLog, ctp, enqueueThreshold)
+		r.handleRateLimitedEnqueue(ctxWithLog, ctp)
 	}
 }
 
@@ -452,8 +450,9 @@ func (r *PromotionStrategyReconciler) startCleanupTimer() {
 func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	ctx context.Context,
 	ctp *promoterv1alpha1.ChangeTransferPolicy,
-	enqueueThreshold time.Duration,
 ) {
+	const enqueueThreshold = 15 * time.Second
+
 	logger := log.FromContext(ctx)
 	now := time.Now()
 	key := client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}
