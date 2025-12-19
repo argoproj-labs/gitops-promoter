@@ -770,7 +770,7 @@ func getGitBranchSHA(ctx context.Context, owner, name, branch string) string {
 	gitServerPort := 5000 + GinkgoParallelProcess()
 	repoURL := fmt.Sprintf("http://localhost:%d/%s/%s", gitServerPort, owner, name)
 
-	output, err := runGitCmd(ctx, "", "ls-remote", repoURL, fmt.Sprintf("refs/heads/%s", branch))
+	output, err := runGitCmd(ctx, "", "ls-remote", repoURL, "refs/heads/"+branch)
 	Expect(err).NotTo(HaveOccurred())
 
 	// Output format: "<sha>\trefs/heads/<branch>"
