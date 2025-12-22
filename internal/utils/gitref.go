@@ -19,23 +19,21 @@ const (
 	//       Rule 8 is documented as a limitation.
 	baseForbidden = `\x00-\x1F\x7F ~^:?*\[\\`
 
-	// Components in the MIDDLE of a ref (not the last component)
-	// These can end with dots and can be the single character @
-	componentStart  = `[^` + baseForbidden + `/.]` // can't start with dot (Rule 1)
-	componentMiddle = `[^` + baseForbidden + `/]`  // allows dot in middle
-	componentEnd    = `[^` + baseForbidden + `/]`  // allows dot at end (for middle components)
+	// Character classes for building component patterns
+	charNoDot   = `[^` + baseForbidden + `/.]` // can't be forbidden, slash, or dot
+	charAllowed = `[^` + baseForbidden + `/]`  // can't be forbidden or slash (dot is OK)
 
-	middleSingleChar = `[^` + baseForbidden + `/.]` // single char can't be dot (would violate Rule 1)
-	middleMultiChar  = componentStart + componentMiddle + `*` + componentEnd
-	middleComponent  = `(?:` + middleSingleChar + `|` + middleMultiChar + `)`
+	// Components in the MIDDLE of a ref (not the last component)
+	// Pattern: single char (not dot) OR (first char not dot + one or more additional chars)
+	// These can end with dots and can be the single character @
+	middleComponent = `(?:` + charNoDot + `(?:` + charAllowed + `+)?)`
 
 	// The LAST component of a ref (or the only component)
-	// Rule 7: Cannot end with dot - applies to the entire ref, so last component can't end with dot
+	// Rule 7: Cannot end with dot - applies to the entire ref
 	// Rule 9: Entire ref cannot be "@" - so if there's only one component, it can't be @
-	lastComponentEnd = `[^` + baseForbidden + `/.]`  // can't end with dot (Rule 7)
-	lastSingleChar   = `[^` + baseForbidden + `/.@]` // can't be @ (Rule 9) or dot
-	lastMultiChar    = componentStart + componentMiddle + `*` + lastComponentEnd
-	lastComponent    = `(?:` + lastSingleChar + `|` + lastMultiChar + `)`
+	// Pattern: single char (not @/not dot) OR multi-char (start not-dot + middle + end not-dot)
+	charNoAtNoDot = `[^` + baseForbidden + `/.@]` // excludes @, dot, slash, and forbidden
+	lastComponent = `(?:` + charNoAtNoDot + `|` + charNoDot + charAllowed + `*` + charNoDot + `)`
 
 	// GitRefPatternString is the full regex pattern for validating git references.
 	// This is exported for documentation and for using the pattern in other contexts.

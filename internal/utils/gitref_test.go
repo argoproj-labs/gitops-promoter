@@ -72,7 +72,7 @@ var _ = Describe("Git Ref Validation", func() {
 			// Get the actual pattern from the exported constant
 			actualPattern := utils.GitRefPatternString
 
-			expectedPattern := `^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$`
+			expectedPattern := `^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$`
 
 			Expect(actualPattern).To(Equal(expectedPattern),
 				"Regex pattern changed. If this is intentional, update the expected pattern in this test.\n"+
