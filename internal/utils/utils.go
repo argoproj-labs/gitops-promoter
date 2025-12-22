@@ -295,43 +295,38 @@ func HandleReconciliationResult(
 		}
 	}
 
+	// Set the Ready condition based on reconciliation result
 	if *err == nil {
+		// Success case: set Ready condition if not already set
+		meta.SetStatusCondition(conditions, *readyCondition)
 		eventType := "Normal"
 		if readyCondition.Status == metav1.ConditionFalse {
 			eventType = "Warning"
 		}
 		recorder.Eventf(obj, eventType, readyCondition.Reason, readyCondition.Message)
-		if updateErr := updateReadyCondition(ctx, obj, client, conditions, readyCondition.Status, readyCondition.Reason, readyCondition.Message); updateErr != nil {
-			*err = fmt.Errorf("failed to update status with success condition: %w", updateErr)
+	} else {
+		// Error case: set Ready condition to False
+		if !k8serrors.IsConflict(*err) {
+			recorder.Eventf(obj, "Warning", string(promoterConditions.ReconciliationError), "Reconciliation failed: %v", *err)
 		}
-		return
+		meta.SetStatusCondition(conditions, metav1.Condition{
+			Type:               string(promoterConditions.Ready),
+			Status:             metav1.ConditionFalse,
+			Reason:             string(promoterConditions.ReconciliationError),
+			Message:            fmt.Sprintf("Reconciliation failed: %s", *err),
+			ObservedGeneration: obj.GetGeneration(),
+		})
 	}
 
-	if !k8serrors.IsConflict(*err) {
-		recorder.Eventf(obj, "Warning", string(promoterConditions.ReconciliationError), "Reconciliation failed: %v", *err)
-	}
-	if updateErr := updateReadyCondition(ctx, obj, client, conditions, metav1.ConditionFalse, string(promoterConditions.ReconciliationError), fmt.Sprintf("Reconciliation failed: %s", *err)); updateErr != nil {
-		// Ignore conflict errors when updating status (see comment above).
-		//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-		*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
-	}
-}
-
-func updateReadyCondition(ctx context.Context, obj StatusConditionUpdater, client client.Client, conditions *[]metav1.Condition, status metav1.ConditionStatus, reason, message string) error {
-	condition := metav1.Condition{
-		Type:               string(promoterConditions.Ready),
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: obj.GetGeneration(),
-	}
-
-	if changed := meta.SetStatusCondition(conditions, condition); changed {
-		if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
-			return fmt.Errorf("failed to update status condition: %w", updateErr)
+	// Single status update. This is the only place Status().Update() is called for reconciled resources.
+	if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
+		if *err == nil {
+			*err = fmt.Errorf("failed to update status: %w", updateErr)
+		} else {
+			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
+			*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
 		}
 	}
-	return nil
 }
 
 // InheritNotReadyConditionFromObjects sets the Ready condition of the parent to False if any of the child objects are not ready.

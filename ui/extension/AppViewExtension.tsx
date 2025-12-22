@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "@components-lib/components/Card";
-import "./index.scss";
 import { PromotionStrategy } from "@shared/types/promotion";
 import { AppViewComponentProps } from "@shared/types/extension";
 
