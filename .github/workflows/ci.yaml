@@ -67,9 +67,6 @@ jobs:
           version: v2.5.0
           args: --timeout=5m
           skip-cache: false
-#      # We want to enable this but github seems to cancel the job, might be related to memory limits on the runner.
-#      - name: Nilaway
-#        run: make nilaway-no-test
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
@@ -120,3 +117,16 @@ jobs:
             echo "::error ::Manifests are out of date. Run 'make build-installer' and commit the changes."
             exit 1
           fi
+  nilaway:
+    name: Nilaway Static Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # pin@v4
+      - name: Set up Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # pin@v5
+        with:
+          go-version: "1.24"
+      - name: Run Nilaway
+        run: make nilaway-no-test
