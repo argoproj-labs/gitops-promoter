@@ -54,6 +54,7 @@ spec:
                     branch:
                       description: Branch is the name of the branch/environment you
                         want to gate for the configured duration.
+                      minLength: 1
                       type: string
                     duration:
                       description: |-
@@ -71,6 +72,9 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -157,6 +161,7 @@ spec:
                       type: string
                     branch:
                       description: Branch is the name of the branch/environment.
+                      minLength: 1
                       type: string
                     commitTime:
                       description: CommitTime is when the commit was deployed to the
@@ -178,6 +183,7 @@ spec:
                       type: string
                     sha:
                       description: Sha is the commit SHA being tracked for this environment.
+                      pattern: ^[a-f0-9]{40}$
                       type: string
                   required:
                   - atMostDurationRemaining

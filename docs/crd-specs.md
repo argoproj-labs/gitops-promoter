@@ -185,3 +185,9 @@ When you delete a PromotionStrategy and its associated resources, the finalizers
 
 If you attempt to delete resources out of order, Kubernetes will mark them for deletion but they will remain in a 
 "Terminating" state until their dependent resources are removed. This is normal and expected behavior.
+
+## Validation Conventions
+
+### Commit SHA Format
+
+All SHA fields in the CRDs require lowercase, 40-character hexadecimal hashes. This ensures reliable comparisons between SHAs.

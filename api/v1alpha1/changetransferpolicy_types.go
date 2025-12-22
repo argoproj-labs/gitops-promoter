@@ -34,10 +34,12 @@ type ChangeTransferPolicySpec struct {
 
 	// ProposedBranch staging hydrated branch
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	ProposedBranch string `json:"proposedBranch"`
 
 	// ActiveBranch staging hydrated branch
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	ActiveBranch string `json:"activeBranch"`
 
 	// +kubebuilder:validation:Optional
@@ -114,6 +116,7 @@ type HydratorMetadata struct {
 // CommitShaState defines the state of a commit in a branch.
 type CommitShaState struct {
 	// Sha is the SHA of the commit in the branch
+	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
 	Sha string `json:"sha,omitempty"`
 	// CommitTime is the time the commit was made
 	CommitTime metav1.Time `json:"commitTime,omitempty"`

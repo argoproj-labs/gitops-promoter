@@ -54,6 +54,8 @@ spec:
                   domain:
                     description: Domain is the domain of the fake SCM provider. This
                       is used for testing purposes.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                 type: object
               forgejo:
@@ -64,6 +66,8 @@ spec:
                     description: |-
                       Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
                       There is no default domain since Forgejo is not a service like Gitlab or Github.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                 required:
                 - domain
@@ -74,6 +78,7 @@ spec:
                   appID:
                     description: AppID is the GitHub App ID.
                     format: int64
+                    minimum: 0
                     type: integer
                   domain:
                     description: |-
@@ -103,6 +108,10 @@ spec:
                       Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
                       empty.
                     type: string
+                    x-kubernetes-validations:
+                    - message: Instead of setting the domain to gitlab.com, leave
+                        the field blank
+                      rule: self != "gitlab.com"
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to

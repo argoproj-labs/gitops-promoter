@@ -130,6 +130,9 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -241,9 +244,12 @@ spec:
                         This comes from the PromotionStrategy's environment status.
                         The expression is evaluated against THIS commit's data, not the proposed commit.
                         May be empty if the PromotionStrategy hasn't reconciled yet.
+                      maxLength: 40
+                      pattern: ^[a-f0-9]{40}$
                       type: string
                     branch:
                       description: Branch is the environment branch name being validated.
+                      minLength: 1
                       type: string
                     expressionResult:
                       description: |-
@@ -269,6 +275,8 @@ spec:
                         The CommitStatus resource is created with this SHA, allowing the PromotionStrategy to gate
                         promotions based on the validation of the ACTIVE commit.
                         May be empty if the PromotionStrategy hasn't reconciled yet.
+                      maxLength: 40
+                      pattern: ^[a-f0-9]{40}$
                       type: string
                     targetedSha:
                       description: |-
@@ -276,6 +284,8 @@ spec:
                         This will match either ProposedHydratedSha or ActiveHydratedSha depending on
                         the Target setting ("proposed" or "active").
                         This field clarifies which commit's data was used in the expression evaluation.
+                      maxLength: 40
+                      pattern: ^[a-f0-9]{40}$
                       type: string
                   required:
                   - branch

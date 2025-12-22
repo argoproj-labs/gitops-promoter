@@ -125,6 +125,7 @@ type GitCommitStatusStatus struct {
 type GitCommitStatusEnvironmentStatus struct {
 	// Branch is the environment branch name being validated.
 	// +required
+	// +kubebuilder:validation:MinLength=1
 	Branch string `json:"branch"`
 
 	// ProposedHydratedSha is the proposed hydrated commit SHA where the validation result is reported.
@@ -133,6 +134,8 @@ type GitCommitStatusEnvironmentStatus struct {
 	// promotions based on the validation of the ACTIVE commit.
 	// May be empty if the PromotionStrategy hasn't reconciled yet.
 	// +required
+	// +kubebuilder:validation:MaxLength=40
+	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
 	ProposedHydratedSha string `json:"proposedHydratedSha"`
 
 	// ActiveHydratedSha is the currently active (deployed) hydrated commit SHA that was validated.
@@ -140,6 +143,8 @@ type GitCommitStatusEnvironmentStatus struct {
 	// The expression is evaluated against THIS commit's data, not the proposed commit.
 	// May be empty if the PromotionStrategy hasn't reconciled yet.
 	// +optional
+	// +kubebuilder:validation:MaxLength=40
+	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
 	ActiveHydratedSha string `json:"activeHydratedSha,omitempty"`
 
 	// TargetedSha is the commit SHA that was actually validated by the expression.
@@ -147,6 +152,9 @@ type GitCommitStatusEnvironmentStatus struct {
 	// the Target setting ("proposed" or "active").
 	// This field clarifies which commit's data was used in the expression evaluation.
 	// +optional
+	// +optional
+	// +kubebuilder:validation:MaxLength=40
+	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
 	TargetedSha string `json:"targetedSha,omitempty"`
 
 	// Phase represents the current validation state of the commit.

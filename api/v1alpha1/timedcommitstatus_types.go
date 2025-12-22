@@ -42,6 +42,7 @@ type TimedCommitStatusSpec struct {
 type TimedCommitStatusEnvironments struct {
 	// Branch is the name of the branch/environment you want to gate for the configured duration.
 	// +required
+	// +kubebuilder:validation:MinLength=1
 	Branch string `json:"branch"`
 	// Duration is the time duration to wait before considering the commit status as success.
 	// The duration should be in a format accepted by Go's time.ParseDuration function, e.g., "5m", "1h30m".
@@ -71,10 +72,12 @@ type TimedCommitStatusStatus struct {
 type TimedCommitStatusEnvironmentsStatus struct {
 	// Branch is the name of the branch/environment.
 	// +required
+	// +kubebuilder:validation:MinLength=1
 	Branch string `json:"branch"`
 
 	// Sha is the commit SHA being tracked for this environment.
 	// +required
+	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
 	Sha string `json:"sha"`
 
 	// CommitTime is when the commit was deployed to the active environment.

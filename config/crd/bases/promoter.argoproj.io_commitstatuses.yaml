@@ -58,6 +58,7 @@ spec:
             description: CommitStatusSpec defines the desired state of CommitStatus
             properties:
               description:
+                description: Description is a short description of the commit status.
                 type: string
               gitRepositoryRef:
                 description: ObjectReference is a reference to an object by name.
@@ -65,25 +66,31 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
                 type: object
               name:
+                description: Name is the name of the commit status.
                 minLength: 1
                 type: string
               phase:
                 default: pending
-                description: CommitStatusPhase represents the phase of a commit status.
+                description: Phase is the state of the commit status. This will be
+                  mapped to the appropriate equivalent in the SCM.
                 enum:
                 - pending
                 - success
                 - failure
                 type: string
               sha:
-                maxLength: 64
-                minLength: 1
-                pattern: ^[a-fA-F0-9]+$
+                description: SHA is the commit SHA to set the status on.
+                maxLength: 40
+                minLength: 40
+                pattern: ^[a-f0-9]{40}$
                 type: string
               url:
                 description: Url is a URL that the user can follow to see more details
@@ -170,7 +177,8 @@ spec:
                 type: string
               phase:
                 default: pending
-                description: CommitStatusPhase represents the phase of a commit status.
+                description: Phase is the state of the commit status. This will be
+                  mapped to the appropriate equivalent in the SCM.
                 enum:
                 - pending
                 - success
@@ -178,6 +186,8 @@ spec:
                 - ""
                 type: string
               sha:
+                description: Sha is the commit SHA that the status is set on.
+                pattern: ^[a-f0-9]{40}$
                 type: string
             required:
             - id

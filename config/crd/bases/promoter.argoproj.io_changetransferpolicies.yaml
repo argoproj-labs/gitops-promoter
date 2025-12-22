@@ -55,6 +55,7 @@ spec:
             properties:
               activeBranch:
                 description: ActiveBranch staging hydrated branch
+                minLength: 1
                 type: string
               activeCommitStatuses:
                 description: ActiveCommitStatuses lists the statuses to be monitored
@@ -83,12 +84,16 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
                 type: object
               proposedBranch:
                 description: ProposedBranch staging hydrated branch
+                minLength: 1
                 type: string
               proposedCommitStatuses:
                 description: ProposedCommitStatuses lists the statuses to be monitored
@@ -205,6 +210,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the
@@ -223,6 +229,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
                         description: Subject is the subject line of the commit message
@@ -277,6 +284,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the
@@ -295,6 +303,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
                         description: Subject is the subject line of the commit message
@@ -355,6 +364,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the
@@ -535,6 +545,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -553,6 +564,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
                               description: Subject is the subject line of the commit
@@ -610,6 +622,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -628,6 +641,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
                               description: Subject is the subject line of the commit
@@ -691,6 +705,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -797,6 +812,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -815,6 +831,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
                               description: Subject is the subject line of the commit
@@ -947,6 +964,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the
@@ -965,6 +983,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
                         description: Subject is the subject line of the commit message
@@ -1019,6 +1038,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the
@@ -1037,6 +1057,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
                         description: Subject is the subject line of the commit message
@@ -1097,6 +1118,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the

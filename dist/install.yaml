@@ -113,6 +113,9 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -172,13 +175,14 @@ spec:
                   ApplicationsSelected represents the Argo CD applications that are selected by the commit status.
                   This field is sorted by environment (same order as the referenced PromotionStrategy), then namespace, then name.
                 items:
-                  description: ApplicationsSelected represents the Argo CD applications
-                    that are selected by the commit status.
+                  description: |-
+                    ApplicationsSelected represents the Argo CD applications that are selected by the commit status. The fields in this
+                    struct are all required, since the controller should always fully construct this information.
                   properties:
                     clusterName:
                       description: |-
                         ClusterName is the name of the cluster that the application manifest is deployed to. An empty string indicates
-                        the local cluster.
+                        the local cluster. There is no minimum length, since the local cluster is represented by an empty string.
                       type: string
                     environment:
                       description: Environment is the syncSource.targetBranch of the
@@ -191,16 +195,29 @@ spec:
                       type: string
                     name:
                       description: Name is the name of the Argo CD application.
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
                     namespace:
                       description: Namespace is the namespace of the Argo CD application.
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
                     phase:
                       description: Phase is the current phase of the commit status.
+                      enum:
+                      - pending
+                      - success
+                      - failure
                       type: string
                     sha:
                       description: Sha is the commit SHA that this status is associated
                         with.
+                      maxLength: 40
+                      minLength: 40
+                      pattern: ^[a-f0-9]{40}$
                       type: string
                   required:
                   - clusterName
@@ -335,6 +352,7 @@ spec:
             properties:
               activeBranch:
                 description: ActiveBranch staging hydrated branch
+                minLength: 1
                 type: string
               activeCommitStatuses:
                 description: ActiveCommitStatuses lists the statuses to be monitored
@@ -363,12 +381,16 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
                 type: object
               proposedBranch:
                 description: ProposedBranch staging hydrated branch
+                minLength: 1
                 type: string
               proposedCommitStatuses:
                 description: ProposedCommitStatuses lists the statuses to be monitored
@@ -485,6 +507,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the
@@ -503,6 +526,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
                         description: Subject is the subject line of the commit message
@@ -557,6 +581,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the
@@ -575,6 +600,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
                         description: Subject is the subject line of the commit message
@@ -635,6 +661,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the
@@ -815,6 +842,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -833,6 +861,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
                               description: Subject is the subject line of the commit
@@ -890,6 +919,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -908,6 +938,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
                               description: Subject is the subject line of the commit
@@ -971,6 +1002,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -1077,6 +1109,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -1095,6 +1128,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
                               description: Subject is the subject line of the commit
@@ -1227,6 +1261,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the
@@ -1245,6 +1280,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
                         description: Subject is the subject line of the commit message
@@ -1299,6 +1335,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the
@@ -1317,6 +1354,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
                         description: Subject is the subject line of the commit message
@@ -1377,6 +1415,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
                                   description: Subject is the subject line of the
@@ -1493,6 +1532,8 @@ spec:
                   domain:
                     description: Domain is the domain of the fake SCM provider. This
                       is used for testing purposes.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                 type: object
               forgejo:
@@ -1503,6 +1544,8 @@ spec:
                     description: |-
                       Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
                       There is no default domain since Forgejo is not a service like Gitlab or Github.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                 required:
                 - domain
@@ -1513,6 +1556,7 @@ spec:
                   appID:
                     description: AppID is the GitHub App ID.
                     format: int64
+                    minimum: 0
                     type: integer
                   domain:
                     description: |-
@@ -1542,6 +1586,10 @@ spec:
                       Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
                       empty.
                     type: string
+                    x-kubernetes-validations:
+                    - message: Instead of setting the domain to gitlab.com, leave
+                        the field blank
+                      rule: self != "gitlab.com"
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to
@@ -1694,6 +1742,7 @@ spec:
             description: CommitStatusSpec defines the desired state of CommitStatus
             properties:
               description:
+                description: Description is a short description of the commit status.
                 type: string
               gitRepositoryRef:
                 description: ObjectReference is a reference to an object by name.
@@ -1701,25 +1750,31 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
                 type: object
               name:
+                description: Name is the name of the commit status.
                 minLength: 1
                 type: string
               phase:
                 default: pending
-                description: CommitStatusPhase represents the phase of a commit status.
+                description: Phase is the state of the commit status. This will be
+                  mapped to the appropriate equivalent in the SCM.
                 enum:
                 - pending
                 - success
                 - failure
                 type: string
               sha:
-                maxLength: 64
-                minLength: 1
-                pattern: ^[a-fA-F0-9]+$
+                description: SHA is the commit SHA to set the status on.
+                maxLength: 40
+                minLength: 40
+                pattern: ^[a-f0-9]{40}$
                 type: string
               url:
                 description: Url is a URL that the user can follow to see more details
@@ -1806,7 +1861,8 @@ spec:
                 type: string
               phase:
                 default: pending
-                description: CommitStatusPhase represents the phase of a commit status.
+                description: Phase is the state of the commit status. This will be
+                  mapped to the appropriate equivalent in the SCM.
                 enum:
                 - pending
                 - success
@@ -1814,6 +1870,8 @@ spec:
                 - ""
                 type: string
               sha:
+                description: Sha is the commit SHA that the status is set on.
+                pattern: ^[a-f0-9]{40}$
                 type: string
             required:
             - id
@@ -1894,7 +1952,8 @@ spec:
                         description: |-
                           MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
                           that can run for this controller. Higher values increase throughput but consume more
-                          resources. Must be at least 1.
+                          resources.
+                        minimum: 1
                         type: integer
                       rateLimiter:
                         description: |-
@@ -1912,11 +1971,13 @@ spec:
                                   Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                   This defines the maximum burst size - how many operations can occur in rapid
                                   succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
                                 type: integer
                               qps:
                                 description: |-
                                   Qps (queries per second) is the rate at which tokens are added to the bucket.
                                   This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
                                 type: integer
                             required:
                             - bucket
@@ -1957,6 +2018,7 @@ spec:
                                 description: |-
                                   MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                   Must be at least 1.
+                                minimum: 1
                                 type: integer
                               slowDelay:
                                 description: |-
@@ -1994,11 +2056,13 @@ spec:
                                         Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                         This defines the maximum burst size - how many operations can occur in rapid
                                         succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                     qps:
                                       description: |-
                                         Qps (queries per second) is the rate at which tokens are added to the bucket.
                                         This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                   required:
                                   - bucket
@@ -2039,6 +2103,7 @@ spec:
                                       description: |-
                                         MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                         Must be at least 1.
+                                      minimum: 1
                                       type: integer
                                     slowDelay:
                                       description: |-
@@ -2097,7 +2162,8 @@ spec:
                         description: |-
                           MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
                           that can run for this controller. Higher values increase throughput but consume more
-                          resources. Must be at least 1.
+                          resources.
+                        minimum: 1
                         type: integer
                       rateLimiter:
                         description: |-
@@ -2115,11 +2181,13 @@ spec:
                                   Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                   This defines the maximum burst size - how many operations can occur in rapid
                                   succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
                                 type: integer
                               qps:
                                 description: |-
                                   Qps (queries per second) is the rate at which tokens are added to the bucket.
                                   This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
                                 type: integer
                             required:
                             - bucket
@@ -2160,6 +2228,7 @@ spec:
                                 description: |-
                                   MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                   Must be at least 1.
+                                minimum: 1
                                 type: integer
                               slowDelay:
                                 description: |-
@@ -2197,11 +2266,13 @@ spec:
                                         Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                         This defines the maximum burst size - how many operations can occur in rapid
                                         succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                     qps:
                                       description: |-
                                         Qps (queries per second) is the rate at which tokens are added to the bucket.
                                         This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                   required:
                                   - bucket
@@ -2242,6 +2313,7 @@ spec:
                                       description: |-
                                         MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                         Must be at least 1.
+                                      minimum: 1
                                       type: integer
                                     slowDelay:
                                       description: |-
@@ -2299,7 +2371,8 @@ spec:
                         description: |-
                           MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
                           that can run for this controller. Higher values increase throughput but consume more
-                          resources. Must be at least 1.
+                          resources.
+                        minimum: 1
                         type: integer
                       rateLimiter:
                         description: |-
@@ -2317,11 +2390,13 @@ spec:
                                   Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                   This defines the maximum burst size - how many operations can occur in rapid
                                   succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
                                 type: integer
                               qps:
                                 description: |-
                                   Qps (queries per second) is the rate at which tokens are added to the bucket.
                                   This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
                                 type: integer
                             required:
                             - bucket
@@ -2362,6 +2437,7 @@ spec:
                                 description: |-
                                   MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                   Must be at least 1.
+                                minimum: 1
                                 type: integer
                               slowDelay:
                                 description: |-
@@ -2399,11 +2475,13 @@ spec:
                                         Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                         This defines the maximum burst size - how many operations can occur in rapid
                                         succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                     qps:
                                       description: |-
                                         Qps (queries per second) is the rate at which tokens are added to the bucket.
                                         This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                   required:
                                   - bucket
@@ -2444,6 +2522,7 @@ spec:
                                       description: |-
                                         MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                         Must be at least 1.
+                                      minimum: 1
                                       type: integer
                                     slowDelay:
                                       description: |-
@@ -2501,7 +2580,8 @@ spec:
                         description: |-
                           MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
                           that can run for this controller. Higher values increase throughput but consume more
-                          resources. Must be at least 1.
+                          resources.
+                        minimum: 1
                         type: integer
                       rateLimiter:
                         description: |-
@@ -2519,11 +2599,13 @@ spec:
                                   Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                   This defines the maximum burst size - how many operations can occur in rapid
                                   succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
                                 type: integer
                               qps:
                                 description: |-
                                   Qps (queries per second) is the rate at which tokens are added to the bucket.
                                   This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
                                 type: integer
                             required:
                             - bucket
@@ -2564,6 +2646,7 @@ spec:
                                 description: |-
                                   MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                   Must be at least 1.
+                                minimum: 1
                                 type: integer
                               slowDelay:
                                 description: |-
@@ -2601,11 +2684,13 @@ spec:
                                         Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                         This defines the maximum burst size - how many operations can occur in rapid
                                         succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                     qps:
                                       description: |-
                                         Qps (queries per second) is the rate at which tokens are added to the bucket.
                                         This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                   required:
                                   - bucket
@@ -2646,6 +2731,7 @@ spec:
                                       description: |-
                                         MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                         Must be at least 1.
+                                      minimum: 1
                                       type: integer
                                     slowDelay:
                                       description: |-
@@ -2703,7 +2789,8 @@ spec:
                         description: |-
                           MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
                           that can run for this controller. Higher values increase throughput but consume more
-                          resources. Must be at least 1.
+                          resources.
+                        minimum: 1
                         type: integer
                       rateLimiter:
                         description: |-
@@ -2721,11 +2808,13 @@ spec:
                                   Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                   This defines the maximum burst size - how many operations can occur in rapid
                                   succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
                                 type: integer
                               qps:
                                 description: |-
                                   Qps (queries per second) is the rate at which tokens are added to the bucket.
                                   This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
                                 type: integer
                             required:
                             - bucket
@@ -2766,6 +2855,7 @@ spec:
                                 description: |-
                                   MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                   Must be at least 1.
+                                minimum: 1
                                 type: integer
                               slowDelay:
                                 description: |-
@@ -2803,11 +2893,13 @@ spec:
                                         Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                         This defines the maximum burst size - how many operations can occur in rapid
                                         succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                     qps:
                                       description: |-
                                         Qps (queries per second) is the rate at which tokens are added to the bucket.
                                         This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                   required:
                                   - bucket
@@ -2848,6 +2940,7 @@ spec:
                                       description: |-
                                         MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                         Must be at least 1.
+                                      minimum: 1
                                       type: integer
                                     slowDelay:
                                       description: |-
@@ -2924,7 +3017,8 @@ spec:
                         description: |-
                           MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
                           that can run for this controller. Higher values increase throughput but consume more
-                          resources. Must be at least 1.
+                          resources.
+                        minimum: 1
                         type: integer
                       rateLimiter:
                         description: |-
@@ -2942,11 +3036,13 @@ spec:
                                   Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                   This defines the maximum burst size - how many operations can occur in rapid
                                   succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
                                 type: integer
                               qps:
                                 description: |-
                                   Qps (queries per second) is the rate at which tokens are added to the bucket.
                                   This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
                                 type: integer
                             required:
                             - bucket
@@ -2987,6 +3083,7 @@ spec:
                                 description: |-
                                   MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                   Must be at least 1.
+                                minimum: 1
                                 type: integer
                               slowDelay:
                                 description: |-
@@ -3024,11 +3121,13 @@ spec:
                                         Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                         This defines the maximum burst size - how many operations can occur in rapid
                                         succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                     qps:
                                       description: |-
                                         Qps (queries per second) is the rate at which tokens are added to the bucket.
                                         This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                   required:
                                   - bucket
@@ -3069,6 +3168,7 @@ spec:
                                       description: |-
                                         MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                         Must be at least 1.
+                                      minimum: 1
                                       type: integer
                                     slowDelay:
                                       description: |-
@@ -3127,7 +3227,8 @@ spec:
                         description: |-
                           MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
                           that can run for this controller. Higher values increase throughput but consume more
-                          resources. Must be at least 1.
+                          resources.
+                        minimum: 1
                         type: integer
                       rateLimiter:
                         description: |-
@@ -3145,11 +3246,13 @@ spec:
                                   Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                   This defines the maximum burst size - how many operations can occur in rapid
                                   succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
                                 type: integer
                               qps:
                                 description: |-
                                   Qps (queries per second) is the rate at which tokens are added to the bucket.
                                   This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
                                 type: integer
                             required:
                             - bucket
@@ -3190,6 +3293,7 @@ spec:
                                 description: |-
                                   MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                   Must be at least 1.
+                                minimum: 1
                                 type: integer
                               slowDelay:
                                 description: |-
@@ -3227,11 +3331,13 @@ spec:
                                         Bucket is the maximum number of tokens that can be accumulated in the bucket.
                                         This defines the maximum burst size - how many operations can occur in rapid
                                         succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                     qps:
                                       description: |-
                                         Qps (queries per second) is the rate at which tokens are added to the bucket.
                                         This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
                                       type: integer
                                   required:
                                   - bucket
@@ -3272,6 +3378,7 @@ spec:
                                       description: |-
                                         MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
                                         Must be at least 1.
+                                      minimum: 1
                                       type: integer
                                     slowDelay:
                                       description: |-
@@ -3469,6 +3576,9 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -3580,9 +3690,12 @@ spec:
                         This comes from the PromotionStrategy's environment status.
                         The expression is evaluated against THIS commit's data, not the proposed commit.
                         May be empty if the PromotionStrategy hasn't reconciled yet.
+                      maxLength: 40
+                      pattern: ^[a-f0-9]{40}$
                       type: string
                     branch:
                       description: Branch is the environment branch name being validated.
+                      minLength: 1
                       type: string
                     expressionResult:
                       description: |-
@@ -3608,6 +3721,8 @@ spec:
                         The CommitStatus resource is created with this SHA, allowing the PromotionStrategy to gate
                         promotions based on the validation of the ACTIVE commit.
                         May be empty if the PromotionStrategy hasn't reconciled yet.
+                      maxLength: 40
+                      pattern: ^[a-f0-9]{40}$
                       type: string
                     targetedSha:
                       description: |-
@@ -3615,6 +3730,8 @@ spec:
                         This will match either ProposedHydratedSha or ActiveHydratedSha depending on
                         the Target setting ("proposed" or "active").
                         This field clarifies which commit's data was used in the expression evaluation.
+                      maxLength: 40
+                      pattern: ^[a-f0-9]{40}$
                       type: string
                   required:
                   - branch
@@ -3688,6 +3805,7 @@ spec:
                   name:
                     description: Name is the name of the repository.
                     maxLength: 62
+                    minLength: 1
                     pattern: ^[a-zA-Z0-9_.-]+$
                     type: string
                   owner:
@@ -3706,9 +3824,11 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the repository.
+                    minLength: 1
                     type: string
                   owner:
                     description: Owner is the owner of the repository.
+                    minLength: 1
                     type: string
                 required:
                 - name
@@ -3720,9 +3840,11 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the repository.
+                    minLength: 1
                     type: string
                   owner:
                     description: Owner is the owner of the repository.
+                    minLength: 1
                     type: string
                 required:
                 - name
@@ -3735,12 +3857,14 @@ spec:
                   name:
                     description: Name is the name of the repository.
                     maxLength: 100
+                    minLength: 1
                     pattern: ^[a-zA-Z0-9_\-\.]+$
                     type: string
                   owner:
                     description: Owner is the owner of the repository, which can be
                       a user or an organization.
                     maxLength: 39
+                    minLength: 1
                     pattern: ^[a-zA-Z0-9][a-zA-Z0-9\-]*$
                     type: string
                 required:
@@ -3753,15 +3877,18 @@ spec:
                 properties:
                   name:
                     description: Name is the project slug of the repository.
+                    minLength: 1
                     pattern: ^[a-zA-Z0-9_\-\/.]+$
                     type: string
                   namespace:
                     description: Namespace is the user, group or group with subgroup
                       (e.g. group/subgroup).
+                    minLength: 1
                     pattern: ^[a-zA-Z0-9_\-\/.]+$
                     type: string
                   projectId:
                     description: ProjectID is the ID of the project in GitLab.
+                    minimum: 0
                     type: integer
                 required:
                 - name
@@ -3781,6 +3908,9 @@ spec:
                     type: string
                   name:
                     description: Name is the name of the resource being referenced
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - kind
@@ -3971,6 +4101,7 @@ spec:
                     branch:
                       description: Branch is the name of the active branch for the
                         environment.
+                      minLength: 1
                       type: string
                     proposedCommitStatuses:
                       description: |-
@@ -4010,6 +4141,9 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -4203,6 +4337,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -4221,6 +4356,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
                               description: Subject is the subject line of the commit
@@ -4278,6 +4414,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -4296,6 +4433,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
                               description: Subject is the subject line of the commit
@@ -4359,6 +4497,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -4380,6 +4519,7 @@ spec:
                     branch:
                       description: Branch is the name of the active branch for the
                         environment.
+                      minLength: 1
                       type: string
                     history:
                       description: |-
@@ -4487,6 +4627,7 @@ spec:
                                                 rule: self == '' || isURL(self)
                                             sha:
                                               description: Sha is the commit hash.
+                                              pattern: ^[a-f0-9]{40}$
                                               type: string
                                             subject:
                                               description: Subject is the subject
@@ -4507,6 +4648,7 @@ spec:
                                   sha:
                                     description: Sha is the SHA of the commit in the
                                       branch
+                                    pattern: ^[a-f0-9]{40}$
                                     type: string
                                   subject:
                                     description: Subject is the subject line of the
@@ -4569,6 +4711,7 @@ spec:
                                                 rule: self == '' || isURL(self)
                                             sha:
                                               description: Sha is the commit hash.
+                                              pattern: ^[a-f0-9]{40}$
                                               type: string
                                             subject:
                                               description: Subject is the subject
@@ -4589,6 +4732,7 @@ spec:
                                   sha:
                                     description: Sha is the SHA of the commit in the
                                       branch
+                                    pattern: ^[a-f0-9]{40}$
                                     type: string
                                   subject:
                                     description: Subject is the subject line of the
@@ -4656,6 +4800,7 @@ spec:
                                                 rule: self == '' || isURL(self)
                                             sha:
                                               description: Sha is the commit hash.
+                                              pattern: ^[a-f0-9]{40}$
                                               type: string
                                             subject:
                                               description: Subject is the subject
@@ -4769,6 +4914,7 @@ spec:
                                                 rule: self == '' || isURL(self)
                                             sha:
                                               description: Sha is the commit hash.
+                                              pattern: ^[a-f0-9]{40}$
                                               type: string
                                             subject:
                                               description: Subject is the subject
@@ -4789,6 +4935,7 @@ spec:
                                   sha:
                                     description: Sha is the SHA of the commit in the
                                       branch
+                                    pattern: ^[a-f0-9]{40}$
                                     type: string
                                   subject:
                                     description: Subject is the subject line of the
@@ -4844,6 +4991,7 @@ spec:
                           sha:
                             description: Sha is the commit SHA of the dry commit that
                               was observed to be healthy.
+                            pattern: ^[a-f0-9]{40}$
                             type: string
                           time:
                             description: Time is the time when the proposed commit
@@ -4945,6 +5093,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -4963,6 +5112,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
                               description: Subject is the subject line of the commit
@@ -5020,6 +5170,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -5038,6 +5189,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
                               description: Subject is the subject line of the commit
@@ -5101,6 +5253,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
                                         description: Subject is the subject line of
@@ -5256,6 +5409,9 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -5264,9 +5420,9 @@ spec:
                 description: |-
                   MergeSha is the commit SHA that the head branch must match before the PR can be merged.
                   This prevents a race condition where a PR is merged with a different commit than intended.
-                maxLength: 64
-                minLength: 1
-                pattern: ^[a-fA-F0-9]+$
+                maxLength: 40
+                minLength: 40
+                pattern: ^[a-f0-9]{40}$
                 type: string
               sourceBranch:
                 description: SourceBranch is the base the git reference that we are
@@ -5294,6 +5450,7 @@ spec:
                   rule: self == oldSelf
               title:
                 description: Title is the title of the pull request.
+                minLength: 1
                 type: string
             required:
             - gitRepositoryRef
@@ -5509,6 +5666,8 @@ spec:
                   domain:
                     description: Domain is the domain of the fake SCM provider. This
                       is used for testing purposes.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                 type: object
               forgejo:
@@ -5519,6 +5678,8 @@ spec:
                     description: |-
                       Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
                       There is no default domain since Forgejo is not a service like Gitlab or Github.
+                    maxLength: 253
+                    minLength: 1
                     type: string
                 required:
                 - domain
@@ -5529,6 +5690,7 @@ spec:
                   appID:
                     description: AppID is the GitHub App ID.
                     format: int64
+                    minimum: 0
                     type: integer
                   domain:
                     description: |-
@@ -5558,6 +5720,10 @@ spec:
                       Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
                       empty.
                     type: string
+                    x-kubernetes-validations:
+                    - message: Instead of setting the domain to gitlab.com, leave
+                        the field blank
+                      rule: self != "gitlab.com"
                 type: object
               secretRef:
                 description: SecretRef contains the credentials required to auth to
@@ -5706,6 +5872,7 @@ spec:
                     branch:
                       description: Branch is the name of the branch/environment you
                         want to gate for the configured duration.
+                      minLength: 1
                       type: string
                     duration:
                       description: |-
@@ -5723,6 +5890,9 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -5809,6 +5979,7 @@ spec:
                       type: string
                     branch:
                       description: Branch is the name of the branch/environment.
+                      minLength: 1
                       type: string
                     commitTime:
                       description: CommitTime is when the commit was deployed to the
@@ -5830,6 +6001,7 @@ spec:
                       type: string
                     sha:
                       description: Sha is the commit SHA being tracked for this environment.
+                      pattern: ^[a-f0-9]{40}$
                       type: string
                   required:
                   - atMostDurationRemaining

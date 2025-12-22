@@ -4195,13 +4195,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
 					Proposed: promoterv1alpha1.CommitBranchState{
 						Dry: promoterv1alpha1.CommitShaState{
-							Sha: "abc123", // Proposed dry SHA (becomes target since newest)
+							Sha: "abc1234567890123456789012345678912345678", // Proposed dry SHA (becomes target since newest)
 						},
 						Hydrated: promoterv1alpha1.CommitShaState{
 							CommitTime: metav1.Now(),
 						},
 						Note: &promoterv1alpha1.HydratorMetadata{
-							DrySha: "old123", // Git note SHA (out-of-sync with target)
+							DrySha: "old1234567890123456789012345678912345678", // Git note SHA (out-of-sync with target)
 						},
 					},
 				},
