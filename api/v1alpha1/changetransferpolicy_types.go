@@ -34,10 +34,16 @@ type ChangeTransferPolicySpec struct {
 
 	// ProposedBranch staging hydrated branch
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=255
+	// +kubebuilder:validation:Pattern=`^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$`
+	// +kubebuilder:validation:XValidation:rule="!self.endsWith('.lock')",message="Git ref cannot end with .lock"
 	ProposedBranch string `json:"proposedBranch"`
 
 	// ActiveBranch staging hydrated branch
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=255
+	// +kubebuilder:validation:Pattern=`^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$`
+	// +kubebuilder:validation:XValidation:rule="!self.endsWith('.lock')",message="Git ref cannot end with .lock"
 	ActiveBranch string `json:"activeBranch"`
 
 	// +kubebuilder:validation:Optional
