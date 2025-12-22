@@ -86,7 +86,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	startTime := time.Now()
 
 	var ps promoterv1alpha1.PromotionStrategy
-
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
@@ -126,11 +126,6 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	err = r.updatePreviousEnvironmentCommitStatus(ctx, &ps, ctps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to merge PRs: %w", err)
-	}
-
-	err = r.Status().Update(ctx, &ps)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update PromotionStrategy status: %w", err)
 	}
 
 	// Check if any environments need to refresh their git notes.
