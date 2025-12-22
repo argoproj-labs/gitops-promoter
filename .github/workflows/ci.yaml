@@ -64,7 +64,7 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.1.0
+          version: v2.5.0
           args: --timeout=5m
           skip-cache: false
       - name: Build

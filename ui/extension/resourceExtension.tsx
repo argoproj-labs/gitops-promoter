@@ -1,7 +1,6 @@
 import React from "react";
 import Card from "@components-lib/components/Card";
 import { ResourceExtensionProps } from "@shared/types/extension";
-import "./index.scss";
 
 // Argo CD extension component
 
