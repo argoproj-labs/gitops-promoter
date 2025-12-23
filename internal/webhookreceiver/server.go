@@ -1,6 +1,7 @@
 package webhookreceiver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -27,6 +28,7 @@ const (
 	ProviderGitLab         = "gitlab"
 	ProviderForgejo        = "forgejo"
 	ProviderBitbucketCloud = "bitbucketCloud"
+	ProviderAzureDevops    = "azureDevOps"
 	ProviderUnknown        = ""
 )
 
@@ -82,7 +84,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 }
 
 // DetectProvider determines the SCM provider based on webhook headers.
-// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderBitbucketCloud, or ProviderUnknown.
+// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderBitbucketCloud, ProviderAzureDevops or ProviderUnknown.
 func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for GitHub webhook headers
 	if r.Header.Get("X-Github-Event") != "" || r.Header.Get("X-Github-Delivery") != "" {
@@ -104,6 +106,18 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 		return ProviderBitbucketCloud
 	}
 
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.Error(err, "error reading request body for provider detection")
+		return ProviderUnknown
+	}
+	// Restore the body for downstream handlers
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	// Azure DevOps: check for both EventType and PublisherId
+	if gjson.GetBytes(bodyBytes, "eventType").Exists() && gjson.GetBytes(bodyBytes, "publisherId").Exists() {
+		return ProviderAzureDevops
+	}
 	return ProviderUnknown
 }
 
@@ -209,6 +223,16 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 				}
 			}
 		}
+	case ProviderAzureDevops:
+		// Azure DevOps webhook format
+		if gjson.GetBytes(jsonBytes, "resource.refUpdates").Exists() {
+			refUpdates := gjson.GetBytes(jsonBytes, "resource.refUpdates")
+			if refUpdates.IsArray() && len(refUpdates.Array()) > 0 {
+				firstUpdate := refUpdates.Array()[0]
+				beforeSha = firstUpdate.Get("oldObjectId").String()
+				ref = firstUpdate.Get("name").String()
+			}
+		}
 	default:
 		logger.V(4).Info("unsupported provider", "provider", provider)
 		return nil, nil
@@ -254,6 +278,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 	// Check common headers in a sensible order and return the first non-empty value.
 	// GitHub
+	fmt.Println("received a webhook event")
 	if id := r.Header.Get("X-Github-Delivery"); id != "" {
 		return id
 	}
@@ -269,6 +294,10 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 		return id
 	}
 	if id := r.Header.Get("X-Gitea-Delivery"); id != "" {
+		return id
+	}
+	// Azure DevOps
+	if id := r.Header.Get("X-Vss-Activityid"); id != "" {
 		return id
 	}
 	// Bitbucket Cloud
