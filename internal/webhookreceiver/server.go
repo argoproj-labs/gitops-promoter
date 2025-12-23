@@ -115,7 +115,7 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 	// Azure DevOps: check for both EventType and PublisherId
-	//https://learn.microsoft.com/en-us/azure/devops/service-hooks/events?view=azure-devops#code-pushed
+	// https://learn.microsoft.com/en-us/azure/devops/service-hooks/events?view=azure-devops#code-pushed
 	if gjson.GetBytes(bodyBytes, "eventType").Exists() && gjson.GetBytes(bodyBytes, "publisherId").Exists() {
 		return ProviderAzureDevops
 	}
