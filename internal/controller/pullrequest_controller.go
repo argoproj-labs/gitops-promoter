@@ -176,21 +176,19 @@ func (r *PullRequestReconciler) handleEmptyIDDeletion(ctx context.Context, pr *p
 func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *promoterv1alpha1.PullRequest) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	// Check if PR was externally merged or closed
-	if pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed {
-		logger.Info("Cleaning up externally merged or closed pull request", "pullRequestID", pr.Status.ID)
-		if err := r.Delete(ctx, pr); err != nil && !errors.IsNotFound(err) {
-			logger.Error(err, "Failed to delete PullRequest")
-			return false, fmt.Errorf("failed to delete PullRequest: %w", err)
-		}
-		return true, nil
-	}
+	// Check if PR should be cleaned up: either externally merged/closed (and still open) or in terminal state (merged/closed)
+	externallyMergedOrClosed := pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed && pr.Status.State == promoterv1alpha1.PullRequestOpen
+	isTerminalState := pr.Status.State == promoterv1alpha1.PullRequestMerged || pr.Status.State == promoterv1alpha1.PullRequestClosed
 
-	if pr.Status.State != promoterv1alpha1.PullRequestMerged && pr.Status.State != promoterv1alpha1.PullRequestClosed {
+	if !externallyMergedOrClosed && !isTerminalState {
 		return false, nil
 	}
 
-	logger.Info("Cleaning up close and merged pull request", "pullRequestID", pr.Status.ID)
+	if externallyMergedOrClosed {
+		logger.Info("Cleaning up externally merged or closed pull request", "pullRequestID", pr.Status.ID)
+	} else {
+		logger.Info("Cleaning up closed and merged pull request", "pullRequestID", pr.Status.ID)
+	}
 	if err := r.Delete(ctx, pr); err != nil && !errors.IsNotFound(err) {
 		logger.Error(err, "Failed to delete PullRequest")
 		return false, fmt.Errorf("failed to delete PullRequest: %w", err)
