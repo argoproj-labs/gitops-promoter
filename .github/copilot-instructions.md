@@ -5,7 +5,7 @@
 GitOps Promoter is a Kubernetes operator that facilitates environment promotion for config managed via GitOps. It provides a drift-free promotion process with a robust gating system, complete integration with git and SCM tooling.
 
 ### Key Technologies
-- **Backend**: Go 1.24+ (Kubernetes operator using controller-runtime)
+- **Backend**: Go 1.25+ (Kubernetes operator using controller-runtime)
 - **Frontend**: TypeScript/React (Dashboard UI and Argo CD extension)
 - **Infrastructure**: Kubernetes, Argo CD integration
 - **SCM Support**: GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg)
