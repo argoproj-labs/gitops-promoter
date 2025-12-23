@@ -157,6 +157,7 @@ type EnvironmentStatus struct {
 // HealthyDryShas is a list of dry commits that were observed to be healthy in the environment.
 type HealthyDryShas struct {
 	// Sha is the commit SHA of the dry commit that was observed to be healthy.
+	// +kubebuilder:validation:MaxLength=40
 	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
 	Sha string `json:"sha"`
 	// Time is the time when the proposed commit for the given dry SHA was merged into the active branch.

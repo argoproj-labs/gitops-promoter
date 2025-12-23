@@ -77,6 +77,7 @@ type TimedCommitStatusEnvironmentsStatus struct {
 
 	// Sha is the commit SHA being tracked for this environment.
 	// +required
+	// +kubebuilder:validation:MaxLength=40
 	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
 	Sha string `json:"sha"`
 

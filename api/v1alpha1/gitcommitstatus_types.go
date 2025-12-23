@@ -134,6 +134,7 @@ type GitCommitStatusEnvironmentStatus struct {
 	// promotions based on the validation of the ACTIVE commit.
 	// May be empty if the PromotionStrategy hasn't reconciled yet.
 	// +required
+	// +kubebuilder:validation:MinLength=40
 	// +kubebuilder:validation:MaxLength=40
 	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
 	ProposedHydratedSha string `json:"proposedHydratedSha"`

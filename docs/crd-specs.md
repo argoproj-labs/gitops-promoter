@@ -191,3 +191,25 @@ If you attempt to delete resources out of order, Kubernetes will mark them for d
 ### Commit SHA Format
 
 All SHA fields in the CRDs require lowercase, 40-character hexadecimal hashes. This ensures reliable comparisons between SHAs.
+
+The validation rules differ based on whether the field is required or optional:
+
+**Required SHA fields** (in spec):
+```yaml
+# +kubebuilder:validation:MinLength=40
+# +kubebuilder:validation:MaxLength=40
+# +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
+```
+
+**Optional SHA fields** (omitempty):
+```yaml
+# +kubebuilder:validation:MaxLength=40
+# +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
+```
+
+**Rationale:**
+- `MinLength=40`: Makes the field truly required (enforces non-empty for required fields)
+- `MaxLength=40`: Provides a clear error message if the value is too long
+- `Pattern=^[a-f0-9]{40}$`: Validates the exact format (40 lowercase hex characters)
+
+Optional fields omit `MinLength` so they can be empty, but when provided, they must still match the correct length and format due to the pattern validation.

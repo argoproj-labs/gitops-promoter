@@ -507,6 +507,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  maxLength: 40
                                   pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
@@ -526,6 +527,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        maxLength: 40
                         pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
@@ -581,6 +583,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  maxLength: 40
                                   pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
@@ -600,6 +603,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        maxLength: 40
                         pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
@@ -626,6 +630,8 @@ spec:
                       drySha:
                         description: DrySha is the SHA of the commit that was used
                           as the dry source for hydration.
+                        maxLength: 40
+                        pattern: ^[a-f0-9]{40}$
                         type: string
                       references:
                         description: References are the references to other commits,
@@ -661,6 +667,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  maxLength: 40
                                   pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
@@ -842,6 +849,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        maxLength: 40
                                         pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
@@ -861,6 +869,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              maxLength: 40
                               pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
@@ -919,6 +928,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        maxLength: 40
                                         pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
@@ -938,6 +948,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              maxLength: 40
                               pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
@@ -965,6 +976,8 @@ spec:
                             drySha:
                               description: DrySha is the SHA of the commit that was
                                 used as the dry source for hydration.
+                              maxLength: 40
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             references:
                               description: References are the references to other
@@ -1002,6 +1015,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        maxLength: 40
                                         pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
@@ -1109,6 +1123,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        maxLength: 40
                                         pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
@@ -1128,6 +1143,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              maxLength: 40
                               pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
@@ -1261,6 +1277,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  maxLength: 40
                                   pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
@@ -1280,6 +1297,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        maxLength: 40
                         pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
@@ -1335,6 +1353,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  maxLength: 40
                                   pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
@@ -1354,6 +1373,7 @@ spec:
                           rule: self == '' || isURL(self)
                       sha:
                         description: Sha is the SHA of the commit in the branch
+                        maxLength: 40
                         pattern: ^[a-f0-9]{40}$
                         type: string
                       subject:
@@ -1380,6 +1400,8 @@ spec:
                       drySha:
                         description: DrySha is the SHA of the commit that was used
                           as the dry source for hydration.
+                        maxLength: 40
+                        pattern: ^[a-f0-9]{40}$
                         type: string
                       references:
                         description: References are the references to other commits,
@@ -1415,6 +1437,7 @@ spec:
                                     rule: self == '' || isURL(self)
                                 sha:
                                   description: Sha is the commit hash.
+                                  maxLength: 40
                                   pattern: ^[a-f0-9]{40}$
                                   type: string
                                 subject:
@@ -1871,6 +1894,7 @@ spec:
                 type: string
               sha:
                 description: Sha is the commit SHA that the status is set on.
+                maxLength: 40
                 pattern: ^[a-f0-9]{40}$
                 type: string
             required:
@@ -3722,6 +3746,7 @@ spec:
                         promotions based on the validation of the ACTIVE commit.
                         May be empty if the PromotionStrategy hasn't reconciled yet.
                       maxLength: 40
+                      minLength: 40
                       pattern: ^[a-f0-9]{40}$
                       type: string
                     targetedSha:
@@ -4337,6 +4362,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        maxLength: 40
                                         pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
@@ -4356,6 +4382,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              maxLength: 40
                               pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
@@ -4414,6 +4441,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        maxLength: 40
                                         pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
@@ -4433,6 +4461,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              maxLength: 40
                               pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
@@ -4460,6 +4489,8 @@ spec:
                             drySha:
                               description: DrySha is the SHA of the commit that was
                                 used as the dry source for hydration.
+                              maxLength: 40
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             references:
                               description: References are the references to other
@@ -4497,6 +4528,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        maxLength: 40
                                         pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
@@ -4627,6 +4659,7 @@ spec:
                                                 rule: self == '' || isURL(self)
                                             sha:
                                               description: Sha is the commit hash.
+                                              maxLength: 40
                                               pattern: ^[a-f0-9]{40}$
                                               type: string
                                             subject:
@@ -4648,6 +4681,7 @@ spec:
                                   sha:
                                     description: Sha is the SHA of the commit in the
                                       branch
+                                    maxLength: 40
                                     pattern: ^[a-f0-9]{40}$
                                     type: string
                                   subject:
@@ -4711,6 +4745,7 @@ spec:
                                                 rule: self == '' || isURL(self)
                                             sha:
                                               description: Sha is the commit hash.
+                                              maxLength: 40
                                               pattern: ^[a-f0-9]{40}$
                                               type: string
                                             subject:
@@ -4732,6 +4767,7 @@ spec:
                                   sha:
                                     description: Sha is the SHA of the commit in the
                                       branch
+                                    maxLength: 40
                                     pattern: ^[a-f0-9]{40}$
                                     type: string
                                   subject:
@@ -4760,6 +4796,8 @@ spec:
                                   drySha:
                                     description: DrySha is the SHA of the commit that
                                       was used as the dry source for hydration.
+                                    maxLength: 40
+                                    pattern: ^[a-f0-9]{40}$
                                     type: string
                                   references:
                                     description: References are the references to
@@ -4800,6 +4838,7 @@ spec:
                                                 rule: self == '' || isURL(self)
                                             sha:
                                               description: Sha is the commit hash.
+                                              maxLength: 40
                                               pattern: ^[a-f0-9]{40}$
                                               type: string
                                             subject:
@@ -4914,6 +4953,7 @@ spec:
                                                 rule: self == '' || isURL(self)
                                             sha:
                                               description: Sha is the commit hash.
+                                              maxLength: 40
                                               pattern: ^[a-f0-9]{40}$
                                               type: string
                                             subject:
@@ -4935,6 +4975,7 @@ spec:
                                   sha:
                                     description: Sha is the SHA of the commit in the
                                       branch
+                                    maxLength: 40
                                     pattern: ^[a-f0-9]{40}$
                                     type: string
                                   subject:
@@ -4991,6 +5032,7 @@ spec:
                           sha:
                             description: Sha is the commit SHA of the dry commit that
                               was observed to be healthy.
+                            maxLength: 40
                             pattern: ^[a-f0-9]{40}$
                             type: string
                           time:
@@ -5093,6 +5135,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        maxLength: 40
                                         pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
@@ -5112,6 +5155,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              maxLength: 40
                               pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
@@ -5170,6 +5214,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        maxLength: 40
                                         pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
@@ -5189,6 +5234,7 @@ spec:
                                 rule: self == '' || isURL(self)
                             sha:
                               description: Sha is the SHA of the commit in the branch
+                              maxLength: 40
                               pattern: ^[a-f0-9]{40}$
                               type: string
                             subject:
@@ -5216,6 +5262,8 @@ spec:
                             drySha:
                               description: DrySha is the SHA of the commit that was
                                 used as the dry source for hydration.
+                              maxLength: 40
+                              pattern: ^[a-f0-9]{40}$
                               type: string
                             references:
                               description: References are the references to other
@@ -5253,6 +5301,7 @@ spec:
                                           rule: self == '' || isURL(self)
                                       sha:
                                         description: Sha is the commit hash.
+                                        maxLength: 40
                                         pattern: ^[a-f0-9]{40}$
                                         type: string
                                       subject:
@@ -6001,6 +6050,7 @@ spec:
                       type: string
                     sha:
                       description: Sha is the commit SHA being tracked for this environment.
+                      maxLength: 40
                       pattern: ^[a-f0-9]{40}$
                       type: string
                   required:

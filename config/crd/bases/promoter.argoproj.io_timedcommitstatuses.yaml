@@ -183,6 +183,7 @@ spec:
                       type: string
                     sha:
                       description: Sha is the commit SHA being tracked for this environment.
+                      maxLength: 40
                       pattern: ^[a-f0-9]{40}$
                       type: string
                   required:

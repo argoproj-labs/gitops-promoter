@@ -276,6 +276,7 @@ spec:
                         promotions based on the validation of the ACTIVE commit.
                         May be empty if the PromotionStrategy hasn't reconciled yet.
                       maxLength: 40
+                      minLength: 40
                       pattern: ^[a-f0-9]{40}$
                       type: string
                     targetedSha:
