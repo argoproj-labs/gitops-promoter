@@ -1570,6 +1570,11 @@ func (in *PullRequestSpec) DeepCopy() *PullRequestSpec {
 func (in *PullRequestStatus) DeepCopyInto(out *PullRequestStatus) {
 	*out = *in
 	in.PRCreationTime.DeepCopyInto(&out.PRCreationTime)
+	if in.ExternallyMergedOrClosed != nil {
+		in, out := &in.ExternallyMergedOrClosed, &out.ExternallyMergedOrClosed
+		*out = new(bool)
+		**out = **in
+	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
 		*out = make([]v1.Condition, len(*in))
