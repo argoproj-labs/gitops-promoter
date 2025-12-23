@@ -751,6 +751,53 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
+			By("Checking if PR has owner references to verify propagation to CTP and PS")
+			// If the PR is owned by a CTP, verify that ExternallyMergedOrClosed propagates
+			var ctp *promoterv1alpha1.ChangeTransferPolicy
+			var promotionStrategy *promoterv1alpha1.PromotionStrategy
+			if len(pullRequest.OwnerReferences) > 0 {
+				ownerRef := pullRequest.OwnerReferences[0]
+				if ownerRef.Kind == "ChangeTransferPolicy" {
+					ctp = &promoterv1alpha1.ChangeTransferPolicy{}
+					ctpName := types.NamespacedName{
+						Name:      ownerRef.Name,
+						Namespace: pullRequest.Namespace,
+					}
+					// Check CTP status before PR is deleted
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, ctpName, ctp)).To(Succeed())
+						if ctp.Status.PullRequest != nil {
+							g.Expect(ctp.Status.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
+							g.Expect(*ctp.Status.PullRequest.ExternallyMergedOrClosed).To(BeTrue())
+						}
+					}, constants.EventuallyTimeout).Should(Succeed())
+
+					// Check PromotionStrategy status if CTP has owner references
+					if len(ctp.OwnerReferences) > 0 {
+						psOwnerRef := ctp.OwnerReferences[0]
+						if psOwnerRef.Kind == "PromotionStrategy" {
+							promotionStrategy = &promoterv1alpha1.PromotionStrategy{}
+							psName := types.NamespacedName{
+								Name:      psOwnerRef.Name,
+								Namespace: ctp.Namespace,
+							}
+							Eventually(func(g Gomega) {
+								g.Expect(k8sClient.Get(ctx, psName, promotionStrategy)).To(Succeed())
+								// Find the environment that matches this CTP's active branch
+								for _, envStatus := range promotionStrategy.Status.Environments {
+									if envStatus.Branch == ctp.Spec.ActiveBranch && envStatus.PullRequest != nil {
+										g.Expect(envStatus.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
+										g.Expect(*envStatus.PullRequest.ExternallyMergedOrClosed).To(BeTrue())
+										return
+									}
+								}
+								g.Expect(false).To(BeTrue(), "Could not find matching environment status in PromotionStrategy")
+							}, constants.EventuallyTimeout).Should(Succeed())
+						}
+					}
+				}
+			}
+
 			By("Verifying the PullRequest is deleted by cleanupTerminalStates after ExternallyMergedOrClosed is set")
 			// The PR will be deleted when ExternallyMergedOrClosed is set to true and cleanupTerminalStates runs.
 			// We verify deletion instead of checking the status field directly because the PR gets deleted
