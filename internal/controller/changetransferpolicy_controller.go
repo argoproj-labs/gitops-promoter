@@ -753,6 +753,8 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	ctp.Status.PullRequest.ExternallyMergedOrClosed = pr.Items[0].Status.ExternallyMergedOrClosed
 
 	// If PR is being deleted and has our finalizer, remove it after copying status
+	// There is a small window where the PR is deleted and the finalizer is removed, but the status is not saved to the CTP yet if we and we
+	// crash we lose the status.
 	if !pr.Items[0].DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
 		// Status has been copied, safe to remove finalizer
 		controllerutil.RemoveFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
