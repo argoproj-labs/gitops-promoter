@@ -38,14 +38,14 @@ type PullRequestSpec struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxLength=255
-	// +kubebuilder:validation:Pattern=`^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$`
+	// +kubebuilder:validation:Pattern=`^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$`
 	// +kubebuilder:validation:XValidation:rule="!self.endsWith('.lock')",message="Git ref cannot end with .lock"
 	TargetBranch string `json:"targetBranch"`
 	// SourceBranch is the base the git reference that we are merging into Head ---> Base
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MaxLength=255
-	// +kubebuilder:validation:Pattern=`^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$`
+	// +kubebuilder:validation:Pattern=`^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$`
 	// +kubebuilder:validation:XValidation:rule="!self.endsWith('.lock')",message="Git ref cannot end with .lock"
 	SourceBranch string `json:"sourceBranch"`
 	// Description is the description body of the pull/merge request

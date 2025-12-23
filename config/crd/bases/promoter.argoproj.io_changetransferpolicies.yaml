@@ -56,9 +56,9 @@ spec:
               activeBranch:
                 description: ActiveBranch staging hydrated branch
                 maxLength: 255
-                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F
-                  ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F
-                  ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$
+                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.])$
                 type: string
                 x-kubernetes-validations:
                 - message: Git ref cannot end with .lock
@@ -97,9 +97,9 @@ spec:
               proposedBranch:
                 description: ProposedBranch staging hydrated branch
                 maxLength: 255
-                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F
-                  ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F
-                  ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$
+                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.])$
                 type: string
                 x-kubernetes-validations:
                 - message: Git ref cannot end with .lock

@@ -98,9 +98,9 @@ spec:
                 description: SourceBranch is the base the git reference that we are
                   merging into Head ---> Base
                 maxLength: 255
-                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F
-                  ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F
-                  ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$
+                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.])$
                 type: string
                 x-kubernetes-validations:
                 - message: Value is immutable
@@ -121,9 +121,9 @@ spec:
                 description: TargetBranch is the head the git reference we are merging
                   from Head ---> Base
                 maxLength: 255
-                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F
-                  ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F
-                  ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$
+                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.])$
                 type: string
                 x-kubernetes-validations:
                 - message: Value is immutable

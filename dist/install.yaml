@@ -336,9 +336,9 @@ spec:
               activeBranch:
                 description: ActiveBranch staging hydrated branch
                 maxLength: 255
-                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F
-                  ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F
-                  ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$
+                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.])$
                 type: string
                 x-kubernetes-validations:
                 - message: Git ref cannot end with .lock
@@ -377,9 +377,9 @@ spec:
               proposedBranch:
                 description: ProposedBranch staging hydrated branch
                 maxLength: 255
-                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F
-                  ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F
-                  ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$
+                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.])$
                 type: string
                 x-kubernetes-validations:
                 - message: Git ref cannot end with .lock
@@ -3986,10 +3986,9 @@ spec:
                       description: Branch is the name of the active branch for the
                         environment.
                       maxLength: 255
-                      pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F
-                        ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F
-                        ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F
-                        ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$
+                      pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F
+                        ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F
+                        ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$
                       type: string
                       x-kubernetes-validations:
                       - message: Git ref cannot end with .lock
@@ -5294,9 +5293,9 @@ spec:
                 description: SourceBranch is the base the git reference that we are
                   merging into Head ---> Base
                 maxLength: 255
-                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F
-                  ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F
-                  ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$
+                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.])$
                 type: string
                 x-kubernetes-validations:
                 - message: Value is immutable
@@ -5317,9 +5316,9 @@ spec:
                 description: TargetBranch is the head the git reference we are merging
                   from Head ---> Base
                 maxLength: 255
-                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F
-                  ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/])/)*(?:[^\x00-\x1F\x7F ~^:?*\[\\/.@]|[^\x00-\x1F\x7F
-                  ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F ~^:?*\[\\/.])$
+                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.])$
                 type: string
                 x-kubernetes-validations:
                 - message: Value is immutable
