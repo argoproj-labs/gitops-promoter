@@ -106,19 +106,22 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 		return ProviderBitbucketCloud
 	}
 
-	bodyBytes, err := io.ReadAll(r.Body)
-	if err != nil {
-		logger.Error(err, "error reading request body for provider detection")
-		return ProviderUnknown
-	}
-	// Restore the body for downstream handlers
-	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	if r.ContentLength > 0 {
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			logger.Error(err, "error reading request body for provider detection")
+			return ProviderUnknown
+		}
+		// Restore the body for downstream handlers
+		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
-	// Azure DevOps: check for both EventType and PublisherId
-	// https://learn.microsoft.com/en-us/azure/devops/service-hooks/events?view=azure-devops#code-pushed
-	if gjson.GetBytes(bodyBytes, "eventType").Exists() && gjson.GetBytes(bodyBytes, "publisherId").Exists() {
-		return ProviderAzureDevops
+		// Azure DevOps: check for both EventType and PublisherId
+		// https://learn.microsoft.com/en-us/azure/devops/service-hooks/events?view=azure-devops#code-pushed
+		if gjson.GetBytes(bodyBytes, "eventType").Exists() && gjson.GetBytes(bodyBytes, "publisherId").Exists() {
+			return ProviderAzureDevops
+		}
 	}
+
 	return ProviderUnknown
 }
 
