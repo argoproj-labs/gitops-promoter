@@ -42,6 +42,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -218,8 +219,7 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 
 	// If we don't find the PR, but we have an ID, it means it was merged or closed externally
 	if pr.Status.ID != "" {
-		externallyMergedOrClosed := true
-		pr.Status.ExternallyMergedOrClosed = &externallyMergedOrClosed
+		pr.Status.ExternallyMergedOrClosed = ptr.To(true)
 		return true, nil
 	}
 
