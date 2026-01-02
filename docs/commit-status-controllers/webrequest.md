@@ -36,6 +36,7 @@ spec:
     name: webservice-tier-1
   key: external-approval
   description: "External approval check"
+  url: "https://approvals.example.com/requests/{{ .ReportedSha }}"
   reportOn: proposed
   polling:
     interval: 2m
@@ -50,12 +51,13 @@ This configuration:
 - Queries an external approval API
 - Checks if the response indicates approval
 - Reports on the proposed commit SHA
+- Provides a clickable link in the SCM provider (GitHub, GitLab) to the approval system UI
 
 ### Using Template Variables
 
-Template variables are supported in the `url`, `headers` (values), and `body` fields of `httpRequest`.
+Template variables are supported in the `description`, `url`, and `httpRequest` fields (`url`, `headers` values, and `body`).
 
-The following example shows templates in the URL:
+The following example shows templates in both the commit status URL and the HTTP request URL:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -66,7 +68,8 @@ spec:
   promotionStrategyRef:
     name: webservice-tier-1
   key: deployment-check
-  description: "Deployment verification"
+  description: "Deployment verification for {{ .Branch }}"
+  url: "https://dashboard.example.com/deployments/{{ .ActiveHydratedSha | trunc 7 }}"
   reportOn: active
   polling:
     interval: 1m
@@ -289,6 +292,7 @@ spec:
     name: webservice-tier-1
   key: validation-check
   description: "Validation service check"
+  url: "https://api.example.com/validate/{{ .ProposedHydratedSha | trunc 7 }}/details"
   reportOn: proposed
   polling:
     interval: 5m
@@ -337,6 +341,7 @@ spec:
     name: webservice-tier-1
   key: deployment-check
   description: "Deployment verification for {{ .NamespaceMetadata.Labels.environment }}"
+  url: "{{ index .NamespaceMetadata.Annotations \"notification-url\" }}/deployments/{{ .ReportedSha | trunc 7 }}"
   reportOn: proposed
   polling:
     interval: 2m
@@ -578,6 +583,8 @@ Ensure feature flags are enabled before promotion:
 
 ```yaml
 spec:
+  description: "Feature flag verification"
+  url: "https://launchdarkly.example.com/dashboard/flags/enable-new-feature"
   httpRequest:
     url: "https://launchdarkly.example.com/api/flags/enable-new-feature"
     method: GET
@@ -590,6 +597,8 @@ Verify monitoring shows healthy state:
 
 ```yaml
 spec:
+  description: "Health check for {{ .Branch }}"
+  url: "https://grafana.example.com/d/app-health?var-branch={{ .Branch }}"
   reportOn: active
   httpRequest:
     url: "https://prometheus.example.com/api/v1/query?query=up{job='myapp'}"
@@ -603,6 +612,8 @@ Integrate with change management systems:
 
 ```yaml
 spec:
+  description: "Change management approval"
+  url: "https://servicenow.example.com/change/{{ .ProposedHydratedSha | trunc 7 }}"
   httpRequest:
     url: "https://servicenow.example.com/api/changes"
     method: POST
