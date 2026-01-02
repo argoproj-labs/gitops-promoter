@@ -7,6 +7,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
@@ -70,6 +71,9 @@ func CreateGitOperationsProvider(
 		}
 		return provider, nil
 
+	case scmProvider.GetSpec().AzureDevOps != nil:
+		logger.V(4).Info("Creating Azure DevOps git authentication provider")
+		return azuredevops.NewAzdoGitAuthenticationProvider(scmProvider, secret), nil
 	default:
 		return nil, errors.New("no supported git authentication provider found")
 	}
