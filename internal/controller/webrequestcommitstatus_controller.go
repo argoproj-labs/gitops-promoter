@@ -30,6 +30,7 @@ import (
 
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -71,25 +72,29 @@ type ResponseData struct {
 	StatusCode int                 `expr:"StatusCode"`
 }
 
+// NamespaceMetadata contains labels and annotations from the namespace.
+type NamespaceMetadata struct {
+	Labels      map[string]string
+	Annotations map[string]string
+}
+
 // WebRequestTemplateData represents the data available to Go templates in URL, Headers, and Body.
 type WebRequestTemplateData struct {
-	Labels              map[string]string
-	Annotations         map[string]string
 	ProposedHydratedSha string
 	ActiveHydratedSha   string
 	Key                 string
 	Name                string
 	Namespace           string
+	NamespaceMetadata   NamespaceMetadata
 }
 
 // DescriptionTemplateData represents the data available to Go templates in the Description field.
 // This has access to environment-specific status information.
 type DescriptionTemplateData struct {
-	Labels      map[string]string
-	Annotations map[string]string
-	Key         string
-	Name        string
-	Namespace   string
+	Key               string
+	Name              string
+	Namespace         string
+	NamespaceMetadata NamespaceMetadata
 	// Environment-specific fields from WebRequestCommitStatusEnvironmentStatus
 	Branch              string // The environment branch name
 	ProposedHydratedSha string // Proposed SHA for this environment
@@ -120,6 +125,7 @@ type WebRequestCommitStatusReconciler struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=promotionstrategies/status,verbs=get
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -533,6 +539,13 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 		LastRequestTime:     &now,
 	}
 
+	// Fetch the namespace to get its labels and annotations
+	var ns corev1.Namespace
+	err := r.Get(ctx, client.ObjectKey{Name: wrcs.Namespace}, &ns)
+	if err != nil {
+		return result, fmt.Errorf("failed to get namespace %q: %w", wrcs.Namespace, err)
+	}
+
 	// Prepare template data for request (URL, headers, body)
 	templateData := WebRequestTemplateData{
 		ProposedHydratedSha: proposedSha,
@@ -540,8 +553,10 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 		Key:                 wrcs.Spec.Key,
 		Name:                wrcs.Name,
 		Namespace:           wrcs.Namespace,
-		Labels:              wrcs.Labels,
-		Annotations:         wrcs.Annotations,
+		NamespaceMetadata: NamespaceMetadata{
+			Labels:      ns.Labels,
+			Annotations: ns.Annotations,
+		},
 	}
 
 	// Render URL template
@@ -754,13 +769,22 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		commitPhase = promoterv1alpha1.CommitPhasePending
 	}
 
+	// Fetch the namespace to get its labels and annotations
+	var ns corev1.Namespace
+	err := r.Get(ctx, client.ObjectKey{Name: wrcs.Namespace}, &ns)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get namespace %q: %w", wrcs.Namespace, err)
+	}
+
 	// Render description with environment-specific context
 	descriptionData := DescriptionTemplateData{
-		Labels:              wrcs.Labels,
-		Annotations:         wrcs.Annotations,
-		Key:                 wrcs.Spec.Key,
-		Name:                wrcs.Name,
-		Namespace:           wrcs.Namespace,
+		Key:       wrcs.Spec.Key,
+		Name:      wrcs.Name,
+		Namespace: wrcs.Namespace,
+		NamespaceMetadata: NamespaceMetadata{
+			Labels:      ns.Labels,
+			Annotations: ns.Annotations,
+		},
 		Branch:              envStatus.Branch,
 		ProposedHydratedSha: envStatus.ProposedHydratedSha,
 		ActiveHydratedSha:   envStatus.ActiveHydratedSha,
