@@ -798,6 +798,12 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		return nil, fmt.Errorf("failed to render description template: %w", err)
 	}
 
+	// Render URL with the same template data as description
+	url, err := r.renderTemplate("url", wrcs.Spec.Url, descriptionData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to render url template: %w", err)
+	}
+
 	commitStatus := promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      commitStatusName,
@@ -824,6 +830,7 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
 		commitStatus.Spec.Name = key
 		commitStatus.Spec.Description = description
+		commitStatus.Spec.Url = url
 		commitStatus.Spec.Phase = commitPhase
 		commitStatus.Spec.Sha = sha
 

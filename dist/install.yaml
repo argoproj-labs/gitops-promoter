@@ -6418,6 +6418,26 @@ spec:
                 - proposed
                 - active
                 type: string
+              url:
+                description: |-
+                  Url is a link to more details about this validation that will be shown in the SCM provider
+                  (GitHub, GitLab, etc.) as the commit status target URL.
+                  Supports Go templates with the same variables as Description (DescriptionTemplateData).
+
+                  This can link to:
+                    - External approval system UI
+                    - Monitoring dashboard
+                    - API endpoint being checked
+                    - Documentation or runbook
+
+                  Examples:
+                    - "https://approvals.example.com/{{ .ReportedSha }}"
+                    - "https://dashboard.example.com/{{ .Branch }}/status"
+                    - "https://change-api.example.com/changes?asset={{ index .NamespaceMetadata.Labels \"asset-id\" }}"
+
+                  If not specified, defaults to empty string (no URL shown).
+                pattern: ^(https?://.*)?$
+                type: string
             required:
             - expression
             - httpRequest
@@ -6895,6 +6915,12 @@ rules:
   verbs:
   - create
   - patch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
 - apiGroups:
   - ""
   resources:

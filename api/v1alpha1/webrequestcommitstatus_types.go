@@ -71,6 +71,26 @@ type WebRequestCommitStatusSpec struct {
 	// +optional
 	Description string `json:"description,omitempty"`
 
+	// Url is a link to more details about this validation that will be shown in the SCM provider
+	// (GitHub, GitLab, etc.) as the commit status target URL.
+	// Supports Go templates with the same variables as Description (DescriptionTemplateData).
+	//
+	// This can link to:
+	//   - External approval system UI
+	//   - Monitoring dashboard
+	//   - API endpoint being checked
+	//   - Documentation or runbook
+	//
+	// Examples:
+	//   - "https://approvals.example.com/{{ .ReportedSha }}"
+	//   - "https://dashboard.example.com/{{ .Branch }}/status"
+	//   - "https://change-api.example.com/changes?asset={{ index .NamespaceMetadata.Labels \"asset-id\" }}"
+	//
+	// If not specified, defaults to empty string (no URL shown).
+	// +optional
+	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
+	Url string `json:"url,omitempty"`
+
 	// ReportOn specifies which commit SHA to report the CommitStatus on.
 	// - "proposed": Reports on the proposed hydrated commit SHA (default)
 	// - "active": Reports on the active hydrated commit SHA
