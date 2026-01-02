@@ -80,12 +80,12 @@ type NamespaceMetadata struct {
 
 // WebRequestTemplateData represents the data available to Go templates in URL, Headers, and Body.
 type WebRequestTemplateData struct {
+	NamespaceMetadata   NamespaceMetadata
 	ProposedHydratedSha string
 	ActiveHydratedSha   string
 	Key                 string
 	Name                string
 	Namespace           string
-	NamespaceMetadata   NamespaceMetadata
 }
 
 // DescriptionTemplateData represents the data available to Go templates in the Description field.

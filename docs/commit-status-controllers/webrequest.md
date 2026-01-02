@@ -85,10 +85,10 @@ Available template variables:
 - `{{ .Key }}` - The WebRequestCommitStatus key
 - `{{ .Name }}` - The WebRequestCommitStatus resource name
 - `{{ .Namespace }}` - The WebRequestCommitStatus namespace
-- `{{ .Labels }}` - Map of labels from the WebRequestCommitStatus resource
-- `{{ .Annotations }}` - Map of annotations from the WebRequestCommitStatus resource
+- `{{ .NamespaceMetadata.Labels }}` - Map of labels from the namespace where the WebRequestCommitStatus resides
+- `{{ .NamespaceMetadata.Annotations }}` - Map of annotations from the namespace where the WebRequestCommitStatus resides
 
-**Note:** To access specific label or annotation values, use the `index` function: `{{ index .Labels "key-name" }}` or `{{ index .Annotations "key-name" }}`
+**Note:** To access specific label or annotation values with simple keys, use dot notation: `{{ .NamespaceMetadata.Labels.environment }}`. For keys containing hyphens or special characters, use the `index` function: `{{ index .NamespaceMetadata.Labels "cost-center" }}` or `{{ index .NamespaceMetadata.Annotations "notification-url" }}`
 
 ## Authentication
 
@@ -307,26 +307,36 @@ spec:
   expression: 'Response.StatusCode == 200 && Response.Body.valid == true'
 ```
 
-### Using Labels and Annotations in Templates
+### Using Namespace Labels and Annotations in Templates
 
-Labels and annotations from the WebRequestCommitStatus resource can be used in templates to pass metadata:
+Labels and annotations from the namespace where the WebRequestCommitStatus resides can be used in templates to pass organizational metadata and context to external systems:
 
 ```yaml
+# First, add labels and annotations to your namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    environment: production
+    cost-center: engineering
+    team: platform
+  annotations:
+    slack-channel: "#prod-deployments"
+    pagerduty-service: "prod-webapp"
+    notification-url: "https://notifications.example.com/prod"
+---
+# Then reference them in your WebRequestCommitStatus
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: WebRequestCommitStatus
 metadata:
   name: deployment-check
-  labels:
-    team: platform
-    env-tier: production
-  annotations:
-    slack-channel: "#deployments"
-    jira-project: "DEPLOY"
+  namespace: production
 spec:
   promotionStrategyRef:
     name: webservice-tier-1
   key: deployment-check
-  description: "Deployment verification with metadata"
+  description: "Deployment verification for {{ .NamespaceMetadata.Labels.environment }}"
   reportOn: proposed
   polling:
     interval: 2m
@@ -335,21 +345,36 @@ spec:
     method: POST
     headers:
       Content-Type: application/json
-      X-Team: '{{ index .Labels "team" }}'
-      X-Slack-Channel: '{{ index .Annotations "slack-channel" }}'
+      X-Environment: '{{ .NamespaceMetadata.Labels.environment }}'
+      X-Team: '{{ .NamespaceMetadata.Labels.team }}'
+      X-Cost-Center: '{{ index .NamespaceMetadata.Labels "cost-center" }}'
     body: |
       {
         "sha": "{{ .ProposedHydratedSha }}",
-        "team": "{{ index .Labels "team" }}",
-        "tier": "{{ index .Labels "env-tier" }}",
-        "jiraProject": "{{ index .Annotations "jira-project" }}",
-        "notificationChannel": "{{ index .Annotations "slack-channel" }}"
+        "namespace": "{{ .Namespace }}",
+        "environment": "{{ .NamespaceMetadata.Labels.environment }}",
+        "team": "{{ .NamespaceMetadata.Labels.team }}",
+        "costCenter": "{{ index .NamespaceMetadata.Labels "cost-center" }}",
+        "slackChannel": "{{ index .NamespaceMetadata.Annotations "slack-channel" }}",
+        "pagerdutyService": "{{ index .NamespaceMetadata.Annotations "pagerduty-service" }}",
+        "notificationUrl": "{{ index .NamespaceMetadata.Annotations "notification-url" }}"
       }
     timeout: 30s
   expression: 'Response.StatusCode == 200 && Response.Body.approved == true'
 ```
 
-**Note:** Use `{{ index .Labels "key-name" }}` or `{{ index .Annotations "key-name" }}` to access specific label/annotation values in templates.
+**Why use namespace metadata?**
+
+Using namespace labels and annotations provides several benefits:
+- **Organizational context**: Namespace labels typically contain team ownership, environment classification, and cost allocation information
+- **Centralized management**: Update metadata in one place (the namespace) rather than on individual resources
+- **Consistent metadata**: All resources in the namespace automatically use the same organizational context
+- **Integration-friendly**: External systems receive the organizational context needed for routing, notifications, and tracking
+
+**Template syntax notes:**
+- Simple keys (alphanumeric, no hyphens): `{{ .NamespaceMetadata.Labels.environment }}`
+- Keys with hyphens or special characters: `{{ index .NamespaceMetadata.Labels "cost-center" }}`
+- Nested in structures: Works in `url`, `headers` values, `body`, and `description` fields
 
 ### Integrating with PromotionStrategy
 
