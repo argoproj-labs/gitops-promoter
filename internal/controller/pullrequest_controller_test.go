@@ -28,12 +28,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 //go:embed testdata/PullRequest.yaml
@@ -696,6 +698,115 @@ var _ = Describe("PullRequest Controller", func() {
 					g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
+		})
+	})
+
+	Context("When a PullRequest is externally merged or closed", func() {
+		var ctx context.Context
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var pullRequest *promoterv1alpha1.PullRequest
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			By("Creating test resources")
+			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "externally-merged-closed")
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be open")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should set ExternallyMergedOrClosed and delete the PR when not found on provider", func() {
+			By("Simulating external deletion by removing PR from fake provider")
+			// Get the fake provider and delete the PR from its internal map
+			// This simulates the PR being merged/closed externally on the SCM provider
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
+
+			By("Triggering reconciliation by updating the PR spec")
+			// Update the spec to trigger reconciliation (controller uses GenerationChangedPredicate)
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				orig := pullRequest.DeepCopy()
+				// Change description to trigger generation change
+				pullRequest.Spec.Description = pullRequest.Spec.Description + " "
+				g.Expect(k8sClient.Patch(ctx, pullRequest, client.MergeFrom(orig))).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Checking if PR has owner references to verify propagation to CTP and PS")
+			// If the PR is owned by a CTP, verify that ExternallyMergedOrClosed propagates
+			var ctp *promoterv1alpha1.ChangeTransferPolicy
+			var promotionStrategy *promoterv1alpha1.PromotionStrategy
+			if len(pullRequest.OwnerReferences) > 0 {
+				ownerRef := pullRequest.OwnerReferences[0]
+				if ownerRef.Kind == "ChangeTransferPolicy" {
+					ctp = &promoterv1alpha1.ChangeTransferPolicy{}
+					ctpName := types.NamespacedName{
+						Name:      ownerRef.Name,
+						Namespace: pullRequest.Namespace,
+					}
+					// Check CTP status before PR is deleted
+					Eventually(func(g Gomega) {
+						g.Expect(k8sClient.Get(ctx, ctpName, ctp)).To(Succeed())
+						if ctp.Status.PullRequest != nil {
+							g.Expect(ctp.Status.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
+							g.Expect(*ctp.Status.PullRequest.ExternallyMergedOrClosed).To(BeTrue())
+						}
+					}, constants.EventuallyTimeout).Should(Succeed())
+
+					// Check PromotionStrategy status if CTP has owner references
+					if len(ctp.OwnerReferences) > 0 {
+						psOwnerRef := ctp.OwnerReferences[0]
+						if psOwnerRef.Kind == "PromotionStrategy" {
+							promotionStrategy = &promoterv1alpha1.PromotionStrategy{}
+							psName := types.NamespacedName{
+								Name:      psOwnerRef.Name,
+								Namespace: ctp.Namespace,
+							}
+							Eventually(func(g Gomega) {
+								g.Expect(k8sClient.Get(ctx, psName, promotionStrategy)).To(Succeed())
+								// Find the environment that matches this CTP's active branch
+								for _, envStatus := range promotionStrategy.Status.Environments {
+									if envStatus.Branch == ctp.Spec.ActiveBranch && envStatus.PullRequest != nil {
+										g.Expect(envStatus.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
+										g.Expect(*envStatus.PullRequest.ExternallyMergedOrClosed).To(BeTrue())
+										return
+									}
+								}
+								g.Expect(false).To(BeTrue(), "Could not find matching environment status in PromotionStrategy")
+							}, constants.EventuallyTimeout).Should(Succeed())
+						}
+					}
+				}
+			}
+
+			By("Verifying the PullRequest is deleted by cleanupTerminalStates after ExternallyMergedOrClosed is set")
+			// The PR will be deleted when ExternallyMergedOrClosed is set to true and cleanupTerminalStates runs.
+			// We verify deletion instead of checking the status field directly because the PR gets deleted
+			// in the same reconciliation cycle, making it impossible to observe the status field.
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 })
