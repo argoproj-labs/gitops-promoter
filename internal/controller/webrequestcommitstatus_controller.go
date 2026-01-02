@@ -614,7 +614,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 		return result, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	if resp == nil {
-		return result, fmt.Errorf("HTTP request returned nil response")
+		return result, errors.New("HTTP request returned nil response")
 	}
 	defer func() {
 		_ = resp.Body.Close()
