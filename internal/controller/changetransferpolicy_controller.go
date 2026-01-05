@@ -83,6 +83,8 @@ func (r *ChangeTransferPolicyReconciler) GetEnqueueFunc() CTPEnqueueFunc {
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -748,6 +750,18 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	ctp.Status.PullRequest.State = pr.Items[0].Status.State
 	ctp.Status.PullRequest.PRCreationTime = pr.Items[0].Status.PRCreationTime
 	ctp.Status.PullRequest.Url = pr.Items[0].Status.Url
+	ctp.Status.PullRequest.ExternallyMergedOrClosed = pr.Items[0].Status.ExternallyMergedOrClosed
+
+	// If PR is being deleted and has our finalizer, remove it after copying status
+	// There is a small window where the PR is deleted and the finalizer is removed, but the status is not saved to the CTP yet if we and we
+	// crash we lose the status.
+	if !pr.Items[0].DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
+		// Status has been copied, safe to remove finalizer
+		controllerutil.RemoveFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
+		if err := r.Update(ctx, &pr.Items[0]); err != nil {
+			return fmt.Errorf("failed to remove CTP finalizer from PullRequest: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -831,6 +845,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
 			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
 		}
+		// Add CTP finalizer to ensure we can copy status before PR is deleted
+		controllerutil.AddFinalizer(&pr, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
 		pr.Spec.RepositoryReference = ctp.Spec.RepositoryReference
 		pr.Spec.Title = title
 		pr.Spec.TargetBranch = ctp.Spec.ActiveBranch

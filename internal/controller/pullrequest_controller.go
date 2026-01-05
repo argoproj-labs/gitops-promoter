@@ -43,6 +43,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -113,8 +114,19 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Sync state from provider
-	if deleted, err := r.syncStateFromProvider(ctx, &pr, provider, found, prID, prCreationTime); deleted || err != nil {
+	externallyMergedOrClosed, err := r.syncStateFromProvider(ctx, &pr, provider, found, prID, prCreationTime)
+	if err != nil {
 		return ctrl.Result{}, err
+	}
+	// If ExternallyMergedOrClosed was set, requeue immediately to trigger cleanup on the next reconciliation.
+	// The flow is:
+	// 1. syncStateFromProvider updates pr.Status.ExternallyMergedOrClosed to true in memory
+	// 2. We return here with RequeueAfter
+	// 3. The deferred HandleReconciliationResult persists the status update to the cluster
+	// 4. The next reconciliation sees the persisted ExternallyMergedOrClosed flag
+	// 5. cleanupTerminalStates (which runs earlier in the loop) handles deletion
+	if externallyMergedOrClosed {
+		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 	}
 
 	// Handle state transitions
@@ -161,16 +173,24 @@ func (r *PullRequestReconciler) handleEmptyIDDeletion(ctx context.Context, pr *p
 	return true, nil
 }
 
-// cleanupTerminalStates deletes PullRequests that have reached terminal states (merged/closed).
+// cleanupTerminalStates deletes PullRequests that have reached terminal states (merged/closed) or were externally merged/closed.
 // Returns (cleaned=true, nil) if cleaned up, (false, nil) if not applicable, or (false, err) on error.
 func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *promoterv1alpha1.PullRequest) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	if pr.Status.State != promoterv1alpha1.PullRequestMerged && pr.Status.State != promoterv1alpha1.PullRequestClosed {
+	// Check if PR should be cleaned up: either externally merged/closed (and still open) or in terminal state (merged/closed)
+	externallyMergedOrClosed := pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed && pr.Status.State == promoterv1alpha1.PullRequestOpen
+	isTerminalState := pr.Status.State == promoterv1alpha1.PullRequestMerged || pr.Status.State == promoterv1alpha1.PullRequestClosed
+
+	if !externallyMergedOrClosed && !isTerminalState {
 		return false, nil
 	}
 
-	logger.Info("Cleaning up close and merged pull request", "pullRequestID", pr.Status.ID)
+	if externallyMergedOrClosed {
+		logger.Info("Cleaning up externally merged or closed pull request", "pullRequestID", pr.Status.ID)
+	} else {
+		logger.Info("Cleaning up closed and merged pull request", "pullRequestID", pr.Status.ID)
+	}
 	if err := r.Delete(ctx, pr); err != nil && !errors.IsNotFound(err) {
 		logger.Error(err, "Failed to delete PullRequest")
 		return false, fmt.Errorf("failed to delete PullRequest: %w", err)
@@ -179,7 +199,7 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 }
 
 // syncStateFromProvider syncs the PullRequest state from the SCM provider.
-// Returns (deleted=true, nil) if PR was deleted, (false, nil) if not deleted, or (false, err) on error.
+// Returns (externallyMergedOrClosed=true, nil) if ExternallyMergedOrClosed was set (requeue needed), (false, nil) if successful, or (false, err) on error.
 func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, found bool, prID string, prCreationTime time.Time) (bool, error) {
 	logger := log.FromContext(ctx)
 
@@ -198,11 +218,9 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 		return false, nil
 	}
 
-	// If we don't find the PR, but we have an ID, it means it was deleted on the provider side
+	// If we don't find the PR, but we have an ID, it means it was merged or closed externally
 	if pr.Status.ID != "" {
-		if err := r.Delete(ctx, pr); err != nil {
-			return false, fmt.Errorf("failed to delete PullRequest resource due to SCM not found: %w", err)
-		}
+		pr.Status.ExternallyMergedOrClosed = ptr.To(true)
 		return true, nil
 	}
 
