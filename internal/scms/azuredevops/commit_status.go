@@ -2,7 +2,6 @@ package azuredevops
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -67,14 +66,6 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 	gitClient, err := git.NewClient(ctx, cs.client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Git client: %w", err)
-	}
-
-	// Validate required fields for Azure DevOps API
-	if commitStatus.Spec.Name == "" {
-		return nil, errors.New("status name is required for commit status creation")
-	}
-	if commitStatus.Spec.Sha == "" {
-		return nil, errors.New("commit SHA is required for commit status creation")
 	}
 
 	// Map GitOps Promoter status phase to Azure DevOps status state
