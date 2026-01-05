@@ -1106,6 +1106,11 @@ spec:
                       description: PullRequest is the state of the pull request that
                         was created for this ChangeTransferPolicy.
                       properties:
+                        externallyMergedOrClosed:
+                          description: |-
+                            ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
+                            This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                          type: boolean
                         id:
                           description: ID is the unique identifier of the pull request,
                             set by the SCM.
@@ -1399,6 +1404,11 @@ spec:
                 description: PullRequest is the state of the pull request that was
                   created for this ChangeTransferPolicy.
                 properties:
+                  externallyMergedOrClosed:
+                    description: |-
+                      ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
+                      This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                    type: boolean
                   id:
                     description: ID is the unique identifier of the pull request,
                       set by the SCM.
@@ -4800,6 +4810,11 @@ spec:
                             description: PullRequest is the state of the pull request
                               that was created for this ChangeTransferPolicy.
                             properties:
+                              externallyMergedOrClosed:
+                                description: |-
+                                  ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
+                                  This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                                type: boolean
                               id:
                                 description: ID is the unique identifier of the pull
                                   request, set by the SCM.
@@ -5123,6 +5138,11 @@ spec:
                       description: PullRequest is the state of the pull request that
                         was created for this environment.
                       properties:
+                        externallyMergedOrClosed:
+                          description: |-
+                            ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
+                            This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                          type: boolean
                         id:
                           description: ID is the unique identifier of the pull request,
                             set by the SCM.
@@ -5367,6 +5387,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              externallyMergedOrClosed:
+                description: |-
+                  ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
+                  This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                type: boolean
               id:
                 description: ID the id of the pull request
                 type: string
