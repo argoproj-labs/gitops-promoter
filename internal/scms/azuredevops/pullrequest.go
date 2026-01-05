@@ -46,6 +46,10 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 	logger := log.FromContext(ctx)
 	logger.Info("Creating Pull Request in Azure DevOps")
 
+	if title == "" {
+		return "", errors.New("title is required for pull request creation")
+	}
+
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
 	if err != nil {
 		return "", fmt.Errorf("failed to get GitRepository: %w", err)
@@ -57,16 +61,9 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, descriptio
 		return "", fmt.Errorf("failed to create Git client: %w", err)
 	}
 
-	// Ensure branch names are in correct format for Azure DevOps
-	sourceRef := ensureRefsFormat(head)
-	targetRef := ensureRefsFormat(base)
-
-	// Validate required fields for Azure DevOps API
-	if sourceRef == "" || targetRef == "" {
-		return "", errors.New("source and target branches are required for pull request creation")
-	}
-	if title == "" {
-		return "", errors.New("title is required for pull request creation")
+	sourceRef, targetRef, err := getFormattedRefs(head, base)
+	if err != nil {
+		return "", fmt.Errorf("failed to validate branch reference: %w", err)
 	}
 
 	// Create Git pull request
@@ -389,4 +386,17 @@ func ensureRefsFormat(branchName string) string {
 	}
 	// Otherwise, add refs/heads/ prefix
 	return "refs/heads/" + branchName
+}
+
+// Validate required fields for Azure DevOps API
+func getFormattedRefs(head, base string) (string, string, error) {
+
+	sourceRef := ensureRefsFormat(head)
+	targetRef := ensureRefsFormat(base)
+
+	if sourceRef == "" || targetRef == "" {
+		return "", "", errors.New("source and target branches are required for pull request creation")
+	}
+
+	return sourceRef, targetRef, nil
 }
