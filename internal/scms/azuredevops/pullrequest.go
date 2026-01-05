@@ -390,7 +390,6 @@ func ensureRefsFormat(branchName string) string {
 
 // Validate required fields for Azure DevOps API
 func getFormattedRefs(head, base string) (string, string, error) {
-
 	sourceRef := ensureRefsFormat(head)
 	targetRef := ensureRefsFormat(base)
 
