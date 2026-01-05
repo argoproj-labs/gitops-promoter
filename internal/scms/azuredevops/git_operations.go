@@ -62,7 +62,7 @@ func (azdo GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepository v1alpha1.
 		gitRepository.Spec.AzureDevOps.Name)
 }
 
-// GetToken retrieves the authentication token for Azure DevOps. .
+// GetToken retrieves the authentication token for Azure DevOps
 func (azdo GitAuthenticationProvider) GetToken(ctx context.Context) (string, error) {
 	switch azdo.authType {
 	case AuthTypeWorkloadIdentity:

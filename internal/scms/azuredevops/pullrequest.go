@@ -329,7 +329,7 @@ func (pr *PullRequest) GetUrl(ctx context.Context, pullRequest v1alpha1.PullRequ
 	return pr.generatePullRequestUrl(ctx, pullRequest, prId)
 }
 
-// // generatePullRequestUrl generates a pull request URL for the given repository and PR ID
+// generatePullRequestUrl generates a pull request URL for the given repository and PR ID
 func (pr *PullRequest) generatePullRequestUrl(ctx context.Context, prObj v1alpha1.PullRequest, prId int) (string, error) {
 	// Get the SCM provider to determine the domain
 	// Convert ScmProviderObjectReference to ObjectReference
@@ -388,7 +388,7 @@ func ensureRefsFormat(branchName string) string {
 	return "refs/heads/" + branchName
 }
 
-// Validate required fields for Azure DevOps API
+// Get and validate required branch for pull request creation
 func getFormattedRefs(head, base string) (string, string, error) {
 	sourceRef := ensureRefsFormat(head)
 	targetRef := ensureRefsFormat(base)
