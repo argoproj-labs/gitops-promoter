@@ -22,6 +22,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -313,6 +314,8 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 		return bitbucket_cloud.NewBitbucketCloudPullRequestProvider(r.Client, *secret) //nolint:wrapcheck
 	case scmProvider.GetSpec().Forgejo != nil:
 		return forgejo.NewForgejoPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Forgejo.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().AzureDevOps != nil:
+		return azuredevops.NewAzdoPullRequestProvider(r.Client, *secret, scmProvider, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck,contextcheck
 	case scmProvider.GetSpec().Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:

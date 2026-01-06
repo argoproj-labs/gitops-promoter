@@ -234,6 +234,50 @@ To configure the GitOps Promoter with Bitbucket Cloud, you will need to create a
    * **Repositories**: Read and Write
    * **Pull requests**: Read and Write
 
+## Azure DevOps Configuration
+
+To configure Gitops Promoter with Azure Devops, you will need to create a Personal Access Token (PAT).
+### ScmProvider
+#### PAT
+Create an PAT in Azure Devops, that has 'Read & Write' on scope 'Code'.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  token: <your-access-token>
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  azureDevOps:
+    organization: <your-azdo-organization>
+```
+
+### GitRepository
+
+We also need a GitRepository referencing the ScmProvider
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  azureDevOps:
+    project: <project-name>
+    name: <repo-name>
+  scmProviderRef:
+    name: <your-scmprovider-name>
+ ```
+
 ### Webhooks (Optional - but highly recommended)
 
 > [!NOTE]

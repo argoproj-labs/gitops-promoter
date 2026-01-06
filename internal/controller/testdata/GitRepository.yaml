@@ -21,6 +21,10 @@ spec:
     owner:
     name:
 
+  azureDevOps:
+    name:
+    project:
+
   scmProviderRef:
     kind: ScmProvider
     name: example-scm-provider
