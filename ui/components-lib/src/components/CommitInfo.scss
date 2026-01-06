@@ -3,10 +3,13 @@
 // Tooltip
 .tooltip-container {
   position: absolute;
-  top: 20px;
-  left: 50px;
   z-index: 1000;
   pointer-events: auto; // Fix for tooltip flashing - allows tooltip to receive mouse events
+}
+
+.anchored-tooltip {
+  left: 0;
+  top: calc(100% + 4px); // 4px gap below .commit-content
 }
 
 .github-tooltip {
@@ -128,6 +131,7 @@
 
 .commit-content {
   margin-left: 50px;
+  position: relative;
 }
 
 .commit-icon-wrapper {
@@ -240,6 +244,5 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 280px;
   position: relative;
 }

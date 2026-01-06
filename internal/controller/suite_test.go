@@ -68,6 +68,16 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
+// Shared test constants for branch names used across multiple test files
+const (
+	testBranchDevelopment     = "environment/development"
+	testBranchDevelopmentNext = "environment/development-next"
+	testBranchStaging         = "environment/staging"
+	testBranchStagingNext     = "environment/staging-next"
+	testBranchProduction      = "environment/production"
+	testBranchProductionNext  = "environment/production-next"
+)
+
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
@@ -311,6 +321,28 @@ var _ = BeforeSuite(func() {
 					},
 				},
 			},
+			GitCommitStatus: promoterv1alpha1.GitCommitStatusConfiguration{
+				WorkQueue: promoterv1alpha1.WorkQueue{
+					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
+					MaxConcurrentReconciles: 10,
+					RateLimiter: promoterv1alpha1.RateLimiter{
+						MaxOf: []promoterv1alpha1.RateLimiterTypes{
+							{
+								Bucket: &promoterv1alpha1.Bucket{
+									Qps:    10,
+									Bucket: 100,
+								},
+							},
+							{
+								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
@@ -400,6 +432,15 @@ var _ = BeforeSuite(func() {
 		KubeConfigProvider: kubeconfigProvider,
 		Recorder:           k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
 	}).SetupWithManager(ctx, multiClusterManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&GitCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorderFor("GitCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
@@ -559,7 +600,7 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction} {
+	for _, environment := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "--orphan", environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "rm", "-rf", "--ignore-unmatch", ".")
@@ -681,7 +722,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	_, err = runGitCmd(ctx, gitPath, "config", "pull.rebase", "false")
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction, "environment/development-next", "environment/staging-next", "environment/production-next"} {
+	for _, environment := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction, "environment/development-next", "environment/staging-next", "environment/production-next"} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "pull")

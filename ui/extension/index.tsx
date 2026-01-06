@@ -1,4 +1,3 @@
-import "./index.scss";
 import AppViewExtension from "./AppViewExtension";
 import type { Application } from "@shared/types/extension";
 

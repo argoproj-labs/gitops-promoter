@@ -7,7 +7,7 @@ spec:
     # Secret must be in the same namespace where the promoter is running
     name: example-cluster-scm-provider-secret 
 
-  # You must specify either github, gitlab, or forgejo. Both are provided here as examples.
+  # You must specify either github, gitlab, forgejo, or bitbucketCloud. Multiple are provided here as examples.
   # If you do not need to specify any sub-fields, just set the field to {}.
 
   github:
@@ -20,3 +20,9 @@ spec:
 
   forgejo:
     domain: forgejo.example.com
+
+  bitbucketCloud: {}
+
+  azureDevOps:
+    organization: example-org
+    domain: dev.azure.com # Optional

@@ -6,7 +6,7 @@ spec:
   secretRef:
     name: example-scm-provider-secret
 
-  # You must specify either github, gitlab, or forgejo. Both are provided here as examples.
+  # You must specify either github, gitlab, forgejo, bitbucketCloud or azureDevops. Multiple are provided here as examples.
   # If you do not need to specify any sub-fields, just set the field to {}.
 
   github:
@@ -19,3 +19,9 @@ spec:
 
   forgejo:
     domain:
+
+  bitbucketCloud: {}
+
+  azureDevOps:
+    organization: example-organization
+    domain: dev.azure.com # Optional

@@ -29,12 +29,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
@@ -87,6 +83,8 @@ func (r *ChangeTransferPolicyReconciler) GetEnqueueFunc() CTPEnqueueFunc {
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -103,6 +101,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	startTime := time.Now()
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
@@ -179,11 +178,6 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	// calculateHistory is done at a best effort so we do not return any errors here, we just log them instead.
 	r.calculateHistory(ctx, &ctp, gitOperations)
 
-	err = r.Status().Update(ctx, &ctp)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
-	}
-
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
@@ -245,6 +239,14 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 	return historyEntry, true, nil
 }
 
+// getFirstTrailerValue returns the first value for a given trailer key, or an empty string if not found.
+func getFirstTrailerValue(trailers map[string][]string, key string) string {
+	if values, ok := trailers[key]; ok && len(values) > 0 {
+		return values[0]
+	}
+	return ""
+}
+
 // populateActiveMetadata populates the active metadata for a history entry
 func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Context, h *promoterv1alpha1.History, sha string, gitOperations *git.EnvironmentOperations) {
 	logger := log.FromContext(ctx)
@@ -263,10 +265,10 @@ func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Cont
 }
 
 // populateProposedMetadata populates the proposed metadata for a history entry
-func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string, gitOperations *git.EnvironmentOperations) {
+func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string][]string, gitOperations *git.EnvironmentOperations) {
 	logger := log.FromContext(ctx)
 
-	proposedHydratedSha := activeTrailers[constants.TrailerShaHydratedProposed]
+	proposedHydratedSha := getFirstTrailerValue(activeTrailers, constants.TrailerShaHydratedProposed)
 	if proposedHydratedSha == "" {
 		logger.V(4).Info("No " + constants.TrailerShaHydratedProposed + " trailer found")
 		return
@@ -280,16 +282,16 @@ func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Co
 }
 
 // populatePullRequestMetadata populates the pull request metadata for a history entry
-func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string) {
+func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string][]string) {
 	logger := log.FromContext(ctx)
 
-	if pullRequestID := activeTrailers[constants.TrailerPullRequestID]; pullRequestID != "" {
+	if pullRequestID := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestID); pullRequestID != "" {
 		h.PullRequest.ID = pullRequestID
 	} else {
 		logger.V(4).Info("No " + constants.TrailerPullRequestID + " found in trailers")
 	}
 
-	if pullRequestUrl := activeTrailers[constants.TrailerPullRequestUrl]; pullRequestUrl != "" {
+	if pullRequestUrl := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestUrl); pullRequestUrl != "" {
 		if !strings.HasPrefix(pullRequestUrl, "http://") && !strings.HasPrefix(pullRequestUrl, "https://") {
 			logger.V(4).Info("pull request URL does not start with http:// or https://", "url", pullRequestUrl)
 		} else {
@@ -299,7 +301,7 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 		logger.V(4).Info("No " + constants.TrailerPullRequestUrl + " found in trailers")
 	}
 
-	if timeStr := activeTrailers[constants.TrailerPullRequestCreationTime]; timeStr != "" {
+	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestCreationTime); timeStr != "" {
 		if creationTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
 			logger.V(4).Info("failed to parse "+constants.TrailerPullRequestCreationTime, "time", timeStr, "err", err)
 		} else {
@@ -309,7 +311,7 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 		logger.V(4).Info("No " + constants.TrailerPullRequestCreationTime + " found in trailers")
 	}
 
-	if timeStr := activeTrailers[constants.TrailerPullRequestMergeTime]; timeStr != "" {
+	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestMergeTime); timeStr != "" {
 		if mergeTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
 			logger.V(4).Info("failed to parse "+constants.TrailerPullRequestMergeTime, "time", timeStr, "err", err)
 		} else {
@@ -321,40 +323,40 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 }
 
 // populateCommitStatuses populates the commit statuses for a history entry
-func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string) {
+func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string][]string) {
 	activeKeys, proposedKeys := getCommitStatusKeysFromTrailers(ctx, activeTrailers)
 
 	h.Active.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(activeKeys))
 	for _, key := range activeKeys {
-		url := activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-url"]
+		url := getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-url")
 		if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			log.FromContext(ctx).Error(errors.New("invalid URL"), "active commit status URL does not start with http:// or https://", "url", url, "key", key)
 			url = ""
 		}
 		h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:   key,
-			Phase: activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-phase"],
+			Phase: getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-phase"),
 			Url:   url,
 		})
 	}
 
 	h.Proposed.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(proposedKeys))
 	for _, key := range proposedKeys {
-		url := activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-url"]
+		url := getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-url")
 		if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			log.FromContext(ctx).Error(errors.New("invalid URL"), "proposed commit status URL does not start with http:// or https://", "url", url, "key", key)
 			url = ""
 		}
 		h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:   key,
-			Phase: activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-phase"],
+			Phase: getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-phase"),
 			Url:   url,
 		})
 	}
 }
 
 // getCommitStatusKeysFromTrailers extracts the commit status keys from the trailers in the given context.
-func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string]string) (activeKeys []string, proposedKeys []string) {
+func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string][]string) (activeKeys []string, proposedKeys []string) {
 	logger := log.FromContext(ctx)
 
 	// This function extracts commit status keys from trailers with the given prefix.
@@ -509,34 +511,11 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 }
 
 func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context, scmProvider promoterv1alpha1.GenericScmProvider, secret *v1.Secret, namespace string, repoRef promoterv1alpha1.ObjectReference) (scms.GitOperationsProvider, error) {
-	logger := log.FromContext(ctx)
-	switch {
-	case scmProvider.GetSpec().Fake != nil:
-		logger.V(4).Info("Creating fake git authentication provider")
-		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
-	case scmProvider.GetSpec().GitHub != nil:
-		logger.V(4).Info("Creating GitHub git authentication provider")
-		p, err := github.NewGithubGitAuthenticationProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: namespace, Name: repoRef.Name})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create GitHub Auth Provider: %w", err)
-		}
-		return p, nil
-	case scmProvider.GetSpec().GitLab != nil:
-		logger.V(4).Info("Creating GitLab git authentication provider")
-		provider, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create GitLab Auth Provider: %w", err)
-		}
-		return provider, nil
-	case scmProvider.GetSpec().Forgejo != nil:
-		logger.V(4).Info("Creating Forgejo git authentication provider")
-		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), nil
-	case scmProvider.GetSpec().Gitea != nil:
-		logger.V(4).Info("Creating Gitea git authentication provider")
-		return gitea.NewGiteaGitAuthenticationProvider(scmProvider, secret), nil
-	default:
-		return nil, errors.New("no supported git authentication provider found")
+	provider, err := gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: namespace, Name: repoRef.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create git operations provider: %w", err)
 	}
+	return provider, nil
 }
 
 func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
@@ -771,6 +750,18 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	ctp.Status.PullRequest.State = pr.Items[0].Status.State
 	ctp.Status.PullRequest.PRCreationTime = pr.Items[0].Status.PRCreationTime
 	ctp.Status.PullRequest.Url = pr.Items[0].Status.Url
+	ctp.Status.PullRequest.ExternallyMergedOrClosed = pr.Items[0].Status.ExternallyMergedOrClosed
+
+	// If PR is being deleted and has our finalizer, remove it after copying status
+	// There is a small window where the PR is deleted and the finalizer is removed, but the status is not saved to the CTP yet if we and we
+	// crash we lose the status.
+	if !pr.Items[0].DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
+		// Status has been copied, safe to remove finalizer
+		controllerutil.RemoveFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
+		if err := r.Update(ctx, &pr.Items[0]); err != nil {
+			return fmt.Errorf("failed to remove CTP finalizer from PullRequest: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -817,6 +808,10 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prName = utils.GetPullRequestName(gitRepo.Spec.Gitea.Owner, gitRepo.Spec.Gitea.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.Fake != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.BitbucketCloud != nil:
+		prName = utils.GetPullRequestName(gitRepo.Spec.BitbucketCloud.Owner, gitRepo.Spec.BitbucketCloud.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.AzureDevOps != nil:
+		prName = utils.GetPullRequestName(gitRepo.Spec.AzureDevOps.Project, gitRepo.Spec.AzureDevOps.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	default:
 		return nil, errors.New("unsupported git repository type")
 	}
@@ -852,6 +847,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
 			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
 		}
+		// Add CTP finalizer to ensure we can copy status before PR is deleted
+		controllerutil.AddFinalizer(&pr, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
 		pr.Spec.RepositoryReference = ctp.Spec.RepositoryReference
 		pr.Spec.Title = title
 		pr.Spec.TargetBranch = ctp.Spec.ActiveBranch

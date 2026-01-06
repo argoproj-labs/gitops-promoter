@@ -1,6 +1,7 @@
 package webhookreceiver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -23,11 +24,13 @@ var logger = ctrl.Log.WithName("webhookReceiver")
 
 // Provider type constants
 const (
-	ProviderGitHub  = "github"
-	ProviderGitLab  = "gitlab"
-	ProviderForgejo = "forgejo"
-	ProviderGitea   = "gitea"
-	ProviderUnknown = ""
+	ProviderGitHub         = "github"
+	ProviderGitLab         = "gitlab"
+	ProviderForgejo        = "forgejo"
+	ProviderGitea          = "gitea"
+	ProviderBitbucketCloud = "bitbucketCloud"
+	ProviderAzureDevops    = "azureDevOps"
+	ProviderUnknown        = ""
 )
 
 // EnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
@@ -82,7 +85,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 }
 
 // DetectProvider determines the SCM provider based on webhook headers.
-// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderGitea, or ProviderUnknown.
+// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderGitea, ProviderBitbucketCloud, ProviderAzureDevops or ProviderUnknown.
 func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for GitHub webhook headers
 	if r.Header.Get("X-Github-Event") != "" || r.Header.Get("X-Github-Delivery") != "" {
@@ -102,6 +105,26 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for Gitea webhook headers (only if no Forgejo headers present)
 	if r.Header.Get("X-Gitea-Event") != "" {
 		return ProviderGitea
+	}
+
+	// Check for Bitbucket Cloud webhook headers
+	if r.Header.Get("X-Hook-Uuid") != "" {
+		return ProviderBitbucketCloud
+	}
+
+	if r.ContentLength > 0 {
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			logger.Error(err, "error reading request body for provider detection")
+			return ProviderUnknown
+		}
+		// Restore the body for downstream handlers
+		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+		// Azure DevOps: check for both EventType and PublisherId
+		if gjson.GetBytes(bodyBytes, "eventType").Exists() && gjson.GetBytes(bodyBytes, "publisherId").Exists() {
+			return ProviderAzureDevops
+		}
 	}
 
 	return ProviderUnknown
@@ -195,6 +218,30 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
 			ref = gjson.GetBytes(jsonBytes, "ref").String()
 		}
+	case ProviderBitbucketCloud:
+		// Bitbucket Cloud webhook format
+		if gjson.GetBytes(jsonBytes, "push.changes").Exists() && gjson.GetBytes(jsonBytes, "actor").Exists() {
+			changes := gjson.GetBytes(jsonBytes, "push.changes")
+			if changes.IsArray() && len(changes.Array()) > 0 {
+				firstChange := changes.Array()[0]
+				beforeSha = firstChange.Get("old.target.hash").String()
+				if newName := firstChange.Get("new.name"); newName.Exists() {
+					ref = "refs/heads/" + newName.String()
+				} else if oldName := firstChange.Get("old.name"); oldName.Exists() {
+					ref = "refs/heads/" + oldName.String()
+				}
+			}
+		}
+	case ProviderAzureDevops:
+		// Azure DevOps webhook format
+		if gjson.GetBytes(jsonBytes, "resource.refUpdates").Exists() {
+			refUpdates := gjson.GetBytes(jsonBytes, "resource.refUpdates")
+			if refUpdates.IsArray() && len(refUpdates.Array()) > 0 {
+				firstUpdate := refUpdates.Array()[0]
+				beforeSha = firstUpdate.Get("oldObjectId").String()
+				ref = firstUpdate.Get("name").String()
+			}
+		}
 	default:
 		logger.V(4).Info("unsupported provider", "provider", provider)
 		return nil, nil
@@ -240,6 +287,7 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 	// Check common headers in a sensible order and return the first non-empty value.
 	// GitHub
+	fmt.Println("received a webhook event")
 	if id := r.Header.Get("X-Github-Delivery"); id != "" {
 		return id
 	}
@@ -255,6 +303,20 @@ func (wr *WebhookReceiver) extractDeliveryID(r *http.Request) string {
 		return id
 	}
 	if id := r.Header.Get("X-Gitea-Delivery"); id != "" {
+		return id
+	}
+	// Azure DevOps
+	if id := r.Header.Get("X-Vss-Activityid"); id != "" {
+		return id
+	}
+	// Bitbucket Cloud
+	// X-Request-UUID: Unique identifier for the webhook request
+	// X-Hook-UUID: Unique identifier for the webhook itself (also used for provider detection)
+	// Note: Go's http.Header.Get is case-insensitive, so this will match X-Request-UUID correctly
+	if id := r.Header.Get("X-Request-Uuid"); id != "" {
+		return id
+	}
+	if id := r.Header.Get("X-Hook-Uuid"); id != "" {
 		return id
 	}
 	return ""

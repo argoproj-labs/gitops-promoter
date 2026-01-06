@@ -24,12 +24,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -43,8 +46,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 // CommitStatusReconciler reconciles a CommitStatus object
@@ -77,6 +78,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	startTime := time.Now()
 
 	var cs promoterv1alpha1.CommitStatus
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
@@ -110,11 +112,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	_, err = commitStatusProvider.Set(ctx, &cs)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
-	}
-
-	err = r.Status().Update(ctx, &cs)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus status %q: %w", req.Name, err)
 	}
 
 	err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
@@ -164,6 +161,13 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 			return nil, fmt.Errorf("failed to get GitLab provider for domain %q with secret %q: %w", scmProvider.GetSpec().GitLab.Domain, secret.Name, err)
 		}
 		return p, nil
+	case scmProvider.GetSpec().BitbucketCloud != nil:
+		var p *bitbucket_cloud.CommitStatus
+		p, err = bitbucket_cloud.NewBitbucketCloudCommitStatusProvider(r.Client, *secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Bitbucket Cloud provider with secret %q: %w", secret.Name, err)
+		}
+		return p, nil
 	case scmProvider.GetSpec().Forgejo != nil:
 		var p *forgejo.CommitStatus
 		p, err = forgejo.NewForgejoCommitStatusProvider(r.Client, scmProvider, *secret)
@@ -176,6 +180,13 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		p, err = gitea.NewGiteaCommitStatusProvider(r.Client, scmProvider, *secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Gitea provider for domain %q with secret %q: %w", scmProvider.GetSpec().Gitea.Domain, secret.Name, err)
+		}
+		return p, nil
+	case scmProvider.GetSpec().AzureDevOps != nil:
+		var p *azuredevops.CommitStatus
+		p, err = azuredevops.NewAzureDevopsCommitStatusProvider(ctx, r.Client, scmProvider, *secret, scmProvider.GetSpec().AzureDevOps.Organization)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Azure DevOps provider for organization %q with secret %q: %w", scmProvider.GetSpec().AzureDevOps.Organization, secret.Name, err)
 		}
 		return p, nil
 	case scmProvider.GetSpec().Fake != nil:
