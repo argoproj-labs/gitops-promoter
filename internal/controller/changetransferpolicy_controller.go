@@ -588,18 +588,19 @@ type TooManyMatchingShaError struct {
 func (e *TooManyMatchingShaError) Error() string {
 	// Construct a message that includes the namespace/name of each commit status.
 	// If there are more than two, finish the message with "and X more..."
-	msg := "there are to many matching SHAs for the '" + e.commitStatusKey + "' commit status: "
+	var msg strings.Builder
+	msg.WriteString("there are to many matching SHAs for the '" + e.commitStatusKey + "' commit status: ")
 	for i, cs := range e.commitStatuses {
 		if i > 0 {
-			msg += ", "
+			msg.WriteString(", ")
 		}
 		if i >= 2 {
-			msg += fmt.Sprintf("and %d more...", len(e.commitStatuses)-i)
+			fmt.Fprintf(&msg, "and %d more...", len(e.commitStatuses)-i)
 			break
 		}
-		msg += fmt.Sprintf("%s/%s", cs.Namespace, cs.Name)
+		fmt.Fprintf(&msg, "%s/%s", cs.Namespace, cs.Name)
 	}
-	return msg
+	return msg.String()
 }
 
 func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, activeHydratedSha, proposedHydratedSha string) error {

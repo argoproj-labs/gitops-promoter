@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
@@ -424,11 +425,11 @@ func (t trailers) String() string {
 	}
 	sort.Strings(keys)
 
-	var result string
+	var result strings.Builder
 	for _, k := range keys {
-		result += fmt.Sprintf("%s: %s\n", k, t[k])
+		fmt.Fprintf(&result, "%s: %s\n", k, t[k])
 	}
-	return result
+	return result.String()
 }
 
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
