@@ -44,6 +44,7 @@ type Gitea struct {
 	// Domain is the Gitea domain, such as "gitea.com" or "gitea.mycompany.com".
 	// There is no default domain since Gitea is self-hosted.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Domain string `json:"domain"`
 }
 
@@ -119,6 +120,7 @@ type ForgejoRepo struct {
 type GiteaRepo struct {
 	// Owner is the owner of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Owner string `json:"owner"`
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
