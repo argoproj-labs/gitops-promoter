@@ -120,6 +120,7 @@ spec:
                     type: string
                   owner:
                     description: Owner is the owner of the repository.
+                    minLength: 1
                     type: string
                 required:
                 - name

@@ -96,6 +96,7 @@ spec:
                     description: |-
                       Domain is the Gitea domain, such as "gitea.com" or "gitea.mycompany.com".
                       There is no default domain since Gitea is self-hosted.
+                    minLength: 1
                     type: string
                 required:
                 - domain
