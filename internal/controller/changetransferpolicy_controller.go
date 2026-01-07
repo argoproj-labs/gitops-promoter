@@ -805,6 +805,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prName = utils.GetPullRequestName(gitRepo.Spec.GitLab.Namespace, gitRepo.Spec.GitLab.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.Forgejo != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.Gitea != nil:
+		prName = utils.GetPullRequestName(gitRepo.Spec.Gitea.Owner, gitRepo.Spec.Gitea.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.Fake != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.BitbucketCloud != nil:

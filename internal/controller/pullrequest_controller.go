@@ -34,6 +34,7 @@ import (
 	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -315,6 +316,8 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 		return bitbucket_cloud.NewBitbucketCloudPullRequestProvider(r.Client, *secret) //nolint:wrapcheck
 	case scmProvider.GetSpec().Forgejo != nil:
 		return forgejo.NewForgejoPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Forgejo.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().Gitea != nil:
+		return gitea.NewGiteaPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Gitea.Domain) //nolint:wrapcheck
 	case scmProvider.GetSpec().AzureDevOps != nil:
 		return azuredevops.NewAzdoPullRequestProvider(r.Client, *secret, scmProvider, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck,contextcheck
 	case scmProvider.GetSpec().Fake != nil:

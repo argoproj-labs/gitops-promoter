@@ -3,6 +3,7 @@ module github.com/argoproj-labs/gitops-promoter
 go 1.25.0
 
 require (
+	code.gitea.io/sdk/gitea v0.22.1
 	codeberg.org/mvdkleijn/forgejo-sdk/forgejo/v2 v2.2.0
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.20.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0

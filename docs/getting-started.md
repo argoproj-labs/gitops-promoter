@@ -1,7 +1,7 @@
 # Getting Started
 
 This guide will help you get started installing and setting up the GitOps Promoter. We currently support
-GitHub, GitHub Enterprise, GitLab, Bitbucket Cloud, and Forgejo (including Codeberg) as the SCM providers. We would welcome any contributions to add support for other providers.
+GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg), Gitea, Bitbucket Cloud, and Azure DevOps as the SCM providers. We would welcome any contributions to add support for other providers.
 
 ## Requirements
 
@@ -163,6 +163,63 @@ spec:
     projectId: <project-id>
   scmProviderRef:
     name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
+```
+
+## Gitea Configuration
+
+To configure GitOps Promoter with Gitea, you will need to create an access token. See the [official Gitea documentation](https://docs.gitea.com/development/api-usage#generating-and-listing-api-tokens) for creating access tokens. The token needs `read and write` repository permissions.
+
+This token should be in a secret as follows:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  token: <your-access-token>
+```
+
+Alternatively, while it is not recommended you can use basic HTTP authentication against your Gitea instance:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  username: <your-user>
+  password: <your-password>
+```
+
+**Note:** This will not work if your user/bot account has MFA/2FA enabled.
+
+We also need a GitRepository and ScmProvider, which are custom resources that represent a git repository and a provider.
+Here is an example of both resources:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  gitea:
+    domain: <your-gitea-domain> # e.g., gitea.com or gitea.mycompany.com
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  gitea:
+    owner: <organization-or-user-name>
+    name: <repo-name>
+  scmProviderRef:
+    name: <your-scmprovider-name>
 ```
 
 ## Forgejo Configuration

@@ -27,6 +27,7 @@ const (
 	ProviderGitHub         = "github"
 	ProviderGitLab         = "gitlab"
 	ProviderForgejo        = "forgejo"
+	ProviderGitea          = "gitea"
 	ProviderBitbucketCloud = "bitbucketCloud"
 	ProviderAzureDevops    = "azureDevOps"
 	ProviderUnknown        = ""
@@ -84,7 +85,7 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 }
 
 // DetectProvider determines the SCM provider based on webhook headers.
-// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderBitbucketCloud, ProviderAzureDevops or ProviderUnknown.
+// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderGitea, ProviderBitbucketCloud, ProviderAzureDevops or ProviderUnknown.
 func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 	// Check for GitHub webhook headers
 	if r.Header.Get("X-Github-Event") != "" || r.Header.Get("X-Github-Delivery") != "" {
@@ -96,9 +97,14 @@ func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
 		return ProviderGitLab
 	}
 
-	// Check for Forgejo/Gitea webhook headers
-	if r.Header.Get("X-Forgejo-Event") != "" || r.Header.Get("X-Gitea-Event") != "" {
+	// Check for Forgejo-specific headers first (Forgejo has its own headers)
+	if r.Header.Get("X-Forgejo-Event") != "" {
 		return ProviderForgejo
+	}
+
+	// Check for Gitea webhook headers (only if no Forgejo headers present)
+	if r.Header.Get("X-Gitea-Event") != "" {
+		return ProviderGitea
 	}
 
 	// Check for Bitbucket Cloud webhook headers
@@ -200,8 +206,8 @@ func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provide
 
 	// Extract webhook data based on provider
 	switch provider {
-	case ProviderGitHub, ProviderForgejo:
-		// GitHub and Forgejo/Gitea webhook format (both use 'pusher')
+	case ProviderGitHub, ProviderForgejo, ProviderGitea:
+		// GitHub, Forgejo, and Gitea webhook format (all use 'pusher')
 		if gjson.GetBytes(jsonBytes, "before").Exists() && gjson.GetBytes(jsonBytes, "pusher").Exists() {
 			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
 			ref = gjson.GetBytes(jsonBytes, "ref").String()

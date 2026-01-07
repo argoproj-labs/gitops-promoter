@@ -11,6 +11,7 @@ import (
 	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	corev1 "k8s.io/api/core/v1"
@@ -62,6 +63,10 @@ func CreateGitOperationsProvider(
 	case scmProvider.GetSpec().Forgejo != nil:
 		logger.V(4).Info("Creating Forgejo git authentication provider")
 		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), nil
+
+	case scmProvider.GetSpec().Gitea != nil:
+		logger.V(4).Info("Creating Gitea git authentication provider")
+		return gitea.NewGiteaGitAuthenticationProvider(scmProvider, secret), nil
 
 	case scmProvider.GetSpec().BitbucketCloud != nil:
 		logger.V(4).Info("Creating Bitbucket Cloud git authentication provider")

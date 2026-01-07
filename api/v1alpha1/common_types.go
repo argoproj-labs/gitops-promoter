@@ -39,6 +39,15 @@ type Forgejo struct {
 	Domain string `json:"domain"`
 }
 
+// Gitea is a Gitea SCM provider configuration. It is used to configure the Gitea settings.
+type Gitea struct {
+	// Domain is the Gitea domain, such as "gitea.com" or "gitea.mycompany.com".
+	// There is no default domain since Gitea is self-hosted.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Domain string `json:"domain"`
+}
+
 // AzureDevOps is an Azure DevOps SCM provider configuration. It is used to configure the Azure DevOps settings.
 type AzureDevOps struct {
 	// Organization is the Azure DevOps organization name.
@@ -101,6 +110,17 @@ type GitLabRepo struct {
 type ForgejoRepo struct {
 	// Owner is the owner of the repository.
 	// +kubebuilder:validation:Required
+	Owner string `json:"owner"`
+	// Name is the name of the repository.
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+}
+
+// GiteaRepo is a repository in Gitea, identified by its owner and name.
+type GiteaRepo struct {
+	// Owner is the owner of the repository.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Owner string `json:"owner"`
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
