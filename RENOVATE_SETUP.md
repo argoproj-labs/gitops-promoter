@@ -92,8 +92,8 @@ The workflow uses a GitHub App token for authentication, which provides better r
 
 Renovate uses regex managers to detect version strings in various files:
 
-- **Go version** in `go.mod`: `go 1.24.0`
-- **Go version** in workflows: `go-version: "1.24"`
+- **Go version** in `go.mod`: `go 1.25.0`
+- **Go version** in workflows: `go-version: "1.25"`
 - **Go version** in Dockerfiles: `FROM golang:1.25`
 - **golangci-lint** in Makefile: `GOLANGCI_LINT_VERSION ?= v2.5.0`
 - **golangci-lint** in workflows: `version: v2.5.0`

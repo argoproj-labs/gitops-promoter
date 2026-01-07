@@ -239,6 +239,24 @@ func (pr *PullRequest) getMapKey(pullRequest v1alpha1.PullRequest, owner, name s
 	return fmt.Sprintf("%s/%s/%s/%s", owner, name, pullRequest.Spec.SourceBranch, pullRequest.Spec.TargetBranch)
 }
 
+// DeletePullRequest deletes a pull request from the fake provider's internal map.
+// This is used for testing to simulate externally merged/closed PRs.
+func (pr *PullRequest) DeletePullRequest(ctx context.Context, pullRequest v1alpha1.PullRequest) error {
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Spec.RepositoryReference.Name})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	mutexPR.Lock()
+	defer mutexPR.Unlock()
+	if pullRequests == nil {
+		return nil
+	}
+	prKey := pr.getMapKey(pullRequest, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+	delete(pullRequests, prKey)
+	return nil
+}
+
 // sendWebhook sends a webhook after a PR merge to simulate SCM provider webhook behavior
 func (pr *PullRequest) sendWebhook(ctx context.Context, pullRequest v1alpha1.PullRequest, beforeSha string) {
 	// Get the webhook receiver port from the test environment
@@ -270,6 +288,11 @@ func (pr *PullRequest) sendWebhook(ctx context.Context, pullRequest v1alpha1.Pul
 		fmt.Printf("Failed to send webhook request after PR merge: %v\n", err)
 		return
 	}
+	if resp == nil {
+		fmt.Println("Webhook receiver returned nil response after PR merge")
+		return
+	}
+
 	defer func() {
 		_ = resp.Body.Close()
 	}()

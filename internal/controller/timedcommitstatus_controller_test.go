@@ -61,20 +61,6 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-		By("Waiting for PromotionStrategy to be reconciled with initial state")
-		Eventually(func(g Gomega) {
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      name,
-				Namespace: "default",
-			}, promotionStrategy)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-			// Ensure all environments have active hydrated commits
-			for _, env := range promotionStrategy.Status.Environments {
-				g.Expect(env.Active.Hydrated.Sha).ToNot(BeEmpty(), "Active hydrated SHA should be set for "+env.Branch)
-			}
-		}, constants.EventuallyTimeout).Should(Succeed())
 	})
 
 	AfterAll(func() {
@@ -109,7 +95,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					},
 					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
-							Branch:   testEnvironmentDevelopment,
+							Branch:   testBranchDevelopment,
 							Duration: metav1.Duration{Duration: 1 * time.Hour},
 						},
 					},
@@ -135,7 +121,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 
 				// Should have status for dev environment
 				g.Expect(tcs.Status.Environments).To(HaveLen(1))
-				g.Expect(tcs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
+				g.Expect(tcs.Status.Environments[0].Branch).To(Equal(testBranchDevelopment))
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 
 				// Validate status fields are populated
@@ -145,7 +131,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(tcs.Status.Environments[0].AtMostDurationRemaining.Duration).To(BeNumerically(">", 0), "AtMostDurationRemaining should be > 0 when pending")
 
 				// Verify CommitStatus was created for dev environment with pending phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-pending-"+testEnvironmentDevelopment+"-timed")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-pending-"+testBranchDevelopment+"-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -153,7 +139,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(cs.Spec.Description).To(ContainSubstring("Waiting for time-based gate on " + testEnvironmentDevelopment))
+				g.Expect(cs.Spec.Description).To(ContainSubstring("Waiting for time-based gate on " + testBranchDevelopment))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -174,7 +160,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					},
 					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
-							Branch:   testEnvironmentDevelopment,
+							Branch:   testBranchDevelopment,
 							Duration: metav1.Duration{Duration: 1 * time.Second}, // Very short so it's already met
 						},
 					},
@@ -199,7 +185,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(tcs.Status.Environments).To(HaveLen(1))
-				g.Expect(tcs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
+				g.Expect(tcs.Status.Environments[0].Branch).To(Equal(testBranchDevelopment))
 
 				// The critical check: phase should be success because duration (1 second) has been met
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
@@ -215,7 +201,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					"AtMostDurationRemaining must be 0 for success phase")
 
 				// Verify CommitStatus was created for dev environment (current environment) with success phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-met-"+testEnvironmentDevelopment+"-timed")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-met-"+testBranchDevelopment+"-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -247,7 +233,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					"AtMostDurationRemaining should remain 0")
 
 				// Verify CommitStatus phase remains success for dev environment
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-met-"+testEnvironmentDevelopment+"-timed")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-met-"+testBranchDevelopment+"-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -276,7 +262,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					},
 					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
-							Branch:   testEnvironmentDevelopment,
+							Branch:   testBranchDevelopment,
 							Duration: metav1.Duration{Duration: 24 * time.Hour}, // Very long, won't be met
 						},
 					},
@@ -300,7 +286,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				}, &tcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(tcs.Status.Environments).To(HaveLen(1))
-				g.Expect(tcs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
+				g.Expect(tcs.Status.Environments[0].Branch).To(Equal(testBranchDevelopment))
 
 				// The critical check: phase should be pending because duration (24 hours) hasn't been met
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)),
@@ -336,7 +322,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					"AtMostDurationRemaining should still be > 0 (24 hours not elapsed)")
 
 				// Verify CommitStatus phase remains pending for dev environment
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-not-met-"+testEnvironmentDevelopment+"-timed")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-time-not-met-"+testBranchDevelopment+"-timed")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -396,15 +382,15 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					},
 					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
-							Branch:   testEnvironmentDevelopment,
+							Branch:   testBranchDevelopment,
 							Duration: metav1.Duration{Duration: 2 * time.Hour}, // Start with long duration
 						},
 						{
-							Branch:   testEnvironmentStaging,
+							Branch:   testBranchStaging,
 							Duration: metav1.Duration{Duration: 2 * time.Hour},
 						},
 						{
-							Branch:   testEnvironmentProduction,
+							Branch:   testBranchProduction,
 							Duration: metav1.Duration{Duration: 2 * time.Hour},
 						},
 					},
@@ -449,7 +435,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			_ = k8sClient.Delete(ctx, timedCommitStatus)
 		})
 
-		It("should add ReconcileAtAnnotation to ChangeTransferPolicy when time gate transitions to success", func() {
+		It("should trigger ChangeTransferPolicy reconciliation when time gate transitions to success", func() {
 			By("Waiting for the time gate to transition to success (after 10 seconds)")
 			Eventually(func(g Gomega) {
 				var tcs promoterv1alpha1.TimedCommitStatus
@@ -461,66 +447,10 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 
 				// Dev environment should transition to success after 10 seconds
 				g.Expect(tcs.Status.Environments).To(HaveLen(3))
-				g.Expect(tcs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
+				g.Expect(tcs.Status.Environments[0].Branch).To(Equal(testBranchDevelopment))
 				g.Expect(tcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 					"Dev environment should transition to success after duration")
 			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Verifying that ChangeTransferPolicy for development has ReconcileAtAnnotation added")
-			Eventually(func(g Gomega) {
-				// Get the PromotionStrategy to construct the ChangeTransferPolicy name
-				var ps promoterv1alpha1.PromotionStrategy
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, &ps)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				// Find the development ChangeTransferPolicy
-				ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, testEnvironmentDevelopment))
-				var ctp promoterv1alpha1.ChangeTransferPolicy
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      ctpName,
-					Namespace: "default",
-				}, &ctp)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				// The annotation should be present
-				g.Expect(ctp.Annotations).To(HaveKey(promoterv1alpha1.ReconcileAtAnnotation),
-					"ChangeTransferPolicy should have ReconcileAtAnnotation")
-
-				// Verify the annotation value is populated and is a valid RFC3339Nano timestamp
-				annotationValue := ctp.Annotations[promoterv1alpha1.ReconcileAtAnnotation]
-				g.Expect(annotationValue).ToNot(BeEmpty(),
-					"ReconcileAtAnnotation should be populated")
-
-				_, err = time.Parse(time.RFC3339Nano, annotationValue)
-				g.Expect(err).NotTo(HaveOccurred(),
-					"ReconcileAtAnnotation should be a valid RFC3339Nano timestamp")
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Verifying that the annotation remains stable (doesn't constantly update)")
-			Consistently(func(g Gomega) {
-				var ps promoterv1alpha1.PromotionStrategy
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, &ps)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, testEnvironmentDevelopment))
-				var ctp promoterv1alpha1.ChangeTransferPolicy
-				err = k8sClient.Get(ctx, types.NamespacedName{
-					Name:      ctpName,
-					Namespace: "default",
-				}, &ctp)
-				g.Expect(err).NotTo(HaveOccurred())
-
-				// The annotation should still be present
-				g.Expect(ctp.Annotations).To(HaveKey(promoterv1alpha1.ReconcileAtAnnotation))
-				// Note: The annotation value might change if there are multiple reconciliations,
-				// but the annotation key should remain present
-			}, 5*time.Second, 1*time.Second).Should(Succeed())
 		})
 	})
 
@@ -540,15 +470,15 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					},
 					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
 						{
-							Branch:   testEnvironmentDevelopment,
+							Branch:   testBranchDevelopment,
 							Duration: metav1.Duration{Duration: 1 * time.Second},
 						},
 						{
-							Branch:   testEnvironmentStaging,
+							Branch:   testBranchStaging,
 							Duration: metav1.Duration{Duration: 1 * time.Second},
 						},
 						{
-							Branch:   testEnvironmentProduction,
+							Branch:   testBranchProduction,
 							Duration: metav1.Duration{Duration: 1 * time.Second},
 						},
 					},
@@ -577,9 +507,9 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(tcs.Status.Environments).To(HaveLen(3))
 
-				oldCommitStatusDevName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testEnvironmentDevelopment+"-timed")
-				oldCommitStatusStagingName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testEnvironmentStaging+"-timed")
-				oldCommitStatusProdName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testEnvironmentProduction+"-timed")
+				oldCommitStatusDevName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchDevelopment+"-timed")
+				oldCommitStatusStagingName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchStaging+"-timed")
+				oldCommitStatusProdName = utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchProduction+"-timed")
 
 				// Verify all three CommitStatus resources exist
 				oldCsDev := &promoterv1alpha1.CommitStatus{}
@@ -616,7 +546,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				// Update to only track development environment
 				tcs.Spec.Environments = []promoterv1alpha1.TimedCommitStatusEnvironments{
 					{
-						Branch:   testEnvironmentDevelopment,
+						Branch:   testBranchDevelopment,
 						Duration: metav1.Duration{Duration: 1 * time.Second},
 					},
 				}

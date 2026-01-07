@@ -26,7 +26,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
@@ -44,11 +43,8 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -71,23 +67,6 @@ import (
 // lastTransitionTimeThreshold is the threshold for the last transition time to consider an application healthy.
 // This helps avoid premature acceptance of a transitive healthy state.
 const lastTransitionTimeThreshold = 5 * time.Second
-
-// var syncMap sync.Map
-var (
-	rwMutex sync.RWMutex
-	revMap  = make(map[appRevisionKey]string)
-)
-
-type aggregate struct {
-	application  *argocd.Application
-	commitStatus *promoterv1alpha1.CommitStatus
-}
-
-type appRevisionKey struct {
-	clusterName string
-	namespace   string
-	name        string
-}
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
@@ -129,8 +108,9 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling ArgoCDCommitStatus", "cluster", req.ClusterName, "namespace", req.Namespace, "name", req.Name)
 	startTime := time.Now()
-	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 
+	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, &err)
 
 	err = r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
@@ -203,7 +183,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 		return ctrl.Result{}, fmt.Errorf("failed to get Application: %w", err)
 	}
 
-	resolvedShas, err := r.getHeadShasForBranches(ctx, argoCDCommitStatus, slices.Collect(maps.Keys(groupedArgoCDApps)))
+	resolvedShas, err := r.getHeadShasForBranches(ctx, argoCDCommitStatus, slices.Sorted(maps.Keys(groupedArgoCDApps)))
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get head shas for target branches: %w", err)
 	}
@@ -228,11 +208,6 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	utils.InheritNotReadyConditionFromObjects(&argoCDCommitStatus, promoterConditions.CommitStatusesNotReady, commitStatuses...)
-
-	err = r.localClient.Status().Update(ctx, &argoCDCommitStatus)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update ArgoCDCommitStatus status: %w", err)
-	}
 
 	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ArgoCDCommitStatusConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
@@ -259,7 +234,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 // If the most recent last transition time is within the threshold, the phase is set to Pending, and the requeue time is
 // set to the time remaining until the threshold is met for all the given applications or the current
 // maxTimeUntilThreshold, whichever is greater.
-func getRequeueTimeAndPhase(appsInEnvironment []*aggregate, resolvedPhase promoterv1alpha1.CommitStatusPhase, maxTimeUntilThreshold time.Duration) (promoterv1alpha1.CommitStatusPhase, time.Duration) {
+func getRequeueTimeAndPhase(appsInEnvironment []*argocd.Application, resolvedPhase promoterv1alpha1.CommitStatusPhase, maxTimeUntilThreshold time.Duration) (promoterv1alpha1.CommitStatusPhase, time.Duration) {
 	mostRecentLastTransitionTime := getMostRecentLastTransitionTime(appsInEnvironment)
 
 	if mostRecentLastTransitionTime == nil {
@@ -305,68 +280,49 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShasForBranches(ctx context.Contex
 
 	headShasByTargetBranch, err := git.LsRemote(ctx, gitAuthProvider, gitRepo, targetBranches...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to ls-remote sha for branch %q: %w", targetBranches, err)
+		return nil, fmt.Errorf("failed to ls-remote sha for branch [%s]: %w", strings.Join(targetBranches, " "), err)
 	}
 
 	return headShasByTargetBranch, nil
 }
 
-// groupArgoCDApplicationsWithPhase returns a map. The key is a branch name. The value is a list of apps configured for that target branch, along with the commit status for that one app.
+// groupArgoCDApplicationsWithPhase returns a map. The key is a branch name. The value is a list of apps configured for that target branch.
 // As a side-effect, this function updates argoCDCommitStatus to represent the aggregate status
 // of all matching apps.
-func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps []ApplicationsInEnvironment) (map[string][]*aggregate, error) {
-	aggregates := map[string][]*aggregate{}
+func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotionStrategy *promoterv1alpha1.PromotionStrategy, argoCDCommitStatus *promoterv1alpha1.ArgoCDCommitStatus, apps []ApplicationsInEnvironment) (map[string][]*argocd.Application, error) {
+	aggregates := map[string][]*argocd.Application{}
 	argoCDCommitStatus.Status.ApplicationsSelected = []promoterv1alpha1.ApplicationsSelected{}
 	repo := ""
 
 	for _, clusterApps := range apps {
 		for _, application := range clusterApps.Items {
 			if application.Spec.SourceHydrator == nil {
-				return map[string][]*aggregate{}, fmt.Errorf("application %s/%s does not have a SourceHydrator configured", application.GetNamespace(), application.GetName())
+				return nil, fmt.Errorf("application %s/%s does not have a SourceHydrator configured", application.GetNamespace(), application.GetName())
 			}
 
 			// Check that all the applications are configured with the same repo
 			if repo == "" {
 				repo = application.Spec.SourceHydrator.DrySource.RepoURL
 			} else if repo != application.Spec.SourceHydrator.DrySource.RepoURL {
-				return map[string][]*aggregate{}, errors.New("all applications must have the same repo configured")
+				return nil, errors.New("all applications must have the same repo configured")
 			}
 
 			// Check that TargetBranch is not empty
 			if application.Spec.SourceHydrator.SyncSource.TargetBranch == "" {
-				return map[string][]*aggregate{}, fmt.Errorf("application %s/%s spec.sourceHydrator.syncSource.targetBranch must not be empty", application.GetNamespace(), application.GetName())
+				return nil, fmt.Errorf("application %s/%s spec.sourceHydrator.syncSource.targetBranch must not be empty", application.GetNamespace(), application.GetName())
 			}
 
-			aggregateItem := &aggregate{
-				application: &application,
-			}
-
-			phase := promoterv1alpha1.CommitPhasePending
-			if application.Status.Health.Status == argocd.HealthStatusHealthy && application.Status.Sync.Status == argocd.SyncStatusCodeSynced {
-				phase = promoterv1alpha1.CommitPhaseSuccess
-			} else if application.Status.Health.Status == argocd.HealthStatusDegraded {
-				phase = promoterv1alpha1.CommitPhaseFailure
-			}
-
-			// This is an in memory version of the desired CommitStatus for a single application, this will be used to figure out
-			// the aggregated phase of all applications for a particular environment
-			aggregateItem.commitStatus = &promoterv1alpha1.CommitStatus{
-				Spec: promoterv1alpha1.CommitStatusSpec{
-					Sha:   application.Status.Sync.Revision,
-					Phase: phase,
-				},
-			}
 			argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.ApplicationsSelected{
 				Namespace:          application.GetNamespace(),
 				Name:               application.GetName(),
-				Phase:              phase,
+				Phase:              calculateApplicationPhase(&application),
 				Sha:                application.Status.Sync.Revision,
 				LastTransitionTime: application.Status.Health.LastTransitionTime,
 				Environment:        application.Spec.SourceHydrator.SyncSource.TargetBranch,
 				ClusterName:        clusterApps.ClusterName,
 			})
 
-			aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], aggregateItem)
+			aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], &application)
 		}
 	}
 
@@ -398,19 +354,20 @@ func sortApplicationsSelected(promotionStrategy *promoterv1alpha1.PromotionStrat
 	})
 }
 
-func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(appsInEnvironment []*aggregate, resolvedSha string) (promoterv1alpha1.CommitStatusPhase, string) {
+func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(appsInEnvironment []*argocd.Application, resolvedSha string) (promoterv1alpha1.CommitStatusPhase, string) {
 	var desc string
 	resolvedPhase := promoterv1alpha1.CommitPhasePending
 	pending := 0
 	healthy := 0
 	degraded := 0
-	for _, s := range appsInEnvironment {
+	for _, app := range appsInEnvironment {
 		switch {
-		case s.commitStatus.Spec.Sha != resolvedSha:
+		case app.Status.Sync.Revision != resolvedSha:
+			// App is not synced to the most recent SHA on the branch.
 			pending++
-		case s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseSuccess:
+		case calculateApplicationPhase(app) == promoterv1alpha1.CommitPhaseSuccess:
 			healthy++
-		case s.commitStatus.Spec.Phase == promoterv1alpha1.CommitPhaseFailure:
+		case calculateApplicationPhase(app) == promoterv1alpha1.CommitPhaseFailure:
 			degraded++
 		default:
 			// Count other phases (pending, unknown, etc.) as pending
@@ -432,13 +389,13 @@ func (r *ArgoCDCommitStatusReconciler) calculateAggregatedPhaseAndDescription(ap
 	return resolvedPhase, desc
 }
 
-func getMostRecentLastTransitionTime(aggregateItem []*aggregate) *metav1.Time {
+func getMostRecentLastTransitionTime(apps []*argocd.Application) *metav1.Time {
 	var mostRecentLastTransitionTime *metav1.Time
-	for _, s := range aggregateItem {
+	for _, app := range apps {
 		// Find the most recent last transition time
-		if s.application.Status.Health.LastTransitionTime != nil &&
-			(mostRecentLastTransitionTime == nil || s.application.Status.Health.LastTransitionTime.After(mostRecentLastTransitionTime.Time)) {
-			mostRecentLastTransitionTime = s.application.Status.Health.LastTransitionTime
+		if app.Status.Health.LastTransitionTime != nil &&
+			(mostRecentLastTransitionTime == nil || app.Status.Health.LastTransitionTime.After(mostRecentLastTransitionTime.Time)) {
+			mostRecentLastTransitionTime = app.Status.Health.LastTransitionTime
 		}
 	}
 	return mostRecentLastTransitionTime
@@ -453,38 +410,13 @@ func lookupArgoCDCommitStatusFromArgoCDApplication(mgr mcmanager.Manager) mchand
 
 			application := &argocd.Application{}
 
-			// if clusterName is empty, then cluster == local cluster
-			appKey := appRevisionKey{
-				clusterName: clusterName,
-				namespace:   application.GetNamespace(),
-				name:        application.GetName(),
-			}
-
 			// fetch the ArgoCDApplication from the cluster
 			if err := cl.GetClient().Get(ctx, client.ObjectKeyFromObject(argoCDApplication), application, &client.GetOptions{}); err != nil {
 				if k8s_errors.IsNotFound(err) {
-					rwMutex.Lock()
-					delete(revMap, appKey)
-					rwMutex.Unlock()
 					return nil
 				}
 				logger.Error(err, "failed to get ArgoCDApplication")
 				return nil
-			}
-
-			rwMutex.RLock()
-			appRef := revMap[appKey]
-			rwMutex.RUnlock()
-
-			if appRef == application.Status.Sync.Revision && (application.Status.Health.LastTransitionTime == nil || time.Since(application.Status.Health.LastTransitionTime.Time) >= 10*time.Second) {
-				// No change in-app revision, and the last transition time is more than 10 seconds ago, let's not add this to the queue
-				return nil
-			}
-
-			if appRef != application.Status.Sync.Revision {
-				rwMutex.Lock()
-				revMap[appKey] = application.Status.Sync.Revision
-				rwMutex.Unlock()
 			}
 
 			// lookup the ArgoCDCommitStatus objects in the local cluster
@@ -561,7 +493,7 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
 			mcbuilder.WithEngageWithProviderClusters(true),
-			mcbuilder.WithPredicates(applicationPredicate())).
+			mcbuilder.WithPredicates(applicationPredicate)).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
@@ -572,38 +504,36 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 
 // applicationPredicate returns a predicate that filters Argo CD Application events.
 // It only allows events through when relevant fields have changed (health status, sync status, or revision).
-func applicationPredicate() predicate.Predicate {
-	return predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			// Always process new applications
-			return true
-		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			oldApp, oldOk := e.ObjectOld.(*argocd.Application)
-			newApp, newOk := e.ObjectNew.(*argocd.Application)
+var applicationPredicate predicate.Predicate = predicate.Funcs{
+	CreateFunc: func(e event.CreateEvent) bool {
+		// Always process new applications
+		return true
+	},
+	UpdateFunc: func(e event.UpdateEvent) bool {
+		oldApp, oldOk := e.ObjectOld.(*argocd.Application)
+		newApp, newOk := e.ObjectNew.(*argocd.Application)
 
-			if !oldOk || !newOk {
-				// If we can't assert the types, let it through to be safe
-				return true
-			}
-
-			// Only process updates when relevant fields have changed
-			healthChanged := oldApp.Status.Health.Status != newApp.Status.Health.Status
-			syncChanged := oldApp.Status.Sync.Status != newApp.Status.Sync.Status
-			revisionChanged := oldApp.Status.Sync.Revision != newApp.Status.Sync.Revision
-			lastTransitionTimeChanged := !oldApp.Status.Health.LastTransitionTime.Equal(newApp.Status.Health.LastTransitionTime)
-
-			return healthChanged || syncChanged || revisionChanged || lastTransitionTimeChanged
-		},
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			// Process deletions
+		if !oldOk || !newOk {
+			// If we can't assert the types, let it through to be safe
 			return true
-		},
-		GenericFunc: func(e event.GenericEvent) bool {
-			// Process generic events
-			return true
-		},
-	}
+		}
+
+		// Only process updates when relevant fields have changed
+		healthChanged := oldApp.Status.Health.Status != newApp.Status.Health.Status
+		syncChanged := oldApp.Status.Sync.Status != newApp.Status.Sync.Status
+		revisionChanged := oldApp.Status.Sync.Revision != newApp.Status.Sync.Revision
+		lastTransitionTimeChanged := !oldApp.Status.Health.LastTransitionTime.Equal(newApp.Status.Health.LastTransitionTime)
+
+		return healthChanged || syncChanged || revisionChanged || lastTransitionTimeChanged
+	},
+	DeleteFunc: func(e event.DeleteEvent) bool {
+		// Process deletions
+		return true
+	},
+	GenericFunc: func(e event.GenericEvent) bool {
+		// Process generic events
+		return true
+	},
 }
 
 // updateAggregatedCommitStatus creates or updates a CommitStatus object for the given target branch and sha.
@@ -661,7 +591,7 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		}
 
 		// Set the URL in the CommitStatus
-		logger.Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
+		logger.V(4).Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
 		desiredCommitStatus.Spec.Url = renderedURL
 	}
 
@@ -704,8 +634,6 @@ func (r *ArgoCDCommitStatusReconciler) getPromotionStrategy(ctx context.Context,
 }
 
 func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus) (scms.GitOperationsProvider, promoterv1alpha1.ObjectReference, error) {
-	logger := log.FromContext(ctx)
-
 	ps, err := r.getPromotionStrategy(ctx, argoCDCommitStatus.GetNamespace(), argoCDCommitStatus.Spec.PromotionStrategyRef)
 	if ps == nil {
 		return nil, promoterv1alpha1.ObjectReference{}, fmt.Errorf("PromotionStrategy is nil for ArgoCDCommitStatus %s", argoCDCommitStatus.Name)
@@ -719,32 +647,25 @@ func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, a
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get ScmProvider and secret for PromotionStrategy %q: %w", ps.Name, err)
 	}
 
-	switch {
-	case scmProvider.GetSpec().Fake != nil:
-		logger.V(4).Info("Creating fake git authentication provider")
-		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
-	case scmProvider.GetSpec().GitHub != nil:
-		logger.V(4).Info("Creating GitHub git authentication provider")
-		provider, err := github.NewGithubGitAuthenticationProvider(ctx, r.localClient, scmProvider, secret, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: ps.Spec.RepositoryReference.Name})
-		if err != nil {
-			return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create GitHub client: %w", err)
-		}
-		return provider, ps.Spec.RepositoryReference, nil
-	case scmProvider.GetSpec().GitLab != nil:
-		logger.V(4).Info("Creating GitLab git authentication provider")
-		gitlabClient, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
-		if err != nil {
-			return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create GitLab client: %w", err)
-		}
-		return gitlabClient, ps.Spec.RepositoryReference, nil
-	case scmProvider.GetSpec().Forgejo != nil:
-		logger.V(4).Info("Creating Forgejo git authentication provider")
-		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), ps.Spec.RepositoryReference, nil
-	default:
-		return nil, ps.Spec.RepositoryReference, errors.New("no supported git authentication provider found")
+	provider, err := gitauth.CreateGitOperationsProvider(ctx, r.localClient, scmProvider, secret, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: ps.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to create git operations provider: %w", err)
 	}
+
+	return provider, ps.Spec.RepositoryReference, nil
 }
 
 func hash(data []byte) string {
 	return strconv.FormatUint(xxhash.Sum64(data), 8)
+}
+
+// calculateApplicationPhase determines the commit status phase for an Argo CD Application
+// based on its health and sync status.
+func calculateApplicationPhase(app *argocd.Application) promoterv1alpha1.CommitStatusPhase {
+	if app.Status.Health.Status == argocd.HealthStatusHealthy && app.Status.Sync.Status == argocd.SyncStatusCodeSynced {
+		return promoterv1alpha1.CommitPhaseSuccess
+	} else if app.Status.Health.Status == argocd.HealthStatusDegraded {
+		return promoterv1alpha1.CommitPhaseFailure
+	}
+	return promoterv1alpha1.CommitPhasePending
 }

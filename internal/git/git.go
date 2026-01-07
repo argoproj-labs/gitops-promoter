@@ -20,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/relvacode/iso8601"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -40,23 +39,11 @@ type EnvironmentOperations struct {
 	activeBranch string
 }
 
-// HydratorMetadata contains metadata about the commit that is used to hydrate a branch.
-type HydratorMetadata struct {
-	// RepoURL is the URL of the repository where the commit is located.
-	RepoURL string `json:"repoURL,omitempty"`
-	// DrySha is the SHA of the commit that was used as the dry source for hydration.
-	DrySha string `json:"drySha,omitempty"`
-	// Author is the author of the dry commit that was used to hydrate the branch.
-	Author string `json:"author,omitempty"`
-	// Date is the date of the dry commit that was used to hydrate the branch.
-	Date v1.Time `json:"date,omitempty"`
-	// Subject is the subject line of the dry commit that was used to hydrate the branch.
-	Subject string `json:"subject,omitempty"`
-	// Body is the body of the dry commit that was used to hydrate the branch without the subject.
-	Body string `json:"body,omitempty"`
-	// References are the references to other commits, that went into the hydration of the branch.
-	References []v1alpha1.RevisionReference `json:"references,omitempty"`
-}
+// HydratorMetadata is an alias to v1alpha1.HydratorMetadata for convenience.
+type HydratorMetadata = v1alpha1.HydratorMetadata
+
+// HydratorNotesRef is the git notes reference used by hydrators to store metadata about hydrated commits.
+const HydratorNotesRef = "refs/notes/hydrator.metadata"
 
 // NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter is used to differentiate
 // between different environments that might use the same GitRepository and avoid conflicts between concurrent
@@ -189,7 +176,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 
 	metadataFileStdout, stderr, err := g.runCmd(ctx, gitPath, "show", sha+":hydrator.metadata")
 	if err != nil {
-		logger.Error(err, "could not git show file", "gitError", stderr)
+		logger.V(4).Info("could not git show file", "sha", sha, "gitError", stderr, "err", err)
 		return v1alpha1.CommitShaState{}, nil
 	}
 	logger.V(4).Info("Got metadata file", "sha", sha, "file", metadataFileStdout)
@@ -334,73 +321,6 @@ func (g *EnvironmentOperations) GetShaTime(ctx context.Context, sha string) (v1.
 	}
 
 	return v1.Time{Time: cTime}, nil
-}
-
-// PromoteEnvironmentWithMerge merges the next environment branch into the current environment branch and pushes the result.
-// This assumes that both branches have already been fetched via GetBranchShas earlier in the reconciliation,
-// ensuring we merge the exact same refs that were checked for PR requirements.
-func (g *EnvironmentOperations) PromoteEnvironmentWithMerge(ctx context.Context, environmentBranch, environmentNextBranch string) error {
-	logger := log.FromContext(ctx)
-	logger.Info("Promoting environment with merge", "environmentBranch", environmentBranch, "environmentNextBranch", environmentNextBranch)
-
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
-	if gitPath == "" {
-		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	// Checkout the environment branch from the already-fetched origin ref
-	// We use the origin ref to ensure we're working with the same commits that were checked
-	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "--progress", "-B", environmentBranch, "origin/"+environmentBranch)
-	if err != nil {
-		logger.Error(err, "could not git checkout", "gitError", stderr)
-		return err
-	}
-	logger.V(4).Info("Checked out branch", "branch", environmentBranch)
-
-	// Merge using the already-fetched origin ref to ensure we merge the same commits that were checked
-	start := time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "--no-ff", "origin/"+environmentNextBranch, "-m", "This is a no-op commit merging from "+environmentNextBranch+" into "+environmentBranch+"\n\n"+constants.TrailerNoOp+": true\n")
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPull, metrics.GitOperationResultFromError(err), time.Since(start))
-	if err != nil {
-		logger.Error(err, "could not git merge", "gitError", stderr)
-		return err
-	}
-	logger.V(4).Info("Merged branch", "branch", environmentNextBranch)
-
-	start = time.Now()
-	_, stderr, err = g.runCmd(ctx, gitPath, "push", "--progress", "origin", environmentBranch)
-	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationPush, metrics.GitOperationResultFromError(err), time.Since(start))
-	if err != nil {
-		logger.Error(err, "could not git push", "gitError", stderr)
-		return err
-	}
-	logger.Info("Pushed branch", "branch", environmentBranch)
-
-	return nil
-}
-
-// IsPullRequestRequired will compare the environment branch with the next environment branch and return true if a PR is required.
-// The PR is required if the diff between the two branches contain edits to yaml files.
-// This assumes that both branches have already been fetched via GetBranchShas earlier in the reconciliation,
-// ensuring we check the same refs that were used for conflict detection.
-func (g *EnvironmentOperations) IsPullRequestRequired(ctx context.Context, environmentNextBranch, environmentBranch string) (bool, error) {
-	logger := log.FromContext(ctx)
-
-	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
-	if gitPath == "" {
-		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
-	}
-
-	// Get the diff between the two branches using already-fetched origin refs - no checkout or fetch needed
-	// This ensures we're checking the same refs that were checked for conflicts
-	stdout, stderr, err := g.runCmd(ctx, gitPath, "diff", fmt.Sprintf("origin/%s...origin/%s", environmentBranch, environmentNextBranch), "--name-only", "--diff-filter=ACMRT")
-	if err != nil {
-		logger.Error(err, "could not get diff", "gitError", stderr)
-		return false, err
-	}
-	logger.V(4).Info("Got diff", "diff", stdout)
-
-	return containsYamlFileSuffix(ctx, strings.Split(stdout, "\n")), nil
 }
 
 // LsRemote returns a map of branch names to SHAs for the given branches using git ls-remote.
@@ -592,8 +512,110 @@ func AddTrailerToCommitMessage(ctx context.Context, commitMessage, trailerKey, t
 	return strings.TrimSpace(stdoutBuf.String()), nil
 }
 
+// FetchNotes fetches the git notes from the remote repository.
+func (g *EnvironmentOperations) FetchNotes(ctx context.Context) error {
+	logger := log.FromContext(ctx)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	// Fetch the notes ref from origin. We use + to force update in case of divergence.
+	start := time.Now()
+	_, stderr, err := g.runCmd(ctx, gitPath, "fetch", "origin", "+"+HydratorNotesRef+":"+HydratorNotesRef)
+	if err != nil {
+		// Notes ref might not exist yet, which is fine
+		if strings.Contains(stderr, "couldn't find remote ref") {
+			metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
+			logger.V(4).Info("Git notes ref does not exist on remote", "ref", HydratorNotesRef)
+			return nil
+		}
+		metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultFailure, time.Since(start))
+		logger.Error(err, "Failed to fetch git notes", "stderr", stderr)
+		return fmt.Errorf("failed to fetch git notes: %w", err)
+	}
+	metrics.RecordGitOperation(g.gitRepo, metrics.GitOperationFetchNotes, metrics.GitOperationResultSuccess, time.Since(start))
+
+	logger.V(4).Info("Fetched git notes", "ref", HydratorNotesRef)
+	return nil
+}
+
+// GetHydratorNote reads the hydrator git note for a given commit SHA.
+// Returns an empty HydratorMetadata if no note exists for the commit.
+func (g *EnvironmentOperations) GetHydratorNote(ctx context.Context, sha string) (HydratorMetadata, error) {
+	logger := log.FromContext(ctx)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return HydratorMetadata{}, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "notes", "--ref="+HydratorNotesRef, "show", sha)
+	if err != nil {
+		// No note for this commit is not an error - git outputs "error: no note found for object <sha>"
+		if strings.Contains(strings.ToLower(stderr), "no note found") {
+			logger.V(4).Info("No git note found for commit", "sha", sha)
+			return HydratorMetadata{}, nil
+		}
+		logger.Error(err, "Failed to read git note", "sha", sha, "stderr", stderr)
+		return HydratorMetadata{}, fmt.Errorf("failed to read git note for sha %q: %w", sha, err)
+	}
+
+	var note HydratorMetadata
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &note); err != nil {
+		logger.V(4).Info("Failed to parse git note as JSON, ignoring", "sha", sha, "content", stdout, "error", err)
+		return HydratorMetadata{}, nil
+	}
+
+	logger.V(4).Info("Got hydrator note", "sha", sha, "note", note)
+	return note, nil
+}
+
+// ParseTrailersFromMessage parses git trailers from a commit message using git interpret-trailers.
+// Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
+func ParseTrailersFromMessage(ctx context.Context, commitMessage string) (map[string][]string, error) {
+	logger := log.FromContext(ctx)
+
+	// Pipe the message to git interpret-trailers using stdin
+	cmd := exec.CommandContext(ctx, "git", "interpret-trailers", "--only-trailers")
+	cmd.Stdin = strings.NewReader(commitMessage)
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	err := cmd.Run()
+	stderr := stderrBuf.String()
+	if err != nil {
+		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)
+		return nil, fmt.Errorf("failed to run git interpret-trailers: %w", err)
+	}
+	stdout := stdoutBuf.String()
+
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	trailers := make(map[string][]string)
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		if strings.Contains(line, ":") {
+			key, value, found := strings.Cut(line, ":")
+			if found {
+				trimmedKey := strings.TrimSpace(key)
+				trimmedValue := strings.TrimSpace(value)
+				trailers[trimmedKey] = append(trailers[trimmedKey], trimmedValue)
+			} else {
+				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
+			}
+		}
+	}
+	logger.V(4).Info("Parsed trailers from message", "trailers", trailers)
+	return trailers, nil
+}
+
 // GetTrailers retrieves the trailers from the last commit in the repository using git interpret-trailers.
-func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string]string, error) {
+// Returns a map where each key can have multiple values (e.g., multiple "Signed-off-by" trailers).
+func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (map[string][]string, error) {
 	logger := log.FromContext(ctx)
 	// run git interpret-trailers to get the trailers from the last commit
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -610,36 +632,26 @@ func (g *EnvironmentOperations) GetTrailers(ctx context.Context, sha string) (ma
 		logger.V(4).Info("git log returned an error", "stderr", stderr)
 	}
 
-	// Then pipe it to git interpret-trailers using stdin
-	cmd := exec.CommandContext(ctx, "git", "interpret-trailers", "--only-trailers")
-	cmd.Dir = gitPath
-	cmd.Stdin = strings.NewReader(msgStdout)
+	// Use the standalone parser
+	return ParseTrailersFromMessage(ctx, msgStdout)
+}
 
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	cmd.Stdout = &stdoutBuf
-	cmd.Stderr = &stderrBuf
+// GitShow runs git show with a specific format string for a commit SHA.
+// The format parameter uses git's pretty-format placeholders (e.g., %ae for author email, %ce for committer email).
+// See https://git-scm.com/docs/git-show#_pretty_formats for available format options.
+func (g *EnvironmentOperations) GitShow(ctx context.Context, sha, format string) (string, error) {
+	logger := log.FromContext(ctx)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return "", fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
 
-	err = cmd.Run()
-	stderr = stderrBuf.String()
+	stdout, stderr, err := g.runCmd(ctx, gitPath, "show", "-s", "--format="+format, sha)
 	if err != nil {
-		logger.Error(err, "failed to run git interpret-trailers", "stderr", stderr)
-		return nil, fmt.Errorf("failed to run git interpret-trailers: %w", err)
+		logger.Error(err, "could not git show", "gitError", stderr, "sha", sha, "format", format)
+		return "", fmt.Errorf("failed to run git show for sha %q with format %q: %w", sha, format, err)
 	}
-	stdout := stdoutBuf.String()
+	logger.V(4).Info("Git show completed", "sha", sha, "format", format)
 
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
-	trailers := make(map[string]string, len(lines))
-	for _, line := range lines {
-		if strings.Contains(line, ":") {
-			key, value, found := strings.Cut(line, ":")
-			if found {
-				trailers[strings.TrimSpace(key)] = strings.TrimSpace(value)
-			} else {
-				logger.Error(fmt.Errorf("invalid trailer line: %s", line), "could not parse trailer line")
-			}
-		}
-	}
-	logger.V(4).Info("Got trailers", "sha", sha, "trailers", trailers)
-	return trailers, nil
+	return strings.TrimSpace(stdout), nil
 }

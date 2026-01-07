@@ -115,7 +115,7 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 
 .PHONY: nilaway-no-test
 nilaway-no-test: nilaway ## Run nilaway to remove nil checks from the code
-	$(NILAWAY) --test=false ./...
+	GOMEMLIMIT=8GiB $(NILAWAY) -test=false -exclude-pkgs="sigs.k8s.io,k8s.io" ./...
 
 ##@ Build
 
@@ -148,8 +148,14 @@ build-all: build-dashboard build-extension build ## Build dashboard UI, extensio
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go controller
 
+.PHONY: run-dashboard-dev
+run-dashboard-dev: 
+	cd ui/dashboard && npm install && npm run dev &
+	sleep 2
+	go run ./cmd/main.go dashboard
+
 .PHONY: run-dashboard
-run-dashboard: build-dashboard ## Run dashboard from your host.
+run-dashboard: build-dashboard 
 	go run ./cmd/main.go dashboard
 
 .PHONY: lint-dashboard
@@ -255,7 +261,7 @@ GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 KUSTOMIZE_VERSION ?= v5.3.0
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.7.2
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
