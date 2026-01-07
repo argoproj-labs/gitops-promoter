@@ -128,16 +128,16 @@ func TruncateString(str string, length int) string {
 	if length <= 0 {
 		return ""
 	}
-	truncated := ""
+	var truncated strings.Builder
 	count := 0
 	for _, char := range str {
-		truncated += string(char)
+		truncated.WriteRune(char)
 		count++
 		if count >= length {
 			break
 		}
 	}
-	return truncated
+	return truncated.String()
 }
 
 // TruncateStringFromBeginning truncates from front of string. For example, if the string is "abcdefg" and length is 3,
