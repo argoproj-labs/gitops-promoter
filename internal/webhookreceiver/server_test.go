@@ -53,7 +53,7 @@ var _ = Describe("DetectProvider", func() {
 			headers: map[string]string{
 				"X-Gitea-Event": "push",
 			},
-			expectedResult: webhookreceiver.ProviderForgejo,
+			expectedResult: webhookreceiver.ProviderGitea,
 		},
 		"Bitbucket Cloud webhook with X-Hook-UUID": {
 			headers: map[string]string{

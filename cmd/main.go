@@ -48,6 +48,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -430,7 +431,15 @@ func newCommand() *cobra.Command {
 		Use:   "promoter",
 		Short: "GitOps Promoter",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+			// Create the zap logger
+			zapLogger := zap.New(zap.UseFlagOptions(&opts))
+
+			// Set the controller-runtime logger
+			ctrl.SetLogger(zapLogger)
+
+			// Configure klog to use the same zap logger so all logs (including k8s client-go)
+			// use the same format (JSON when --zap-encoder=json is set)
+			klog.SetLogger(zapLogger)
 		},
 	}
 

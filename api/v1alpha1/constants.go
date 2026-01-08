@@ -33,6 +33,9 @@ const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/
 // PullRequestFinalizer prevents deletion of PullRequest until the PR is closed in the SCM
 const PullRequestFinalizer = "pullrequest.promoter.argoproj.io/finalizer"
 
+// ChangeTransferPolicyPullRequestFinalizer prevents deletion of PullRequest until ChangeTransferPolicy copies its status
+const ChangeTransferPolicyPullRequestFinalizer = "changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer"
+
 // GitRepositoryFinalizer prevents deletion of GitRepository while PullRequests reference it
 const GitRepositoryFinalizer = "gitrepository.promoter.argoproj.io/finalizer"
 

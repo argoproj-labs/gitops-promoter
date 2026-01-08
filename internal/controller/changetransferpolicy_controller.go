@@ -83,6 +83,8 @@ func (r *ChangeTransferPolicyReconciler) GetEnqueueFunc() CTPEnqueueFunc {
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -586,18 +588,19 @@ type TooManyMatchingShaError struct {
 func (e *TooManyMatchingShaError) Error() string {
 	// Construct a message that includes the namespace/name of each commit status.
 	// If there are more than two, finish the message with "and X more..."
-	msg := "there are to many matching SHAs for the '" + e.commitStatusKey + "' commit status: "
+	var msg strings.Builder
+	msg.WriteString("there are to many matching SHAs for the '" + e.commitStatusKey + "' commit status: ")
 	for i, cs := range e.commitStatuses {
 		if i > 0 {
-			msg += ", "
+			msg.WriteString(", ")
 		}
 		if i >= 2 {
-			msg += fmt.Sprintf("and %d more...", len(e.commitStatuses)-i)
+			fmt.Fprintf(&msg, "and %d more...", len(e.commitStatuses)-i)
 			break
 		}
-		msg += fmt.Sprintf("%s/%s", cs.Namespace, cs.Name)
+		fmt.Fprintf(&msg, "%s/%s", cs.Namespace, cs.Name)
 	}
-	return msg
+	return msg.String()
 }
 
 func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, activeHydratedSha, proposedHydratedSha string) error {
@@ -748,6 +751,18 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	ctp.Status.PullRequest.State = pr.Items[0].Status.State
 	ctp.Status.PullRequest.PRCreationTime = pr.Items[0].Status.PRCreationTime
 	ctp.Status.PullRequest.Url = pr.Items[0].Status.Url
+	ctp.Status.PullRequest.ExternallyMergedOrClosed = pr.Items[0].Status.ExternallyMergedOrClosed
+
+	// If PR is being deleted and has our finalizer, remove it after copying status
+	// There is a small window where the PR is deleted and the finalizer is removed, but the status is not saved to the CTP yet if we and we
+	// crash we lose the status.
+	if !pr.Items[0].DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
+		// Status has been copied, safe to remove finalizer
+		controllerutil.RemoveFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
+		if err := r.Update(ctx, &pr.Items[0]); err != nil {
+			return fmt.Errorf("failed to remove CTP finalizer from PullRequest: %w", err)
+		}
+	}
 
 	return nil
 }
@@ -790,10 +805,14 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prName = utils.GetPullRequestName(gitRepo.Spec.GitLab.Namespace, gitRepo.Spec.GitLab.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.Forgejo != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.Gitea != nil:
+		prName = utils.GetPullRequestName(gitRepo.Spec.Gitea.Owner, gitRepo.Spec.Gitea.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.Fake != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.BitbucketCloud != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.BitbucketCloud.Owner, gitRepo.Spec.BitbucketCloud.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.AzureDevOps != nil:
+		prName = utils.GetPullRequestName(gitRepo.Spec.AzureDevOps.Project, gitRepo.Spec.AzureDevOps.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	default:
 		return nil, errors.New("unsupported git repository type")
 	}
@@ -829,6 +848,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
 			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
 		}
+		// Add CTP finalizer to ensure we can copy status before PR is deleted
+		controllerutil.AddFinalizer(&pr, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
 		pr.Spec.RepositoryReference = ctp.Spec.RepositoryReference
 		pr.Spec.Title = title
 		pr.Spec.TargetBranch = ctp.Spec.ActiveBranch
