@@ -816,8 +816,11 @@ var _ = Describe("PullRequest Controller", func() {
 					Name:      pullRequest.OwnerReferences[0].Name,
 					Namespace: pullRequest.Namespace,
 				}
-				// Wait for CTP to reconcile after PR deletion, then verify status is preserved
-				time.Sleep(2 * time.Second) // Give time for CTP to reconcile
+
+				// Trigger CTP reconciliation using the channel-based enqueue function
+				enqueueCTP(ctpName.Namespace, ctpName.Name)
+
+				// Verify CTP status preserved the ExternallyMergedOrClosed flag
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, ctpName, ctp)).To(Succeed())
 					g.Expect(ctp.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status after PR deletion")
