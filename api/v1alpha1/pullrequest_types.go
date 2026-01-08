@@ -85,6 +85,9 @@ type PullRequestStatus struct {
 	Url string `json:"url,omitempty"`
 	// ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
 	// This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+	// When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+	// The PullRequest resource will be deleted after this flag is set, but the status is preserved in
+	// the owning ChangeTransferPolicy to maintain a record of the external action.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 
 	// Conditions Represents the observations of the current state.

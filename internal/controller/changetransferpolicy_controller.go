@@ -723,6 +723,8 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 }
 
 func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	logger := log.FromContext(ctx)
+
 	pr := &promoterv1alpha1.PullRequestList{}
 	err := r.List(ctx, pr, &client.ListOptions{
 		Namespace: ctp.Namespace,
@@ -736,8 +738,11 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %q status update: %w", ctp.Name, err)
 	}
 	if len(pr.Items) == 0 {
-		ctp.Status.PullRequest = nil
-		return nil // No pull request exists, nothing to update
+		// No PR resource found - keep existing status to preserve ExternallyMergedOrClosed and other metadata.
+		// This allows the CTP to maintain a record of the last known PR state even after the PR resource
+		// is deleted (e.g., after external merge/close). The status is only replaced when a new PR is created.
+		logger.V(4).Info("No PR resource found, preserving existing PR status in CTP")
+		return nil
 	}
 
 	if len(pr.Items) > 1 {

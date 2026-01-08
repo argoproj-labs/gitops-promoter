@@ -180,8 +180,10 @@ func (r *PullRequestReconciler) handleEmptyIDDeletion(ctx context.Context, pr *p
 func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *promoterv1alpha1.PullRequest) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	// Check if PR should be cleaned up: either externally merged/closed (and still open) or in terminal state (merged/closed)
-	externallyMergedOrClosed := pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed && pr.Status.State == promoterv1alpha1.PullRequestOpen
+	// Check if PR should be cleaned up: either externally merged/closed or in terminal state (merged/closed)
+	// When ExternallyMergedOrClosed is true, State may be empty (we don't know if merged or closed),
+	// Open (set before we detected the external action), or a terminal state.
+	externallyMergedOrClosed := pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed
 	isTerminalState := pr.Status.State == promoterv1alpha1.PullRequestMerged || pr.Status.State == promoterv1alpha1.PullRequestClosed
 
 	if !externallyMergedOrClosed && !isTerminalState {
@@ -223,6 +225,11 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 	// If we don't find the PR, but we have an ID, it means it was merged or closed externally
 	if pr.Status.ID != "" {
 		pr.Status.ExternallyMergedOrClosed = ptr.To(true)
+		// Don't set State since we don't know if it was merged or closed.
+		// The ExternallyMergedOrClosed flag is the source of truth that this PR
+		// is no longer active and was handled outside of the controller's control.
+		// An empty State with ExternallyMergedOrClosed=true means "closed/merged externally, but we don't know which".
+		pr.Status.State = ""
 		return true, nil
 	}
 
