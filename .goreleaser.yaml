@@ -39,6 +39,7 @@ builds:
 dockers:
   - image_templates:
       - quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-amd64
+      - quay.io/argoprojlabs/gitops-promoter:latest-amd64
     dockerfile: release.Dockerfile
     skip_push: "{{ .IsSnapshot }}"
     use: buildx
@@ -54,6 +55,7 @@ dockers:
       - "--platform=linux/amd64"
   - image_templates:
       - quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-arm64
+      - quay.io/argoprojlabs/gitops-promoter:latest-arm64
     dockerfile: release.Dockerfile
     extra_files:
       - hack/git/promoter_askpass.sh
@@ -72,6 +74,10 @@ docker_manifests:
     image_templates:
       - "quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-amd64"
       - "quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-arm64"
+  - name_template: "quay.io/argoprojlabs/gitops-promoter:latest"
+    image_templates:
+     - "quay.io/argoprojlabs/gitops-promoter:latest-amd64"
+     - "quay.io/argoprojlabs/gitops-promoter:latest-arm64"
 
 archives:
   - id: binary
