@@ -115,6 +115,18 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to get ChangeTransferPolicy: %w", err)
 	}
 
+	// Handle PR finalizer removal if PR is being deleted and CTP status is already synced
+	finalizerRemoved, err := r.handlePRFinalizerRemoval(ctx, &ctp)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to handle PR finalizer removal: %w", err)
+	}
+	if finalizerRemoved {
+		// PR finalizer was removed, return to avoid further processing
+		// The PR deletion will complete and we'll reconcile again
+		logger.V(4).Info("PR finalizer removed, returning to allow PR deletion to complete")
+		return ctrl.Result{}, nil
+	}
+
 	// Remove any existing Ready condition. We want to start fresh.
 	meta.RemoveStatusCondition(ctp.GetConditions(), string(promoterConditions.Ready))
 
@@ -768,24 +780,90 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	ctp.Status.PullRequest.Url = pr.Items[0].Status.Url
 	ctp.Status.PullRequest.ExternallyMergedOrClosed = pr.Items[0].Status.ExternallyMergedOrClosed
 
-	// If PR is being deleted and has our finalizer, we must persist the CTP status BEFORE removing the finalizer.
-	// Otherwise, if the status update fails (e.g., conflict), the finalizer gets removed, the PR is deleted,
-	// and on retry the CTP won't be able to copy the status again.
+	// If PR is being deleted and has our finalizer, we need to ensure the CTP status is persisted.
+	// The status will be persisted by the defer in Reconcile, and then on the next reconcile
+	// (triggered by enqueue below) the finalizer will be removed by handlePRFinalizerRemoval.
 	if !pr.Items[0].DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
-		// Persist CTP status immediately before removing finalizer
-		logger.V(4).Info("PR being deleted with CTP finalizer, persisting CTP status before removing finalizer")
-		if err := r.Status().Update(ctx, ctp); err != nil {
-			return fmt.Errorf("failed to update CTP status before removing finalizer: %w", err)
-		}
-
-		// Status has been persisted, now safe to remove finalizer
-		controllerutil.RemoveFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
-		if err := r.Update(ctx, &pr.Items[0]); err != nil {
-			return fmt.Errorf("failed to remove CTP finalizer from PullRequest: %w", err)
+		logger.V(4).Info("PR being deleted with CTP finalizer, CTP status will be persisted and finalizer removed on next reconcile")
+		// Enqueue a reconcile to trigger finalizer removal after status is persisted
+		if r.enqueueFunc != nil {
+			r.enqueueFunc(ctp.Namespace, ctp.Name)
 		}
 	}
 
 	return nil
+}
+
+// handlePRFinalizerRemoval checks if there's a PR being deleted with our finalizer where the CTP status
+// already matches the PR status. If so, it removes the finalizer to allow the PR to be deleted.
+// Returns true if a finalizer was removed, false otherwise.
+func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (bool, error) {
+	logger := log.FromContext(ctx)
+
+	// Find any PR resources for this CTP
+	pr := &promoterv1alpha1.PullRequestList{}
+	err := r.List(ctx, pr, &client.ListOptions{
+		Namespace: ctp.Namespace,
+		LabelSelector: labels.SelectorFromSet(map[string]string{
+			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+		}),
+	})
+	if err != nil {
+		return false, fmt.Errorf("failed to list PullRequests for finalizer check: %w", err)
+	}
+
+	if len(pr.Items) == 0 {
+		// No PR found, nothing to do
+		return false, nil
+	}
+
+	if len(pr.Items) > 1 {
+		// Multiple PRs found, return the error immediately
+		return false, tooManyPRsError(pr)
+	}
+
+	prItem := &pr.Items[0]
+
+	// Check if PR is being deleted and has our finalizer
+	if prItem.DeletionTimestamp.IsZero() || !controllerutil.ContainsFinalizer(prItem, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
+		return false, nil
+	}
+
+	// Check if CTP status already matches PR status (meaning status was already copied)
+	if ctp.Status.PullRequest == nil {
+		// CTP has no PR status yet, cannot remove finalizer safely
+		logger.V(4).Info("PR being deleted but CTP has no PR status, cannot remove finalizer yet")
+		return false, nil
+	}
+
+	// Verify that the CTP status matches the PR status
+	statusMatches := ctp.Status.PullRequest.ID == prItem.Status.ID &&
+		ctp.Status.PullRequest.State == prItem.Status.State &&
+		ctp.Status.PullRequest.ExternallyMergedOrClosed == prItem.Status.ExternallyMergedOrClosed
+
+	if !statusMatches {
+		logger.V(4).Info("PR being deleted but CTP status doesn't match PR status, cannot remove finalizer yet",
+			"ctpPRID", ctp.Status.PullRequest.ID,
+			"prID", prItem.Status.ID,
+			"ctpPRState", ctp.Status.PullRequest.State,
+			"prState", prItem.Status.State)
+		return false, nil
+	}
+
+	// Status matches, safe to remove finalizer
+	logger.Info("Removing CTP finalizer from PR - status already synced",
+		"prName", prItem.Name,
+		"prID", prItem.Status.ID,
+		"prState", prItem.Status.State)
+
+	controllerutil.RemoveFinalizer(prItem, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
+	if err := r.Update(ctx, prItem); err != nil {
+		return false, fmt.Errorf("failed to remove CTP finalizer from PullRequest: %w", err)
+	}
+
+	return true, nil
 }
 
 // tooManyPRsError constructs an error indicating that there are too many open pull requests for the CTP.
