@@ -1,4 +1,5 @@
 # see https://github.com/argoproj-labs/argocd-ephemeral-access/blob/main/.github/workflows/release.yaml
+# this file must be kept in sync with the above release.yaml except for the trigger and job name
 name: release-latest
 
 on:
