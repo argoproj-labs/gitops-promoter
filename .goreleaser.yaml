@@ -76,7 +76,7 @@ docker_manifests:
 archives:
   - id: binary
     formats: [tar.gz]
-    builds:
+    ids:
       - "gitops-promoter"
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
