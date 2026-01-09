@@ -44,6 +44,6 @@ jobs:
         with:
           distribution: goreleaser
           version:  v2.13.2
-          args: release -f .goreleaser-latest.yaml --clean --verbose
+          args: release -f .goreleaser-latest.yaml --clean --verbose --snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
