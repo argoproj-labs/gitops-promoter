@@ -16,8 +16,8 @@ require (
 	github.com/google/go-github/v71 v71.0.0
 	github.com/ktrysmt/go-bitbucket v0.9.88
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
-	github.com/onsi/ginkgo/v2 v2.27.3
-	github.com/onsi/gomega v1.38.3
+	github.com/onsi/ginkgo/v2 v2.27.4
+	github.com/onsi/gomega v1.39.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/relvacode/iso8601 v1.7.0
 	github.com/sosedoff/gitkit v0.4.0
