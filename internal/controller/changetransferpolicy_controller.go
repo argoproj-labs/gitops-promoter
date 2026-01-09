@@ -116,15 +116,9 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 
 	// Handle PR finalizer removal if PR is being deleted and CTP status is already synced
-	finalizerRemoved, err := r.handlePRFinalizerRemoval(ctx, &ctp)
+	err = r.handlePRFinalizerRemoval(ctx, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to handle PR finalizer removal: %w", err)
-	}
-	if finalizerRemoved {
-		// PR finalizer was removed, return to avoid further processing
-		// The PR deletion will complete and we'll reconcile again
-		logger.V(4).Info("PR finalizer removed, returning to allow PR deletion to complete")
-		return ctrl.Result{}, nil
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
@@ -796,8 +790,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 
 // handlePRFinalizerRemoval checks if there's a PR being deleted with our finalizer where the CTP status
 // already matches the PR status. If so, it removes the finalizer to allow the PR to be deleted.
-// Returns true if a finalizer was removed, false otherwise.
-func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (bool, error) {
+func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	logger := log.FromContext(ctx)
 
 	// Find any PR resources for this CTP
@@ -811,31 +804,31 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 		}),
 	})
 	if err != nil {
-		return false, fmt.Errorf("failed to list PullRequests for finalizer check: %w", err)
+		return fmt.Errorf("failed to list PullRequests for finalizer check: %w", err)
 	}
 
 	if len(pr.Items) == 0 {
 		// No PR found, nothing to do
-		return false, nil
+		return nil
 	}
 
 	if len(pr.Items) > 1 {
 		// Multiple PRs found, return the error immediately
-		return false, tooManyPRsError(pr)
+		return tooManyPRsError(pr)
 	}
 
 	prItem := &pr.Items[0]
 
 	// Check if PR is being deleted and has our finalizer
 	if prItem.DeletionTimestamp.IsZero() || !controllerutil.ContainsFinalizer(prItem, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
-		return false, nil
+		return nil
 	}
 
 	// Check if CTP status already matches PR status (meaning status was already copied)
 	if ctp.Status.PullRequest == nil {
 		// CTP has no PR status yet, cannot remove finalizer safely
 		logger.V(4).Info("PR being deleted but CTP has no PR status, cannot remove finalizer yet")
-		return false, nil
+		return nil
 	}
 
 	// Verify that the CTP status matches the PR status
@@ -849,7 +842,7 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 			"prID", prItem.Status.ID,
 			"ctpPRState", ctp.Status.PullRequest.State,
 			"prState", prItem.Status.State)
-		return false, nil
+		return nil
 	}
 
 	// Status matches, safe to remove finalizer
@@ -860,10 +853,11 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 
 	controllerutil.RemoveFinalizer(prItem, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
 	if err := r.Update(ctx, prItem); err != nil {
-		return false, fmt.Errorf("failed to remove CTP finalizer from PullRequest: %w", err)
+		return fmt.Errorf("failed to remove CTP finalizer from PullRequest: %w", err)
 	}
 
-	return true, nil
+	logger.V(4).Info("PR finalizer removed")
+	return nil
 }
 
 // tooManyPRsError constructs an error indicating that there are too many open pull requests for the CTP.
