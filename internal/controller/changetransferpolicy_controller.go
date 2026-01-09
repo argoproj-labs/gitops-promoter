@@ -832,16 +832,30 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 	}
 
 	// Verify that the CTP status matches the PR status
-	statusMatches := ctp.Status.PullRequest.ID == prItem.Status.ID &&
-		ctp.Status.PullRequest.State == prItem.Status.State &&
-		ctp.Status.PullRequest.ExternallyMergedOrClosed == prItem.Status.ExternallyMergedOrClosed
+	idMatches := ctp.Status.PullRequest.ID == prItem.Status.ID
+	stateMatches := ctp.Status.PullRequest.State == prItem.Status.State
+
+	// Compare bool pointer values (both fields are *bool)
+	externallyMergedOrClosedMatches := false
+	if ctp.Status.PullRequest.ExternallyMergedOrClosed == nil && prItem.Status.ExternallyMergedOrClosed == nil {
+		externallyMergedOrClosedMatches = true
+	} else if ctp.Status.PullRequest.ExternallyMergedOrClosed != nil && prItem.Status.ExternallyMergedOrClosed != nil {
+		externallyMergedOrClosedMatches = *ctp.Status.PullRequest.ExternallyMergedOrClosed == *prItem.Status.ExternallyMergedOrClosed
+	}
+
+	statusMatches := idMatches && stateMatches && externallyMergedOrClosedMatches
 
 	if !statusMatches {
 		logger.V(4).Info("PR being deleted but CTP status doesn't match PR status, cannot remove finalizer yet",
 			"ctpPRID", ctp.Status.PullRequest.ID,
 			"prID", prItem.Status.ID,
+			"idMatches", idMatches,
 			"ctpPRState", ctp.Status.PullRequest.State,
-			"prState", prItem.Status.State)
+			"prState", prItem.Status.State,
+			"stateMatches", stateMatches,
+			"ctpExternallyMergedOrClosed", ctp.Status.PullRequest.ExternallyMergedOrClosed,
+			"prExternallyMergedOrClosed", prItem.Status.ExternallyMergedOrClosed,
+			"externallyMergedOrClosedMatches", externallyMergedOrClosedMatches)
 		return nil
 	}
 
