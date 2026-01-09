@@ -752,15 +752,33 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	if ctp.Status.PullRequest == nil {
 		ctp.Status.PullRequest = &promoterv1alpha1.PullRequestCommonStatus{}
 	}
+
+	// Only copy PR status when spec.state matches status.state.
+	// This ensures the PR controller has finished processing the state transition.
+	// Prevents race where CTP reconciles when spec="merged" but status is still "open".
+	if pr.Items[0].Spec.State != pr.Items[0].Status.State {
+		logger.V(4).Info("Skipping PR status copy - spec and status not in sync yet",
+			"prID", pr.Items[0].Status.ID,
+			"specState", pr.Items[0].Spec.State,
+			"statusState", pr.Items[0].Status.State)
+		return nil
+	}
+
+	logger.Info("CTP copying PR status",
+		"prName", pr.Items[0].Name,
+		"prState", pr.Items[0].Status.State,
+		"prID", pr.Items[0].Status.ID,
+		"prDeletionTimestamp", pr.Items[0].DeletionTimestamp,
+		"hasCTPFinalizer", controllerutil.ContainsFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer))
+
 	ctp.Status.PullRequest.ID = pr.Items[0].Status.ID
 	ctp.Status.PullRequest.State = pr.Items[0].Status.State
 	ctp.Status.PullRequest.PRCreationTime = pr.Items[0].Status.PRCreationTime
 	ctp.Status.PullRequest.Url = pr.Items[0].Status.Url
 	ctp.Status.PullRequest.ExternallyMergedOrClosed = pr.Items[0].Status.ExternallyMergedOrClosed
 
-	// If PR is being deleted and has our finalizer, remove it after copying status
-	// There is a small window where the PR is deleted and the finalizer is removed, but the status is not saved to the CTP yet if we and we
-	// crash we lose the status.
+	// If PR is being deleted and has our finalizer, remove it after copying status.
+	// The finalizer ensures the PR isn't actually deleted until we've copied the final state.
 	if !pr.Items[0].DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
 		// Status has been copied, safe to remove finalizer
 		controllerutil.RemoveFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
