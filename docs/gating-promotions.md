@@ -166,6 +166,17 @@ Key features:
 - Reports pending until the required duration is met
 - Prevents promotions when there are pending changes in lower environments
 
+### HTTP-Based Gating
+
+The [WebRequestCommitStatus](commit-status-controllers/webrequest.md) controller enables integration with external systems for promotion decisions by making HTTP requests to external endpoints and evaluating responses.
+
+Key features:
+- Makes configurable HTTP requests to any HTTP-accessible endpoint
+- Evaluates responses using expressions (expr language)
+- Supports authentication (Bearer, Basic Auth, custom headers)
+- Configurable polling intervals
+- Can gate on proposed or active commits
+
 ### Custom Controllers
 
 You can also create your own controllers that manage CommitStatus resources. Any system that can create Kubernetes resources can participate in the gating logic by creating CommitStatus resources with the appropriate SHAs and phases.
