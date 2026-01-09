@@ -759,7 +759,7 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 		ctp.Status.PullRequest = &promoterv1alpha1.PullRequestCommonStatus{}
 	}
 
-	logger.Info("CTP copying PR status",
+	logger.V(4).Info("CTP copying PR status",
 		"prName", pr.Items[0].Name,
 		"prState", pr.Items[0].Status.State,
 		"prID", pr.Items[0].Status.ID,
