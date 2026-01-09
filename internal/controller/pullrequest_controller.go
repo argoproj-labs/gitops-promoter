@@ -222,15 +222,24 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 		return false, nil
 	}
 
-	// If we don't find the PR, but we have an ID, it means it was merged or closed externally
+	// If we don't find the PR, but we have an ID, check if it was merged/closed externally or by the controller.
+	// If spec.state is "merged" or "closed", the controller initiated the action and we should NOT mark as external.
+	// Only mark as external if spec.state is "open" (controller didn't initiate the closure/merge).
 	if pr.Status.ID != "" {
-		pr.Status.ExternallyMergedOrClosed = ptr.To(true)
-		// Don't set State since we don't know if it was merged or closed.
-		// The ExternallyMergedOrClosed flag is the source of truth that this PR
-		// is no longer active and was handled outside of the controller's control.
-		// An empty State with ExternallyMergedOrClosed=true means "closed/merged externally, but we don't know which".
-		pr.Status.State = ""
-		return true, nil
+		if pr.Spec.State == promoterv1alpha1.PullRequestOpen {
+			// Controller still thinks PR should be open, but it's not found on provider = external action
+			pr.Status.ExternallyMergedOrClosed = ptr.To(true)
+			// Don't set State since we don't know if it was merged or closed externally.
+			// The ExternallyMergedOrClosed flag is the source of truth that this PR
+			// is no longer active and was handled outside of the controller's control.
+			// An empty State with ExternallyMergedOrClosed=true means "closed/merged externally, but we don't know which".
+			pr.Status.State = ""
+			return true, nil
+		}
+		// If spec.state is "merged" or "closed", the controller is in the process of merging/closing.
+		// The PR may not be found as "open" because it's already transitioned on the provider.
+		// This is normal - let handleStateTransitions continue to process the spec.state.
+		logger.V(4).Info("PR not found open, but controller initiated the action", "specState", pr.Spec.State)
 	}
 
 	return false, nil
