@@ -311,14 +311,15 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// 	g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				// }, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Checking that the pull request for the development, staging, and production environments are closed and have had their ctp statuses cleared")
+				By("Checking that the pull request for the development, staging, and production environments are closed and their statuses preserved")
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpDev)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpDev.Status.PullRequest).To(BeNil())
+					g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status after PR is merged/deleted")
+					g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be 'merged'")
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -327,7 +328,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpStaging)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpStaging.Status.PullRequest).To(BeNil())
+					g.Expect(ctpStaging.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status after PR is merged/deleted")
+					g.Expect(ctpStaging.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be 'merged'")
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -336,7 +338,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpProd.Status.PullRequest).To(BeNil())
+					g.Expect(ctpProd.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status after PR is merged/deleted")
+					g.Expect(ctpProd.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be 'merged'")
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -345,9 +348,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: promotionStrategy.Namespace,
 					}, promotionStrategy)
 					g.Expect(err).To(Succeed())
-					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
-					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(BeNil())
-					g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(BeNil())
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+				g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
+					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+				g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
+					g.Expect(promotionStrategy.Status.Environments[2].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+				g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -1678,7 +1684,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpDev)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpDev.Status.PullRequest).To(BeNil())
+					g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
+				g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
 					prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
@@ -1716,7 +1723,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, promotionStrategy)
 					g.Expect(err).To(Succeed())
 
-					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status after PR is merged/deleted")
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be 'merged'")
 					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(Not(BeNil()))
 					g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(promotionStrategy.Status.Environments[1].PullRequest.ID).To(Not(BeZero()))
@@ -2618,7 +2626,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpDev)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpDev.Status.PullRequest).To(BeNil())
+					g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
+				g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
 					prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2693,7 +2702,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpDev)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpDev.Status.PullRequest).To(BeNil())
+					g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
+				g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
 					prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2708,7 +2718,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpStaging)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpStaging.Status.PullRequest).To(BeNil())
+					g.Expect(ctpStaging.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
+				g.Expect(ctpStaging.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
 					prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2732,8 +2743,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, promotionStrategy)
 					g.Expect(err).To(Succeed())
 
-					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
-					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(BeNil())
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+				g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
+					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+				g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest.ID).To(Not(BeZero()))
@@ -2780,8 +2793,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
 
-					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
-					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(BeNil())
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+				g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
+					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+				g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
