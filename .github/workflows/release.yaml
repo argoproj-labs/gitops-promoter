@@ -21,7 +21,7 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     if: |
-      ${{github.repository == 'argoproj-labs/gitops-promoter' && contains(github.event.head_commit.message, 'docs: bump manifest versions to v')}}
+      github.repository == 'argoproj-labs/gitops-promoter' && contains(github.event.head_commit.message, 'docs: bump manifest versions to v')
     name: Release
     steps:
       - name: Checkout
