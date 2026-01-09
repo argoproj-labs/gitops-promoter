@@ -1,14 +1,12 @@
 # see https://github.com/argoproj-labs/argocd-ephemeral-access/blob/main/.github/workflows/release.yaml
-# this file must be kept in sync with the above release-latest.yaml except for the trigger and job name
-name: release
+# this file must be kept in sync with the above release.yaml except for the trigger and job name
+name: release-latest
 
 on:
   push:
     branches:
       - main
-    paths:
-      - 'docs/getting-started.md'
-      - 'docs/tutorial-argocd-apps.md'
+
 env:
   # If set in the repo env vars it will use this tag to build the release notes.
   # Useful when creating a release tag after a release candidate tags phase.
@@ -19,27 +17,12 @@ defaults:
     shell: bash
 
 jobs:
-  release:
+  release-latest:
     runs-on: ubuntu-24.04
-    if: |
-      github.repository == 'argoproj-labs/gitops-promoter' && contains(github.event.head_commit.message, 'docs: bump manifest versions to v')
-    name: Release
+    name: Push Latest Docker Image
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Extract version from commit message
-        id: extract_version
-        run: |
-          VERSION=$(echo "${{ github.event.head_commit.message }}" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-      - name: Create tag
-        if: steps.extract_version.outputs.version != ''
-        run: |
-          git tag ${{ steps.extract_version.outputs.version }}
-          git push origin ${{ steps.extract_version.outputs.version }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -49,7 +32,7 @@ jobs:
         with:
           go-version: "1.25"
 
-      - name: Docker Login in quay.io
+      - name: Docker Login to quay.io
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
           registry: quay.io
@@ -60,7 +43,7 @@ jobs:
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
         with:
           distribution: goreleaser
-          version: v2.13.2
-          args: release --clean --verbose
+          version:  v2.13.2
+          args: release -f .goreleaser-latest.yaml --clean --verbose
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
