@@ -98,6 +98,7 @@ var (
 	gitServerPort       string
 	webhookReceiverPort int
 	scheme              = utils.GetScheme()
+	enqueueCTP          CTPEnqueueFunc // Function to enqueue CTP reconciliation requests
 )
 
 func TestControllers(t *testing.T) {
@@ -361,6 +362,9 @@ var _ = BeforeSuite(func() {
 	}
 	err = ctpReconciler.SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
+
+	// Store the enqueue function globally so tests can trigger CTP reconciliation
+	enqueueCTP = ctpReconciler.GetEnqueueFunc()
 
 	err = (&CommitStatusReconciler{
 		Client:      k8sManager.GetClient(),

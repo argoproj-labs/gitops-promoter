@@ -807,6 +807,28 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying CTP status preserves ExternallyMergedOrClosed even after PR deletion")
+			// After the PR is deleted, the CTP should still maintain the ExternallyMergedOrClosed state
+			// This allows the CTP to keep a record of what happened to the PR
+			if ctp != nil {
+				ctpName := types.NamespacedName{
+					Name:      pullRequest.OwnerReferences[0].Name,
+					Namespace: pullRequest.Namespace,
+				}
+
+				// Trigger CTP reconciliation using the channel-based enqueue function
+				enqueueCTP(ctpName.Namespace, ctpName.Name)
+
+				// Verify CTP status preserved the ExternallyMergedOrClosed flag
+				Eventually(func(g Gomega) {
+					g.Expect(k8sClient.Get(ctx, ctpName, ctp)).To(Succeed())
+					g.Expect(ctp.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status after PR deletion")
+					g.Expect(ctp.Status.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
+					g.Expect(*ctp.Status.PullRequest.ExternallyMergedOrClosed).To(BeTrue(), "ExternallyMergedOrClosed should be preserved in CTP status")
+					g.Expect(ctp.Status.PullRequest.State).To(BeEmpty(), "State should be empty when externally merged/closed (we don't know if merged or closed)")
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
 		})
 	})
 })

@@ -140,6 +140,13 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil(), "CTP should have PR status")
+					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "CTP status should show PR state as merged when controller merges it")
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				Eventually(func(g Gomega) {
 					typeNamespacedNamePR := types.NamespacedName{
 						Name:      utils.KubeSafeUniqueName(ctx, prName),
 						Namespace: "default",
@@ -422,6 +429,115 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					// Verify mergeSha matches the current HEAD of the proposed branch
 					// This ensures that the PR will only merge if the branch head hasn't changed
 					g.Expect(pr.Spec.MergeSha).To(Equal(currentHydratedSha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
+		Context("When handling PR lifecycle and finalizers", func() {
+			var name string
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var gitPath string
+			var err error
+			var prName string
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-pr-lifecycle", "default")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+
+				gitPath, err = os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				Expect(k8sClient.Delete(ctx, changeTransferPolicy)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+
+			It("should remove CTP finalizer from PR when PR is externally closed and status is synced", func() {
+				By("Adding a pending commit")
+				_, _ = makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+
+				By("Waiting for PR to be created")
+				var createdPR promoterv1alpha1.PullRequest
+				Eventually(func(g Gomega) {
+					typeNamespacedNamePR := types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Namespace: "default",
+					}
+					err := k8sClient.Get(ctx, typeNamespacedNamePR, &createdPR)
+					g.Expect(err).To(Succeed())
+					g.Expect(createdPR.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+					g.Expect(createdPR.Status.ID).ToNot(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Simulating external PR closure by setting ExternallyMergedOrClosed")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      createdPR.Name,
+						Namespace: createdPR.Namespace,
+					}, &createdPR)
+					g.Expect(err).To(Succeed())
+
+					// Simulate PR controller marking it as externally closed
+					createdPR.Status.ExternallyMergedOrClosed = ptr.To(true)
+					createdPR.Status.State = promoterv1alpha1.PullRequestClosed
+					err = k8sClient.Status().Update(ctx, &createdPR)
+					g.Expect(err).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Waiting for CTP to sync the PR status")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.PullRequest).ToNot(BeNil())
+					g.Expect(changeTransferPolicy.Status.PullRequest.ID).To(Equal(createdPR.Status.ID))
+					g.Expect(changeTransferPolicy.Status.PullRequest.State).To(Equal(createdPR.Status.State))
+					g.Expect(changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).ToNot(BeNil())
+					g.Expect(*changeTransferPolicy.Status.PullRequest.ExternallyMergedOrClosed).To(BeTrue())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Marking PR for deletion")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      createdPR.Name,
+						Namespace: createdPR.Namespace,
+					}, &createdPR)
+					g.Expect(err).To(Succeed())
+
+					err = k8sClient.Delete(ctx, &createdPR)
+					g.Expect(err).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying finalizer is removed and PR can be deleted")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      createdPR.Name,
+						Namespace: createdPR.Namespace,
+					}, &createdPR)
+					// PR should be deleted (not found)
+					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
