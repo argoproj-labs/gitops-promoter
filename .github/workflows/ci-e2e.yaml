@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Set up Go
-        uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
+        uses: actions/setup-go@ae252ee6fb24babc50e89fc67c4aa608e69fbf8f # pin@v5
         with:
           go-version: '1.25'
           # see https://github.com/actions/setup-go?tab=readme-ov-file#caching-dependency-files-and-build-outputs
