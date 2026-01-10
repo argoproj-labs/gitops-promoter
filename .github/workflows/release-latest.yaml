@@ -47,3 +47,12 @@ jobs:
           args: release -f .goreleaser-latest.yaml --clean --verbose --snapshot
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Docker Images Latest
+        run: |
+          docker push quay.io/argoprojlabs/gitops-promoter:latest-amd64
+          docker push quay.io/argoprojlabs/gitops-promoter:latest-arm64
+          docker manifest create quay.io/argoprojlabs/gitops-promoter:latest \
+            quay.io/argoprojlabs/gitops-promoter:latest-amd64 \
+            quay.io/argoprojlabs/gitops-promoter:latest-arm64
+          docker manifest push quay.io/argoprojlabs/gitops-promoter:latest
