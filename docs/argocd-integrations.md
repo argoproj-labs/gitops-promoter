@@ -19,7 +19,7 @@ spec:
     spec:
       initContainers:
         - name: extension-gitops-promoter
-          image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.8@sha256:e7cb054207620566286fce2d809b4f298a72474e0d8779ffa8ec92c3b630f054
+          image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
           env:
             - name: EXTENSION_NAME
               value: gitops-promoter
