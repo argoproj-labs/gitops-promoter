@@ -1110,6 +1110,9 @@ spec:
                           description: |-
                             ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
                             This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                            When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                            This status is preserved even after the PullRequest resource is deleted, maintaining a historical
+                            record of the external action until a new pull request is created for this environment.
                           type: boolean
                         id:
                           description: ID is the unique identifier of the pull request,
@@ -1408,6 +1411,9 @@ spec:
                     description: |-
                       ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
                       This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                      When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                      This status is preserved even after the PullRequest resource is deleted, maintaining a historical
+                      record of the external action until a new pull request is created for this environment.
                     type: boolean
                   id:
                     description: ID is the unique identifier of the pull request,
@@ -4880,6 +4886,9 @@ spec:
                                 description: |-
                                   ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
                                   This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                                  When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                                  This status is preserved even after the PullRequest resource is deleted, maintaining a historical
+                                  record of the external action until a new pull request is created for this environment.
                                 type: boolean
                               id:
                                 description: ID is the unique identifier of the pull
@@ -5208,6 +5217,9 @@ spec:
                           description: |-
                             ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
                             This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                            When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                            This status is preserved even after the PullRequest resource is deleted, maintaining a historical
+                            record of the external action until a new pull request is created for this environment.
                           type: boolean
                         id:
                           description: ID is the unique identifier of the pull request,
@@ -5457,6 +5469,9 @@ spec:
                 description: |-
                   ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
                   This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                  When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                  The PullRequest resource will be deleted after this flag is set, but the status is preserved in
+                  the owning ChangeTransferPolicy to maintain a record of the external action.
                 type: boolean
               id:
                 description: ID the id of the pull request
