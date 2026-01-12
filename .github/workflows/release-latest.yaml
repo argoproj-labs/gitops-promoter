@@ -7,6 +7,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+  packages: write
+
 env:
   # If set in the repo env vars it will use this tag to build the release notes.
   # Useful when creating a release tag after a release candidate tags phase.
