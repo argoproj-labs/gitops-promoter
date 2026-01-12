@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tooltip Design Options Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+            font-size: 36px;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .option-card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s;
+        }
+
+        .option-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .option-header {
+            margin-bottom: 20px;
+        }
+
+        .option-number {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .option-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 8px;
+        }
+
+        .option-subtitle {
+            font-size: 14px;
+            color: #718096;
+            margin-bottom: 15px;
+        }
+
+        .specs {
+            background: #f7fafc;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 12px;
+            color: #4a5568;
+        }
+
+        .specs div {
+            margin-bottom: 4px;
+        }
+
+        .trigger-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            width: 100%;
+            transition: background 0.2s;
+        }
+
+        .trigger-button:hover {
+            background: #5568d3;
+        }
+
+        .tooltip-demo-area {
+            min-height: 150px;
+            margin-top: 20px;
+            position: relative;
+            border: 2px dashed #e2e8f0;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .commit-mock {
+            background: #f7fafc;
+            padding: 12px 16px;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            color: #2d3748;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .commit-mock:hover {
+            background: #edf2f7;
+        }
+
+        /* OPTION 1: Fixed Height with Scroll */
+        .github-tooltip.option-1 {
+            background: #24292e;
+            color: white;
+            padding: 10px 12px;
+            font-size: 12px;
+            min-width: 250px;
+            max-width: 450px;
+            max-height: 300px;
+            width: max-content;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1);
+            overflow-y: auto;
+            line-height: 1.5;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+
+        .github-tooltip.option-1.visible {
+            display: block;
+        }
+
+        .github-tooltip.option-1::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .github-tooltip.option-1::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+        }
+
+        .github-tooltip.option-1::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+
+        .github-tooltip.option-1::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.4);
+        }
+
+        .tooltip-subject.option-1 {
+            font-weight: 600;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .tooltip-body.option-1 {
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* OPTION 2: Card-style with Fade */
+        .github-tooltip.option-2 {
+            background: white;
+            color: #24292e;
+            padding: 14px 16px;
+            font-size: 13px;
+            min-width: 280px;
+            max-width: 500px;
+            max-height: 350px;
+            width: max-content;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.08);
+            overflow-y: auto;
+            line-height: 1.6;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+
+        .github-tooltip.option-2.visible {
+            display: block;
+        }
+
+        .github-tooltip.option-2::after {
+            content: '';
+            position: sticky;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 30px;
+            background: linear-gradient(to bottom, transparent, white);
+            pointer-events: none;
+            margin: 0 -16px -14px -16px;
+        }
+
+        .github-tooltip.option-2::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .github-tooltip.option-2::-webkit-scrollbar-track {
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        .github-tooltip.option-2::-webkit-scrollbar-thumb {
+            background: #c0c0c0;
+            border-radius: 4px;
+        }
+
+        .github-tooltip.option-2::-webkit-scrollbar-thumb:hover {
+            background: #a0a0a0;
+        }
+
+        .tooltip-subject.option-2 {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e8e8e8;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #1a1a1a;
+        }
+
+        .tooltip-body.option-2 {
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #4a4a4a;
+            font-size: 12px;
+        }
+
+        /* OPTION 3: Compact with Truncation */
+        .github-tooltip.option-3 {
+            background: #2d3748;
+            color: white;
+            padding: 10px 12px;
+            font-size: 12px;
+            min-width: 200px;
+            max-width: 400px;
+            max-height: 200px;
+            width: max-content;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            line-height: 1.5;
+            overflow: hidden;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+
+        .github-tooltip.option-3.visible {
+            display: block;
+        }
+
+        .tooltip-subject.option-3 {
+            font-weight: 600;
+            margin-bottom: 6px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .tooltip-body.option-3 {
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: rgba(255, 255, 255, 0.85);
+            display: -webkit-box;
+            -webkit-line-clamp: 8;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .tooltip-body.option-3::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 30%;
+            height: 1.5em;
+            background: linear-gradient(to right, transparent, #2d3748 50%);
+        }
+
+        /* OPTION 4: GitHub-style */
+        .github-tooltip.option-4 {
+            background: #1b1f23;
+            color: #e1e4e8;
+            padding: 12px 14px;
+            font-size: 12px;
+            width: 420px;
+            max-height: 280px;
+            border-radius: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            overflow-y: auto;
+            line-height: 1.5;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+
+        .github-tooltip.option-4.visible {
+            display: block;
+        }
+
+        .github-tooltip.option-4::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .github-tooltip.option-4::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .github-tooltip.option-4::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            border: 2px solid #1b1f23;
+        }
+
+        .github-tooltip.option-4::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .tooltip-subject.option-4 {
+            font-weight: 600;
+            margin-bottom: 8px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #ffffff;
+        }
+
+        .tooltip-body.option-4 {
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #959da5;
+            font-size: 11.5px;
+        }
+
+        .recommended {
+            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            color: #2d3748;
+            margin-left: 8px;
+        }
+
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Commit Tooltip Design Options</h1>
+        
+        <div class="options-grid">
+            <!-- Option 1 -->
+            <div class="option-card">
+                <div class="option-header">
+                    <div class="option-number">Option 1 <span class="recommended">RECOMMENDED</span></div>
+                    <div class="option-title">Fixed Height with Scroll</div>
+                    <div class="option-subtitle">Compact & Clean</div>
+                </div>
+                <div class="specs">
+                    <div>📏 Max Height: 300px</div>
+                    <div>📐 Width: 250-450px</div>
+                    <div>📜 Scrollable: Yes</div>
+                    <div>🎨 Theme: Dark (#24292e)</div>
+                </div>
+                <button class="trigger-button" onclick="showTooltip(1)">Show Tooltip</button>
+                <div class="tooltip-demo-area">
+                    <div class="commit-mock" onclick="showTooltip(1)">
+                        67c2f1f: chore: bump version
+                    </div>
+                    <div class="github-tooltip option-1" id="tooltip-1">
+                        <div class="tooltip-subject option-1">chore: bump version to v1.0.1654</div>
+                        <div class="tooltip-body option-1">* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+This is additional context about the commit that would make the tooltip very long without proper constraints. We want to make sure this looks good and is readable.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Option 2 -->
+            <div class="option-card">
+                <div class="option-header">
+                    <div class="option-number">Option 2</div>
+                    <div class="option-title">Card-style with Fade</div>
+                    <div class="option-subtitle">Modern & Polished</div>
+                </div>
+                <div class="specs">
+                    <div>📏 Max Height: 350px</div>
+                    <div>📐 Width: 280-500px</div>
+                    <div>📜 Scrollable: Yes (with fade)</div>
+                    <div>🎨 Theme: Light (white)</div>
+                </div>
+                <button class="trigger-button" onclick="showTooltip(2)">Show Tooltip</button>
+                <div class="tooltip-demo-area">
+                    <div class="commit-mock" onclick="showTooltip(2)">
+                        67c2f1f: chore: bump version
+                    </div>
+                    <div class="github-tooltip option-2" id="tooltip-2">
+                        <div class="tooltip-subject option-2">chore: bump version to v1.0.1654</div>
+                        <div class="tooltip-body option-2">* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+This is additional context about the commit that would make the tooltip very long without proper constraints. We want to make sure this looks good and is readable.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Option 3 -->
+            <div class="option-card">
+                <div class="option-header">
+                    <div class="option-number">Option 3</div>
+                    <div class="option-title">Compact with Truncation</div>
+                    <div class="option-subtitle">Minimal & Quick</div>
+                </div>
+                <div class="specs">
+                    <div>📏 Max Height: 200px</div>
+                    <div>📐 Width: 200-400px</div>
+                    <div>📜 Scrollable: No (truncates at 8 lines)</div>
+                    <div>🎨 Theme: Dark (#2d3748)</div>
+                </div>
+                <button class="trigger-button" onclick="showTooltip(3)">Show Tooltip</button>
+                <div class="tooltip-demo-area">
+                    <div class="commit-mock" onclick="showTooltip(3)">
+                        67c2f1f: chore: bump version
+                    </div>
+                    <div class="github-tooltip option-3" id="tooltip-3">
+                        <div class="tooltip-subject option-3">chore: bump version to v1.0.1654</div>
+                        <div class="tooltip-body option-3">* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+This is additional context about the commit that would make the tooltip very long without proper constraints. We want to make sure this looks good and is readable.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Option 4 -->
+            <div class="option-card">
+                <div class="option-header">
+                    <div class="option-number">Option 4</div>
+                    <div class="option-title">GitHub-style</div>
+                    <div class="option-subtitle">Familiar & Professional</div>
+                </div>
+                <div class="specs">
+                    <div>📏 Max Height: 280px</div>
+                    <div>📐 Width: 420px (fixed)</div>
+                    <div>📜 Scrollable: Yes</div>
+                    <div>🎨 Theme: GitHub Dark (#1b1f23)</div>
+                </div>
+                <button class="trigger-button" onclick="showTooltip(4)">Show Tooltip</button>
+                <div class="tooltip-demo-area">
+                    <div class="commit-mock" onclick="showTooltip(4)">
+                        67c2f1f: chore: bump version
+                    </div>
+                    <div class="github-tooltip option-4" id="tooltip-4">
+                        <div class="tooltip-subject option-4">chore: bump version to v1.0.1654</div>
+                        <div class="tooltip-body option-4">* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+Signed-off-by: emirot <emirot.nolan@gmail.com>
+
+* chore enable nilaway
+
+This is additional context about the commit that would make the tooltip very long without proper constraints. We want to make sure this looks good and is readable.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Click any button or commit to see the tooltip • Click again or outside to hide
+        </div>
+    </div>
+
+    <script>
+        let currentTooltip = null;
+
+        function showTooltip(num) {
+            // Hide current tooltip if any
+            if (currentTooltip) {
+                currentTooltip.classList.remove('visible');
+            }
+
+            // Get the new tooltip
+            const tooltip = document.getElementById(`tooltip-${num}`);
+            
+            // Toggle visibility
+            if (currentTooltip === tooltip) {
+                currentTooltip = null;
+            } else {
+                tooltip.classList.add('visible');
+                currentTooltip = tooltip;
+            }
+        }
+
+        // Click outside to close
+        document.addEventListener('click', function(event) {
+            if (!event.target.closest('.github-tooltip') && 
+                !event.target.closest('.trigger-button') && 
+                !event.target.closest('.commit-mock')) {
+                if (currentTooltip) {
+                    currentTooltip.classList.remove('visible');
+                    currentTooltip = null;
+                }
+            }
+        });
+    </script>
+</body>
+</html>
