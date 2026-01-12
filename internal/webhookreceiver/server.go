@@ -1,18 +1,19 @@
 package webhookreceiver
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
-
-	"github.com/tidwall/gjson"
+	"github.com/go-playground/webhooks/v6/azuredevops"
+	"github.com/go-playground/webhooks/v6/bitbucket"
+	"github.com/go-playground/webhooks/v6/gitea"
+	"github.com/go-playground/webhooks/v6/github"
+	"github.com/go-playground/webhooks/v6/gitlab"
 
 	"k8s.io/apimachinery/pkg/fields"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -39,17 +40,34 @@ type EnqueueFunc func(namespace, name string)
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
-	mgr        controllerruntime.Manager
-	k8sClient  client.Client
-	enqueueCTP EnqueueFunc
+	mgr             controllerruntime.Manager
+	k8sClient       client.Client
+	enqueueCTP      EnqueueFunc
+	githubHook      *github.Webhook
+	gitlabHook      *gitlab.Webhook
+	giteaHook       *gitea.Webhook
+	bitbucketHook   *bitbucket.Webhook
+	azureDevOpsHook *azuredevops.Webhook
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
 func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) WebhookReceiver {
+	// Initialize webhook handlers without secret validation (Option 2 - parsing only)
+	githubHook, _ := github.New()
+	gitlabHook, _ := gitlab.New()
+	giteaHook, _ := gitea.New()
+	bitbucketHook, _ := bitbucket.New()
+	azureDevOpsHook, _ := azuredevops.New()
+
 	return WebhookReceiver{
-		mgr:        mgr,
-		k8sClient:  mgr.GetClient(),
-		enqueueCTP: enqueueCTP,
+		mgr:             mgr,
+		k8sClient:       mgr.GetClient(),
+		enqueueCTP:      enqueueCTP,
+		githubHook:      githubHook,
+		gitlabHook:      gitlabHook,
+		giteaHook:       giteaHook,
+		bitbucketHook:   bitbucketHook,
+		azureDevOpsHook: azureDevOpsHook,
 	}
 }
 
@@ -84,52 +102,6 @@ func (wr *WebhookReceiver) Start(ctx context.Context, addr string) error {
 	return nil
 }
 
-// DetectProvider determines the SCM provider based on webhook headers.
-// Returns ProviderGitHub, ProviderGitLab, ProviderForgejo, ProviderGitea, ProviderBitbucketCloud, ProviderAzureDevops or ProviderUnknown.
-func (wr *WebhookReceiver) DetectProvider(r *http.Request) string {
-	// Check for GitHub webhook headers
-	if r.Header.Get("X-Github-Event") != "" || r.Header.Get("X-Github-Delivery") != "" {
-		return ProviderGitHub
-	}
-
-	// Check for GitLab webhook headers
-	if r.Header.Get("X-Gitlab-Event") != "" || r.Header.Get("X-Gitlab-Token") != "" {
-		return ProviderGitLab
-	}
-
-	// Check for Forgejo-specific headers first (Forgejo has its own headers)
-	if r.Header.Get("X-Forgejo-Event") != "" {
-		return ProviderForgejo
-	}
-
-	// Check for Gitea webhook headers (only if no Forgejo headers present)
-	if r.Header.Get("X-Gitea-Event") != "" {
-		return ProviderGitea
-	}
-
-	// Check for Bitbucket Cloud webhook headers
-	if r.Header.Get("X-Hook-Uuid") != "" {
-		return ProviderBitbucketCloud
-	}
-
-	if r.ContentLength > 0 {
-		bodyBytes, err := io.ReadAll(r.Body)
-		if err != nil {
-			logger.Error(err, "error reading request body for provider detection")
-			return ProviderUnknown
-		}
-		// Restore the body for downstream handlers
-		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
-		// Azure DevOps: check for both EventType and PublisherId
-		if gjson.GetBytes(bodyBytes, "eventType").Exists() && gjson.GetBytes(bodyBytes, "publisherId").Exists() {
-			return ProviderAzureDevops
-		}
-	}
-
-	return ProviderUnknown
-}
-
 func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	var responseCode int
 	var ctpFound bool
@@ -149,29 +121,29 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Determine provider from headers
-	provider := wr.DetectProvider(r)
-
-	// Extract and log a single delivery ID from common webhook headers (GitHub, GitLab, Forgejo/Gitea).
+	// Extract and log delivery ID
 	deliveryID := wr.extractDeliveryID(r)
-	logger := logger.WithValues("provider", provider, "deliveryID", deliveryID)
+	logger := logger.WithValues("deliveryID", deliveryID)
 
-	if provider == ProviderUnknown {
-		logger.V(4).Info("unable to detect provider from headers")
-		responseCode = http.StatusBadRequest
-		http.Error(w, "unable to detect SCM provider from headers", responseCode)
-		return
-	}
-
-	// TODO: add a configurable payload max side for DoS protection.
-	jsonBytes, err := io.ReadAll(r.Body)
+	// Try to parse the webhook using each provider's library
+	provider, beforeSha, ref, err := wr.parseWebhook(r)
 	if err != nil {
-		responseCode = http.StatusInternalServerError
-		http.Error(w, "error reading body", responseCode)
+		logger.V(4).Info("unable to parse webhook", "error", err)
+		responseCode = http.StatusBadRequest
+		http.Error(w, fmt.Sprintf("unable to parse webhook: %v", err), responseCode)
 		return
 	}
 
-	ctp, err := wr.findChangeTransferPolicy(r.Context(), provider, jsonBytes)
+	logger = logger.WithValues("provider", provider, "beforeSha", beforeSha, "ref", ref)
+
+	if beforeSha == "" {
+		logger.V(4).Info("unable to extract commit SHA from webhook payload")
+		responseCode = http.StatusNoContent
+		w.WriteHeader(responseCode)
+		return
+	}
+
+	ctp, err := wr.findChangeTransferPolicy(r.Context(), beforeSha, ref)
 	if err != nil {
 		logger.V(4).Info("could not find any matching ChangeTransferPolicies", "error", err)
 		responseCode = http.StatusNoContent
@@ -199,58 +171,69 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(responseCode)
 }
 
-func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, provider string, jsonBytes []byte) (*promoterv1alpha1.ChangeTransferPolicy, error) {
-	var beforeSha string
-	var ref string
-	ctpLists := promoterv1alpha1.ChangeTransferPolicyList{}
+// parseWebhook attempts to parse the incoming webhook using each provider's library.
+// Returns the provider name, beforeSha, ref, and any error.
+func (wr *WebhookReceiver) parseWebhook(r *http.Request) (provider string, beforeSha string, ref string, err error) {
+	// Try GitHub
+	if payload, err := wr.githubHook.Parse(r, github.PushEvent); err == nil {
+		if push, ok := payload.(github.PushPayload); ok {
+			return ProviderGitHub, push.Before, push.Ref, nil
+		}
+	}
 
-	// Extract webhook data based on provider
-	switch provider {
-	case ProviderGitHub, ProviderForgejo, ProviderGitea:
-		// GitHub, Forgejo, and Gitea webhook format (all use 'pusher')
-		if gjson.GetBytes(jsonBytes, "before").Exists() && gjson.GetBytes(jsonBytes, "pusher").Exists() {
-			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
-			ref = gjson.GetBytes(jsonBytes, "ref").String()
+	// Try GitLab
+	if payload, err := wr.gitlabHook.Parse(r, gitlab.PushEvents); err == nil {
+		if push, ok := payload.(gitlab.PushEventPayload); ok {
+			return ProviderGitLab, push.Before, push.Ref, nil
 		}
-	case ProviderGitLab:
-		// GitLab webhook format
-		if gjson.GetBytes(jsonBytes, "before").Exists() && gjson.GetBytes(jsonBytes, "user_name").Exists() {
-			beforeSha = gjson.GetBytes(jsonBytes, "before").String()
-			ref = gjson.GetBytes(jsonBytes, "ref").String()
+	}
+
+	// Try Gitea (also works for Forgejo since it's a fork)
+	if payload, err := wr.giteaHook.Parse(r, gitea.PushEvent); err == nil {
+		if push, ok := payload.(gitea.PushPayload); ok {
+			// Detect Forgejo vs Gitea based on headers
+			provider := ProviderGitea
+			if r.Header.Get("X-Forgejo-Event") != "" {
+				provider = ProviderForgejo
+			}
+			return provider, push.Before, push.Ref, nil
 		}
-	case ProviderBitbucketCloud:
-		// Bitbucket Cloud webhook format
-		if gjson.GetBytes(jsonBytes, "push.changes").Exists() && gjson.GetBytes(jsonBytes, "actor").Exists() {
-			changes := gjson.GetBytes(jsonBytes, "push.changes")
-			if changes.IsArray() && len(changes.Array()) > 0 {
-				firstChange := changes.Array()[0]
-				beforeSha = firstChange.Get("old.target.hash").String()
-				if newName := firstChange.Get("new.name"); newName.Exists() {
-					ref = "refs/heads/" + newName.String()
-				} else if oldName := firstChange.Get("old.name"); oldName.Exists() {
-					ref = "refs/heads/" + oldName.String()
+	}
+
+	// Try Bitbucket Cloud
+	if payload, err := wr.bitbucketHook.Parse(r, bitbucket.RepoPushEvent); err == nil {
+		if push, ok := payload.(bitbucket.RepoPushPayload); ok {
+			// Extract beforeSha and ref from Bitbucket's nested structure
+			if len(push.Push.Changes) > 0 {
+				change := push.Push.Changes[0]
+				beforeSha := change.Old.Target.Hash
+				ref := ""
+				if change.New.Name != "" {
+					ref = "refs/heads/" + change.New.Name
+				} else if change.Old.Name != "" {
+					ref = "refs/heads/" + change.Old.Name
 				}
+				return ProviderBitbucketCloud, beforeSha, ref, nil
 			}
 		}
-	case ProviderAzureDevops:
-		// Azure DevOps webhook format
-		if gjson.GetBytes(jsonBytes, "resource.refUpdates").Exists() {
-			refUpdates := gjson.GetBytes(jsonBytes, "resource.refUpdates")
-			if refUpdates.IsArray() && len(refUpdates.Array()) > 0 {
-				firstUpdate := refUpdates.Array()[0]
-				beforeSha = firstUpdate.Get("oldObjectId").String()
-				ref = firstUpdate.Get("name").String()
-			}
-		}
-	default:
-		logger.V(4).Info("unsupported provider", "provider", provider)
-		return nil, nil
 	}
 
-	if beforeSha == "" {
-		logger.V(4).Info("unable to extract commit SHA from provider payload", "provider", provider)
-		return nil, nil
+	// Try Azure DevOps
+	if payload, err := wr.azureDevOpsHook.Parse(r, azuredevops.GitPushEventType); err == nil {
+		if push, ok := payload.(azuredevops.GitPushEvent); ok {
+			// Extract beforeSha and ref from Azure DevOps structure
+			if len(push.Resource.RefUpdates) > 0 {
+				refUpdate := push.Resource.RefUpdates[0]
+				return ProviderAzureDevops, refUpdate.OldObjectID, refUpdate.Name, nil
+			}
+		}
 	}
+
+	return "", "", "", errors.New("unable to parse webhook from any supported provider")
+}
+
+func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, beforeSha, ref string) (*promoterv1alpha1.ChangeTransferPolicy, error) {
+	ctpLists := promoterv1alpha1.ChangeTransferPolicyList{}
 
 	err := wr.k8sClient.List(ctx, &ctpLists, &client.ListOptions{
 		FieldSelector: fields.SelectorFromSet(map[string]string{
