@@ -155,7 +155,7 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 func (wr *WebhookReceiver) parseWebhook(r *http.Request) (provider string, beforeSha string, ref string, err error) {
 	result, err := webhooks.ParseAny(r)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", fmt.Errorf("failed to parse webhook: %w", err)
 	}
 
 	// TODO: Add secret validation here if needed

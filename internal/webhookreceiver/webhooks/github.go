@@ -2,6 +2,7 @@ package webhooks
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -9,12 +10,13 @@ import (
 // GitHubParser parses GitHub webhooks.
 type GitHubParser struct{}
 
+// Parse parses a GitHub webhook request and returns a WebhookEvent.
 func (p GitHubParser) Parse(r *http.Request) (*WebhookEvent, error) {
 	eventType := r.Header.Get("X-Github-Event")
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	var event *WebhookEvent
@@ -25,11 +27,11 @@ func (p GitHubParser) Parse(r *http.Request) (*WebhookEvent, error) {
 	case "pull_request":
 		event, err = p.parsePullRequest(body)
 	default:
-		return nil, ErrUnknownEvent{}
+		return nil, UnknownEventError{}
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	return event, nil
@@ -53,7 +55,7 @@ func (p GitHubParser) parsePush(body []byte) (*WebhookEvent, error) {
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse push event: %w", err)
 	}
 
 	return &WebhookEvent{
@@ -68,13 +70,11 @@ func (p GitHubParser) parsePush(body []byte) (*WebhookEvent, error) {
 }
 
 func (p GitHubParser) parsePullRequest(body []byte) (*WebhookEvent, error) {
+	//nolint:revive // nested structs required for JSON unmarshaling
 	var payload struct {
 		Action      string `json:"action"`
-		Number      int    `json:"number"`
 		PullRequest struct {
-			Title  string `json:"title"`
-			Merged bool   `json:"merged"`
-			Head   struct {
+			Head struct {
 				Ref string `json:"ref"`
 				SHA string `json:"sha"`
 			} `json:"head"`
@@ -82,11 +82,14 @@ func (p GitHubParser) parsePullRequest(body []byte) (*WebhookEvent, error) {
 				Ref string `json:"ref"`
 				SHA string `json:"sha"`
 			} `json:"base"`
+			Title  string `json:"title"`
+			Merged bool   `json:"merged"`
 		} `json:"pull_request"`
+		Number int `json:"number"`
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse pull request event: %w", err)
 	}
 
 	return &WebhookEvent{

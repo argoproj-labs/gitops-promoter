@@ -1,7 +1,9 @@
+//nolint:revive // Package defines webhook types and parsers - needs multiple public structs
 package webhooks
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -10,9 +12,12 @@ import (
 type EventType string
 
 const (
-	EventTypePush        EventType = "push"
+	// EventTypePush represents a push/commit event.
+	EventTypePush EventType = "push"
+	// EventTypePullRequest represents a pull/merge request event.
 	EventTypePullRequest EventType = "pull_request"
-	EventTypeUnknown     EventType = "unknown"
+	// EventTypeUnknown represents an unknown or unsupported event type.
+	EventTypeUnknown EventType = "unknown"
 )
 
 // SecretFunc is a function that returns the webhook secret for validation.
@@ -39,22 +44,22 @@ type PushEvent struct {
 
 // PullRequestEvent represents a pull/merge request event from any SCM provider.
 type PullRequestEvent struct {
-	Provider string // github, gitlab, gitea, forgejo, bitbucket, azure
-	Action   string // opened, closed, merged, synchronize, etc.
-	ID       int    // PR/MR ID or number
+	Provider string
+	Action   string
 	Title    string
-	Ref      string // Head branch ref
-	SHA      string // Head commit SHA
-	BaseRef  string // Base/target branch
-	BaseSHA  string // Base commit SHA
-	Merged   bool   // Whether PR was merged (for closed events)
+	Ref      string
+	SHA      string
+	BaseRef  string
+	BaseSHA  string
+	ID       int
+	Merged   bool
 }
 
 // WebhookEvent is a union type for different webhook events.
 type WebhookEvent struct {
-	Type        EventType
 	Push        *PushEvent
 	PullRequest *PullRequestEvent
+	Type        EventType
 }
 
 // Parser can parse webhook requests into WebhookEvents.
@@ -83,13 +88,16 @@ func (pr *ParseResult) ValidateSecret(secret string) error {
 	if secret == "" {
 		return nil // Skip validation if no secret provided
 	}
-	return pr.parser.ValidateSecret(pr.request, pr.Event, secret)
+	if err := pr.parser.ValidateSecret(pr.request, pr.Event, secret); err != nil {
+		return fmt.Errorf("webhook secret validation failed: %w", err)
+	}
+	return nil
 }
 
-// ErrUnknownEvent is returned when the webhook event type is not recognized.
-type ErrUnknownEvent struct{}
+// UnknownEventError is returned when the webhook event type is not recognized.
+type UnknownEventError struct{}
 
-func (e ErrUnknownEvent) Error() string {
+func (e UnknownEventError) Error() string {
 	return "unknown event type"
 }
 
@@ -102,9 +110,9 @@ func ParseAny(r *http.Request) (*ParseResult, error) {
 	// Read the body once and buffer it so we can replay it for each parser
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
-	defer r.Body.Close()
+	_ = r.Body.Close() // Explicitly ignore close error since we've already read the body
 
 	parsers := []Parser{
 		GitHubParser{},
@@ -132,5 +140,5 @@ func ParseAny(r *http.Request) (*ParseResult, error) {
 		}
 	}
 
-	return nil, ErrUnknownEvent{}
+	return nil, UnknownEventError{}
 }

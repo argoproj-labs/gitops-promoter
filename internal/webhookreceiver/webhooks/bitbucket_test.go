@@ -2,6 +2,7 @@ package webhooks_test
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 
@@ -322,7 +323,7 @@ var _ = Describe("BitbucketParser", func() {
 	})
 
 	Context("Unknown Events", func() {
-		It("should return ErrUnknownEvent for unsupported events", func() {
+		It("should return UnknownEventError for unsupported events", func() {
 			payload := `{}`
 
 			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
@@ -331,7 +332,8 @@ var _ = Describe("BitbucketParser", func() {
 			_, err := parser.Parse(req)
 
 			Expect(err).To(HaveOccurred())
-			_, ok := err.(webhooks.ErrUnknownEvent)
+			var errUnknownEvent webhooks.UnknownEventError
+			ok := errors.As(err, &errUnknownEvent)
 			Expect(ok).To(BeTrue())
 		})
 	})
@@ -377,9 +379,7 @@ var _ = Describe("BitbucketParser", func() {
 
 	Context("Invalid Payloads", func() {
 		It("should handle malformed JSON", func() {
-			payload := `{invalid`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(invalidJSON))
 			req.Header.Set("X-Event-Key", "repo:push")
 
 			_, err := parser.Parse(req)
@@ -401,7 +401,8 @@ var _ = Describe("BitbucketParser", func() {
 
 			Expect(err).To(HaveOccurred())
 			// Empty changes is treated as unknown event
-			_, ok := err.(webhooks.ErrUnknownEvent)
+			var errUnknownEvent webhooks.UnknownEventError
+			ok := errors.As(err, &errUnknownEvent)
 			Expect(ok).To(BeTrue())
 		})
 	})

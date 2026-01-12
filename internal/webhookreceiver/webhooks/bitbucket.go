@@ -2,6 +2,7 @@ package webhooks
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -9,12 +10,13 @@ import (
 // BitbucketParser parses Bitbucket Cloud webhooks.
 type BitbucketParser struct{}
 
+// Parse parses a Bitbucket Cloud webhook request and returns a WebhookEvent.
 func (p BitbucketParser) Parse(r *http.Request) (*WebhookEvent, error) {
 	eventType := r.Header.Get("X-Event-Key")
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	var event *WebhookEvent
@@ -25,11 +27,11 @@ func (p BitbucketParser) Parse(r *http.Request) (*WebhookEvent, error) {
 	case "pullrequest:created", "pullrequest:updated", "pullrequest:fulfilled", "pullrequest:rejected":
 		event, err = p.parsePullRequest(body, eventType)
 	default:
-		return nil, ErrUnknownEvent{}
+		return nil, UnknownEventError{}
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	return event, nil
@@ -46,7 +48,7 @@ func (p BitbucketParser) ValidateSecret(r *http.Request, event *WebhookEvent, se
 }
 
 func (p BitbucketParser) parsePush(body []byte) (*WebhookEvent, error) {
-	// Bitbucket has nested structure
+	//nolint:revive // nested structs required for JSON unmarshaling
 	var payload struct {
 		Push struct {
 			Changes []struct {
@@ -67,11 +69,11 @@ func (p BitbucketParser) parsePush(body []byte) (*WebhookEvent, error) {
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse push event: %w", err)
 	}
 
 	if len(payload.Push.Changes) == 0 {
-		return nil, ErrUnknownEvent{}
+		return nil, UnknownEventError{}
 	}
 
 	change := payload.Push.Changes[0]
@@ -92,11 +94,9 @@ func (p BitbucketParser) parsePush(body []byte) (*WebhookEvent, error) {
 }
 
 func (p BitbucketParser) parsePullRequest(body []byte, eventKey string) (*WebhookEvent, error) {
+	//nolint:revive // nested structs required for JSON unmarshaling
 	var payload struct {
 		PullRequest struct {
-			ID     int    `json:"id"`
-			Title  string `json:"title"`
-			State  string `json:"state"` // OPEN, MERGED, DECLINED
 			Source struct {
 				Branch struct {
 					Name string `json:"name"`
@@ -113,24 +113,27 @@ func (p BitbucketParser) parsePullRequest(body []byte, eventKey string) (*Webhoo
 					Hash string `json:"hash"`
 				} `json:"commit"`
 			} `json:"destination"`
+			Title string `json:"title"`
+			State string `json:"state"`
+			ID    int    `json:"id"`
 		} `json:"pullrequest"`
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse pull request event: %w", err)
 	}
 
 	// Map Bitbucket event types to actions
-	action := "unknown"
+	var action string
 	switch eventKey {
 	case "pullrequest:created":
 		action = "opened"
 	case "pullrequest:updated":
 		action = "synchronize"
-	case "pullrequest:fulfilled":
+	case "pullrequest:fulfilled", "pullrequest:rejected":
 		action = "closed"
-	case "pullrequest:rejected":
-		action = "closed"
+	default:
+		action = "unknown"
 	}
 
 	return &WebhookEvent{

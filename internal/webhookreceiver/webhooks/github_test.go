@@ -2,6 +2,7 @@ package webhooks_test
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 
@@ -200,7 +201,7 @@ var _ = Describe("GitHubParser", func() {
 	})
 
 	Context("Unknown Events", func() {
-		It("should return ErrUnknownEvent for unsupported event types", func() {
+		It("should return UnknownEventError for unsupported event types", func() {
 			payload := `{"action": "created"}`
 
 			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
@@ -209,11 +210,12 @@ var _ = Describe("GitHubParser", func() {
 			_, err := parser.Parse(req)
 
 			Expect(err).To(HaveOccurred())
-			_, ok := err.(webhooks.ErrUnknownEvent)
+			var errUnknownEvent webhooks.UnknownEventError
+			ok := errors.As(err, &errUnknownEvent)
 			Expect(ok).To(BeTrue())
 		})
 
-		It("should return ErrUnknownEvent for issues event", func() {
+		It("should return UnknownEventError for issues event", func() {
 			payload := `{"action": "opened"}`
 
 			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
@@ -222,20 +224,15 @@ var _ = Describe("GitHubParser", func() {
 			_, err := parser.Parse(req)
 
 			Expect(err).To(HaveOccurred())
-			_, ok := err.(webhooks.ErrUnknownEvent)
+			var errUnknownEvent webhooks.UnknownEventError
+			ok := errors.As(err, &errUnknownEvent)
 			Expect(ok).To(BeTrue())
 		})
 	})
 
 	Context("Secret Validation", func() {
 		It("should not require secret validation", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123",
-				"after": "def456"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(simplePushPayload))
 			req.Header.Set("X-Github-Event", "push")
 
 			event, err := parser.Parse(req)
@@ -245,13 +242,7 @@ var _ = Describe("GitHubParser", func() {
 		})
 
 		It("should allow ValidateSecret to be called", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123",
-				"after": "def456"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(simplePushPayload))
 			req.Header.Set("X-Github-Event", "push")
 
 			event, err := parser.Parse(req)

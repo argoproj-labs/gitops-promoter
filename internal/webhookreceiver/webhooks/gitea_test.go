@@ -2,12 +2,22 @@ package webhooks_test
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver/webhooks"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+)
+
+const (
+	giteaPushPayloadFull = `{
+				"ref": "refs/heads/main",
+				"before": "abc123def456",
+				"after": "def456abc789"
+			}`
+	giteaPushPayloadSimple = simplePushPayload // Reuse shared constant
 )
 
 var _ = Describe("GiteaParser", func() {
@@ -19,13 +29,7 @@ var _ = Describe("GiteaParser", func() {
 
 	Context("Gitea Push Events", func() {
 		It("should parse Gitea push event", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123def456",
-				"after": "def456abc789"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(giteaPushPayloadFull))
 			req.Header.Set("X-Gitea-Event", "push")
 
 			event, err := parser.Parse(req)
@@ -43,13 +47,7 @@ var _ = Describe("GiteaParser", func() {
 
 	Context("Forgejo Push Events", func() {
 		It("should parse Forgejo push event and detect as Forgejo", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123def456",
-				"after": "def456abc789"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(giteaPushPayloadFull))
 			req.Header.Set("X-Forgejo-Event", "push")
 
 			event, err := parser.Parse(req)
@@ -63,13 +61,7 @@ var _ = Describe("GiteaParser", func() {
 		})
 
 		It("should prefer Forgejo header when both are present", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123",
-				"after": "def456"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(giteaPushPayloadSimple))
 			req.Header.Set("X-Gitea-Event", "push")
 			req.Header.Set("X-Forgejo-Event", "push")
 
@@ -178,7 +170,7 @@ var _ = Describe("GiteaParser", func() {
 	})
 
 	Context("Unknown Events", func() {
-		It("should return ErrUnknownEvent for unsupported Gitea events", func() {
+		It("should return UnknownEventError for unsupported Gitea events", func() {
 			payload := `{}`
 
 			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
@@ -187,11 +179,12 @@ var _ = Describe("GiteaParser", func() {
 			_, err := parser.Parse(req)
 
 			Expect(err).To(HaveOccurred())
-			_, ok := err.(webhooks.ErrUnknownEvent)
+			var errUnknownEvent webhooks.UnknownEventError
+			ok := errors.As(err, &errUnknownEvent)
 			Expect(ok).To(BeTrue())
 		})
 
-		It("should return ErrUnknownEvent for unsupported Forgejo events", func() {
+		It("should return UnknownEventError for unsupported Forgejo events", func() {
 			payload := `{}`
 
 			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
@@ -200,20 +193,15 @@ var _ = Describe("GiteaParser", func() {
 			_, err := parser.Parse(req)
 
 			Expect(err).To(HaveOccurred())
-			_, ok := err.(webhooks.ErrUnknownEvent)
+			var errUnknownEvent webhooks.UnknownEventError
+			ok := errors.As(err, &errUnknownEvent)
 			Expect(ok).To(BeTrue())
 		})
 	})
 
 	Context("Secret Validation", func() {
 		It("should allow ValidateSecret for Gitea", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123",
-				"after": "def456"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(giteaPushPayloadSimple))
 			req.Header.Set("X-Gitea-Event", "push")
 
 			event, err := parser.Parse(req)
@@ -228,13 +216,7 @@ var _ = Describe("GiteaParser", func() {
 		})
 
 		It("should allow ValidateSecret for Forgejo", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123",
-				"after": "def456"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(giteaPushPayloadSimple))
 			req.Header.Set("X-Forgejo-Event", "push")
 
 			event, err := parser.Parse(req)

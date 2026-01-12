@@ -2,6 +2,7 @@ package webhooks_test
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 
@@ -256,7 +257,7 @@ var _ = Describe("AzureParser", func() {
 	})
 
 	Context("Unknown Events", func() {
-		It("should return ErrUnknownEvent for unsupported eventTypes", func() {
+		It("should return UnknownEventError for unsupported eventTypes", func() {
 			payload := `{
 				"eventType": "workitem.created"
 			}`
@@ -266,7 +267,8 @@ var _ = Describe("AzureParser", func() {
 			_, err := parser.Parse(req)
 
 			Expect(err).To(HaveOccurred())
-			_, ok := err.(webhooks.ErrUnknownEvent)
+			var errUnknownEvent webhooks.UnknownEventError
+			ok := errors.As(err, &errUnknownEvent)
 			Expect(ok).To(BeTrue())
 		})
 	})
@@ -324,7 +326,8 @@ var _ = Describe("AzureParser", func() {
 
 			Expect(err).To(HaveOccurred())
 			// Empty refUpdates is treated as unknown event
-			_, ok := err.(webhooks.ErrUnknownEvent)
+			var errUnknownEvent webhooks.UnknownEventError
+			ok := errors.As(err, &errUnknownEvent)
 			Expect(ok).To(BeTrue())
 		})
 	})

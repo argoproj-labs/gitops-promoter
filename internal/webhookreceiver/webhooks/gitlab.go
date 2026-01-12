@@ -2,6 +2,7 @@ package webhooks
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -9,12 +10,13 @@ import (
 // GitLabParser parses GitLab webhooks.
 type GitLabParser struct{}
 
+// Parse parses a GitLab webhook request and returns a WebhookEvent.
 func (p GitLabParser) Parse(r *http.Request) (*WebhookEvent, error) {
 	eventType := r.Header.Get("X-Gitlab-Event")
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	var event *WebhookEvent
@@ -25,11 +27,11 @@ func (p GitLabParser) Parse(r *http.Request) (*WebhookEvent, error) {
 	case "Merge Request Hook":
 		event, err = p.parseMergeRequest(body)
 	default:
-		return nil, ErrUnknownEvent{}
+		return nil, UnknownEventError{}
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	return event, nil
@@ -53,7 +55,7 @@ func (p GitLabParser) parsePush(body []byte) (*WebhookEvent, error) {
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse push event: %w", err)
 	}
 
 	return &WebhookEvent{
@@ -68,23 +70,24 @@ func (p GitLabParser) parsePush(body []byte) (*WebhookEvent, error) {
 }
 
 func (p GitLabParser) parseMergeRequest(body []byte) (*WebhookEvent, error) {
+	//nolint:revive // nested structs required for JSON unmarshaling
 	var payload struct {
 		ObjectAttributes struct {
 			Action      string `json:"action"`
-			IID         int    `json:"iid"` // GitLab uses iid for MR number
 			Title       string `json:"title"`
-			State       string `json:"state"` // opened, closed, merged
+			State       string `json:"state"`
 			MergeStatus string `json:"merge_status"`
 			LastCommit  struct {
 				ID string `json:"id"`
 			} `json:"last_commit"`
 			SourceBranch string `json:"source_branch"`
 			TargetBranch string `json:"target_branch"`
+			IID          int    `json:"iid"`
 		} `json:"object_attributes"`
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse merge request event: %w", err)
 	}
 
 	return &WebhookEvent{

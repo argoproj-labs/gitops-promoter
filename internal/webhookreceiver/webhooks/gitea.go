@@ -2,6 +2,7 @@ package webhooks
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -9,6 +10,7 @@ import (
 // GiteaParser parses Gitea and Forgejo webhooks (compatible format).
 type GiteaParser struct{}
 
+// Parse parses a Gitea or Forgejo webhook request and returns a WebhookEvent.
 func (p GiteaParser) Parse(r *http.Request) (*WebhookEvent, error) {
 	// Gitea uses X-Gitea-Event, Forgejo uses X-Forgejo-Event
 	eventType := r.Header.Get("X-Gitea-Event")
@@ -20,7 +22,7 @@ func (p GiteaParser) Parse(r *http.Request) (*WebhookEvent, error) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	provider := "gitea"
@@ -36,11 +38,11 @@ func (p GiteaParser) Parse(r *http.Request) (*WebhookEvent, error) {
 	case "pull_request":
 		event, err = p.parsePullRequest(body, provider)
 	default:
-		return nil, ErrUnknownEvent{}
+		return nil, UnknownEventError{}
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	return event, nil
@@ -64,7 +66,7 @@ func (p GiteaParser) parsePush(body []byte, provider string) (*WebhookEvent, err
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse push event: %w", err)
 	}
 
 	return &WebhookEvent{
@@ -79,13 +81,11 @@ func (p GiteaParser) parsePush(body []byte, provider string) (*WebhookEvent, err
 }
 
 func (p GiteaParser) parsePullRequest(body []byte, provider string) (*WebhookEvent, error) {
+	//nolint:revive // nested structs required for JSON unmarshaling
 	var payload struct {
 		Action      string `json:"action"`
-		Number      int    `json:"number"`
 		PullRequest struct {
-			Title  string `json:"title"`
-			Merged bool   `json:"merged"`
-			Head   struct {
+			Head struct {
 				Ref string `json:"ref"`
 				SHA string `json:"sha"`
 			} `json:"head"`
@@ -93,11 +93,14 @@ func (p GiteaParser) parsePullRequest(body []byte, provider string) (*WebhookEve
 				Ref string `json:"ref"`
 				SHA string `json:"sha"`
 			} `json:"base"`
+			Title  string `json:"title"`
+			Merged bool   `json:"merged"`
 		} `json:"pull_request"`
+		Number int `json:"number"`
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse pull request event: %w", err)
 	}
 
 	return &WebhookEvent{

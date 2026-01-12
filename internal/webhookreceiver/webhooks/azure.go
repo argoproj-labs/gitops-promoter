@@ -2,6 +2,7 @@ package webhooks
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -9,10 +10,18 @@ import (
 // AzureParser parses Azure DevOps webhooks.
 type AzureParser struct{}
 
+const (
+	azureEventPush      = "git.push"
+	azureEventPRCreated = "git.pullrequest.created"
+	azureEventPRUpdated = "git.pullrequest.updated"
+	azureEventPRMerged  = "git.pullrequest.merged"
+)
+
+// Parse parses an Azure DevOps webhook request and returns a WebhookEvent.
 func (p AzureParser) Parse(r *http.Request) (*WebhookEvent, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	// Azure doesn't have specific header, check payload eventType
@@ -21,22 +30,22 @@ func (p AzureParser) Parse(r *http.Request) (*WebhookEvent, error) {
 	}
 
 	if err := json.Unmarshal(body, &basePayload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse event type: %w", err)
 	}
 
 	var event *WebhookEvent
 
 	switch basePayload.EventType {
-	case "git.push":
+	case azureEventPush:
 		event, err = p.parsePush(body)
-	case "git.pullrequest.created", "git.pullrequest.updated", "git.pullrequest.merged":
+	case azureEventPRCreated, azureEventPRUpdated, azureEventPRMerged:
 		event, err = p.parsePullRequest(body, basePayload.EventType)
 	default:
-		return nil, ErrUnknownEvent{}
+		return nil, UnknownEventError{}
 	}
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read request body: %w", err)
 	}
 
 	return event, nil
@@ -53,6 +62,7 @@ func (p AzureParser) ValidateSecret(r *http.Request, event *WebhookEvent, secret
 }
 
 func (p AzureParser) parsePush(body []byte) (*WebhookEvent, error) {
+	//nolint:revive // nested structs required for JSON unmarshaling
 	var payload struct {
 		Resource struct {
 			RefUpdates []struct {
@@ -64,11 +74,11 @@ func (p AzureParser) parsePush(body []byte) (*WebhookEvent, error) {
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse push event: %w", err)
 	}
 
 	if len(payload.Resource.RefUpdates) == 0 {
-		return nil, ErrUnknownEvent{}
+		return nil, UnknownEventError{}
 	}
 
 	refUpdate := payload.Resource.RefUpdates[0]
@@ -85,11 +95,11 @@ func (p AzureParser) parsePush(body []byte) (*WebhookEvent, error) {
 }
 
 func (p AzureParser) parsePullRequest(body []byte, eventType string) (*WebhookEvent, error) {
+	//nolint:revive // nested structs required for JSON unmarshaling
 	var payload struct {
 		Resource struct {
-			PullRequestID         int    `json:"pullRequestId"`
 			Title                 string `json:"title"`
-			Status                string `json:"status"` // active, completed, abandoned
+			Status                string `json:"status"`
 			MergeStatus           string `json:"mergeStatus"`
 			SourceRefName         string `json:"sourceRefName"`
 			TargetRefName         string `json:"targetRefName"`
@@ -99,22 +109,25 @@ func (p AzureParser) parsePullRequest(body []byte, eventType string) (*WebhookEv
 			LastMergeTargetCommit struct {
 				CommitID string `json:"commitId"`
 			} `json:"lastMergeTargetCommit"`
+			PullRequestID int `json:"pullRequestId"`
 		} `json:"resource"`
 	}
 
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse pull request event: %w", err)
 	}
 
 	// Map Azure event types to actions
-	action := "unknown"
+	var action string
 	switch eventType {
-	case "git.pullrequest.created":
+	case azureEventPRCreated:
 		action = "opened"
-	case "git.pullrequest.updated":
+	case azureEventPRUpdated:
 		action = "synchronize"
-	case "git.pullrequest.merged":
+	case azureEventPRMerged:
 		action = "closed"
+	default:
+		action = "unknown"
 	}
 
 	return &WebhookEvent{
@@ -128,7 +141,7 @@ func (p AzureParser) parsePullRequest(body []byte, eventType string) (*WebhookEv
 			SHA:      payload.Resource.LastMergeSourceCommit.CommitID,
 			BaseRef:  payload.Resource.TargetRefName,
 			BaseSHA:  payload.Resource.LastMergeTargetCommit.CommitID,
-			Merged:   payload.Resource.Status == "completed" && eventType == "git.pullrequest.merged",
+			Merged:   payload.Resource.Status == "completed" && eventType == azureEventPRMerged,
 		},
 	}, nil
 }

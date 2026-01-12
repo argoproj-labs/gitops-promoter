@@ -2,6 +2,7 @@ package webhooks_test
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 
@@ -13,13 +14,7 @@ import (
 var _ = Describe("ParseAny", func() {
 	Context("When parsing webhooks from different providers", func() {
 		It("should parse GitHub push event", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123",
-				"after": "def456"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(simplePushPayload))
 			req.Header.Set("X-Github-Event", "push")
 
 			result, err := webhooks.ParseAny(req)
@@ -32,13 +27,7 @@ var _ = Describe("ParseAny", func() {
 		})
 
 		It("should parse GitLab push event", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123",
-				"after": "def456"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(simplePushPayload))
 			req.Header.Set("X-Gitlab-Event", "Push Hook")
 
 			result, err := webhooks.ParseAny(req)
@@ -51,13 +40,7 @@ var _ = Describe("ParseAny", func() {
 		})
 
 		It("should parse Gitea push event", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123",
-				"after": "def456"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(simplePushPayload))
 			req.Header.Set("X-Gitea-Event", "push")
 
 			result, err := webhooks.ParseAny(req)
@@ -70,13 +53,7 @@ var _ = Describe("ParseAny", func() {
 		})
 
 		It("should parse Forgejo push event", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123",
-				"after": "def456"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(simplePushPayload))
 			req.Header.Set("X-Forgejo-Event", "push")
 
 			result, err := webhooks.ParseAny(req)
@@ -181,7 +158,7 @@ var _ = Describe("ParseAny", func() {
 	})
 
 	Context("When no parser can handle the request", func() {
-		It("should return ErrUnknownEvent", func() {
+		It("should return UnknownEventError", func() {
 			payload := `{"some": "data"}`
 
 			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
@@ -190,20 +167,15 @@ var _ = Describe("ParseAny", func() {
 			_, err := webhooks.ParseAny(req)
 
 			Expect(err).To(HaveOccurred())
-			_, ok := err.(webhooks.ErrUnknownEvent)
+			var errUnknownEvent webhooks.UnknownEventError
+			ok := errors.As(err, &errUnknownEvent)
 			Expect(ok).To(BeTrue())
 		})
 	})
 
 	Context("Secret validation", func() {
 		It("should allow ValidateSecret to be called on result", func() {
-			payload := `{
-				"ref": "refs/heads/main",
-				"before": "abc123",
-				"after": "def456"
-			}`
-
-			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(payload))
+			req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(simplePushPayload))
 			req.Header.Set("X-Github-Event", "push")
 
 			result, err := webhooks.ParseAny(req)
