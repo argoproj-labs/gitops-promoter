@@ -22,12 +22,12 @@ var _ = Describe("parseWebhook", func() {
 			}`
 
 			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(payload))
-			req.Header.Set("X-GitHub-Event", "push")
-			req.Header.Set("X-GitHub-Delivery", "12345")
+			req.Header.Set("X-Github-Event", "push")
+			req.Header.Set("X-Github-Delivery", "12345")
 			req.Header.Set("Content-Type", "application/json")
 
 			// Verify the request structure is valid for GitHub
-			Expect(req.Header.Get("X-GitHub-Event")).To(Equal("push"))
+			Expect(req.Header.Get("X-Github-Event")).To(Equal("push"))
 		})
 	})
 
@@ -104,10 +104,10 @@ var _ = Describe("parseWebhook", func() {
 
 			req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(payload))
 			req.Header.Set("X-Event-Key", "repo:push")
-			req.Header.Set("X-Hook-UUID", "12345-abcde")
+			req.Header.Set("X-Hook-Uuid", "12345-abcde")
 			req.Header.Set("Content-Type", "application/json")
 
-			Expect(req.Header.Get("X-Hook-UUID")).To(Equal("12345-abcde"))
+			Expect(req.Header.Get("X-Hook-Uuid")).To(Equal("12345-abcde"))
 		})
 	})
 

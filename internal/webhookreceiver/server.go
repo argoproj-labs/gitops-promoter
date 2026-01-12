@@ -202,31 +202,29 @@ func (wr *WebhookReceiver) parseWebhook(r *http.Request) (provider string, befor
 
 	// Try Bitbucket Cloud
 	if payload, err := wr.bitbucketHook.Parse(r, bitbucket.RepoPushEvent); err == nil {
-		if push, ok := payload.(bitbucket.RepoPushPayload); ok {
-			// Extract beforeSha and ref from Bitbucket's nested structure
-			if len(push.Push.Changes) > 0 {
-				change := push.Push.Changes[0]
-				beforeSha := change.Old.Target.Hash
-				ref := ""
-				if change.New.Name != "" {
-					ref = "refs/heads/" + change.New.Name
-				} else if change.Old.Name != "" {
-					ref = "refs/heads/" + change.Old.Name
-				}
-				return ProviderBitbucketCloud, beforeSha, ref, nil
-			}
+		push, ok := payload.(bitbucket.RepoPushPayload)
+		if !ok || len(push.Push.Changes) == 0 {
+			return "", "", "", errors.New("invalid Bitbucket payload structure")
 		}
+		change := push.Push.Changes[0]
+		beforeSha := change.Old.Target.Hash
+		ref := ""
+		if change.New.Name != "" {
+			ref = "refs/heads/" + change.New.Name
+		} else if change.Old.Name != "" {
+			ref = "refs/heads/" + change.Old.Name
+		}
+		return ProviderBitbucketCloud, beforeSha, ref, nil
 	}
 
 	// Try Azure DevOps
 	if payload, err := wr.azureDevOpsHook.Parse(r, azuredevops.GitPushEventType); err == nil {
-		if push, ok := payload.(azuredevops.GitPushEvent); ok {
-			// Extract beforeSha and ref from Azure DevOps structure
-			if len(push.Resource.RefUpdates) > 0 {
-				refUpdate := push.Resource.RefUpdates[0]
-				return ProviderAzureDevops, refUpdate.OldObjectID, refUpdate.Name, nil
-			}
+		push, ok := payload.(azuredevops.GitPushEvent)
+		if !ok || len(push.Resource.RefUpdates) == 0 {
+			return "", "", "", errors.New("invalid Azure DevOps payload structure")
 		}
+		refUpdate := push.Resource.RefUpdates[0]
+		return ProviderAzureDevops, refUpdate.OldObjectID, refUpdate.Name, nil
 	}
 
 	return "", "", "", errors.New("unable to parse webhook from any supported provider")
