@@ -12,7 +12,6 @@ require (
 	github.com/gin-contrib/gzip v1.2.5
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-logr/logr v1.4.3
-	github.com/go-playground/webhooks/v6 v6.4.0
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/google/go-github/v71 v71.0.0
 	github.com/ktrysmt/go-bitbucket v0.9.88

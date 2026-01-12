@@ -9,11 +9,7 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
-	"github.com/go-playground/webhooks/v6/azuredevops"
-	"github.com/go-playground/webhooks/v6/bitbucket"
-	"github.com/go-playground/webhooks/v6/gitea"
-	"github.com/go-playground/webhooks/v6/github"
-	"github.com/go-playground/webhooks/v6/gitlab"
+	"github.com/argoproj-labs/gitops-promoter/internal/webhookreceiver/webhooks"
 
 	"k8s.io/apimachinery/pkg/fields"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,34 +36,17 @@ type EnqueueFunc func(namespace, name string)
 
 // WebhookReceiver is a server that listens for webhooks and triggers reconciles of ChangeTransferPolicies.
 type WebhookReceiver struct {
-	mgr             controllerruntime.Manager
-	k8sClient       client.Client
-	enqueueCTP      EnqueueFunc
-	githubHook      *github.Webhook
-	gitlabHook      *gitlab.Webhook
-	giteaHook       *gitea.Webhook
-	bitbucketHook   *bitbucket.Webhook
-	azureDevOpsHook *azuredevops.Webhook
+	mgr        controllerruntime.Manager
+	k8sClient  client.Client
+	enqueueCTP EnqueueFunc
 }
 
 // NewWebhookReceiver creates a new instance of WebhookReceiver.
 func NewWebhookReceiver(mgr controllerruntime.Manager, enqueueCTP EnqueueFunc) WebhookReceiver {
-	// Initialize webhook handlers without secret validation (Option 2 - parsing only)
-	githubHook, _ := github.New()
-	gitlabHook, _ := gitlab.New()
-	giteaHook, _ := gitea.New()
-	bitbucketHook, _ := bitbucket.New()
-	azureDevOpsHook, _ := azuredevops.New()
-
 	return WebhookReceiver{
-		mgr:             mgr,
-		k8sClient:       mgr.GetClient(),
-		enqueueCTP:      enqueueCTP,
-		githubHook:      githubHook,
-		gitlabHook:      gitlabHook,
-		giteaHook:       giteaHook,
-		bitbucketHook:   bitbucketHook,
-		azureDevOpsHook: azureDevOpsHook,
+		mgr:        mgr,
+		k8sClient:  mgr.GetClient(),
+		enqueueCTP: enqueueCTP,
 	}
 }
 
@@ -171,63 +150,23 @@ func (wr *WebhookReceiver) postRoot(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(responseCode)
 }
 
-// parseWebhook attempts to parse the incoming webhook using each provider's library.
+// parseWebhook attempts to parse the incoming webhook using the webhooks library.
 // Returns the provider name, beforeSha, ref, and any error.
 func (wr *WebhookReceiver) parseWebhook(r *http.Request) (provider string, beforeSha string, ref string, err error) {
-	// Try GitHub
-	if payload, err := wr.githubHook.Parse(r, github.PushEvent); err == nil {
-		if push, ok := payload.(github.PushPayload); ok {
-			return ProviderGitHub, push.Before, push.Ref, nil
-		}
+	result, err := webhooks.ParseAny(r)
+	if err != nil {
+		return "", "", "", err
 	}
 
-	// Try GitLab
-	if payload, err := wr.gitlabHook.Parse(r, gitlab.PushEvents); err == nil {
-		if push, ok := payload.(gitlab.PushEventPayload); ok {
-			return ProviderGitLab, push.Before, push.Ref, nil
-		}
+	// TODO: Add secret validation here if needed
+	// Example: result.ValidateSecret(secret)
+
+	// Currently only handle push events
+	if result.Event.Type == webhooks.EventTypePush && result.Event.Push != nil {
+		return result.Event.Push.Provider, result.Event.Push.Before, result.Event.Push.Ref, nil
 	}
 
-	// Try Gitea (also works for Forgejo since it's a fork)
-	if payload, err := wr.giteaHook.Parse(r, gitea.PushEvent); err == nil {
-		if push, ok := payload.(gitea.PushPayload); ok {
-			// Detect Forgejo vs Gitea based on headers
-			provider := ProviderGitea
-			if r.Header.Get("X-Forgejo-Event") != "" {
-				provider = ProviderForgejo
-			}
-			return provider, push.Before, push.Ref, nil
-		}
-	}
-
-	// Try Bitbucket Cloud
-	if payload, err := wr.bitbucketHook.Parse(r, bitbucket.RepoPushEvent); err == nil {
-		push, ok := payload.(bitbucket.RepoPushPayload)
-		if !ok || len(push.Push.Changes) == 0 {
-			return "", "", "", errors.New("invalid Bitbucket payload structure")
-		}
-		change := push.Push.Changes[0]
-		beforeSha := change.Old.Target.Hash
-		ref := ""
-		if change.New.Name != "" {
-			ref = "refs/heads/" + change.New.Name
-		} else if change.Old.Name != "" {
-			ref = "refs/heads/" + change.Old.Name
-		}
-		return ProviderBitbucketCloud, beforeSha, ref, nil
-	}
-
-	// Try Azure DevOps
-	if payload, err := wr.azureDevOpsHook.Parse(r, azuredevops.GitPushEventType); err == nil {
-		push, ok := payload.(azuredevops.GitPushEvent)
-		if !ok || len(push.Resource.RefUpdates) == 0 {
-			return "", "", "", errors.New("invalid Azure DevOps payload structure")
-		}
-		refUpdate := push.Resource.RefUpdates[0]
-		return ProviderAzureDevops, refUpdate.OldObjectID, refUpdate.Name, nil
-	}
-
-	return "", "", "", errors.New("unable to parse webhook from any supported provider")
+	return "", "", "", errors.New("unsupported event type")
 }
 
 func (wr *WebhookReceiver) findChangeTransferPolicy(ctx context.Context, beforeSha, ref string) (*promoterv1alpha1.ChangeTransferPolicy, error) {
