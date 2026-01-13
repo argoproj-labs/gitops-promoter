@@ -44,7 +44,7 @@ spec:
 ```
 
 > [!NOTE]
-> In order to see gitops-promoter CRD resources(PromotionStrategy,ScmProvider...) in the Argo CD UI, they must be part of your deployed manifests within a dedicated namespace
+> In order to see gitops-promoter CRD resources(PromotionStrategy,ScmProvider...) in the ArgoCD UI, they must be part of your deployed manifests within a dedicated namespace
 
 ## Deep Links
 
