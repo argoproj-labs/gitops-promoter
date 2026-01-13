@@ -27,7 +27,7 @@ local_resource(
     labels=['build'],
 )
 
-# Run the dashboard locally (auto-restarts when binary changes)
+# Run the dashboard locally (auto-restarts on ui changes)
 local_resource(
     'run-dashboard',
     serve_cmd='go run ./cmd dashboard --port=8080',
