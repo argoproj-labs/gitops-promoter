@@ -1,7 +1,7 @@
 # Getting Started
 
-This guide will help you get started installing and setting up the GitOps Promoter. We currently only support
-GitHub, GitHub Enterprise, GitLab and Forgejo (including Codeberg) as the SCM providers. We would welcome any contributions to add support for other providers.
+This guide will help you get started installing and setting up the GitOps Promoter. We currently support
+GitHub, GitHub Enterprise, GitLab, Forgejo (including Codeberg), Gitea, Bitbucket Cloud, and Azure DevOps as the SCM providers. We would welcome any contributions to add support for other providers.
 
 ## Requirements
 
@@ -15,14 +15,13 @@ GitHub, GitHub Enterprise, GitLab and Forgejo (including Codeberg) as the SCM pr
 To install GitOps Promoter, you can use the following command:
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.18.2/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.20.2/install.yaml
 ```
 
 ## GitHub App Configuration
 
 You will need to [create a GitHub App](https://docs.github.com/en/developers/apps/creating-a-github-app) and configure
 it to allow the GitOps Promoter to interact with your GitHub repository.
-
 
 During the creation the GitHub App, you will need to configure the following settings:
 
@@ -38,8 +37,8 @@ During the creation the GitHub App, you will need to configure the following set
 
 > [!NOTE]
 > We do support configuration of a GitHub App webhook that triggers PR creation upon Push. However, we do not configure
-> the ingress to allow GitHub to reach the GitOps Promoter. You will need to configure the ingress to allow GitHub to reach 
-> the GitOps Promoter via the service promoter-webhook-receiver which listens on port `3333`. If you do not use webhooks 
+> the ingress to allow GitHub to reach the GitOps Promoter. You will need to configure the ingress to allow GitHub to reach
+> the GitOps Promoter via the service promoter-webhook-receiver which listens on port `3333`. If you do not use webhooks
 > you might want to adjust the auto reconciliation interval to a lower value using these `promotionStrategyRequeueDuration` and
 > `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
 
@@ -89,7 +88,7 @@ stringData:
 > [!NOTE]
 > This Secret will need to be installed to the same namespace that you plan on creating PromotionStrategy resources in.
 
-We also need a GitRepository and ScmProvider, which are custom resources that represent a git repository and a provider. 
+We also need a GitRepository and ScmProvider, which are custom resources that represent a git repository and a provider.
 Here is an example of both resources:
 
 ```yaml
@@ -119,11 +118,11 @@ spec:
 > [!IMPORTANT]
 > Make sure your staging branches (`environment/development-next`, `environment/staging-next`, etc.) are not auto-deleted
 > when PRs are merged. You can do this either by disabling auto-deletion of branches in the repository settings (in
-> Settings > Automatically delete head branches) or by adding a branch protection rule for a matching pattern such as 
+> Settings > Automatically delete head branches) or by adding a branch protection rule for a matching pattern such as
 > `environment/*-next` (`/` characters are separators in GitHub's glob implementation, so `*-next` will not work).
 
 > [!NOTE]
-> The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy 
+> The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy
 > resources in, and it also needs to be in the same namespace of the secret it references.
 
 ## GitLab Configuration
@@ -140,7 +139,7 @@ stringData:
   token: <your-access-token>
 ```
 
-We also need a GitRepository and ScmProvider, which is are custom resources that represents a git repository and a provider. 
+We also need a GitRepository and ScmProvider, which is are custom resources that represents a git repository and a provider.
 Here is an example of both resources:
 
 ```yaml
@@ -164,6 +163,63 @@ spec:
     projectId: <project-id>
   scmProviderRef:
     name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
+```
+
+## Gitea Configuration
+
+To configure GitOps Promoter with Gitea, you will need to create an access token. See the [official Gitea documentation](https://docs.gitea.com/development/api-usage#generating-and-listing-api-tokens) for creating access tokens. The token needs `read and write` repository permissions.
+
+This token should be in a secret as follows:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  token: <your-access-token>
+```
+
+Alternatively, while it is not recommended you can use basic HTTP authentication against your Gitea instance:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  username: <your-user>
+  password: <your-password>
+```
+
+**Note:** This will not work if your user/bot account has MFA/2FA enabled.
+
+We also need a GitRepository and ScmProvider, which are custom resources that represent a git repository and a provider.
+Here is an example of both resources:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  gitea:
+    domain: <your-gitea-domain> # e.g., gitea.com or gitea.mycompany.com
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  gitea:
+    owner: <organization-or-user-name>
+    name: <repo-name>
+  scmProviderRef:
+    name: <your-scmprovider-name>
 ```
 
 ## Forgejo Configuration
@@ -220,9 +276,152 @@ spec:
     name: <your-scmprovider-name> # The secret that contains the GitLab Access Token
 ```
 
+## Bitbucket Cloud Configuration
+
+To configure the GitOps Promoter with Bitbucket Cloud, you will need to create a repository access token with the appropriate permissions and configure the necessary resources to allow the promoter to interact with your repository.
+
+### Creating a Bitbucket Cloud Repository Access Token
+
+1. Navigate to your repository URL
+2. Click on "Repository settings" in the sidebar
+3. Navigate to "Access tokens"
+4. Click "Create access token"
+5. Give it a name (e.g., "GitOps Promoter")
+6. Select the following permissions:
+   * **Repositories**: Read and Write
+   * **Pull requests**: Read and Write
+
+## Azure DevOps Configuration
+
+To configure Gitops Promoter with Azure Devops, you will need to create a Personal Access Token (PAT).
+### ScmProvider
+#### PAT
+Create an PAT in Azure Devops, that has 'Read & Write' on scope 'Code'.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  token: <your-access-token>
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  azureDevOps:
+    organization: <your-azdo-organization>
+```
+
+### GitRepository
+
+We also need a GitRepository referencing the ScmProvider
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  azureDevOps:
+    project: <project-name>
+    name: <repo-name>
+  scmProviderRef:
+    name: <your-scmprovider-name>
+ ```
+
+### Webhooks (Optional - but highly recommended)
+
+> [!NOTE]
+> We do support configuration of a Bitbucket Cloud webhook that triggers PR creation upon Push. However, we do not configure
+> the ingress to allow Bitbucket Cloud to reach the GitOps Promoter. You will need to configure the ingress to allow Bitbucket Cloud to reach
+> the GitOps Promoter via the service promoter-webhook-receiver which listens on port `3333`. If you do not use webhooks
+> you might want to adjust the auto reconciliation interval to a lower value using these `promotionStrategyRequeueDuration` and
+> `changeTransferPolicyRequeueDuration` fields of the `ControllerConfiguration` resource.
+
+To enable webhook support for automatic PR creation on push:
+
+1. Navigate to your repository URL
+2. Click on "Repository settings" in the sidebar
+3. Navigate to "Webhooks"
+4. Click "Add webhook"
+5. Configure the webhook:
+   * **Title**: GitOps Promoter
+   * **URL**: `https://argo-github-app-webhook.com/` # Replace with your domain
+   * **Triggers**: Select "Repository: Push"
+
+Here is an example Ingress configuration for the webhook receiver:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: promoter-webhook-receiver
+  namespace: promoter-system
+  annotations:
+    # Add any necessary annotations for your ingress controller
+    # For example, if using nginx-ingress:
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  rules:
+  - host: argo-github-app-webhook.com  # Replace with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: promoter-webhook-receiver
+            port:
+              number: 3333
+```
+
+### Configuration
+
+This access token should be used in a secret as follows:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <your-secret-name>
+type: Opaque
+stringData:
+  token: <your-repository-access-token>
+```
+
+We also need a GitRepository and ScmProvider, which are custom resources that represent a git repository and a provider.
+Here is an example of both resources:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: <your-scmprovider-name>
+spec:
+  secretRef:
+    name: <your-secret-name>
+  bitbucketCloud: {}
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: <git-repository-ref-name>
+spec:
+  bitbucketCloud:
+    owner: <owner-or-workspace-name>
+    name: <repo-name>
+  scmProviderRef:
+    name: <your-scmprovider-name>
+```
+
 > [!NOTE]
 > The GitRepository and ScmProvider also need to be installed to the same namespace that you plan on creating PromotionStrategy resources in, and it also needs to be in the same namespace of the secret it references.
-
 
 ## Promotion Strategy
 
@@ -285,4 +484,4 @@ By default, the UI uses your current kubeconfig context. If you want to use a di
 gitops-promoter dashboard --port <your-port> --kubecontext <your-kube-context>
 ```
 
-![Video of the GitOps Promoter UI as a change is promoted through three environments](https://github.com/user-attachments/assets/5860cc7a-56e6-4003-b1fc-b33e4d69d411)
+![Video of the GitOps Promoter UI as a change is promoted through three environments](assets/demo.gif)

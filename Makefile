@@ -115,7 +115,7 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 
 .PHONY: nilaway-no-test
 nilaway-no-test: nilaway ## Run nilaway to remove nil checks from the code
-	$(NILAWAY) --test=false ./...
+	GOMEMLIMIT=8GiB $(NILAWAY) -test=false -exclude-pkgs="sigs.k8s.io,k8s.io" ./...
 
 ##@ Build
 
@@ -133,6 +133,14 @@ build-extension: ## Build ArgoCD extension.
 	cd ui/components-lib && npm install
 	cd ui/extension && npm install && npm run build
 
+.PHONY: install-extension-local
+install-extension-local: ## Install ArgoCD extension to /tmp/extensions/promoter directory.
+	mkdir -p /tmp/extensions/promoter
+	cp ui/extension/dist/extension-promoter.js /tmp/extensions/promoter/
+
+.PHONY: build-extension-local
+build-extension-local: build-extension install-extension-local ## Build ArgoCD extension and install it locally to /tmp/extensions/promoter directory.
+
 .PHONY: build-all
 build-all: build-dashboard build-extension build ## Build dashboard UI, extension, and then the manager binary.
 
@@ -140,8 +148,14 @@ build-all: build-dashboard build-extension build ## Build dashboard UI, extensio
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./cmd/main.go controller
 
+.PHONY: run-dashboard-dev
+run-dashboard-dev: 
+	cd ui/dashboard && npm install && npm run dev &
+	sleep 2
+	go run ./cmd/main.go dashboard
+
 .PHONY: run-dashboard
-run-dashboard: build-dashboard ## Run dashboard from your host.
+run-dashboard: build-dashboard 
 	go run ./cmd/main.go dashboard
 
 .PHONY: lint-dashboard
@@ -247,11 +261,11 @@ GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 KUSTOMIZE_VERSION ?= v5.3.0
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.7.2
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
-GORELEASER_VERSION ?= v2.6.1
+GORELEASER_VERSION ?= v2.13.2
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -296,7 +310,7 @@ $(GORELEASER): $(LOCALBIN)
 
 .PHONY: serve-docs
 serve-docs:
-	$(CONTAINER_TOOL) run ${MKDOCS_RUN_ARGS} --rm -it -p 8000:8000 -v ${CURRENT_DIR}:/docs -w /docs --entrypoint "" ${MKDOCS_DOCKER_IMAGE} sh -c 'pip install mkdocs; pip install $$(mkdocs get-deps); mkdocs serve -a $$(ip route get 1 | awk '\''{print $$7}'\''):8000'
+	$(CONTAINER_TOOL) run ${MKDOCS_RUN_ARGS} --rm -it -p 8000:8000 -v ${CURRENT_DIR}:/docs -w /docs --entrypoint "" ${MKDOCS_DOCKER_IMAGE} sh -c 'pip install -r docs/requirements.txt; mkdocs serve -a $$(ip route get 1 | awk '\''{print $$7}'\''):8000'
 
 .PHONY: lint-docs
 lint-docs:  ## Build docs and fail if there are warnings

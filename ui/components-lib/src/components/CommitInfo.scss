@@ -3,36 +3,65 @@
 // Tooltip
 .tooltip-container {
   position: absolute;
-  top: 20px;
-  left: 50px;
   z-index: 1000;
   pointer-events: auto; // Fix for tooltip flashing - allows tooltip to receive mouse events
+}
+
+.anchored-tooltip {
+  left: 0;
+  top: calc(100% + 4px); // 4px gap below .commit-content
 }
 
 .github-tooltip {
   background: #24292e;
   color: white;
-  padding: 6px 8px;
+  padding: 10px 12px;
   font-size: 12px;
-  min-width: 120px;
-  max-width: 400px;
+  min-width: 250px;
+  max-width: 450px;
+  max-height: 300px;
   width: max-content;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  overflow-y: auto;
+  line-height: 1.5;
   word-wrap: break-word;
   word-break: break-word;
   white-space: pre-wrap;
-  line-height: 1.4;
+  
+  // Custom scrollbar styling
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 3px;
+    
+    &:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+  }
 }
 
 .tooltip-subject {
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .tooltip-body {
   white-space: pre-wrap;
+  word-break: break-word;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .commits-section {
@@ -119,7 +148,7 @@
   margin-bottom: 12px;
   padding: 16px 0;
   min-width: 180px;
-  height: 50px;
+  min-height: 50px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -128,6 +157,8 @@
 
 .commit-content {
   margin-left: 50px;
+  position: relative;
+  min-width: 0; // Allow flex children to shrink
 }
 
 .commit-icon-wrapper {
@@ -179,6 +210,9 @@
   display: flex;
   align-items: center;
   margin-bottom: 6px;
+  gap: 12px;
+  min-width: 0; // Allow flex children to shrink below content size
+  overflow: hidden; // Prevent text from overflowing horizontally
 }
 
 .commit-meta {
@@ -205,6 +239,7 @@
   padding: 2px 6px;
   border-radius: 3px;
   border: 1px solid #e0e0e0;
+  flex-shrink: 0; // Prevent SHA from shrinking
 }
 
 .commit-sha-link {
@@ -217,6 +252,7 @@
   border: 1px solid #e0e0e0;
   text-decoration: none;
   transition: all 0.2s ease;
+  flex-shrink: 0; // Prevent SHA from shrinking
 
   &:hover {
     text-decoration: underline;
@@ -235,11 +271,10 @@
   font-family: 'Heebo', sans-serif;
   font-size: 15px;
   color: $argo-color-gray-7;
-  margin-left: 12px;
-  flex: 0.9;
+  flex: 1;
+  min-width: 0; // Allow text to shrink below content size
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 280px;
   position: relative;
 }

@@ -43,6 +43,31 @@ spec:
           spec:
             description: ScmProviderSpec defines the desired state of ScmProvider
             properties:
+              azureDevOps:
+                description: AzureDevOps required configuration for Azure DevOps as
+                  the SCM provider
+                properties:
+                  domain:
+                    description: Domain is the Azure DevOps domain, such as "dev.azure.com".
+                      If using the default Azure DevOps domain, leave this field empty.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: Instead of setting the domain to dev.azure.com, leave
+                        the field blank
+                      rule: self != "dev.azure.com"
+                  organization:
+                    description: Organization is the Azure DevOps organization name.
+                    maxLength: 50
+                    minLength: 1
+                    pattern: ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
+                    type: string
+                required:
+                - organization
+                type: object
+              bitbucketCloud:
+                description: BitbucketCloud required configuration for Bitbucket Cloud
+                  as the SCM provider
+                type: object
               fake:
                 description: Fake required configuration for Fake as the SCM provider
                 properties:
@@ -59,6 +84,18 @@ spec:
                     description: |-
                       Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
                       There is no default domain since Forgejo is not a service like Gitlab or Github.
+                    type: string
+                required:
+                - domain
+                type: object
+              gitea:
+                description: Gitea required configuration for Gitea as the SCM provider
+                properties:
+                  domain:
+                    description: |-
+                      Domain is the Gitea domain, such as "gitea.com" or "gitea.mycompany.com".
+                      There is no default domain since Gitea is self-hosted.
+                    minLength: 1
                     type: string
                 required:
                 - domain
@@ -116,9 +153,9 @@ spec:
                 x-kubernetes-map-type: atomic
             type: object
             x-kubernetes-validations:
-            - message: exactly one of the fields in [github gitlab forgejo fake] must
-                be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.fake)].filter(x,x==true).size()
+            - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
+                azureDevOps fake] must be set
+              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
                 == 1'
           status:
             description: ScmProviderStatus defines the observed state of ScmProvider

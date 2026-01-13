@@ -1,0 +1,80 @@
+# This file must be kept in sync with .gorleaser.yaml except for release section
+# yaml-language-server: $schema=https://raw.githubusercontent.com/goreleaser/goreleaser/v2.13.2/www/docs/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+project_name: gitops-promoter
+version: 2
+
+dist: release_dist
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod download
+    - make build-dashboard # Builds the dashboards UI and embeds it
+    - make build-extension # Build the ArgoCD extension
+
+builds:
+  - id: gitops-promoter
+    main: ./cmd
+    binary: gitops-promoter
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -v
+    goos:
+      - linux
+    ldflags:
+      - -X github.com/argoproj-labs/gitops-promoter/common.version=latest
+      - -X github.com/argoproj-labs/gitops-promoter/common.buildDate={{ .Date }}
+      - -extldflags="-static"
+
+dockers:
+  - image_templates:
+      - quay.io/argoprojlabs/gitops-promoter:latest-amd64
+    dockerfile: release.Dockerfile
+    use: buildx
+    goarch: amd64
+    extra_files:
+      - hack/git/promoter_askpass.sh
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version=latest"
+      - "--platform=linux/amd64"
+  - image_templates:
+      - quay.io/argoprojlabs/gitops-promoter:latest-arm64
+    dockerfile: release.Dockerfile
+    use: buildx
+    goarch: arm64
+    extra_files:
+      - hack/git/promoter_askpass.sh
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version=latest"
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "quay.io/argoprojlabs/gitops-promoter:latest"
+    image_templates:
+      - "quay.io/argoprojlabs/gitops-promoter:latest-amd64"
+      - "quay.io/argoprojlabs/gitops-promoter:latest-arm64"
+
+# No archives for latest builds
+archives: []
+
+# No GitHub release for latest builds
+release:
+  disable: true
+
+# No changelog needed
+changelog:
+  disable: true

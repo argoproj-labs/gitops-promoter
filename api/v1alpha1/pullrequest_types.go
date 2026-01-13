@@ -83,6 +83,12 @@ type PullRequestStatus struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
+	// ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
+	// This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+	// When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+	// The PullRequest resource will be deleted after this flag is set, but the status is preserved in
+	// the owning ChangeTransferPolicy to maintain a record of the external action.
+	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
@@ -102,7 +108,7 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 
 // PullRequest is the Schema for the pullrequests API
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
-// +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.ID`
+// +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.id`
 // +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.spec.sourceBranch`,priority=1
 // +kubebuilder:printcolumn:name="Target",type=string,JSONPath=`.spec.targetBranch`,priority=1
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`

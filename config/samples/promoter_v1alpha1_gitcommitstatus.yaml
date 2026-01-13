@@ -1,0 +1,33 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitCommitStatus
+metadata:
+  name: gitcommitstatus-active-mode
+spec:
+  promotionStrategyRef:
+    name: promotion-strategy-sample
+  key: revert-check
+  description: "Revert commit validation on active deployment"
+  # Default: validates the ACTIVE (currently deployed) commit
+  # Omitting target defaults to "active"
+  target: active
+  # This expression returns false if ANY of these conditions are true:
+  # 1. Commit subject starts with "Revert" → fail
+  # 2. Commit body starts with "Revert" → fail
+  # 3. Commit has a "Git-commit-status: pending" trailer → fail
+  # The validation passes only if NONE of these conditions are true
+  # Note: startsWith is an infix operator, 'in' is used to check map key existence
+  expression: '!(Commit.Subject startsWith "Revert" || Commit.Body startsWith "Revert" || ("Git-commit-status" in Commit.Trailers && Commit.Trailers["Git-commit-status"][0] == "pending"))'
+---
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitCommitStatus
+metadata:
+  name: gitcommitstatus-proposed-mode
+spec:
+  promotionStrategyRef:
+    name: promotion-strategy-sample
+  key: commit-format-check
+  description: "Commit message format validation"
+  # NEW: validates the PROPOSED commit (what will be promoted)
+  target: proposed
+  # Ensure proposed commits follow conventional commit format
+  expression: 'Commit.Subject matches "^(feat|fix|docs|style|refactor|test|chore)(\\(.+\\))?: .+"'

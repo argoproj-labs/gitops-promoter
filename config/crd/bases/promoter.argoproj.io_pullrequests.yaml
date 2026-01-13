@@ -18,7 +18,7 @@ spec:
     - jsonPath: .status.state
       name: State
       type: string
-    - jsonPath: .status.ID
+    - jsonPath: .status.id
       name: ID
       type: string
     - jsonPath: .spec.sourceBranch
@@ -193,6 +193,14 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              externallyMergedOrClosed:
+                description: |-
+                  ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
+                  This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                  When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                  The PullRequest resource will be deleted after this flag is set, but the status is preserved in
+                  the owning ChangeTransferPolicy to maintain a record of the external action.
+                type: boolean
               id:
                 description: ID the id of the pull request
                 type: string

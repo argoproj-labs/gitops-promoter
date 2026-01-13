@@ -20,8 +20,10 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -29,8 +31,10 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -41,6 +45,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -72,6 +77,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	startTime := time.Now()
 
 	var pr promoterv1alpha1.PullRequest
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &pr, r.Client, r.Recorder, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &pr); err != nil {
@@ -95,7 +101,12 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("failed to get PullRequest provider: %w", err)
 	}
 
-	if deleted, err := r.handleFinalizer(ctx, &pr, provider); err != nil || deleted {
+	found, prID, prCreationTime, err := provider.FindOpen(ctx, pr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to check for open PR: %w", err)
+	}
+
+	if deleted, err := r.handleFinalizer(ctx, &pr, provider, found); err != nil || deleted {
 		return ctrl.Result{}, err
 	}
 
@@ -105,17 +116,37 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Sync state from provider
-	if deleted, err := r.syncStateFromProvider(ctx, &pr, provider); deleted || err != nil {
+	externallyMergedOrClosed, err := r.syncStateFromProvider(ctx, &pr, provider, found, prID, prCreationTime)
+	if err != nil {
 		return ctrl.Result{}, err
+	}
+	// If ExternallyMergedOrClosed was set, requeue immediately to trigger cleanup on the next reconciliation.
+	// The flow is:
+	// 1. syncStateFromProvider updates pr.Status.ExternallyMergedOrClosed to true in memory
+	// 2. We return here with RequeueAfter
+	// 3. The deferred HandleReconciliationResult persists the status update to the cluster
+	// 4. The next reconciliation sees the persisted ExternallyMergedOrClosed flag
+	// 5. cleanupTerminalStates (which runs earlier in the loop) handles deletion
+	if externallyMergedOrClosed {
+		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 	}
 
 	// Handle state transitions
-	if done, err := r.handleStateTransitions(ctx, &pr, provider); done || err != nil {
+	cleanupRequired, err := r.handleStateTransitions(ctx, &pr, provider)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
-
-	if err := r.Status().Update(ctx, &pr); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update PullRequest status: %w", err)
+	// If a state transition was performed (merge or close), requeue immediately to trigger
+	// cleanup on the next reconciliation. The flow is:
+	// 1. handleStateTransitions updates pr.Status.State to Merged/Closed in memory
+	// 2. We return here with RequeueAfter
+	// 3. The deferred HandleReconciliationResult persists the status update to the cluster
+	// 4. The next reconciliation sees the persisted Merged/Closed state
+	// 5. cleanupTerminalStates (which runs earlier in the loop) handles deletion
+	// Previously, merge/close would delete inline, but this was problematic because the status
+	// update would be lost. Now we ensure the status is persisted before deletion occurs.
+	if cleanupRequired {
+		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, err
 	}
 
 	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
@@ -144,16 +175,26 @@ func (r *PullRequestReconciler) handleEmptyIDDeletion(ctx context.Context, pr *p
 	return true, nil
 }
 
-// cleanupTerminalStates deletes PullRequests that have reached terminal states (merged/closed).
+// cleanupTerminalStates deletes PullRequests that have reached terminal states (merged/closed) or were externally merged/closed.
 // Returns (cleaned=true, nil) if cleaned up, (false, nil) if not applicable, or (false, err) on error.
 func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *promoterv1alpha1.PullRequest) (bool, error) {
 	logger := log.FromContext(ctx)
 
-	if pr.Status.State != promoterv1alpha1.PullRequestMerged && pr.Status.State != promoterv1alpha1.PullRequestClosed {
+	// Check if PR should be cleaned up: either externally merged/closed or in terminal state (merged/closed)
+	// When ExternallyMergedOrClosed is true, State may be empty (we don't know if merged or closed),
+	// Open (set before we detected the external action), or a terminal state.
+	externallyMergedOrClosed := pr.Status.ExternallyMergedOrClosed != nil && *pr.Status.ExternallyMergedOrClosed
+	isTerminalState := pr.Status.State == promoterv1alpha1.PullRequestMerged || pr.Status.State == promoterv1alpha1.PullRequestClosed
+
+	if !externallyMergedOrClosed && !isTerminalState {
 		return false, nil
 	}
 
-	logger.Info("Cleaning up close and merged pull request", "pullRequestID", pr.Status.ID)
+	if externallyMergedOrClosed {
+		logger.Info("Cleaning up externally merged or closed pull request", "pullRequestID", pr.Status.ID)
+	} else {
+		logger.Info("Cleaning up closed and merged pull request", "pullRequestID", pr.Status.ID)
+	}
 	if err := r.Delete(ctx, pr); err != nil && !errors.IsNotFound(err) {
 		logger.Error(err, "Failed to delete PullRequest")
 		return false, fmt.Errorf("failed to delete PullRequest: %w", err)
@@ -162,15 +203,11 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 }
 
 // syncStateFromProvider syncs the PullRequest state from the SCM provider.
-// Returns (deleted=true, nil) if PR was deleted, (false, nil) if not deleted, or (false, err) on error.
-func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
+// Returns (externallyMergedOrClosed=true, nil) if ExternallyMergedOrClosed was set (requeue needed), (false, nil) if successful, or (false, err) on error.
+func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, found bool, prID string, prCreationTime time.Time) (bool, error) {
 	logger := log.FromContext(ctx)
 
 	logger.Info("Checking for open PR on provider")
-	found, prID, prCreationTime, err := provider.FindOpen(ctx, *pr)
-	if err != nil {
-		return false, fmt.Errorf("failed to check for open PR: %w", err)
-	}
 
 	// Calculate the state of the PR based on the provider, if found we have to be open
 	if found {
@@ -185,12 +222,24 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 		return false, nil
 	}
 
-	// If we don't find the PR, but we have an ID, it means it was deleted on the provider side
+	// If we don't find the PR, but we have an ID, check if it was merged/closed externally or by the controller.
+	// If spec.state is "merged" or "closed", the controller initiated the action and we should NOT mark as external.
+	// Only mark as external if spec.state is "open" (controller didn't initiate the closure/merge).
 	if pr.Status.ID != "" {
-		if err := r.Delete(ctx, pr); err != nil {
-			return false, fmt.Errorf("failed to delete PullRequest resource due to SCM not found: %w", err)
+		if pr.Spec.State == promoterv1alpha1.PullRequestOpen {
+			// Controller still thinks PR should be open, but it's not found on provider = external action
+			pr.Status.ExternallyMergedOrClosed = ptr.To(true)
+			// Don't set State since we don't know if it was merged or closed externally.
+			// The ExternallyMergedOrClosed flag is the source of truth that this PR
+			// is no longer active and was handled outside of the controller's control.
+			// An empty State with ExternallyMergedOrClosed=true means "closed/merged externally, but we don't know which".
+			pr.Status.State = ""
+			return true, nil
 		}
-		return true, nil
+		// If spec.state is "merged" or "closed", the controller is in the process of merging/closing.
+		// The PR may not be found as "open" because it's already transitioned on the provider.
+		// This is normal - let handleStateTransitions continue to process the spec.state.
+		logger.V(4).Info("PR not found open, but controller initiated the action", "specState", pr.Spec.State)
 	}
 
 	return false, nil
@@ -225,17 +274,11 @@ func (r *PullRequestReconciler) handleStateTransitions(ctx context.Context, pr *
 		if err := r.mergePullRequest(ctx, pr, provider); err != nil {
 			return false, fmt.Errorf("failed to merge pull request: %w", err) // Top-level wrap for merge errors
 		}
-		if err := r.Delete(ctx, pr); err != nil {
-			return false, fmt.Errorf("failed to delete PullRequest: %w", err)
-		}
 		return true, nil
 	case promoterv1alpha1.PullRequestClosed:
 		logger.Info("Closing PullRequest")
 		if err := r.closePullRequest(ctx, pr, provider); err != nil {
 			return false, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
-		}
-		if err := r.Delete(ctx, pr); err != nil {
-			return false, fmt.Errorf("failed to delete PullRequest: %w", err)
 		}
 		return true, nil
 	default:
@@ -285,8 +328,14 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 		return github.NewGithubPullRequestProvider(ctx, r.Client, scmProvider, *secret, gitRepository.Spec.GitHub.Owner) //nolint:wrapcheck
 	case scmProvider.GetSpec().GitLab != nil:
 		return gitlab.NewGitlabPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().BitbucketCloud != nil:
+		return bitbucket_cloud.NewBitbucketCloudPullRequestProvider(r.Client, *secret) //nolint:wrapcheck
 	case scmProvider.GetSpec().Forgejo != nil:
 		return forgejo.NewForgejoPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Forgejo.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().Gitea != nil:
+		return gitea.NewGiteaPullRequestProvider(r.Client, *secret, scmProvider.GetSpec().Gitea.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().AzureDevOps != nil:
+		return azuredevops.NewAzdoPullRequestProvider(r.Client, *secret, scmProvider, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck,contextcheck
 	case scmProvider.GetSpec().Fake != nil:
 		return fake.NewFakePullRequestProvider(r.Client), nil
 	default:
@@ -294,7 +343,7 @@ func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr p
 	}
 }
 
-func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) (bool, error) {
+func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, found bool) (bool, error) {
 	finalizer := promoterv1alpha1.PullRequestFinalizer
 
 	if pr.DeletionTimestamp.IsZero() {
@@ -323,7 +372,7 @@ func (r *PullRequestReconciler) handleFinalizer(ctx context.Context, pr *promote
 
 	// If status.ID is empty, it means the PullRequest never took control of any PR on the SCM.
 	// In this case, we can just remove the finalizer without attempting to close the PR.
-	if pr.Status.ID != "" {
+	if pr.Status.ID != "" && found {
 		if err := r.closePullRequest(ctx, pr, provider); err != nil {
 			return false, fmt.Errorf("failed to close pull request: %w", err) // Top-level wrap for close errors
 		}
@@ -395,11 +444,11 @@ func (t trailers) String() string {
 	}
 	sort.Strings(keys)
 
-	var result string
+	var result strings.Builder
 	for _, k := range keys {
-		result += fmt.Sprintf("%s: %s\n", k, t[k])
+		fmt.Fprintf(&result, "%s: %s\n", k, t[k])
 	}
-	return result
+	return result.String()
 }
 
 func (r *PullRequestReconciler) closePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {

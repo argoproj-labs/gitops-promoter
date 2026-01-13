@@ -1,0 +1,62 @@
+# see https://github.com/argoproj-labs/argocd-ephemeral-access/blob/main/.github/workflows/release.yaml
+# this file must be kept in sync with the above release.yaml except for the trigger and job name
+name: release-latest
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  # If set in the repo env vars it will use this tag to build the release notes.
+  # Useful when creating a release tag after a release candidate tags phase.
+  GORELEASER_PREVIOUS_TAG: ${{vars.GORELEASER_PREVIOUS_TAG}}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release-latest:
+    runs-on: ubuntu-24.04
+    name: Push Latest Docker Image
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        with:
+          go-version: "1.25"
+
+      - name: Docker Login to quay.io
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        with:
+          distribution: goreleaser
+          version:  v2.13.2
+          args: release -f .goreleaser-latest.yaml --clean --verbose --snapshot
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Docker Images Latest
+        run: |
+          docker push quay.io/argoprojlabs/gitops-promoter:latest-amd64
+          docker push quay.io/argoprojlabs/gitops-promoter:latest-arm64
+          docker manifest create quay.io/argoprojlabs/gitops-promoter:latest \
+            quay.io/argoprojlabs/gitops-promoter:latest-amd64 \
+            quay.io/argoprojlabs/gitops-promoter:latest-arm64
+          docker manifest push quay.io/argoprojlabs/gitops-promoter:latest

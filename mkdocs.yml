@@ -6,6 +6,8 @@ theme:
     text: Work Sans
   logo: assets/logo.png
   name: material
+  features:
+    - content.code.copy
   palette:
     - primary: teal
       scheme: default
@@ -26,10 +28,12 @@ nav:
   - Overview: index.md
   - Getting Started: getting-started.md
   - Architecture: architecture.md
+  - Custom Hydrator: custom-hydrator.md
   - CRD Specs: crd-specs.md
   - Gating Promotions: gating-promotions.md
   - CommitStatus Controllers:
       - Argo CD: commit-status-controllers/argocd.md
+      - Git Commit: commit-status-controllers/git-commit.md
       - Timed: commit-status-controllers/timed.md
       - Development Best Practices: commit-status-controllers/development-best-practices.md
   - Multi-Tenancy: multi-tenancy.md

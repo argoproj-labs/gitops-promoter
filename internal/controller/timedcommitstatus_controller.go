@@ -23,6 +23,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -46,6 +47,7 @@ type TimedCommitStatusReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
+	EnqueueCTP  CTPEnqueueFunc
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=timedcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -67,6 +69,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	startTime := time.Now()
 
 	var tcs promoterv1alpha1.TimedCommitStatus
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &tcs, r.Client, r.Recorder, &err)
 
 	// 1. Fetch the TimedCommitStatus instance
@@ -106,21 +109,18 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
 
-	// 4. Inherit conditions from CommitStatus objects
-	utils.InheritNotReadyConditionFromObjects(&tcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
-
-	// 5. Update status
-	err = r.Status().Update(ctx, &tcs)
+	// 4. Clean up orphaned CommitStatus resources that are no longer in the environment list
+	err = r.cleanupOrphanedCommitStatuses(ctx, &tcs, commitStatuses)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update TimedCommitStatus status: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
 	}
+
+	// 5. Inherit conditions from CommitStatus objects
+	utils.InheritNotReadyConditionFromObjects(&tcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
 	// 6. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
 	if len(transitionedEnvironments) > 0 {
-		err = r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to touch ChangeTransferPolicies: %w", err)
-		}
+		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
 	}
 
 	// Requeue based on the shortest duration or default requeue duration
@@ -267,6 +267,64 @@ func (r *TimedCommitStatusReconciler) processEnvironments(ctx context.Context, t
 	return transitionedEnvironments, commitStatuses, nil
 }
 
+// cleanupOrphanedCommitStatuses deletes CommitStatus resources that are owned by this TimedCommitStatus
+// but are not in the current list of valid CommitStatus resources (i.e., they correspond to removed or renamed environments).
+//
+//nolint:dupl // Similar to PromotionStrategy cleanup but works with different types
+func (r *TimedCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
+	logger := log.FromContext(ctx)
+
+	// Create a set of valid CommitStatus names for quick lookup
+	validCommitStatusNames := make(map[string]bool)
+	for _, cs := range validCommitStatuses {
+		validCommitStatusNames[cs.Name] = true
+	}
+
+	// List all CommitStatus resources in the namespace with the TimedCommitStatus label
+	var commitStatusList promoterv1alpha1.CommitStatusList
+	err := r.List(ctx, &commitStatusList, client.InNamespace(tcs.Namespace), client.MatchingLabels{
+		promoterv1alpha1.TimedCommitStatusLabel: utils.KubeSafeLabel(tcs.Name),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list CommitStatus resources: %w", err)
+	}
+
+	// Delete CommitStatus resources that are not in the valid list
+	for _, cs := range commitStatusList.Items {
+		// Skip if this CommitStatus is in the valid list
+		if validCommitStatusNames[cs.Name] {
+			continue
+		}
+
+		// Verify this CommitStatus is owned by this TimedCommitStatus before deleting
+		if !metav1.IsControlledBy(&cs, tcs) {
+			logger.V(4).Info("Skipping CommitStatus not owned by this TimedCommitStatus",
+				"commitStatusName", cs.Name,
+				"timedCommitStatus", tcs.Name)
+			continue
+		}
+
+		// Delete the orphaned CommitStatus
+		logger.Info("Deleting orphaned CommitStatus",
+			"commitStatusName", cs.Name,
+			"timedCommitStatus", tcs.Name,
+			"namespace", tcs.Namespace)
+
+		if err := r.Delete(ctx, &cs); err != nil {
+			if k8serrors.IsNotFound(err) {
+				// Already deleted, which is fine
+				logger.V(4).Info("CommitStatus already deleted", "commitStatusName", cs.Name)
+				continue
+			}
+			return fmt.Errorf("failed to delete orphaned CommitStatus %q: %w", cs.Name, err)
+		}
+
+		r.Recorder.Eventf(tcs, "Normal", constants.OrphanedCommitStatusDeletedReason, constants.OrphanedCommitStatusDeletedMessage, cs.Name)
+	}
+
+	return nil
+}
+
 // calculateCommitStatusPhase determines the commit status phase based on time elapsed since deployment
 func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuration time.Duration, elapsed time.Duration, envBranch string) (promoterv1alpha1.CommitStatusPhase, string) {
 	if elapsed >= requiredDuration {
@@ -303,7 +361,7 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 		if commitStatus.Labels == nil {
 			commitStatus.Labels = make(map[string]string)
 		}
-		commitStatus.Labels["promoter.argoproj.io/timed-commit-status"] = utils.KubeSafeLabel(tcs.Name)
+		commitStatus.Labels[promoterv1alpha1.TimedCommitStatusLabel] = utils.KubeSafeLabel(tcs.Name)
 		commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
 		commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = "timer"
 
@@ -324,48 +382,26 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	return &commitStatus, nil
 }
 
-// touchChangeTransferPolicies adds or updates the ReconcileAtAnnotation on the ChangeTransferPolicies
+// touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
 // for the environments that had time gates transition to success.
 // This triggers the ChangeTransferPolicy controller to reconcile and potentially merge PRs.
-func (r *TimedCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) error {
+func (r *TimedCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
 	logger := log.FromContext(ctx)
 
-	// For each transitioned environment, find and update the corresponding ChangeTransferPolicy
+	// For each transitioned environment, trigger reconciliation of the corresponding ChangeTransferPolicy
 	for _, envBranch := range transitionedEnvironments {
 		// Generate the ChangeTransferPolicy name using the same logic as the PromotionStrategy controller
 		ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, envBranch))
 
-		// Fetch the ChangeTransferPolicy
-		var ctp promoterv1alpha1.ChangeTransferPolicy
-		err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: ctpName}, &ctp)
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				logger.Info("ChangeTransferPolicy not found for environment, skipping touch",
-					"branch", envBranch,
-					"ctpName", ctpName)
-				continue
-			}
-			return fmt.Errorf("failed to get ChangeTransferPolicy %q for environment %q: %w", ctpName, envBranch, err)
-		}
-
-		// Update the annotation to trigger reconciliation
-		ctpUpdated := ctp.DeepCopy()
-		if ctpUpdated.Annotations == nil {
-			ctpUpdated.Annotations = make(map[string]string)
-		}
-		ctpUpdated.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339Nano)
-
-		err = r.Patch(ctx, ctpUpdated, client.MergeFrom(&ctp))
-		if err != nil {
-			return fmt.Errorf("failed to update ChangeTransferPolicy %q annotation for environment %q: %w", ctpName, envBranch, err)
-		}
-
-		logger.Info("Triggered ChangeTransferPolicy reconciliation due to time gate transition",
+		logger.Info("Triggering ChangeTransferPolicy reconciliation due to time gate transition",
 			"changeTransferPolicy", ctpName,
 			"branch", envBranch)
-	}
 
-	return nil
+		// Use the enqueue function to trigger reconciliation.
+		if r.EnqueueCTP != nil {
+			r.EnqueueCTP(ps.Namespace, ctpName)
+		}
+	}
 }
 
 // calculateRequeueDuration determines when to requeue based on whether there are pending time gates.

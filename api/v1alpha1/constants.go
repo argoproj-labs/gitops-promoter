@@ -16,11 +16,11 @@ const EnvironmentLabel = "promoter.argoproj.io/environment"
 // ChangeTransferPolicyLabel the change transfer policy which the proposed commit is associated with.
 const ChangeTransferPolicyLabel = "promoter.argoproj.io/change-transfer-policy"
 
+// TimedCommitStatusLabel the timed commit status which the commit status is associated with.
+const TimedCommitStatusLabel = "promoter.argoproj.io/timed-commit-status"
+
 // PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health
 const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
-
-// ReconcileAtAnnotation is the annotation used to indicate when the webhook triggered a reconcile
-const ReconcileAtAnnotation = "promoter.argoproj.io/reconcile-at"
 
 // CommitStatusPreviousEnvironmentStatusesAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
 const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/previous-environment-statuses"
@@ -29,6 +29,9 @@ const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/
 
 // PullRequestFinalizer prevents deletion of PullRequest until the PR is closed in the SCM
 const PullRequestFinalizer = "pullrequest.promoter.argoproj.io/finalizer"
+
+// ChangeTransferPolicyPullRequestFinalizer prevents deletion of PullRequest until ChangeTransferPolicy copies its status
+const ChangeTransferPolicyPullRequestFinalizer = "changetransferpolicy.promoter.argoproj.io/pullrequest-finalizer"
 
 // GitRepositoryFinalizer prevents deletion of GitRepository while PullRequests reference it
 const GitRepositoryFinalizer = "gitrepository.promoter.argoproj.io/finalizer"

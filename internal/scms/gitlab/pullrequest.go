@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -77,16 +78,16 @@ func (pr *PullRequest) Create(ctx context.Context, title, head, base, desc strin
 	logger.V(4).Info("gitlab response status",
 		"status", resp.Status)
 
-	return strconv.Itoa(mr.IID), nil
+	return strconv.FormatInt(mr.IID, 10), nil
 }
 
 // Update updates an existing pull request with the specified title and description.
 func (pr *PullRequest) Update(ctx context.Context, title, description string, prObj v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
-	mrIID, err := strconv.Atoi(prObj.Status.ID)
+	mrIID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
 	if err != nil {
-		return fmt.Errorf("failed to convert MR ID %q to int: %w", prObj.Status.ID, err)
+		return fmt.Errorf("failed to convert MR ID %q to int64: %w", prObj.Status.ID, err)
 	}
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
@@ -131,9 +132,9 @@ func (pr *PullRequest) Update(ctx context.Context, title, description string, pr
 func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
-	mrIID, err := strconv.Atoi(prObj.Status.ID)
+	mrIID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
 	if err != nil {
-		return fmt.Errorf("failed to convert MR ID %q to int: %w", prObj.Status.ID, err)
+		return fmt.Errorf("failed to convert MR ID %q to int64: %w", prObj.Status.ID, err)
 	}
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
@@ -177,9 +178,9 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) error {
 	logger := log.FromContext(ctx)
 
-	mrIID, err := strconv.Atoi(prObj.Status.ID)
+	mrIID, err := strconv.ParseInt(prObj.Status.ID, 10, 64)
 	if err != nil {
-		return fmt.Errorf("failed to convert MR number to int: %w", err)
+		return fmt.Errorf("failed to convert MR number to int64: %w", err)
 	}
 
 	repo, err := utils.GetGitRepositoryFromObjectKey(ctx, pr.k8sClient, client.ObjectKey{
@@ -247,9 +248,13 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 
 	start := time.Now()
 	mrs, resp, err := pr.client.MergeRequests.ListMergeRequests(options)
-	if resp != nil {
-		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
+	if resp == nil {
+		statusCode := -1
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, statusCode, time.Since(start), nil)
+		logger.V(4).Info("gitlab response status", "status", "nil response")
+		return false, "", time.Time{}, errors.New("received nil response from GitLab API")
 	}
+	metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationList, resp.StatusCode, time.Since(start), nil)
 	if err != nil {
 		return false, "", time.Time{}, fmt.Errorf("failed to list pull requests: %w", err)
 	}
@@ -263,7 +268,7 @@ func (pr *PullRequest) FindOpen(ctx context.Context, pullRequest v1alpha1.PullRe
 		"status", resp.Status)
 
 	if len(mrs) > 0 {
-		return true, strconv.Itoa(mrs[0].IID), *mrs[0].CreatedAt, nil
+		return true, strconv.FormatInt(mrs[0].IID, 10), *mrs[0].CreatedAt, nil
 	}
 
 	return false, "", time.Time{}, nil
