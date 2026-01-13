@@ -43,6 +43,9 @@ spec:
           emptyDir: {}
 ```
 
+> [!NOTE]
+> In order to see gitops-promoter CRD resources(PromotionStrategy,ScmProvider...) in the Argo CD UI, they must be part of your deployed manifests within a dedicated namespace
+
 ## Deep Links
 
 Argo CD supports [deep links](https://argo-cd.readthedocs.io/en/stable/operator-manual/deep_links/) from a resource's details
