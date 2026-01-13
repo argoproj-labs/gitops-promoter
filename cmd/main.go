@@ -48,6 +48,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -207,14 +208,6 @@ func runController(
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PullRequest controller: %w", err))
 	}
-	if err = (&controller.CommitStatusReconciler{
-		Client:      localManager.GetClient(),
-		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorderFor("CommitStatus"),
-		SettingsMgr: settingsMgr,
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic(fmt.Errorf("unable to create CommitStatus controller: %w", err))
-	}
 	if err = (&controller.RevertCommitReconciler{
 		Client:   localManager.GetClient(),
 		Scheme:   localManager.GetScheme(),
@@ -223,11 +216,34 @@ func runController(
 		panic(fmt.Errorf("unable to create RevertCommit controller: %w", err))
 	}
 
+	// ChangeTransferPolicy controller must be set up first so we can
+	// get the enqueue function to pass to other controllers.
+	ctpReconciler := &controller.ChangeTransferPolicyReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("ChangeTransferPolicy"),
+		SettingsMgr: settingsMgr,
+	}
+	if err = ctpReconciler.SetupWithManager(processSignalsCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))
+	}
+
+	if err = (&controller.CommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("CommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create CommitStatus controller: %w", err))
+	}
+
 	if err = (&controller.PromotionStrategyReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorderFor("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create PromotionStrategy controller: %w", err))
 	}
@@ -244,14 +260,6 @@ func runController(
 		Recorder: localManager.GetEventRecorderFor("GitRepository"),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic(fmt.Errorf("unable to create GitRepository controller: %w", err))
-	}
-	if err = (&controller.ChangeTransferPolicyReconciler{
-		Client:      localManager.GetClient(),
-		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorderFor("ChangeTransferPolicy"),
-		SettingsMgr: settingsMgr,
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic(fmt.Errorf("unable to create ChangeTransferPolicy controller: %w", err))
 	}
 
 	if err = (&controller.ArgoCDCommitStatusReconciler{
@@ -281,8 +289,19 @@ func runController(
 		Scheme:      localManager.GetScheme(),
 		Recorder:    localManager.GetEventRecorderFor("TimedCommitStatus"),
 		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create TimedCommitStatus controller")
+	}
+	if err := (&controller.GitCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("GitCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "GitCommitStatus")
+		panic(fmt.Errorf("unable to create GitCommitStatus controller: %w", err))
 	}
 	//+kubebuilder:scaffold:builder
 
@@ -293,7 +312,7 @@ func runController(
 		panic(fmt.Errorf("unable to set up ready check: %w", err))
 	}
 
-	whr := webhookreceiver.NewWebhookReceiver(localManager)
+	whr := webhookreceiver.NewWebhookReceiver(localManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
 
 	g, ctx := errgroup.WithContext(processSignalsCtx)
 
@@ -401,7 +420,15 @@ func newCommand() *cobra.Command {
 		Use:   "promoter",
 		Short: "GitOps Promoter",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+			// Create the zap logger
+			zapLogger := zap.New(zap.UseFlagOptions(&opts))
+
+			// Set the controller-runtime logger
+			ctrl.SetLogger(zapLogger)
+
+			// Configure klog to use the same zap logger so all logs (including k8s client-go)
+			// use the same format (JSON when --zap-encoder=json is set)
+			klog.SetLogger(zapLogger)
 		},
 	}
 

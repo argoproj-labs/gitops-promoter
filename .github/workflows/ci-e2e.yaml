@@ -4,6 +4,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -13,15 +17,15 @@ jobs:
       fail-fast: false
       matrix:
         kubernetes-minor-version:
-          - 1.28.0
           - 1.29.0
           - 1.30.0
+          - 1.31.0
     name: E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Set up Go
-        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # pin@v5
+        uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
         with:
           go-version: '1.25'
           # see https://github.com/actions/setup-go?tab=readme-ov-file#caching-dependency-files-and-build-outputs
@@ -31,10 +35,10 @@ jobs:
         uses: helm/kind-action@v1
         with:
           cluster_name: kind
-          version: v0.23.0
+          version: v0.30.0
           node_image: kindest/node:v${{ matrix.kubernetes-minor-version }}
           kubectl_version: v${{ matrix.kubernetes-minor-version }}
       - name: Checkout Repo
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # pin@v4
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
       - name: Run E2E-Tests
         run: make test-e2e

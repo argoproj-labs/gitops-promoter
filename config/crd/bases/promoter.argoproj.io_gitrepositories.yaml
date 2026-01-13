@@ -46,6 +46,43 @@ spec:
           spec:
             description: GitRepositorySpec defines the desired state of GitRepository
             properties:
+              azureDevOps:
+                description: AzureDevOpsRepo is a repository in Azure DevOps, identified
+                  by its project and name.
+                properties:
+                  name:
+                    description: Name is the name of the repository.
+                    maxLength: 64
+                    minLength: 1
+                    type: string
+                  project:
+                    description: Project is the project name in Azure DevOps.
+                    maxLength: 64
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                - project
+                type: object
+              bitbucketCloud:
+                description: BitbucketCloudRepo is a repository in Bitbucket Cloud,
+                  identified by its owner and name.
+                properties:
+                  name:
+                    description: Name is the name of the repository.
+                    maxLength: 62
+                    pattern: ^[a-zA-Z0-9_.-]+$
+                    type: string
+                  owner:
+                    description: Owner is the owner of the repository (can be a user
+                      or workspace).
+                    minLength: 1
+                    pattern: ^[a-zA-Z0-9_-]+$
+                    type: string
+                required:
+                - name
+                - owner
+                type: object
               fake:
                 description: FakeRepo is a placeholder for a repository in the fake
                   SCM provider, used for testing purposes.
@@ -69,6 +106,21 @@ spec:
                     type: string
                   owner:
                     description: Owner is the owner of the repository.
+                    type: string
+                required:
+                - name
+                - owner
+                type: object
+              gitea:
+                description: GiteaRepo is a repository in Gitea, identified by its
+                  owner and name.
+                properties:
+                  name:
+                    description: Name is the name of the repository.
+                    type: string
+                  owner:
+                    description: Owner is the owner of the repository.
+                    minLength: 1
                     type: string
                 required:
                 - name
@@ -136,9 +188,9 @@ spec:
             - scmProviderRef
             type: object
             x-kubernetes-validations:
-            - message: exactly one of the fields in [github gitlab forgejo fake] must
-                be set
-              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.fake)].filter(x,x==true).size()
+            - message: exactly one of the fields in [github gitlab forgejo gitea bitbucketCloud
+                azureDevOps fake] must be set
+              rule: '[has(self.github),has(self.gitlab),has(self.forgejo),has(self.gitea),has(self.bitbucketCloud),has(self.azureDevOps),has(self.fake)].filter(x,x==true).size()
                 == 1'
           status:
             description: GitRepositoryStatus defines the observed state of GitRepository

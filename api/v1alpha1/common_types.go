@@ -28,12 +28,37 @@ type GitLab struct {
 	Domain string `json:"domain,omitempty"`
 }
 
+// BitbucketCloud is a Bitbucket Cloud SCM provider configuration. It is used to configure the Bitbucket Cloud settings.
+type BitbucketCloud struct{}
+
 // Forgejo is a Forgejo SCM provider configuration. It is used to configure the Forgejo settings.
 type Forgejo struct {
 	// Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
 	// There is no default domain since Forgejo is not a service like Gitlab or Github.
 	// +kubebuilder:validation:Required
 	Domain string `json:"domain"`
+}
+
+// Gitea is a Gitea SCM provider configuration. It is used to configure the Gitea settings.
+type Gitea struct {
+	// Domain is the Gitea domain, such as "gitea.com" or "gitea.mycompany.com".
+	// There is no default domain since Gitea is self-hosted.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Domain string `json:"domain"`
+}
+
+// AzureDevOps is an Azure DevOps SCM provider configuration. It is used to configure the Azure DevOps settings.
+type AzureDevOps struct {
+	// Organization is the Azure DevOps organization name.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=50
+	// +kubebuilder:validation:Pattern=^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$
+	Organization string `json:"organization"`
+	// Domain is the Azure DevOps domain, such as "dev.azure.com". If using the default Azure DevOps domain, leave this field empty.
+	// +kubebuilder:validation:XValidation:rule=`self != "dev.azure.com"`, message="Instead of setting the domain to dev.azure.com, leave the field blank"
+	Domain string `json:"domain,omitempty"`
 }
 
 // Fake is a placeholder for a fake SCM provider, used for testing purposes.
@@ -88,6 +113,45 @@ type ForgejoRepo struct {
 	Owner string `json:"owner"`
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+}
+
+// GiteaRepo is a repository in Gitea, identified by its owner and name.
+type GiteaRepo struct {
+	// Owner is the owner of the repository.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Owner string `json:"owner"`
+	// Name is the name of the repository.
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+}
+
+// BitbucketCloudRepo is a repository in Bitbucket Cloud, identified by its owner and name.
+type BitbucketCloudRepo struct {
+	// Owner is the owner of the repository (can be a user or workspace).
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_-]+$"
+	Owner string `json:"owner"`
+	// Name is the name of the repository.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MaxLength=62
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_.-]+$"
+	Name string `json:"name"`
+}
+
+// AzureDevOpsRepo is a repository in Azure DevOps, identified by its project and name.
+type AzureDevOpsRepo struct {
+	// Project is the project name in Azure DevOps.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
+	Project string `json:"project"`
+	// Name is the name of the repository.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=64
 	Name string `json:"name"`
 }
 

@@ -18,8 +18,6 @@ const (
 	TrailerPullRequestTargetBranch = "Pull-request-target-branch"
 	// TrailerPullRequestUrl is the trailer key used to store the URL of the pull request.
 	TrailerPullRequestUrl = "Pull-request-url"
-	// TrailerNoOp is the trailer key use to store the No-Op marker.
-	TrailerNoOp = "No-op"
 	// TrailerShaDryActive is the trailer key used to store the SHA of the active dry commit.
 	TrailerShaDryActive = "Sha-dry-active"
 	// TrailerShaDryProposed is the trailer key used to store the SHA of the proposed dry commit.

@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
@@ -47,12 +48,6 @@ import (
 
 //go:embed testdata/PromotionStrategy.yaml
 var testPromotionStrategyYAML string
-
-const (
-	testEnvironmentDevelopment = "environment/development"
-	testEnvironmentStaging     = "environment/staging"
-	testEnvironmentProduction  = "environment/production"
-)
 
 var _ = Describe("PromotionStrategy Controller", func() {
 	Context("When unmarshalling the test data", func() {
@@ -212,8 +207,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -223,7 +218,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -234,7 +229,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -316,14 +311,15 @@ var _ = Describe("PromotionStrategy Controller", func() {
 				// 	g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				// }, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Checking that the pull request for the development, staging, and production environments are closed and have had their ctp statuses cleared")
+				By("Checking that the pull request for the development, staging, and production environments are closed and their statuses preserved")
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpDev)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpDev.Status.PullRequest).To(BeNil())
+					g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status after PR is merged/deleted")
+					g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be 'merged'")
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -332,7 +328,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpStaging)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpStaging.Status.PullRequest).To(BeNil())
+					g.Expect(ctpStaging.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status after PR is merged/deleted")
+					g.Expect(ctpStaging.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be 'merged'")
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -341,7 +338,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpProd)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpProd.Status.PullRequest).To(BeNil())
+					g.Expect(ctpProd.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status after PR is merged/deleted")
+					g.Expect(ctpProd.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be 'merged'")
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {
@@ -350,9 +348,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: promotionStrategy.Namespace,
 					}, promotionStrategy)
 					g.Expect(err).To(Succeed())
-					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
-					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(BeNil())
-					g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(BeNil())
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
+					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+					g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
+					g.Expect(promotionStrategy.Status.Environments[2].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+					g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -480,8 +481,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -491,7 +492,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -502,7 +503,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -662,8 +663,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[0].Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -673,7 +674,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[1].Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -684,7 +685,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(promotionStrategy.Status.Environments[2].Proposed.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -863,8 +864,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(ctpProd.Status.Active.Hydrated.Sha).To(Not(BeEmpty()))
 
 					// By("Checking that the PromotionStrategy for development environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
-					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal("environment/development-next"))
+					g.Expect(ctpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
+					g.Expect(ctpDev.Spec.ProposedBranch).To(Equal(testBranchDevelopmentNext))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Sha).To(Equal(ctpDev.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).To(Equal(ctpDev.Status.Active.Hydrated.Sha))
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Active.CommitStatuses)).To(BeTrue())
@@ -874,7 +875,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[0].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for staging environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(ctpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 					g.Expect(ctpStaging.Spec.ProposedBranch).To(Equal("environment/staging-next"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Dry.Sha).To(Equal(ctpStaging.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Sha).To(Equal(ctpStaging.Status.Active.Hydrated.Sha))
@@ -885,7 +886,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(utils.AreCommitStatusesPassing(promotionStrategy.Status.Environments[1].Proposed.CommitStatuses)).To(BeTrue())
 
 					// By("Checking that the PromotionStrategy for production environment has the correct sha values from the ChangeTransferPolicy")
-					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(ctpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 					g.Expect(ctpProd.Spec.ProposedBranch).To(Equal("environment/production-next"))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Dry.Sha).To(Equal(ctpProd.Status.Active.Dry.Sha))
 					g.Expect(promotionStrategy.Status.Environments[2].Active.Hydrated.Sha).To(Equal(ctpProd.Status.Active.Hydrated.Sha))
@@ -1683,7 +1684,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpDev)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpDev.Status.PullRequest).To(BeNil())
+					g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
+					g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
 					prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
@@ -1721,7 +1723,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, promotionStrategy)
 					g.Expect(err).To(Succeed())
 
-					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status after PR is merged/deleted")
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be 'merged'")
 					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(Not(BeNil()))
 					g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(promotionStrategy.Status.Environments[1].PullRequest.ID).To(Not(BeZero()))
@@ -2277,11 +2280,11 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						}, &commitStatus)
 						g.Expect(err).To(Succeed())
 						switch environment.Branch {
-						case testEnvironmentDevelopment:
+						case testBranchDevelopment:
 							g.Expect(commitStatus.Spec.Url).To(Equal("https://dev.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
-						case testEnvironmentStaging:
+						case testBranchStaging:
 							g.Expect(commitStatus.Spec.Url).To(Equal("https://staging.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
-						case testEnvironmentProduction:
+						case testBranchProduction:
 							g.Expect(commitStatus.Spec.Url).To(Equal("https://prod.argocd.local/applications?labels=app%3Dmc-promo-strategy-with-active-commit-status-argocdcommitstatus%2C"))
 						default:
 							Fail("Unexpected environment branch: " + environment.Branch)
@@ -2623,7 +2626,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpDev)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpDev.Status.PullRequest).To(BeNil())
+					g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
+					g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
 					prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2698,7 +2702,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpDev)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpDev.Status.PullRequest).To(BeNil())
+					g.Expect(ctpDev.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
+					g.Expect(ctpDev.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
 					prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpStaging.Spec.ProposedBranch, ctpStaging.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2713,7 +2718,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Namespace: typeNamespacedName.Namespace,
 					}, &ctpStaging)
 					g.Expect(err).To(Succeed())
-					g.Expect(ctpStaging.Status.PullRequest).To(BeNil())
+					g.Expect(ctpStaging.Status.PullRequest).ToNot(BeNil(), "CTP should preserve PR status")
+					g.Expect(ctpStaging.Status.PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 
 					prName = utils.KubeSafeUniqueName(ctx, utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctpProd.Spec.ProposedBranch, ctpProd.Spec.ActiveBranch))
 					err = k8sClient.Get(ctx, types.NamespacedName{
@@ -2737,8 +2743,10 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					}, promotionStrategy)
 					g.Expect(err).To(Succeed())
 
-					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
-					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(BeNil())
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
+					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+					g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest.ID).To(Not(BeZero()))
@@ -2785,66 +2793,12 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
 					g.Expect(promotionStrategy.Status.Environments[1].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
 
-					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).To(BeNil())
-					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).To(BeNil())
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+					g.Expect(promotionStrategy.Status.Environments[0].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
+					g.Expect(promotionStrategy.Status.Environments[1].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
+					g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest).To(Not(BeNil()))
 				}, constants.EventuallyTimeout).Should(Succeed())
-
-				By("By making a no-op commit and checking that the promotion strategy status reflects it")
-				makeChangeAndHydrateRepoNoOp(gitPath, name, name, "", "")
-
-				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      promotionStrategy.Name,
-						Namespace: promotionStrategy.Namespace,
-					}, promotionStrategy)
-					g.Expect(err).To(Succeed())
-					// "Checking that the active and proposed commits are correct for the development environment and are set to the no-op commit
-					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Subject).To(ContainSubstring("no-op commit"))
-					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Dry.Author).To(ContainSubstring("testuser <testmail@test.com>"))
-					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Subject).To(ContainSubstring("added no-op commit from dry sha"))
-					g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Author).To(ContainSubstring("testuser"))
-
-					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Subject).To(ContainSubstring("no-op commit"))
-					g.Expect(promotionStrategy.Status.Environments[0].Active.Dry.Author).To(ContainSubstring("testuser <testmail@test.com>"))
-					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Subject).To(ContainSubstring("This is a no-op commit merging from"))
-					g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Author).To(ContainSubstring("GitOps Promoter"))
-
-					// Checking that the history is populated correctly
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].PullRequest.ID).To(Not(BeEmpty()))
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].PullRequest.PRMergeTime.IsZero()).To(BeFalse(), "PRMergeTime should be set for merged PR in history")
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.Subject).To(ContainSubstring("added fake manifests commit with timestamp"))
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Dry.References).To(HaveLen(1))
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
-
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.Hydrated.Author).To(ContainSubstring("testuser"))
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.Hydrated.Subject).To(ContainSubstring("added pending commit from dry sha"))
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses).To(HaveLen(1))
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Key).To(Equal("no-deployments-allowed"))
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
-					g.Expect(promotionStrategy.Status.Environments[0].History[0].Proposed.CommitStatuses[0].Url).To(Equal("https://example.com/dev"))
-
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].PullRequest.ID).To(Not(BeEmpty()))
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].PullRequest.PRMergeTime.IsZero()).To(BeFalse(), "PRMergeTime should be set for merged PR in history")
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.Author).To(Equal("testuser <testmail@test.com>"))
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.Subject).To(ContainSubstring("added fake manifests commit with timestamp"))
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Dry.References).To(HaveLen(1))
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Hydrated.Author).To(Equal("GitOps Promoter"))
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Hydrated.Subject).To(ContainSubstring("Promote"))
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Active.Hydrated.Body).To(ContainSubstring("This PR is promoting the environment branch"))
-
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.Hydrated.Author).To(ContainSubstring("testuser"))
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.Hydrated.Subject).To(ContainSubstring("added pending commit from dry sha"))
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses).To(HaveLen(1))
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses[0].Key).To(Equal("no-deployments-allowed"))
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
-					g.Expect(promotionStrategy.Status.Environments[1].History[0].Proposed.CommitStatuses[0].Url).To(Equal(""))
-
-					g.Expect(promotionStrategy.Status.Environments[2].History).To(HaveLen(1))
-				}, constants.EventuallyTimeout).To(Succeed())
 			})
 		})
 	})
@@ -2938,9 +2892,9 @@ func promotionStrategyResource(ctx context.Context, name, namespace string) (str
 				Name: name,
 			},
 			Environments: []promoterv1alpha1.Environment{
-				{Branch: testEnvironmentDevelopment},
-				{Branch: testEnvironmentStaging},
-				{Branch: testEnvironmentProduction},
+				{Branch: testBranchDevelopment},
+				{Branch: testBranchStaging},
+				{Branch: testBranchProduction},
 			},
 		},
 	}
@@ -3159,7 +3113,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 						if promotionStrategy.Annotations == nil {
 							promotionStrategy.Annotations = make(map[string]string)
 						}
-						promotionStrategy.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = metav1.Now().Format(time.RFC3339)
+						// Use a test annotation to trigger reconciliation by modifying the object
+						promotionStrategy.Annotations["test-trigger"] = metav1.Now().Format(time.RFC3339)
 						err = k8sClient.Patch(ctx, promotionStrategy, client.MergeFrom(orig))
 						g.Expect(err).To(Succeed())
 					}, constants.EventuallyTimeout).Should(Succeed())
@@ -3301,15 +3256,15 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					// Fix the typo in branch names
 					promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
 						{
-							Branch:    testEnvironmentDevelopment, // "environment/development"
+							Branch:    testBranchDevelopment, // "environment/development"
 							AutoMerge: ptr.To(true),
 						},
 						{
-							Branch:    testEnvironmentStaging, // "environment/staging"
+							Branch:    testBranchStaging, // "environment/staging"
 							AutoMerge: ptr.To(true),
 						},
 						{
-							Branch:    testEnvironmentProduction, // "environment/production"
+							Branch:    testBranchProduction, // "environment/production"
 							AutoMerge: ptr.To(true),
 						},
 					}
@@ -3324,29 +3279,29 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				newCtpProd := &promoterv1alpha1.ChangeTransferPolicy{}
 
 				Eventually(func(g Gomega) {
-					newCtpDevName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentDevelopment))
+					newCtpDevName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchDevelopment))
 					err := k8sClient.Get(ctx, types.NamespacedName{
 						Name:      newCtpDevName,
 						Namespace: "default",
 					}, newCtpDev)
 					g.Expect(err).To(Succeed())
-					g.Expect(newCtpDev.Spec.ActiveBranch).To(Equal(testEnvironmentDevelopment))
+					g.Expect(newCtpDev.Spec.ActiveBranch).To(Equal(testBranchDevelopment))
 
-					newCtpStagingName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentStaging))
+					newCtpStagingName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchStaging))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      newCtpStagingName,
 						Namespace: "default",
 					}, newCtpStaging)
 					g.Expect(err).To(Succeed())
-					g.Expect(newCtpStaging.Spec.ActiveBranch).To(Equal(testEnvironmentStaging))
+					g.Expect(newCtpStaging.Spec.ActiveBranch).To(Equal(testBranchStaging))
 
-					newCtpProdName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testEnvironmentProduction))
+					newCtpProdName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, testBranchProduction))
 					err = k8sClient.Get(ctx, types.NamespacedName{
 						Name:      newCtpProdName,
 						Namespace: "default",
 					}, newCtpProd)
 					g.Expect(err).To(Succeed())
-					g.Expect(newCtpProd.Spec.ActiveBranch).To(Equal(testEnvironmentProduction))
+					g.Expect(newCtpProd.Spec.ActiveBranch).To(Equal(testBranchProduction))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying old ChangeTransferPolicies are deleted")
@@ -3385,6 +3340,1065 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 				Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			})
+		})
+	})
+
+	Context("Out-of-order hydration protection", func() {
+		// This test verifies that the system correctly blocks downstream environments
+		// from promoting when upstream environments haven't been hydrated yet.
+		ctx := context.Background()
+
+		var name string
+		var gitRepo *promoterv1alpha1.GitRepository
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+		var activeCommitStatusDevelopment, activeCommitStatusStaging *promoterv1alpha1.CommitStatus
+		var typeNamespacedName types.NamespacedName
+		var ctpDev, ctpStaging promoterv1alpha1.ChangeTransferPolicy
+
+		BeforeEach(func() {
+			By("Creating the resources with active commit statuses to enable previous environment checks")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			name, scmSecret, scmProvider, gitRepo, activeCommitStatusDevelopment, activeCommitStatusStaging, promotionStrategy = promotionStrategyResource(ctx, "out-of-order-hydration-test", "default")
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			// Configure active commit statuses - this enables the previous environment check
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{
+					Key: healthCheckCSKey,
+				},
+			}
+			activeCommitStatusDevelopment.Spec.Name = healthCheckCSKey
+			activeCommitStatusDevelopment.Labels = map[string]string{
+				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
+			}
+			activeCommitStatusStaging.Spec.Name = healthCheckCSKey
+			activeCommitStatusStaging.Labels = map[string]string{
+				promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
+			ctpStaging = promoterv1alpha1.ChangeTransferPolicy{}
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		It("should block staging promotion when dev hasn't been hydrated for the same dry commit", func() {
+			By("Waiting for ChangeTransferPolicies to be created and reconciled")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).NotTo(BeEmpty())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).NotTo(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Making a change and hydrating all environments (normal flow first)")
+			gitPath1, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath1) }()
+			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, name, name, "first commit", "")
+
+			By("Setting dev's commit status to success so staging can promote")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Get the active hydrated SHA for dev to set the commit status
+			_, err = runGitCmd(ctx, gitPath1, "fetch")
+			Expect(err).NotTo(HaveOccurred())
+			devActiveSha, err := runGitCmd(ctx, gitPath1, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
+			Expect(err).NotTo(HaveOccurred())
+			devActiveSha = strings.TrimSpace(devActiveSha)
+
+			_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+				activeCommitStatusDevelopment.Spec.Sha = devActiveSha
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			Expect(err).To(Succeed())
+
+			By("Waiting for staging to be promoted (first commit)")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Set staging's commit status to success
+			stagingActiveSha, err := runGitCmd(ctx, gitPath1, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
+			Expect(err).NotTo(HaveOccurred())
+			stagingActiveSha = strings.TrimSpace(stagingActiveSha)
+			_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusStaging, func() error {
+				activeCommitStatusStaging.Spec.Sha = stagingActiveSha
+				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			Expect(err).To(Succeed())
+
+			By("Now simulating out-of-order hydration: hydrate ONLY staging for a new commit")
+			gitPath2, err := cloneTestRepo(ctx, name)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath2) }()
+
+			secondDrySha, err := makeDryCommit(ctx, gitPath2, "second commit - will be hydrated out of order")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Hydrating ONLY staging-next (simulating out-of-order hydration)")
+			err = hydrateEnvironment(ctx, gitPath2, "environment/staging-next", secondDrySha, "hydrate staging for second dry sha")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying staging sees the new proposed dry SHA")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Equal(secondDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying dev still has the old proposed dry SHA (hasn't been hydrated)")
+			Consistently(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				// Dev's proposed should still be the first dry SHA
+				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
+			}, 3*time.Second, 500*time.Millisecond).Should(Succeed())
+
+			By("Verifying the previous environment commit status is pending (blocking staging)")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				g.Expect(err).To(Succeed())
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+
+				// Check that staging has a pending previous environment status
+				stagingEnv := promotionStrategy.Status.Environments[1]
+				g.Expect(stagingEnv.Proposed.Dry.Sha).To(Equal(secondDrySha))
+
+				// The previous environment commit status should exist and be pending
+				var prevEnvCS promoterv1alpha1.CommitStatus
+				csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpStaging.Name)
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      csName,
+					Namespace: "default",
+				}, &prevEnvCS)
+				g.Expect(err).To(Succeed())
+				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Now hydrating dev-next with the second dry SHA")
+			err = hydrateEnvironment(ctx, gitPath2, testBranchDevelopmentNext, secondDrySha, "hydrate dev for second dry sha")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying dev now has the new proposed dry SHA")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(secondDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Waiting for dev to promote the second dry SHA")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(secondDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Setting dev's commit status to success for the second commit")
+			_, err = runGitCmd(ctx, gitPath2, "fetch")
+			Expect(err).NotTo(HaveOccurred())
+			devActiveSha2, err := runGitCmd(ctx, gitPath2, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
+			Expect(err).NotTo(HaveOccurred())
+			devActiveSha2 = strings.TrimSpace(devActiveSha2)
+
+			_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+				activeCommitStatusDevelopment.Spec.Sha = devActiveSha2
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			Expect(err).To(Succeed())
+
+			By("Verifying staging can now be promoted (previous environment check passes)")
+			Eventually(func(g Gomega) {
+				var prevEnvCS promoterv1alpha1.CommitStatus
+				csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpStaging.Name)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      csName,
+					Namespace: "default",
+				}, &prevEnvCS)
+				g.Expect(err).To(Succeed())
+				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying staging promotes the second dry SHA")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(secondDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should unblock staging when dev receives only a git note (no new commit)", func() {
+			By("Waiting for ChangeTransferPolicies to be created and reconciled")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).NotTo(BeEmpty())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).NotTo(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Making a change and hydrating all environments (normal flow first)")
+			gitPath1, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath1) }()
+			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, name, name, "first commit", "")
+
+			By("Setting dev's commit status to success so staging can promote")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Get the active hydrated SHA for dev to set the commit status
+			_, err = runGitCmd(ctx, gitPath1, "fetch")
+			Expect(err).NotTo(HaveOccurred())
+			devActiveSha, err := runGitCmd(ctx, gitPath1, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
+			Expect(err).NotTo(HaveOccurred())
+			devActiveSha = strings.TrimSpace(devActiveSha)
+
+			_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+				activeCommitStatusDevelopment.Spec.Sha = devActiveSha
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			Expect(err).To(Succeed())
+
+			By("Waiting for staging to be promoted (first commit)")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Set staging's commit status to success
+			stagingActiveSha, err := runGitCmd(ctx, gitPath1, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
+			Expect(err).NotTo(HaveOccurred())
+			stagingActiveSha = strings.TrimSpace(stagingActiveSha)
+			_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusStaging, func() error {
+				activeCommitStatusStaging.Spec.Sha = stagingActiveSha
+				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			Expect(err).To(Succeed())
+
+			By("Now simulating out-of-order hydration: hydrate ONLY staging for a new commit")
+			gitPath2, err := cloneTestRepo(ctx, name)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath2) }()
+
+			secondDrySha, err := makeDryCommit(ctx, gitPath2, "second commit - git note only test")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Hydrating ONLY staging-next (simulating out-of-order hydration)")
+			err = hydrateEnvironment(ctx, gitPath2, "environment/staging-next", secondDrySha, "hydrate staging for second dry sha")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Verifying staging sees the new proposed dry SHA")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Equal(secondDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the previous environment commit status is pending (blocking staging)")
+			Eventually(func(g Gomega) {
+				var prevEnvCS promoterv1alpha1.CommitStatus
+				csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpStaging.Name)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      csName,
+					Namespace: "default",
+				}, &prevEnvCS)
+				g.Expect(err).To(Succeed())
+				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
+				g.Expect(prevEnvCS.Spec.Description).To(ContainSubstring("hydrator to finish processing"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Adding ONLY a git note to dev's existing hydrated commit (no new commit)")
+			// This simulates the hydrator saying "the manifests haven't changed, but I've processed this dry SHA"
+			err = addNoteToEnvironment(ctx, gitPath2, testBranchDevelopmentNext, secondDrySha)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Waiting for dev CTP to pick up the git note")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				// Dev's Note.DrySha should be the second dry SHA (from git note)
+				g.Expect(ctpDev.Status.Proposed.Note.DrySha).To(Equal(secondDrySha))
+				// Dev's Proposed.Dry.Sha should still be the first dry SHA (no new commit was made)
+				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying staging is now unblocked (previous env check passes due to git note)")
+			Eventually(func(g Gomega) {
+				var prevEnvCS promoterv1alpha1.CommitStatus
+				csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpStaging.Name)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      csName,
+					Namespace: "default",
+				}, &prevEnvCS)
+				g.Expect(err).To(Succeed())
+				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying staging promotes the second dry SHA")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(secondDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should allow production to promote older commit when staging has moved ahead", func() {
+			// This test verifies the scenario where:
+			// 1. Dry commit A is made (commitTime: 10:00)
+			// 2. All environments get hydrated for A
+			// 3. Before production merges A, someone makes dry commit B (commitTime: 10:05) that only affects staging
+			// 4. Staging hydrates and merges B (production's hydrated manifests are unchanged for B)
+			// 5. Production should be allowed to promote A since staging has already moved on
+
+			By("Waiting for ChangeTransferPolicies to be created and reconciled")
+			var ctpProd promoterv1alpha1.ChangeTransferPolicy
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).NotTo(BeEmpty())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).NotTo(BeEmpty())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Status.Active.Dry.Sha).NotTo(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Making first commit (A) and hydrating all environments")
+			gitPath1, err := os.MkdirTemp("", "*")
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath1) }()
+			firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, name, name, "first commit A", "")
+
+			By("Setting dev's commit status to success")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			_, err = runGitCmd(ctx, gitPath1, "fetch")
+			Expect(err).NotTo(HaveOccurred())
+			devActiveSha, err := runGitCmd(ctx, gitPath1, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
+			Expect(err).NotTo(HaveOccurred())
+			devActiveSha = strings.TrimSpace(devActiveSha)
+
+			_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+				activeCommitStatusDevelopment.Spec.Sha = devActiveSha
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			Expect(err).To(Succeed())
+
+			By("Waiting for staging to promote first commit A")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Set staging's commit status to success
+			stagingActiveSha, err := runGitCmd(ctx, gitPath1, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
+			Expect(err).NotTo(HaveOccurred())
+			stagingActiveSha = strings.TrimSpace(stagingActiveSha)
+			_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusStaging, func() error {
+				activeCommitStatusStaging.Spec.Sha = stagingActiveSha
+				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			Expect(err).To(Succeed())
+
+			By("Verifying production sees the first commit A as proposed")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpProd.Name,
+					Namespace: ctpProd.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Now making second commit (B) that only affects staging")
+			gitPath2, err := cloneTestRepo(ctx, name)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath2) }()
+
+			secondDrySha, err := makeDryCommit(ctx, gitPath2, "second commit B - only affects staging")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Hydrating ONLY staging-next for commit B (dev and prod manifests unchanged)")
+			// Only staging gets a new hydrated commit, dev and prod just get git notes
+			err = hydrateEnvironment(ctx, gitPath2, "environment/staging-next", secondDrySha, "hydrate staging for B")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Adding git note to dev's existing hydrated commit for commit B (no new commit)")
+			// Dev's manifests haven't changed for B, so just update the git note
+			err = addNoteToEnvironment(ctx, gitPath2, testBranchDevelopmentNext, secondDrySha)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Waiting for dev CTP to pick up the git note for B")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				// Dev's Note.DrySha should be the second dry SHA (from git note)
+				g.Expect(ctpDev.Status.Proposed.Note.DrySha).To(Equal(secondDrySha))
+				// Dev's Proposed.Dry.Sha should still be the first dry SHA (no new commit was made)
+				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Waiting for staging to promote second commit B")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(secondDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Set staging's commit status to success for B
+			_, err = runGitCmd(ctx, gitPath2, "fetch")
+			Expect(err).NotTo(HaveOccurred())
+			stagingActiveSha2, err := runGitCmd(ctx, gitPath2, "rev-parse", "origin/"+ctpStaging.Spec.ActiveBranch)
+			Expect(err).NotTo(HaveOccurred())
+			stagingActiveSha2 = strings.TrimSpace(stagingActiveSha2)
+			_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusStaging, func() error {
+				activeCommitStatusStaging.Spec.Sha = stagingActiveSha2
+				activeCommitStatusStaging.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			Expect(err).To(Succeed())
+
+			By("Adding git note to production's existing hydrated commit for commit B (no new commit)")
+			// This simulates the hydrator saying "production's manifests haven't changed for B"
+			err = addNoteToEnvironment(ctx, gitPath2, "environment/production-next", secondDrySha)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Waiting for production CTP to pick up the git note")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpProd.Name,
+					Namespace: ctpProd.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				// Production's Note.DrySha should be the second dry SHA (from git note)
+				g.Expect(ctpProd.Status.Proposed.Note.DrySha).To(Equal(secondDrySha))
+				// Production's Proposed.Dry.Sha should still be the first dry SHA (no new commit was made)
+				g.Expect(ctpProd.Status.Proposed.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying production's previous environment check passes (staging is ahead with matching Note.DrySha)")
+			Eventually(func(g Gomega) {
+				var prevEnvCS promoterv1alpha1.CommitStatus
+				csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpProd.Name)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      csName,
+					Namespace: "default",
+				}, &prevEnvCS)
+				g.Expect(err).To(Succeed())
+				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying production promotes the first dry SHA (A)")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpProd.Name,
+					Namespace: ctpProd.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("isPreviousEnvironmentPending", func() {
+		// Use fixed times for tests to ensure consistent time comparisons
+		olderTime := metav1.NewTime(time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC))
+		newerTime := metav1.NewTime(time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC))
+
+		// Helper to create a HydratorMetadata pointer, or nil if empty
+		makeNote := func(drySha string) *promoterv1alpha1.HydratorMetadata {
+			if drySha == "" {
+				return nil
+			}
+			return &promoterv1alpha1.HydratorMetadata{DrySha: drySha}
+		}
+
+		// Helper to create environment status with specific values
+		makeEnvStatusWithTime := func(activeDrySha, proposedDrySha, noteDrySha string, activeTime metav1.Time) promoterv1alpha1.EnvironmentStatus {
+			return promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        activeDrySha,
+						CommitTime: activeTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        proposedDrySha,
+						CommitTime: olderTime, // Set proposed commit time to olderTime by default
+					},
+					Note: makeNote(noteDrySha),
+				},
+			}
+		}
+
+		// Helper that uses the older time by default (for backward compatibility)
+		makeEnvStatus := func(activeDrySha, proposedDrySha, noteSha string) promoterv1alpha1.EnvironmentStatus {
+			return makeEnvStatusWithTime(activeDrySha, proposedDrySha, noteSha, olderTime)
+		}
+
+		DescribeTable("should correctly determine if previous environment is pending",
+			func(prevActiveDry, prevProposedDry, prevNoteDry, currActiveDry, currProposedDry, currNoteSha string, expectPending bool, expectReasonContains string) {
+				prevEnvStatus := makeEnvStatus(prevActiveDry, prevProposedDry, prevNoteDry)
+				currEnvStatus := makeEnvStatus(currActiveDry, currProposedDry, currNoteSha)
+
+				isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
+
+				Expect(isPending).To(Equal(expectPending), "isPending mismatch")
+				if expectReasonContains != "" {
+					Expect(reason).To(ContainSubstring(expectReasonContains), "reason mismatch")
+				}
+			},
+			// Scenario 1: Out-of-order hydration - staging hydrates before dev
+			// Dev hasn't hydrated yet (note and proposed still show OLD)
+			Entry("blocks when previous env hasn't hydrated yet (with git notes)",
+				"OLD", "OLD", "OLD", // prev: active=OLD, proposed=OLD, note=OLD
+				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
+				true, "Waiting for the hydrator to finish processing the proposed dry commit"),
+
+			// Scenario 2: Normal flow - dev has hydrated and merged
+			Entry("allows when previous env has merged the proposed dry SHA",
+				"ABC", "ABC", "ABC", // prev: active=ABC, proposed=ABC, note=ABC
+				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
+				false, ""),
+
+			// Scenario 3: Git note - dev has no manifest changes
+			// Dev's hydrator updated the note but didn't create a new commit
+			Entry("allows when previous env has no changes to merge (git note)",
+				"OLD", "OLD", "ABC", // prev: active=OLD, proposed=OLD, note=ABC (note updated, no new commit)
+				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
+				false, ""),
+
+			// Scenario 4: Legacy hydrator (no git notes) - dev hasn't hydrated
+			Entry("blocks when previous env hasn't hydrated (no git notes)",
+				"OLD", "OLD", "", // prev: active=OLD, proposed=OLD, note="" (empty)
+				"OLD", "ABC", "", // curr: active=OLD, proposed=ABC, note="" (empty for legacy)
+				true, "Waiting for the hydrator to finish processing the proposed dry commit"),
+
+			// Scenario 5: Legacy hydrator - dev has hydrated but not merged
+			Entry("blocks when previous env has hydrated but not merged (no git notes)",
+				"OLD", "ABC", "", // prev: active=OLD, proposed=ABC, note="" (empty)
+				"OLD", "ABC", "", // curr: active=OLD, proposed=ABC, note="" (empty for legacy)
+				true, "Waiting for previous environment to be promoted"),
+
+			// Scenario 6: Legacy hydrator - dev has hydrated and merged
+			Entry("allows when previous env has merged (no git notes)",
+				"ABC", "ABC", "", // prev: active=ABC, proposed=ABC, note="" (empty)
+				"OLD", "ABC", "", // curr: active=OLD, proposed=ABC, note="" (empty for legacy)
+				false, ""),
+
+			// Scenario 7: Dev hydrated but not yet merged (with git notes)
+			Entry("blocks when previous env has hydrated but not merged (with git notes)",
+				"OLD", "ABC", "ABC", // prev: active=OLD, proposed=ABC, note=ABC
+				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
+				true, "Waiting for previous environment to be promoted"),
+
+			// Scenario 8: Mismatch between note and proposed (edge case)
+			// Note shows newer SHA than proposed (hydrator updated note for even newer commit)
+			Entry("blocks when note shows different SHA than what we're promoting",
+				"OLD", "OLD", "DEF", // prev: active=OLD, proposed=OLD, note=DEF (different!)
+				"OLD", "ABC", "ABC", // curr: active=OLD, proposed=ABC, note=ABC
+				true, "Waiting for the hydrator to finish processing the proposed dry commit"),
+		)
+
+		// Test for when previous environment has already moved past the proposed dry SHA
+		// AND both environments have the same Note.DrySha (confirming they've seen the same dry commits)
+		//
+		// Example scenario:
+		// 1. Dry commit ABC is made (commitTime: 10:00)
+		// 2. All environments get hydrated for ABC
+		// 3. Before production merges ABC, someone makes dry commit DEF (commitTime: 10:05)
+		// 4. Staging hydrates and merges DEF
+		// 5. Production is still trying to promote ABC, but staging is ahead
+		// 6. Both have Note.DrySha = DEF (both hydrated up to the latest), so allow promotion
+		It("allows when previous env has already merged a newer commit with matching Note.DrySha", func() {
+			// Previous env (staging) has merged a newer commit (DEF at newerTime)
+			prevEnvStatus := makeEnvStatusWithTime("DEF", "DEF", "DEF", newerTime)
+			// Current env (production) is trying to promote an older commit (ABC at olderTime)
+			// Both have Note.DrySha = "DEF", meaning they've both been hydrated up to the same point
+			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "OLD",
+						CommitTime: olderTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "ABC",
+						CommitTime: olderTime, // ABC was made before DEF
+					},
+					Note: &promoterv1alpha1.HydratorMetadata{
+						DrySha: "DEF", // But hydrator has processed up to DEF
+					},
+				},
+			}
+
+			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
+
+			Expect(isPending).To(BeFalse(), "should allow promotion when previous env is ahead and Note.DrySha matches")
+			Expect(reason).To(BeEmpty())
+		})
+
+		It("blocks when Note.DrySha doesn't match between environments", func() {
+			// Previous env (staging) has Note.DrySha "XYZ" while production's is "ABC"
+			// This means they haven't been hydrated for the same dry commits
+			prevEnvStatus := makeEnvStatusWithTime("DEF", "DEF", "XYZ", newerTime)
+			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "OLD",
+						CommitTime: olderTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "ABC",
+						CommitTime: olderTime,
+					},
+					Note: &promoterv1alpha1.HydratorMetadata{
+						DrySha: "ABC", // Different from staging's XYZ
+					},
+				},
+			}
+
+			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
+
+			Expect(isPending).To(BeTrue(), "should block when Note.DrySha doesn't match")
+			Expect(reason).To(ContainSubstring("hydrator to finish processing"))
+		})
+
+		// Test for legacy hydrators (no git notes) when previous env is ahead
+		It("allows when previous env is ahead with matching Proposed.Dry.Sha (legacy hydrator)", func() {
+			// Previous env (staging) has merged a newer commit (DEF at newerTime)
+			// Both environments use legacy hydrator (no Note.DrySha), so we compare Proposed.Dry.Sha
+			prevEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "DEF",
+						CommitTime: newerTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha: "DEF",
+					},
+					// Note.DrySha is empty (legacy hydrator, no git notes)
+				},
+			}
+			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "OLD",
+						CommitTime: olderTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "DEF", // Same as staging's Proposed.Dry.Sha
+						CommitTime: olderTime,
+					},
+					// Note.DrySha is empty (legacy hydrator, no git notes)
+				},
+			}
+
+			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
+
+			Expect(isPending).To(BeFalse(), "should allow promotion when previous env is ahead and Proposed.Dry.Sha matches (legacy)")
+			Expect(reason).To(BeEmpty())
+		})
+
+		It("blocks when previous env is ahead but commit statuses are not passing", func() {
+			// Previous env has merged a newer commit but health check is pending
+			prevEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "DEF",
+						CommitTime: newerTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhasePending)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha: "DEF",
+					},
+					Note: &promoterv1alpha1.HydratorMetadata{
+						DrySha: "DEF",
+					},
+				},
+			}
+			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
+				Active: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "OLD",
+						CommitTime: olderTime,
+					},
+					CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+						{Key: "health", Phase: string(promoterv1alpha1.CommitPhaseSuccess)},
+					},
+				},
+				Proposed: promoterv1alpha1.CommitBranchState{
+					Dry: promoterv1alpha1.CommitShaState{
+						Sha:        "ABC",
+						CommitTime: olderTime,
+					},
+					Note: &promoterv1alpha1.HydratorMetadata{
+						DrySha: "DEF", // Note.DrySha matches staging
+					},
+				},
+			}
+
+			isPending, reason := isPreviousEnvironmentPending(prevEnvStatus, currEnvStatus)
+
+			Expect(isPending).To(BeTrue(), "should block when previous env commit statuses are not passing")
+			Expect(reason).To(ContainSubstring("commit status"))
+		})
+	})
+
+	// Note: Each test creates its own reconciler and state instead of using shared BeforeEach setup.
+	// This ensures complete test isolation because enqueueOutOfSyncCTPs schedules background
+	// timers (time.AfterFunc) that may fire during other tests. With isolated state per test,
+	// background timers from one test cannot contaminate another test's assertions.
+	//
+	// Mutex locking pattern: After each call to enqueueOutOfSyncCTPs, tests acquire the lock,
+	// read enqueuedCTPs, then immediately release the lock before calling enqueueOutOfSyncCTPs
+	// again. This fine-grained locking is required because background timer goroutines need to
+	// acquire the lock to append to enqueuedCTPs during time.Sleep() calls. Using defer to hold
+	// the lock for an entire test would cause deadlock: the test would wait for timers to fire,
+	// but timers would block waiting for the lock that won't release until the test completes.
+	Context("Rate limiting for enqueueOutOfSyncCTPs", func() {
+		// Helper to create out-of-sync CTP that will trigger rate limiting.
+		// Creates a CTP where the git note SHA differs from the target SHA.
+		makeCTP := func(name string) *promoterv1alpha1.ChangeTransferPolicy {
+			return &promoterv1alpha1.ChangeTransferPolicy{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "test-ns",
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha: "abc123", // Proposed dry SHA (becomes target since newest)
+						},
+						Hydrated: promoterv1alpha1.CommitShaState{
+							CommitTime: metav1.Now(),
+						},
+						Note: &promoterv1alpha1.HydratorMetadata{
+							DrySha: "old123", // Git note SHA (out-of-sync with target)
+						},
+					},
+				},
+			}
+		}
+
+		// Helper to create reconciler with enqueue tracking
+		makeReconciler := func() (*PromotionStrategyReconciler, *[]client.ObjectKey, *sync.Mutex) {
+			enqueuedCTPs := &[]client.ObjectKey{}
+			mutex := &sync.Mutex{}
+
+			reconciler := &PromotionStrategyReconciler{
+				EnqueueCTP: func(namespace, name string) {
+					mutex.Lock()
+					defer mutex.Unlock()
+					*enqueuedCTPs = append(*enqueuedCTPs, client.ObjectKey{Namespace: namespace, Name: name})
+				},
+			}
+
+			return reconciler, enqueuedCTPs, mutex
+		}
+
+		It("should enqueue CTP on first call", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTP("test-ctp"),
+			}
+
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			enqueueMutex.Lock()
+			Expect(*enqueuedCTPs).To(HaveLen(1))
+			Expect((*enqueuedCTPs)[0].Name).To(Equal("test-ctp"))
+			Expect((*enqueuedCTPs)[0].Namespace).To(Equal("test-ns"))
+			enqueueMutex.Unlock()
+		})
+
+		It("should rate limit second call within threshold", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTP("test-ctp"),
+			}
+
+			// First call
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			firstCallCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCallCount).To(Equal(1))
+
+			// Second call immediately after (within 15s threshold)
+			time.Sleep(100 * time.Millisecond)
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			secondCallCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+
+			// Should still be 1 - rate limited (delayed enqueue scheduled for later)
+			Expect(secondCallCount).To(Equal(1), "second call should be rate limited")
+		})
+
+		It("should schedule delayed enqueue on rate limited call", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTP("test-ctp"),
+			}
+
+			// First call
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			firstCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCount).To(Equal(1))
+
+			// Second call - should be rate limited and schedule delayed enqueue
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			// Wait for delayed enqueue to fire (15s + small buffer)
+			time.Sleep(16 * time.Second)
+
+			enqueueMutex.Lock()
+			finalCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+
+			// Should now be 2 - original + delayed
+			Expect(finalCount).To(Equal(2), "delayed enqueue should have fired")
+		})
+
+		It("should not accumulate multiple delayed enqueues", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTP("test-ctp"),
+			}
+
+			// First call
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+
+			// Multiple rapid calls - should only schedule ONE delayed enqueue
+			for i := 0; i < 5; i++ {
+				time.Sleep(100 * time.Millisecond)
+				reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			}
+
+			// Wait for delayed enqueue to fire
+			time.Sleep(16 * time.Second)
+
+			enqueueMutex.Lock()
+			finalCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+
+			// Should be 2, not 6 (original + one delayed, not 5 delayed)
+			Expect(finalCount).To(Equal(2), "should only have one delayed enqueue, not accumulate")
+		})
+
+		It("should rate limit multiple CTPs independently", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
+				makeCTP("ctp-1"),
+				makeCTP("ctp-2"),
+			}
+
+			// First call - both should enqueue
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			firstCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCount).To(Equal(2))
+
+			// Second call immediately - both should be rate limited
+			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
+			enqueueMutex.Lock()
+			secondCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(secondCount).To(Equal(2), "both should be rate limited")
+
+			// Wait for delayed enqueues
+			time.Sleep(16 * time.Second)
+
+			enqueueMutex.Lock()
+			finalCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(finalCount).To(Equal(4), "both delayed enqueues should fire")
+		})
+
+		It("should rate limit one CTP while allowing others through", func() {
+			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
+
+			ctx := context.Background()
+			ctp1 := makeCTP("ctp-1")
+			ctp2 := makeCTP("ctp-2")
+
+			// First call - enqueue ctp-1 only
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1})
+			enqueueMutex.Lock()
+			firstCount := len(*enqueuedCTPs)
+			enqueueMutex.Unlock()
+			Expect(firstCount).To(Equal(1), "ctp-1 should enqueue")
+
+			// Immediately call again with both CTPs
+			// ctp-1 should be rate limited, ctp-2 should enqueue (first time)
+			time.Sleep(100 * time.Millisecond)
+			reconciler.enqueueOutOfSyncCTPs(ctx, []*promoterv1alpha1.ChangeTransferPolicy{ctp1, ctp2})
+
+			enqueueMutex.Lock()
+			secondCount := len(*enqueuedCTPs)
+			lastEnqueuedName := (*enqueuedCTPs)[len(*enqueuedCTPs)-1].Name
+			enqueueMutex.Unlock()
+
+			// Should be 2 total now (ctp-1 from first call, ctp-2 from second call)
+			// ctp-1 was rate limited in the second call
+			Expect(secondCount).To(Equal(2), "only ctp-2 should have enqueued in second call")
+			Expect(lastEnqueuedName).To(Equal("ctp-2"), "ctp-2 should be the last enqueued")
 		})
 	})
 })

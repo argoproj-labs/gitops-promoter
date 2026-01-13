@@ -38,6 +38,7 @@ type CommitStatusSpec struct {
 	Sha string `json:"sha"`
 
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
 	Description string `json:"description"`
@@ -48,7 +49,7 @@ type CommitStatusSpec struct {
 	Phase CommitStatusPhase `json:"phase"` // pending, success, failure
 	// (Github: error, failure, pending, success)
 	// (Gitlab: pending, running, success, failed, canceled)
-	// (Bitbucket: INPROGRESS, STOPPED, SUCCESSFUL, FAILED)
+	// (Bitbucket Cloud: INPROGRESS, STOPPED, SUCCESSFUL, FAILED)
 
 	// Url is a URL that the user can follow to see more details about the status
 	// +kubebuilder:validation:Optional

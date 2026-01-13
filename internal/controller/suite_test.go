@@ -68,6 +68,16 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
+// Shared test constants for branch names used across multiple test files
+const (
+	testBranchDevelopment     = "environment/development"
+	testBranchDevelopmentNext = "environment/development-next"
+	testBranchStaging         = "environment/staging"
+	testBranchStagingNext     = "environment/staging-next"
+	testBranchProduction      = "environment/production"
+	testBranchProductionNext  = "environment/production-next"
+)
+
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
@@ -88,6 +98,7 @@ var (
 	gitServerPort       string
 	webhookReceiverPort int
 	scheme              = utils.GetScheme()
+	enqueueCTP          CTPEnqueueFunc // Function to enqueue CTP reconciliation requests
 )
 
 func TestControllers(t *testing.T) {
@@ -311,6 +322,28 @@ var _ = BeforeSuite(func() {
 					},
 				},
 			},
+			GitCommitStatus: promoterv1alpha1.GitCommitStatusConfiguration{
+				WorkQueue: promoterv1alpha1.WorkQueue{
+					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
+					MaxConcurrentReconciles: 10,
+					RateLimiter: promoterv1alpha1.RateLimiter{
+						MaxOf: []promoterv1alpha1.RateLimiterTypes{
+							{
+								Bucket: &promoterv1alpha1.Bucket{
+									Qps:    10,
+									Bucket: 100,
+								},
+							},
+							{
+								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())
@@ -319,11 +352,26 @@ var _ = BeforeSuite(func() {
 		ControllerNamespace: "default",
 	})
 
+	// ChangeTransferPolicy controller must be set up first so we can
+	// get the enqueue function to pass to other controllers.
+	ctpReconciler := &ChangeTransferPolicyReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
+		SettingsMgr: settingsMgr,
+	}
+	err = ctpReconciler.SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	// Store the enqueue function globally so tests can trigger CTP reconciliation
+	enqueueCTP = ctpReconciler.GetEnqueueFunc()
+
 	err = (&CommitStatusReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorderFor("CommitStatus"),
 		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -332,6 +380,7 @@ var _ = BeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorderFor("TimedCommitStatus"),
 		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -340,14 +389,7 @@ var _ = BeforeSuite(func() {
 		Scheme:      k8sManager.GetScheme(),
 		Recorder:    k8sManager.GetEventRecorderFor("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
-	}).SetupWithManager(ctx, k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
-	err = (&ChangeTransferPolicyReconciler{
-		Client:      k8sManager.GetClient(),
-		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
-		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -396,8 +438,17 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, multiClusterManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	err = (&GitCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorderFor("GitCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	webhookReceiverPort = constants.WebhookReceiverPort + GinkgoParallelProcess()
-	whr := webhookreceiver.NewWebhookReceiver(k8sManager)
+	whr := webhookreceiver.NewWebhookReceiver(k8sManager, webhookreceiver.EnqueueFunc(ctpReconciler.GetEnqueueFunc()))
 	go func() {
 		err = whr.Start(ctx, fmt.Sprintf(":%d", webhookReceiverPort))
 		Expect(err).ToNot(HaveOccurred(), "failed to start webhook receiver")
@@ -553,7 +604,7 @@ func setupInitialTestGitRepoWithoutActiveMetadata(owner string, name string) {
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction} {
+	for _, environment := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "--orphan", environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "rm", "-rf", "--ignore-unmatch", ".")
@@ -675,7 +726,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	_, err = runGitCmd(ctx, gitPath, "config", "pull.rebase", "false")
 	Expect(err).NotTo(HaveOccurred())
 
-	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction, "environment/development-next", "environment/staging-next", "environment/production-next"} {
+	for _, environment := range []string{testBranchDevelopment, testBranchStaging, testBranchProduction, "environment/development-next", "environment/staging-next", "environment/production-next"} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = runGitCmd(ctx, gitPath, "pull")
@@ -798,109 +849,6 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	return sha, shortSha
 }
 
-func makeChangeAndHydrateRepoNoOp(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
-	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
-
-	for _, environment := range []string{testEnvironmentDevelopment, testEnvironmentStaging, testEnvironmentProduction, "environment/development-next", "environment/staging-next", "environment/production-next"} {
-		_, err := runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(ctx, gitPath, "pull")
-		Expect(err).NotTo(HaveOccurred())
-	}
-
-	defaultBranch, err := runGitCmd(ctx, gitPath, "rev-parse", "--abbrev-ref", "origin/HEAD")
-	Expect(err).NotTo(HaveOccurred())
-	defaultBranch, _ = strings.CutPrefix(strings.TrimSpace(defaultBranch), "origin/")
-
-	_, err = runGitCmd(ctx, gitPath, "checkout", defaultBranch)
-	Expect(err).NotTo(HaveOccurred())
-
-	_, err = runGitCmd(ctx, gitPath, "pull")
-	Expect(err).NotTo(HaveOccurred())
-
-	// Get the SHA before we make changes - this is the "before" SHA for the webhook
-	beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
-	Expect(err).NotTo(HaveOccurred())
-	beforeSha = strings.TrimSpace(beforeSha)
-
-	// Make a no-op commit (empty commit)
-	if dryCommitMessage == "" {
-		dryCommitMessage = "no-op commit"
-	}
-	_, err = runGitCmd(ctx, gitPath, "commit", "--allow-empty", "-m", dryCommitMessage)
-	Expect(err).NotTo(HaveOccurred())
-	_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", defaultBranch)
-	Expect(err).NotTo(HaveOccurred())
-
-	// Send webhook after push to simulate SCM provider behavior
-	sendWebhookForPush(ctx, beforeSha, defaultBranch)
-
-	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
-	Expect(err).NotTo(HaveOccurred())
-	sha = strings.TrimSpace(sha)
-	shortSha, err := runGitCmd(ctx, gitPath, "rev-parse", "--short=7", defaultBranch)
-	Expect(err).NotTo(HaveOccurred())
-	shortSha = strings.TrimSpace(shortSha)
-
-	for _, environment := range []string{"environment/development-next", "environment/staging-next", "environment/production-next"} {
-		_, err = runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
-		Expect(err).NotTo(HaveOccurred())
-
-		_, err = runGitCmd(ctx, gitPath, "pull")
-		Expect(err).NotTo(HaveOccurred())
-
-		// Get the SHA before we make changes - this is the "before" SHA for the webhook
-		beforeBranchSha, err := runGitCmd(ctx, gitPath, "rev-parse", environment)
-		Expect(err).NotTo(HaveOccurred())
-		beforeBranchSha = strings.TrimSpace(beforeBranchSha)
-
-		var subject string
-		var body string
-		parts := strings.SplitN(dryCommitMessage, "\n\n", 2)
-		subject = parts[0]
-		if len(parts) > 1 {
-			body = parts[1]
-		}
-
-		metadata := git.HydratorMetadata{
-			RepoURL: repoURL,
-			DrySha:  sha,
-			Author:  "testuser <testmail@test.com>",
-			Date:    metav1.Now(),
-			Subject: subject,
-			Body:    body,
-		}
-		m, err := json.MarshalIndent(metadata, "", "\t")
-		Expect(err).NotTo(HaveOccurred())
-
-		f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
-		Expect(err).NotTo(HaveOccurred())
-		_, err = f.Write(m)
-		Expect(err).NotTo(HaveOccurred())
-		err = f.Close()
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(ctx, gitPath, "add", "hydrator.metadata")
-		Expect(err).NotTo(HaveOccurred())
-
-		if hydratedCommitMessage == "" {
-			_, err = runGitCmd(ctx, gitPath, "commit", "-m", "added no-op commit from dry sha, "+sha+" from environment "+strings.TrimRight(environment, "-next"))
-		} else {
-			_, err = runGitCmd(ctx, gitPath, "commit", "-m", hydratedCommitMessage)
-		}
-		Expect(err).NotTo(HaveOccurred())
-		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
-		Expect(err).NotTo(HaveOccurred())
-
-		// Send webhook after push with the "before" SHA that the CTP knows about
-		sendWebhookForPush(ctx, beforeBranchSha, environment)
-
-		// Sleep one seconds to differentiate the commits to prevent same hash
-		time.Sleep(1 * time.Second)
-	}
-
-	return sha, shortSha
-}
-
 func runGitCmd(ctx context.Context, directory string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	var stdoutBuf bytes.Buffer
@@ -989,6 +937,219 @@ func sendWebhookForPush(ctx context.Context, sha, branch string) {
 	if resp.StatusCode != http.StatusNoContent {
 		fmt.Printf("Webhook receiver returned unexpected status code: %d\n", resp.StatusCode)
 	}
+}
+
+// cloneTestRepo clones the test repo and configures git user. Returns the temp directory path.
+func cloneTestRepo(ctx context.Context, repoName string) (gitPath string, err error) {
+	gitPath, err = os.MkdirTemp("", "*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp dir: %w", err)
+	}
+
+	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoName, repoName)
+	_, err = runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
+	if err != nil {
+		_ = os.RemoveAll(gitPath)
+		return "", fmt.Errorf("failed to clone: %w", err)
+	}
+
+	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
+	if err != nil {
+		_ = os.RemoveAll(gitPath)
+		return "", fmt.Errorf("failed to set user.name: %w", err)
+	}
+
+	_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testmail@test.com")
+	if err != nil {
+		_ = os.RemoveAll(gitPath)
+		return "", fmt.Errorf("failed to set user.email: %w", err)
+	}
+
+	return gitPath, nil
+}
+
+// makeDryCommit creates a new commit on the default branch (main) and returns the dry SHA.
+// This simulates a developer pushing a change to the dry/source branch.
+func makeDryCommit(ctx context.Context, gitPath, commitMessage string) (drySha string, err error) {
+	// Fetch latest
+	_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch: %w", err)
+	}
+
+	// Get default branch
+	defaultBranch, err := runGitCmd(ctx, gitPath, "rev-parse", "--abbrev-ref", "origin/HEAD")
+	if err != nil {
+		return "", fmt.Errorf("failed to get default branch: %w", err)
+	}
+	defaultBranch = strings.TrimSpace(strings.TrimPrefix(defaultBranch, "origin/"))
+
+	_, err = runGitCmd(ctx, gitPath, "checkout", defaultBranch)
+	if err != nil {
+		return "", fmt.Errorf("failed to checkout %s: %w", defaultBranch, err)
+	}
+
+	// Get the SHA before we make changes - this is the "before" SHA for the webhook
+	beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
+	if err != nil {
+		return "", fmt.Errorf("failed to get before SHA: %w", err)
+	}
+	beforeSha = strings.TrimSpace(beforeSha)
+
+	// Create a unique change
+	manifestContent := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339Nano))
+	manifestPath := path.Join(gitPath, "manifests-fake.yaml")
+	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0o644); err != nil {
+		return "", fmt.Errorf("failed to write manifests-fake.yaml: %w", err)
+	}
+
+	_, err = runGitCmd(ctx, gitPath, "add", "manifests-fake.yaml")
+	if err != nil {
+		return "", fmt.Errorf("failed to add files: %w", err)
+	}
+
+	if commitMessage == "" {
+		commitMessage = "dry commit with timestamp"
+	}
+	_, err = runGitCmd(ctx, gitPath, "commit", "-m", commitMessage)
+	if err != nil {
+		return "", fmt.Errorf("failed to commit: %w", err)
+	}
+
+	_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", defaultBranch)
+	if err != nil {
+		return "", fmt.Errorf("failed to push: %w", err)
+	}
+
+	// Get the new dry SHA
+	drySha, err = runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
+	if err != nil {
+		return "", fmt.Errorf("failed to get dry SHA: %w", err)
+	}
+	drySha = strings.TrimSpace(drySha)
+
+	// Send webhook for the branch
+	sendWebhookForPush(ctx, beforeSha, defaultBranch)
+
+	return drySha, nil
+}
+
+// hydrateEnvironment hydrates a single environment branch with a new commit containing
+// hydrator.metadata and a git note. This simulates what a hydrator does.
+// Returns the hydrated commit SHA.
+func hydrateEnvironment(ctx context.Context, gitPath, branch, drySha, commitMessage string) error {
+	// Fetch latest and checkout the branch
+	_, err := runGitCmd(ctx, gitPath, "fetch", "origin")
+	if err != nil {
+		return fmt.Errorf("failed to fetch: %w", err)
+	}
+
+	_, err = runGitCmd(ctx, gitPath, "checkout", "-B", branch, "origin/"+branch)
+	if err != nil {
+		return fmt.Errorf("failed to checkout branch %s: %w", branch, err)
+	}
+
+	// Get the SHA before we make changes - this is the "before" SHA for the webhook
+	beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", branch)
+	if err != nil {
+		return fmt.Errorf("failed to get before SHA: %w", err)
+	}
+	beforeSha = strings.TrimSpace(beforeSha)
+
+	// Create hydrator.metadata
+	metadata := git.HydratorMetadata{
+		DrySha:  drySha,
+		Author:  "testuser <testmail@test.com>",
+		Date:    metav1.Now(),
+		Subject: commitMessage,
+	}
+	m, err := json.MarshalIndent(metadata, "", "\t")
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+
+	metadataPath := path.Join(gitPath, "hydrator.metadata")
+	if err := os.WriteFile(metadataPath, m, 0o644); err != nil {
+		return fmt.Errorf("failed to write hydrator.metadata: %w", err)
+	}
+
+	// Update manifests with unique content
+	manifestContent := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339Nano))
+	manifestPath := path.Join(gitPath, "manifests-fake.yaml")
+	if err := os.WriteFile(manifestPath, []byte(manifestContent), 0o644); err != nil {
+		return fmt.Errorf("failed to write manifests-fake.yaml: %w", err)
+	}
+
+	// Commit and push
+	_, err = runGitCmd(ctx, gitPath, "add", "-A")
+	if err != nil {
+		return fmt.Errorf("failed to add files: %w", err)
+	}
+
+	if commitMessage == "" {
+		commitMessage = fmt.Sprintf("hydrate %s for dry sha %s", branch, drySha)
+	}
+	_, err = runGitCmd(ctx, gitPath, "commit", "-m", commitMessage)
+	if err != nil {
+		return fmt.Errorf("failed to commit: %w", err)
+	}
+
+	_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", branch)
+	if err != nil {
+		return fmt.Errorf("failed to push: %w", err)
+	}
+
+	// Get the new hydrated SHA
+	hydratedSha, err := runGitCmd(ctx, gitPath, "rev-parse", branch)
+	if err != nil {
+		return fmt.Errorf("failed to get hydrated SHA: %w", err)
+	}
+	hydratedSha = strings.TrimSpace(hydratedSha)
+
+	// Add git note
+	if err := pushGitNote(ctx, gitPath, hydratedSha, drySha); err != nil {
+		return err
+	}
+
+	// Send webhook for the branch
+	sendWebhookForPush(ctx, beforeSha, branch)
+
+	return nil
+}
+
+// pushGitNote adds a git note to a commit and pushes it to origin.
+func pushGitNote(ctx context.Context, gitPath, commitSha, drySha string) error {
+	noteContent := fmt.Sprintf(`{"drySha": "%s"}`, drySha)
+	_, err := runGitCmd(ctx, gitPath, "notes", "--ref="+git.HydratorNotesRef, "add", "-f", "-m", noteContent, commitSha)
+	if err != nil {
+		return fmt.Errorf("failed to add git note: %w", err)
+	}
+	_, err = runGitCmd(ctx, gitPath, "push", "origin", git.HydratorNotesRef)
+	if err != nil {
+		return fmt.Errorf("failed to push git notes: %w", err)
+	}
+	return nil
+}
+
+// addNoteToEnvironment adds a git note to an existing hydrated commit without creating a new commit.
+// This simulates the hydrator where manifests haven't changed.
+// We do not send a webhook to trigger reconciliation, because github and other SCM providers do not support webhooks for git notes.
+func addNoteToEnvironment(ctx context.Context, gitPath, branch, drySha string) (err error) {
+	// Fetch latest
+	_, err = runGitCmd(ctx, gitPath, "fetch", "origin")
+	if err != nil {
+		return fmt.Errorf("failed to fetch: %w", err)
+	}
+
+	// Get the current hydrated SHA from the branch
+	hydratedSha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+branch)
+	if err != nil {
+		return fmt.Errorf("failed to get hydrated SHA: %w", err)
+	}
+	hydratedSha = strings.TrimSpace(hydratedSha)
+
+	// Add git note to the existing commit
+	return pushGitNote(ctx, gitPath, hydratedSha, drySha)
 }
 
 func createKubeConfig(cfg *rest.Config) ([]byte, error) {

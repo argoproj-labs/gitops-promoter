@@ -3,6 +3,7 @@
 ## Prerequisites
 - Node.js
 - npm
+- Argo CD v3.3 (earlier versions will work but may be buggy)
 
 ## Build the Extension
 

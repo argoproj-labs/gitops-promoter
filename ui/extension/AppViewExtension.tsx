@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Card from "@components-lib/components/Card";
-import "./index.scss";
 import { PromotionStrategy } from "@shared/types/promotion";
 import { AppViewComponentProps } from "@shared/types/extension";
 
@@ -40,8 +39,7 @@ const AppViewExtension = ({ tree, application }: AppViewComponentProps) => {
         throw new Error("Error fetching promotion strategy data: " + err);
       });
   }, [promotionStrategyNodes]);
-
-  if (isLoading || !promotionStrategy) {
+  if (isLoading && !promotionStrategy) {
     return <div>Loading...</div>;
   }
   return (

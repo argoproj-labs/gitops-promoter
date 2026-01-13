@@ -66,7 +66,7 @@ Connect with this password for the `admin` user.
 > See [Getting Started](./getting-started.md)
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.18.2/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.20.2/install.yaml
 ```
 
 > [!NOTE]
@@ -324,7 +324,7 @@ Here, we implement a simple strategy:
 3. Manual merge on production
 
 > [!NOTE]
-> You should see 2 PRs getting merged automatically and 1 PR to merge manually for the production. That is normal: we branched from the main branch wich is DRY. The promoter detects change and do what's needed to sync the two branches.
+> You should see 2 PRs getting merged automatically and 1 PR to merge manually for the production. That is normal: we branched from the main branch which is DRY. The promoter detects change and do what's needed to sync the two branches.
 
 ## Play with your environment
 

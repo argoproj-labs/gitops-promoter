@@ -1,4 +1,5 @@
 # see https://github.com/argoproj-labs/argocd-ephemeral-access/blob/main/.github/workflows/release.yaml
+# this file must be kept in sync with the above release-latest.yaml except for the trigger and job name
 name: release
 
 on:
@@ -8,6 +9,11 @@ on:
     paths:
       - 'docs/getting-started.md'
       - 'docs/tutorial-argocd-apps.md'
+
+permissions:
+  contents: write
+  packages: write
+
 env:
   # If set in the repo env vars it will use this tag to build the release notes.
   # Useful when creating a release tag after a release candidate tags phase.
@@ -21,7 +27,7 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     if: |
-      ${{github.repository == 'argoproj-labs/gitops-promoter' && contains(github.event.head_commit.message, 'docs: bump manifest versions to v')}}
+      github.repository == 'argoproj-labs/gitops-promoter' && contains(github.event.head_commit.message, 'docs: bump manifest versions to v')
     name: Release
     steps:
       - name: Checkout
@@ -59,7 +65,7 @@ jobs:
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
         with:
           distribution: goreleaser
-          version: v2.6.1
+          version: v2.13.2
           args: release --clean --verbose
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

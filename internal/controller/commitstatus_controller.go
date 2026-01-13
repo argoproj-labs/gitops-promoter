@@ -21,19 +21,18 @@ import (
 	"fmt"
 	"time"
 
-	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/client-go/util/retry"
-
-	"k8s.io/client-go/tools/record"
-
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
+	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -41,12 +40,12 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 // CommitStatusReconciler reconciles a CommitStatus object
@@ -55,6 +54,9 @@ type CommitStatusReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
+
+	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
+	EnqueueCTP CTPEnqueueFunc
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=commitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -76,6 +78,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	startTime := time.Now()
 
 	var cs promoterv1alpha1.CommitStatus
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &cs, r.Client, r.Recorder, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &cs, &client.GetOptions{})
@@ -109,11 +112,6 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	_, err = commitStatusProvider.Set(ctx, &cs)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set CommitStatus state for %q: %w", req.Name, err)
-	}
-
-	err = r.Status().Update(ctx, &cs)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update CommitStatus status %q: %w", req.Name, err)
 	}
 
 	err = r.triggerReconcileChangeTransferPolicy(ctx, cs, oldSha, cs.Spec.Sha)
@@ -163,11 +161,32 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 			return nil, fmt.Errorf("failed to get GitLab provider for domain %q with secret %q: %w", scmProvider.GetSpec().GitLab.Domain, secret.Name, err)
 		}
 		return p, nil
+	case scmProvider.GetSpec().BitbucketCloud != nil:
+		var p *bitbucket_cloud.CommitStatus
+		p, err = bitbucket_cloud.NewBitbucketCloudCommitStatusProvider(r.Client, *secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Bitbucket Cloud provider with secret %q: %w", secret.Name, err)
+		}
+		return p, nil
 	case scmProvider.GetSpec().Forgejo != nil:
 		var p *forgejo.CommitStatus
 		p, err = forgejo.NewForgejoCommitStatusProvider(r.Client, scmProvider, *secret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Forgejo provider for domain %q with secret %q: %w", scmProvider.GetSpec().Forgejo.Domain, secret.Name, err)
+		}
+		return p, nil
+	case scmProvider.GetSpec().Gitea != nil:
+		var p *gitea.CommitStatus
+		p, err = gitea.NewGiteaCommitStatusProvider(r.Client, scmProvider, *secret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Gitea provider for domain %q with secret %q: %w", scmProvider.GetSpec().Gitea.Domain, secret.Name, err)
+		}
+		return p, nil
+	case scmProvider.GetSpec().AzureDevOps != nil:
+		var p *azuredevops.CommitStatus
+		p, err = azuredevops.NewAzureDevopsCommitStatusProvider(ctx, r.Client, scmProvider, *secret, scmProvider.GetSpec().AzureDevOps.Organization)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Azure DevOps provider for organization %q with secret %q: %w", scmProvider.GetSpec().AzureDevOps.Organization, secret.Name, err)
 		}
 		return p, nil
 	case scmProvider.GetSpec().Fake != nil:
@@ -226,25 +245,10 @@ func (r *CommitStatusReconciler) triggerReconcileChangeTransferPolicy(ctx contex
 	ctpList := utils.UpsertChangeTransferPolicyList(ctpListActiveOldSha.Items, ctpListActiveNewSha.Items, ctpListProposedOldSha.Items, ctpListProposedNewSha.Items)
 
 	logger.Info("ChangeTransferPolicy list", "count", len(ctpList), "oldSha", oldSha, "newSha", newSha)
-	// TODO: parallelize this loop since it contains network calls.
 	for _, ctp := range ctpList {
-		if ctp.Annotations == nil {
-			ctp.Annotations = map[string]string{}
-		}
-		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			ctpUpdated := promoterv1alpha1.ChangeTransferPolicy{}
-			err = r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Name}, &ctpUpdated)
-			if ctpUpdated.Annotations == nil {
-				ctpUpdated.Annotations = map[string]string{}
-			}
-			ctpUpdated.Annotations[promoterv1alpha1.ReconcileAtAnnotation] = time.Now().Format(time.RFC3339Nano)
-			if err != nil {
-				return fmt.Errorf("failed to get ChangeTransferPolicy %q: %w", ctp.Name, err)
-			}
-			return r.Update(ctx, &ctpUpdated)
-		})
-		if err != nil {
-			return fmt.Errorf("failed to update ChangeTransferPolicy %q: %w", ctp.Name, err)
+		// Use the enqueue function to trigger reconciliation
+		if r.EnqueueCTP != nil {
+			r.EnqueueCTP(ctp.Namespace, ctp.Name)
 		}
 		logger.Info("Reconcile of ChangeTransferPolicy triggered", "ChangeTransferPolicy", ctp.Name,
 			"sha", cs.Spec.Sha, "phase", cs.Spec.Phase, "proposedHydratedSha", ctp.Status.Proposed.Hydrated.Sha, "activeHydratedSha", ctp.Status.Active.Hydrated.Sha)

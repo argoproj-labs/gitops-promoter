@@ -4,7 +4,7 @@ $breakpoint-horizontal: 1500px;
 $card-max-width: 1000px;
 $card-min-width-horizontal: 700px;
 $card-min-width-single: 500px;
-$card-gap-vertical: 100px;
+$card-gap-vertical: 10px;
 $card-gap-horizontal: 10px;
 $card-padding: 24px;
 
@@ -28,14 +28,14 @@ $extension-wrapper-gap: 20px;
   .env-cards-wrapper {
     padding: 0;
     display: flex;
-    gap: $card-gap-vertical;
     margin: 0 auto;
     align-items: stretch;
+    justify-content: center;
+    gap: $card-gap-vertical;
   }
   
   .env-card-column {
     flex: 0 0 auto;
-    max-width: 350px;
     display: flex;
   }
   
@@ -48,19 +48,22 @@ $extension-wrapper-gap: 20px;
     
     &.single-commit-group {
       min-height: 250px;
-      height: auto;
     }
   }
   
   // Force height override for single-commit-group in vertical layout
   .env-card.single-commit-group {
     min-height: 300px;
-    height: auto;
-    max-height: 400px;
   }
   
   .commit-group.proposed {
     flex: 1;
+  }
+  
+  .arrow-separator {
+    display: flex;
+    align-items: start;
+    padding-top: 150px;
   }
 }
 
@@ -76,10 +79,10 @@ $extension-wrapper-gap: 20px;
     flex-direction: column;
     align-items: center;
     padding: 0 5px;
-    max-width: 100vw;
     max-width: $card-max-width;
     box-sizing: border-box;
-    gap: $card-gap-horizontal; 
+    justify-content: center;
+    gap: $card-gap-vertical;
   }
   
   .env-card-column {
@@ -92,19 +95,14 @@ $extension-wrapper-gap: 20px;
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: auto 1fr;
-    width: 100%;
     max-width: 100%;
-    min-width: $card-min-width-horizontal; 
     box-sizing: border-box;
-    min-height: auto;
     
     &.single-commit-group {
       grid-template-columns: 1fr;
       max-width: 70%; 
       margin: 0; 
-      min-width: $card-min-width-single; 
       min-height: 250px;
-      height: auto;
     }
   }
   
@@ -137,6 +135,15 @@ $extension-wrapper-gap: 20px;
     border-top: 0;
     background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
     min-width: 0;
+  }
+  
+  .arrow-separator {
+    display: flex;
+    align-items: center;
+    margin: 10px 0;
+    padding-top: 0px;
+    width: 100%;
+    margin-left: 70%;
   }
 }
 

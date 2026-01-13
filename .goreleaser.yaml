@@ -1,5 +1,5 @@
 # Based on: https://github.com/argoproj-labs/gitops-promoter/blob/main/.goreleaser.yaml
-
+# This file must be kept in sync with .gorleaser-latest.yaml except for release section
 # The lines below are called `modelines`. See `:help modeline`
 # yaml-language-server: $schema=https://raw.githubusercontent.com/goreleaser/goreleaser/v2.3.2/www/docs/static/schema.json
 # vim: set ts=2 sw=2 tw=0 fo=cnqoj
@@ -76,7 +76,7 @@ docker_manifests:
 archives:
   - id: binary
     formats: [tar.gz]
-    builds:
+    ids:
       - "gitops-promoter"
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-

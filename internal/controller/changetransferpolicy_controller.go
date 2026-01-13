@@ -29,11 +29,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
+	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	v1 "k8s.io/api/core/v1"
@@ -50,12 +47,20 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 )
+
+// CTPEnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
+// without modifying the CTP object. This is used by other controllers (like PromotionStrategy)
+// to trigger CTP reconciliation without causing object conflicts.
+type CTPEnqueueFunc func(namespace, name string)
 
 // ChangeTransferPolicyReconciler reconciles a ChangeTransferPolicy object
 type ChangeTransferPolicyReconciler struct {
@@ -63,11 +68,23 @@ type ChangeTransferPolicyReconciler struct {
 	Scheme      *runtime.Scheme
 	Recorder    record.EventRecorder
 	SettingsMgr *settings.Manager
+
+	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
+	// It allows other controllers to enqueue CTP reconcile requests.
+	enqueueFunc CTPEnqueueFunc
+}
+
+// GetEnqueueFunc returns a function that can be used to enqueue CTP reconcile requests.
+// This should be called after SetupWithManager has been called.
+func (r *ChangeTransferPolicyReconciler) GetEnqueueFunc() CTPEnqueueFunc {
+	return r.enqueueFunc
 }
 
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=promoter.argoproj.io,resources=changetransferpolicies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests,verbs=get;list;watch;create;update;patch
+//+kubebuilder:rbac:groups=promoter.argoproj.io,resources=pullrequests/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -84,6 +101,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	startTime := time.Now()
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
@@ -95,6 +113,12 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 		logger.Error(err, "failed to get ChangeTransferPolicy")
 		return ctrl.Result{}, fmt.Errorf("failed to get ChangeTransferPolicy: %w", err)
+	}
+
+	// Handle PR finalizer removal if PR is being deleted and CTP status is already synced
+	err = r.handlePRFinalizerRemoval(ctx, &ctp)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to handle PR finalizer removal: %w", err)
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
@@ -123,6 +147,12 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to clone repo %q: %w", ctp.Spec.RepositoryReference.Name, err)
 	}
 
+	// Fetch git notes for hydrator metadata (used to track hydration completion)
+	err = gitOperations.FetchNotes(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to fetch git notes: %w", err)
+	}
+
 	err = r.calculateStatus(ctx, &ctp, gitOperations)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to calculate ChangeTransferPolicy status: %w", err)
@@ -133,7 +163,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to git merge for conflict resolution: %w", err)
 	}
 
-	directPushWasPerformed, pr, err := r.mergeOrPullRequestPromote(ctx, gitOperations, &ctp)
+	pr, err := r.creatOrUpdatePullRequest(ctx, &ctp)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to set promotion state: %w", err)
 	}
@@ -154,21 +184,9 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 	// calculateHistory is done at a best effort so we do not return any errors here, we just log them instead.
 	r.calculateHistory(ctx, &ctp, gitOperations)
 
-	err = r.Status().Update(ctx, &ctp)
+	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
-	}
-
-	// If there was a direct push to the active branch, we want to requeue the reconciliation after a short delay to
-	// allow the CTP to pick up the new state of the active branch. (Merges via PRs should trigger reconciliations since
-	// the CTP controller owns the PR object and will be notified when the PR is merged.)
-	// There's nothing special about 1ns, it just has to be > 0.
-	requeueDuration := 1 * time.Nanosecond
-	if !directPushWasPerformed {
-		requeueDuration, err = settings.GetRequeueDuration[promoterv1alpha1.ChangeTransferPolicyConfiguration](ctx, r.SettingsMgr)
-		if err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
-		}
+		return ctrl.Result{}, fmt.Errorf("failed to get global promotion configuration: %w", err)
 	}
 
 	return ctrl.Result{
@@ -179,7 +197,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 // calculateHistory this function calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
 // calculateHistory calculates the history by getting the first parents on the active branch and using the trailers to reconstruct the history.
 // This function is best effort and will log errors but continue processing if it encounters issues with individual commits. This is because history is stored in git
-// in order to get out of a bad state requires re-writing git history or pushing a bunch of no-op commits greater than the max history limit.
+// in order to get out of a bad state requires re-writing git history or pushing a bunch of commits greater than the max history limit.
 func (r *ChangeTransferPolicyReconciler) calculateHistory(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) {
 	logger := log.FromContext(ctx)
 
@@ -213,11 +231,6 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 		return promoterv1alpha1.History{}, false, fmt.Errorf("failed to get trailers for SHA %q: %w", sha, err)
 	}
 
-	// Skip no-op commits
-	if activeTrailers[constants.TrailerNoOp] == "true" {
-		return promoterv1alpha1.History{}, false, nil
-	}
-
 	historyEntry := promoterv1alpha1.History{
 		Proposed:    promoterv1alpha1.CommitBranchStateHistoryProposed{},
 		Active:      promoterv1alpha1.CommitBranchState{},
@@ -230,6 +243,14 @@ func (r *ChangeTransferPolicyReconciler) buildHistoryEntry(ctx context.Context, 
 	r.populateCommitStatuses(ctx, &historyEntry, activeTrailers)
 
 	return historyEntry, true, nil
+}
+
+// getFirstTrailerValue returns the first value for a given trailer key, or an empty string if not found.
+func getFirstTrailerValue(trailers map[string][]string, key string) string {
+	if values, ok := trailers[key]; ok && len(values) > 0 {
+		return values[0]
+	}
+	return ""
 }
 
 // populateActiveMetadata populates the active metadata for a history entry
@@ -250,10 +271,10 @@ func (r *ChangeTransferPolicyReconciler) populateActiveMetadata(ctx context.Cont
 }
 
 // populateProposedMetadata populates the proposed metadata for a history entry
-func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string, gitOperations *git.EnvironmentOperations) {
+func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string][]string, gitOperations *git.EnvironmentOperations) {
 	logger := log.FromContext(ctx)
 
-	proposedHydratedSha := activeTrailers[constants.TrailerShaHydratedProposed]
+	proposedHydratedSha := getFirstTrailerValue(activeTrailers, constants.TrailerShaHydratedProposed)
 	if proposedHydratedSha == "" {
 		logger.V(4).Info("No " + constants.TrailerShaHydratedProposed + " trailer found")
 		return
@@ -267,16 +288,16 @@ func (r *ChangeTransferPolicyReconciler) populateProposedMetadata(ctx context.Co
 }
 
 // populatePullRequestMetadata populates the pull request metadata for a history entry
-func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string) {
+func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string][]string) {
 	logger := log.FromContext(ctx)
 
-	if pullRequestID := activeTrailers[constants.TrailerPullRequestID]; pullRequestID != "" {
+	if pullRequestID := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestID); pullRequestID != "" {
 		h.PullRequest.ID = pullRequestID
 	} else {
 		logger.V(4).Info("No " + constants.TrailerPullRequestID + " found in trailers")
 	}
 
-	if pullRequestUrl := activeTrailers[constants.TrailerPullRequestUrl]; pullRequestUrl != "" {
+	if pullRequestUrl := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestUrl); pullRequestUrl != "" {
 		if !strings.HasPrefix(pullRequestUrl, "http://") && !strings.HasPrefix(pullRequestUrl, "https://") {
 			logger.V(4).Info("pull request URL does not start with http:// or https://", "url", pullRequestUrl)
 		} else {
@@ -286,7 +307,7 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 		logger.V(4).Info("No " + constants.TrailerPullRequestUrl + " found in trailers")
 	}
 
-	if timeStr := activeTrailers[constants.TrailerPullRequestCreationTime]; timeStr != "" {
+	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestCreationTime); timeStr != "" {
 		if creationTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
 			logger.V(4).Info("failed to parse "+constants.TrailerPullRequestCreationTime, "time", timeStr, "err", err)
 		} else {
@@ -296,7 +317,7 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 		logger.V(4).Info("No " + constants.TrailerPullRequestCreationTime + " found in trailers")
 	}
 
-	if timeStr := activeTrailers[constants.TrailerPullRequestMergeTime]; timeStr != "" {
+	if timeStr := getFirstTrailerValue(activeTrailers, constants.TrailerPullRequestMergeTime); timeStr != "" {
 		if mergeTime, err := time.Parse(time.RFC3339, timeStr); err != nil {
 			logger.V(4).Info("failed to parse "+constants.TrailerPullRequestMergeTime, "time", timeStr, "err", err)
 		} else {
@@ -308,40 +329,40 @@ func (r *ChangeTransferPolicyReconciler) populatePullRequestMetadata(ctx context
 }
 
 // populateCommitStatuses populates the commit statuses for a history entry
-func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string]string) {
+func (r *ChangeTransferPolicyReconciler) populateCommitStatuses(ctx context.Context, h *promoterv1alpha1.History, activeTrailers map[string][]string) {
 	activeKeys, proposedKeys := getCommitStatusKeysFromTrailers(ctx, activeTrailers)
 
 	h.Active.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(activeKeys))
 	for _, key := range activeKeys {
-		url := activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-url"]
+		url := getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-url")
 		if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			log.FromContext(ctx).Error(errors.New("invalid URL"), "active commit status URL does not start with http:// or https://", "url", url, "key", key)
 			url = ""
 		}
 		h.Active.CommitStatuses = append(h.Active.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:   key,
-			Phase: activeTrailers[constants.TrailerCommitStatusActivePrefix+key+"-phase"],
+			Phase: getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusActivePrefix+key+"-phase"),
 			Url:   url,
 		})
 	}
 
 	h.Proposed.CommitStatuses = make([]promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase, 0, len(proposedKeys))
 	for _, key := range proposedKeys {
-		url := activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-url"]
+		url := getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-url")
 		if url != "" && !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 			log.FromContext(ctx).Error(errors.New("invalid URL"), "proposed commit status URL does not start with http:// or https://", "url", url, "key", key)
 			url = ""
 		}
 		h.Proposed.CommitStatuses = append(h.Proposed.CommitStatuses, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 			Key:   key,
-			Phase: activeTrailers[constants.TrailerCommitStatusProposedPrefix+key+"-phase"],
+			Phase: getFirstTrailerValue(activeTrailers, constants.TrailerCommitStatusProposedPrefix+key+"-phase"),
 			Url:   url,
 		})
 	}
 }
 
 // getCommitStatusKeysFromTrailers extracts the commit status keys from the trailers in the given context.
-func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string]string) (activeKeys []string, proposedKeys []string) {
+func getCommitStatusKeysFromTrailers(ctx context.Context, trailers map[string][]string) (activeKeys []string, proposedKeys []string) {
 	logger := log.FromContext(ctx)
 
 	// This function extracts commit status keys from trailers with the given prefix.
@@ -392,7 +413,6 @@ func removeKnownTrailers(input string) string {
 		constants.TrailerShaHydratedProposed,
 		constants.TrailerShaDryActive,
 		constants.TrailerShaDryProposed,
-		constants.TrailerNoOp,
 	}
 
 	lines := strings.Split(input, "\n")
@@ -448,6 +468,31 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		return fmt.Errorf("failed to get ChangeTransferPolicy max concurrent reconciles: %w", err)
 	}
 
+	// Create a channel for external enqueue requests. This allows other controllers
+	// to trigger CTP reconciliation without modifying the CTP object.
+	// The channel uses GenericEvent with a minimal CTP object containing just the namespace/name.
+	// We use a buffer of 1024 to match the default internal buffer size of source.Channel.
+	// Sends will block if the buffer is full, providing natural backpressure to callers.
+	externalEnqueueChan := make(chan event.GenericEvent, 1024)
+
+	// Store the enqueue function so it can be retrieved by other controllers.
+	// This is a blocking send - callers will wait if the channel buffer is full.
+	r.enqueueFunc = func(namespace, name string) {
+		ctp := &promoterv1alpha1.ChangeTransferPolicy{}
+		ctp.SetNamespace(namespace)
+		ctp.SetName(name)
+
+		select {
+		case externalEnqueueChan <- event.GenericEvent{Object: ctp}:
+			// Sent successfully
+		default:
+			// Channel is full, log a warning and block until space is available
+			log.FromContext(ctx).Info("CTP enqueue channel is full, blocking until space is available",
+				"namespace", namespace, "name", name)
+			externalEnqueueChan <- event.GenericEvent{Object: ctp}
+		}
+	}
+
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.ChangeTransferPolicy{},
 			builder.WithPredicates(predicate.Or(
@@ -460,6 +505,9 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		// checks whether it needs to update a related ChangeTransferPolicy by setting an annotation. Avoiding .Owns
 		// here avoids duplicate reconciliations.
 		Owns(&promoterv1alpha1.PullRequest{}).
+		// Watch for external enqueue requests from other controllers (e.g., PromotionStrategy).
+		// The handler.EnqueueRequestForObject extracts the namespace/name from the GenericEvent.
+		WatchesRawSource(source.Channel(externalEnqueueChan, &handler.EnqueueRequestForObject{})).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
@@ -469,31 +517,11 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 }
 
 func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context, scmProvider promoterv1alpha1.GenericScmProvider, secret *v1.Secret, namespace string, repoRef promoterv1alpha1.ObjectReference) (scms.GitOperationsProvider, error) {
-	logger := log.FromContext(ctx)
-	switch {
-	case scmProvider.GetSpec().Fake != nil:
-		logger.V(4).Info("Creating fake git authentication provider")
-		return fake.NewFakeGitAuthenticationProvider(scmProvider, secret), nil
-	case scmProvider.GetSpec().GitHub != nil:
-		logger.V(4).Info("Creating GitHub git authentication provider")
-		p, err := github.NewGithubGitAuthenticationProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: namespace, Name: repoRef.Name})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create GitHub Auth Provider: %w", err)
-		}
-		return p, nil
-	case scmProvider.GetSpec().GitLab != nil:
-		logger.V(4).Info("Creating GitLab git authentication provider")
-		provider, err := gitlab.NewGitlabGitAuthenticationProvider(scmProvider, secret)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create GitLab Auth Provider: %w", err)
-		}
-		return provider, nil
-	case scmProvider.GetSpec().Forgejo != nil:
-		logger.V(4).Info("Creating Forgejo git authentication provider")
-		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), nil
-	default:
-		return nil, errors.New("no supported git authentication provider found")
+	provider, err := gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: namespace, Name: repoRef.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create git operations provider: %w", err)
 	}
+	return provider, nil
 }
 
 func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
@@ -566,21 +594,24 @@ type TooManyMatchingShaError struct {
 func (e *TooManyMatchingShaError) Error() string {
 	// Construct a message that includes the namespace/name of each commit status.
 	// If there are more than two, finish the message with "and X more..."
-	msg := "there are to many matching SHAs for the '" + e.commitStatusKey + "' commit status: "
+	var msg strings.Builder
+	msg.WriteString("there are to many matching SHAs for the '" + e.commitStatusKey + "' commit status: ")
 	for i, cs := range e.commitStatuses {
 		if i > 0 {
-			msg += ", "
+			msg.WriteString(", ")
 		}
 		if i >= 2 {
-			msg += fmt.Sprintf("and %d more...", len(e.commitStatuses)-i)
+			fmt.Fprintf(&msg, "and %d more...", len(e.commitStatuses)-i)
 			break
 		}
-		msg += fmt.Sprintf("%s/%s", cs.Namespace, cs.Name)
+		fmt.Fprintf(&msg, "%s/%s", cs.Namespace, cs.Name)
 	}
-	return msg
+	return msg.String()
 }
 
 func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations, activeHydratedSha, proposedHydratedSha string) error {
+	logger := log.FromContext(ctx)
+
 	activeCommitMetadata, err := gitOperations.GetShaMetadataFromFile(ctx, activeHydratedSha)
 	if err != nil {
 		return fmt.Errorf("failed to get commit metadata for hydrated SHA %q: %w", activeHydratedSha, err)
@@ -604,6 +635,20 @@ func (r *ChangeTransferPolicyReconciler) setCommitMetadata(ctx context.Context, 
 		return fmt.Errorf("failed to get commit proposed metadata for hydrated SHA %q: %w", proposedHydratedSha, err)
 	}
 	ctp.Status.Proposed.Hydrated = proposedCommitMetadata
+
+	// Read the git note for the proposed hydrated commit to get the Note.DrySha.
+	// This is used by downstream environments to verify that hydration is complete
+	// for a given dry commit before allowing promotion.
+	proposedNote, err := gitOperations.GetHydratorNote(ctx, proposedHydratedSha)
+	if err != nil {
+		return fmt.Errorf("failed to get hydrator note for proposed hydrated SHA %q: %w", proposedHydratedSha, err)
+	}
+	ctp.Status.Proposed.Note = &promoterv1alpha1.HydratorMetadata{
+		DrySha: proposedNote.DrySha,
+	}
+	logger.V(4).Info("Set proposed Note.DrySha from git note",
+		"proposedHydratedSha", proposedHydratedSha,
+		"noteDrySha", proposedNote.DrySha)
 
 	return nil
 }
@@ -684,6 +729,8 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 }
 
 func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	logger := log.FromContext(ctx)
+
 	pr := &promoterv1alpha1.PullRequestList{}
 	err := r.List(ctx, pr, &client.ListOptions{
 		Namespace: ctp.Namespace,
@@ -697,8 +744,11 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 		return fmt.Errorf("failed to list PullRequests for ChangeTransferPolicy %q status update: %w", ctp.Name, err)
 	}
 	if len(pr.Items) == 0 {
-		ctp.Status.PullRequest = nil
-		return nil // No pull request exists, nothing to update
+		// No PR resource found - keep existing status to preserve ExternallyMergedOrClosed and other metadata.
+		// This allows the CTP to maintain a record of the last known PR state even after the PR resource
+		// is deleted (e.g., after external merge/close). The status is only replaced when a new PR is created.
+		logger.V(4).Info("No PR resource found, preserving existing PR status in CTP")
+		return nil
 	}
 
 	if len(pr.Items) > 1 {
@@ -708,11 +758,107 @@ func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context
 	if ctp.Status.PullRequest == nil {
 		ctp.Status.PullRequest = &promoterv1alpha1.PullRequestCommonStatus{}
 	}
+
+	logger.V(4).Info("CTP copying PR status",
+		"prName", pr.Items[0].Name,
+		"prState", pr.Items[0].Status.State,
+		"prID", pr.Items[0].Status.ID,
+		"prDeletionTimestamp", pr.Items[0].DeletionTimestamp,
+		"specState", pr.Items[0].Spec.State,
+		"statusState", pr.Items[0].Status.State,
+		"hasCTPFinalizer", controllerutil.ContainsFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer))
+
 	ctp.Status.PullRequest.ID = pr.Items[0].Status.ID
 	ctp.Status.PullRequest.State = pr.Items[0].Status.State
 	ctp.Status.PullRequest.PRCreationTime = pr.Items[0].Status.PRCreationTime
 	ctp.Status.PullRequest.Url = pr.Items[0].Status.Url
+	ctp.Status.PullRequest.ExternallyMergedOrClosed = pr.Items[0].Status.ExternallyMergedOrClosed
 
+	// If PR is being deleted and has our finalizer, we need to ensure the CTP status is persisted.
+	// The status will be persisted by the defer in Reconcile, and then on the next reconcile
+	// (triggered by enqueue below) the finalizer will be removed by handlePRFinalizerRemoval.
+	if !pr.Items[0].DeletionTimestamp.IsZero() && controllerutil.ContainsFinalizer(&pr.Items[0], promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
+		logger.V(4).Info("PR being deleted with CTP finalizer, CTP status will be persisted and finalizer removed on next reconcile")
+		// Enqueue a reconcile to trigger finalizer removal after status is persisted
+		if r.enqueueFunc != nil {
+			r.enqueueFunc(ctp.Namespace, ctp.Name)
+		}
+	}
+
+	return nil
+}
+
+// handlePRFinalizerRemoval checks if there's a PR being deleted with our finalizer where the CTP status
+// already matches the PR status. If so, it removes the finalizer to allow the PR to be deleted.
+func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
+	logger := log.FromContext(ctx)
+
+	// Find any PR resources for this CTP
+	pr := &promoterv1alpha1.PullRequestList{}
+	err := r.List(ctx, pr, &client.ListOptions{
+		Namespace: ctp.Namespace,
+		LabelSelector: labels.SelectorFromSet(map[string]string{
+			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+		}),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list PullRequests for finalizer check: %w", err)
+	}
+
+	if len(pr.Items) == 0 {
+		// No PR found, nothing to do
+		return nil
+	}
+
+	if len(pr.Items) > 1 {
+		// Multiple PRs found, return the error immediately
+		return tooManyPRsError(pr)
+	}
+
+	prItem := &pr.Items[0]
+
+	// Check if PR is being deleted and has our finalizer
+	if prItem.DeletionTimestamp.IsZero() || !controllerutil.ContainsFinalizer(prItem, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer) {
+		return nil
+	}
+
+	// Check if CTP status already matches PR status (meaning status was already copied)
+	if ctp.Status.PullRequest == nil {
+		// CTP has no PR status yet, cannot remove finalizer safely
+		logger.V(4).Info("PR being deleted but CTP has no PR status, cannot remove finalizer yet")
+		return nil
+	}
+
+	// Verify that the CTP status matches the PR status
+	statusMatches := ctp.Status.PullRequest.ID == prItem.Status.ID &&
+		ctp.Status.PullRequest.State == prItem.Status.State &&
+		boolPtrEqual(ctp.Status.PullRequest.ExternallyMergedOrClosed, prItem.Status.ExternallyMergedOrClosed)
+
+	if !statusMatches {
+		logger.V(4).Info("PR being deleted but CTP status doesn't match PR status, cannot remove finalizer yet",
+			"ctpPRID", ctp.Status.PullRequest.ID,
+			"prID", prItem.Status.ID,
+			"ctpPRState", ctp.Status.PullRequest.State,
+			"prState", prItem.Status.State,
+			"ctpExternallyMergedOrClosed", ctp.Status.PullRequest.ExternallyMergedOrClosed,
+			"prExternallyMergedOrClosed", prItem.Status.ExternallyMergedOrClosed)
+		return nil
+	}
+
+	// Status matches, safe to remove finalizer
+	logger.Info("Removing CTP finalizer from PR - status already synced",
+		"prName", prItem.Name,
+		"prID", prItem.Status.ID,
+		"prState", prItem.Status.State)
+
+	controllerutil.RemoveFinalizer(prItem, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
+	if err := r.Update(ctx, prItem); err != nil {
+		return fmt.Errorf("failed to remove CTP finalizer from PullRequest: %w", err)
+	}
+
+	logger.V(4).Info("PR finalizer removed")
 	return nil
 }
 
@@ -730,39 +876,13 @@ func tooManyPRsError(pr *promoterv1alpha1.PullRequestList) error {
 	return fmt.Errorf("found more than one open PullRequest: %s", summary)
 }
 
-// mergeOrPullRequestPromote checks if there's anything to promote and, if there is, it does the promotion. It returns
-// a boolean indicating whether a merge was done via a merge commit/push (as opposed to a pull request).
-func (r *ChangeTransferPolicyReconciler) mergeOrPullRequestPromote(ctx context.Context, gitOperations *git.EnvironmentOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) (bool, *promoterv1alpha1.PullRequest, error) {
-	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
-		// There's nothing to promote.
-		return false, nil, nil
-	}
-
-	prRequired, err := gitOperations.IsPullRequestRequired(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
-	if err != nil {
-		return false, nil, fmt.Errorf("failed to check whether a PR is required from branch %q to %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
-	}
-
-	var pr *promoterv1alpha1.PullRequest
-	if prRequired {
-		pr, err = r.creatOrUpdatePullRequest(ctx, ctp)
-		if err != nil {
-			return false, nil, fmt.Errorf("failed to create/update PR: %w", err)
-		}
-		return false, pr, nil
-	}
-
-	err = gitOperations.PromoteEnvironmentWithMerge(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch)
-	if err != nil {
-		return false, pr, fmt.Errorf("failed to merge: %w", err)
-	}
-	return true, pr, nil
-}
-
 func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PullRequest, error) {
 	logger := log.FromContext(ctx)
 	if ctp.Status.Proposed.Dry.Sha == ctp.Status.Active.Dry.Sha {
 		// If the proposed dry sha is the same as the active dry sha, no need to create a pull request
+		logger.V(4).Info("No promotion needed - active branch already has proposed changes",
+			"activeDrySha", ctp.Status.Active.Dry.Sha,
+			"proposedDrySha", ctp.Status.Proposed.Dry.Sha)
 		return nil, nil
 	}
 
@@ -780,8 +900,14 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		prName = utils.GetPullRequestName(gitRepo.Spec.GitLab.Namespace, gitRepo.Spec.GitLab.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.Forgejo != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.Forgejo.Owner, gitRepo.Spec.Forgejo.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.Gitea != nil:
+		prName = utils.GetPullRequestName(gitRepo.Spec.Gitea.Owner, gitRepo.Spec.Gitea.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	case gitRepo.Spec.Fake != nil:
 		prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.BitbucketCloud != nil:
+		prName = utils.GetPullRequestName(gitRepo.Spec.BitbucketCloud.Owner, gitRepo.Spec.BitbucketCloud.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	case gitRepo.Spec.AzureDevOps != nil:
+		prName = utils.GetPullRequestName(gitRepo.Spec.AzureDevOps.Project, gitRepo.Spec.AzureDevOps.Name, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	default:
 		return nil, errors.New("unsupported git repository type")
 	}
@@ -817,6 +943,8 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
 			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
 		}
+		// Add CTP finalizer to ensure we can copy status before PR is deleted
+		controllerutil.AddFinalizer(&pr, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
 		pr.Spec.RepositoryReference = ctp.Spec.RepositoryReference
 		pr.Spec.Title = title
 		pr.Spec.TargetBranch = ctp.Spec.ActiveBranch
@@ -1005,4 +1133,16 @@ func TemplatePullRequest(prt promoterv1alpha1.PullRequestTemplate, data map[stri
 	}
 
 	return title, description, nil
+}
+
+// boolPtrEqual compares two *bool pointers for equality.
+// Returns true if both are nil, or if both are non-nil and point to equal values.
+func boolPtrEqual(a, b *bool) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
 }
