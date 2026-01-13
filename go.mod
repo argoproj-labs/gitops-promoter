@@ -16,7 +16,7 @@ require (
 	github.com/google/go-github/v71 v71.0.0
 	github.com/ktrysmt/go-bitbucket v0.9.88
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
-	github.com/onsi/ginkgo/v2 v2.27.4
+	github.com/onsi/ginkgo/v2 v2.27.5
 	github.com/onsi/gomega v1.39.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/relvacode/iso8601 v1.7.0
@@ -25,7 +25,7 @@ require (
 	github.com/spf13/pflag v1.0.10
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
-	gitlab.com/gitlab-org/api/client-go v1.12.0
+	gitlab.com/gitlab-org/api/client-go v1.13.0
 	go.uber.org/zap v1.27.1
 	golang.org/x/oauth2 v0.33.0
 	golang.org/x/sync v0.19.0
