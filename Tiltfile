@@ -27,23 +27,12 @@ local_resource(
     labels=['build'],
 )
 
-# Build the Go binary locally (runs after dashboard or Go code changes)
-local_resource(
-    'build-binary',
-    cmd='go build -o bin/gitops-promoter ./cmd',
-    deps=['cmd', 'api', 'internal', 'ui/web/static', 'go.mod', 'go.sum'],
-    ignore=['**/*_test.go'],
-    resource_deps=['build-dashboard'],
-    allow_parallel=True,
-    labels=['build'],
-)
-
 # Run the dashboard locally (auto-restarts when binary changes)
 local_resource(
     'run-dashboard',
-    serve_cmd='./bin/gitops-promoter dashboard --port=8080',
-    deps=['bin/gitops-promoter'],
-    resource_deps=['build-binary'],
+    serve_cmd='go run ./cmd dashboard --port=8080',
+    resource_deps=['build-dashboard'],
+    deps=['ui/web/static'],
     labels=['local'],
     links=['http://localhost:8080'],
 )
