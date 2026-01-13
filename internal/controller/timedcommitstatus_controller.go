@@ -338,7 +338,7 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 
 // upsertCommitStatus creates or updates a CommitStatus resource for a given environment.
 //
-//nolint:dupl // Similar to ScheduledCommitStatus but with different labels and naming
+
 func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-timed", tcs.Name, branch))

@@ -26,74 +26,95 @@ import (
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-var _ = Describe("ScheduledCommitStatus Controller", func() {
-	Context("When schedule window is active", func() {
-		ctx := context.Background()
+var _ = Describe("ScheduledCommitStatus Controller", Ordered, func() {
+	var (
+		ctx               context.Context
+		name              string
+		scmSecret         *v1.Secret
+		scmProvider       *promoterv1alpha1.ScmProvider
+		gitRepo           *promoterv1alpha1.GitRepository
+		promotionStrategy *promoterv1alpha1.PromotionStrategy
+	)
 
-		var name string
-		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+	BeforeAll(func() {
+		ctx = context.Background()
+
+		By("Setting up test git repository and resources")
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "scheduled-commit-status-test", "default")
+
+		// Configure ProposedCommitStatuses to check for schedule commit status
+		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: "schedule"},
+		}
+
+		setupInitialTestGitRepoOnServer(ctx, name, name)
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+		By("Waiting for PromotionStrategy to be reconciled with initial state")
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}, promotionStrategy)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+			g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Making a change to trigger proposed commits")
+		gitPath, err := os.MkdirTemp("", "*")
+		Expect(err).NotTo(HaveOccurred())
+		defer func() {
+			_ = os.RemoveAll(gitPath)
+		}()
+		makeChangeAndHydrateRepo(gitPath, name, name, "test commit for scheduled", "")
+
+		By("Waiting for proposed commits to appear")
+		Eventually(func(g Gomega) {
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}, promotionStrategy)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+			for _, env := range promotionStrategy.Status.Environments {
+				g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
+			}
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+
+	AfterAll(func() {
+		By("Cleaning up test resources")
+		if promotionStrategy != nil {
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		}
+		if gitRepo != nil {
+			_ = k8sClient.Delete(ctx, gitRepo)
+		}
+		if scmProvider != nil {
+			_ = k8sClient.Delete(ctx, scmProvider)
+		}
+		if scmSecret != nil {
+			_ = k8sClient.Delete(ctx, scmSecret)
+		}
+	})
+
+	Describe("Window Active - Success Phase", func() {
 		var scheduledCommitStatus *promoterv1alpha1.ScheduledCommitStatus
 
 		BeforeEach(func() {
-			By("Creating the test resources")
-			var scmSecret *v1.Secret
-			var scmProvider *promoterv1alpha1.ScmProvider
-			var gitRepo *promoterv1alpha1.GitRepository
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "scheduled-status-active", "default")
-
-			// Configure ProposedCommitStatuses to check for schedule commit status
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "schedule"},
-			}
-
-			setupInitialTestGitRepoOnServer(ctx, name, name)
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-			By("Waiting for PromotionStrategy to be reconciled with initial state")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Making a change to trigger proposed commits")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = os.RemoveAll(gitPath)
-			}()
-			makeChangeAndHydrateRepo(gitPath, name, name, "test commit for scheduled", "")
-
-			By("Waiting for proposed commits to appear")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-				for _, env := range promotionStrategy.Status.Environments {
-					g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-
 			By("Creating a ScheduledCommitStatus resource with active window")
 			now := time.Now().UTC()
 			// Create a window that includes the current time (started 1 hour ago, lasts 2 hours)
@@ -101,7 +122,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 
 			scheduledCommitStatus = &promoterv1alpha1.ScheduledCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
+					Name:      name + "-active",
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
@@ -110,7 +131,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 					},
 					Environments: []promoterv1alpha1.ScheduledCommitStatusEnvironment{
 						{
-							Branch: testEnvironmentDevelopment,
+							Branch: testBranchDevelopment,
 							Schedule: promoterv1alpha1.Schedule{
 								Cron:     cronExpr,
 								Window:   "2h",
@@ -124,9 +145,8 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 		})
 
 		AfterEach(func() {
-			By("Cleaning up resources")
+			By("Cleaning up ScheduledCommitStatus")
 			_ = k8sClient.Delete(ctx, scheduledCommitStatus)
-			_ = k8sClient.Delete(ctx, promotionStrategy)
 		})
 
 		It("should report success when inside deployment window", func() {
@@ -134,14 +154,14 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-active",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Should have status for dev environment
 				g.Expect(scs.Status.Environments).To(HaveLen(1))
-				g.Expect(scs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
+				g.Expect(scs.Status.Environments[0].Branch).To(Equal(testBranchDevelopment))
 				g.Expect(scs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Validate status fields are populated
@@ -151,7 +171,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 				g.Expect(scs.Status.Environments[0].NextWindowEnd).ToNot(BeNil(), "NextWindowEnd should be set")
 
 				// Verify CommitStatus was created for dev environment with success phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-scheduled")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-active-"+testBranchDevelopment+"-scheduled")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -168,7 +188,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Consistently(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-active",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -182,7 +202,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 					"Should remain in window")
 
 				// Verify CommitStatus phase remains success
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-scheduled")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-active-"+testBranchDevelopment+"-scheduled")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -195,64 +215,10 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 		})
 	})
 
-	Context("When schedule window is not active", func() {
-		ctx := context.Background()
-
-		var name string
-		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+	Describe("Window Inactive - Pending Phase", func() {
 		var scheduledCommitStatus *promoterv1alpha1.ScheduledCommitStatus
 
 		BeforeEach(func() {
-			By("Creating the test resources")
-			var scmSecret *v1.Secret
-			var scmProvider *promoterv1alpha1.ScmProvider
-			var gitRepo *promoterv1alpha1.GitRepository
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "scheduled-status-inactive", "default")
-
-			// Configure ProposedCommitStatuses to check for schedule commit status
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "schedule"},
-			}
-
-			setupInitialTestGitRepoOnServer(ctx, name, name)
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-			By("Waiting for PromotionStrategy to be reconciled with initial state")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Making a change to trigger proposed commits")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = os.RemoveAll(gitPath)
-			}()
-			makeChangeAndHydrateRepo(gitPath, name, name, "test commit for scheduled", "")
-
-			By("Waiting for proposed commits to appear")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-				for _, env := range promotionStrategy.Status.Environments {
-					g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-
 			By("Creating a ScheduledCommitStatus resource with future window")
 			now := time.Now().UTC()
 			// Create a window that starts 2 hours in the future
@@ -260,7 +226,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 
 			scheduledCommitStatus = &promoterv1alpha1.ScheduledCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
+					Name:      name + "-inactive",
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
@@ -269,7 +235,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 					},
 					Environments: []promoterv1alpha1.ScheduledCommitStatusEnvironment{
 						{
-							Branch: testEnvironmentDevelopment,
+							Branch: testBranchDevelopment,
 							Schedule: promoterv1alpha1.Schedule{
 								Cron:     cronExpr,
 								Window:   "1h",
@@ -283,9 +249,8 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 		})
 
 		AfterEach(func() {
-			By("Cleaning up resources")
+			By("Cleaning up ScheduledCommitStatus")
 			_ = k8sClient.Delete(ctx, scheduledCommitStatus)
-			_ = k8sClient.Delete(ctx, promotionStrategy)
 		})
 
 		It("should report pending when outside deployment window", func() {
@@ -293,14 +258,14 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-inactive",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Should have status for dev environment
 				g.Expect(scs.Status.Environments).To(HaveLen(1))
-				g.Expect(scs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
+				g.Expect(scs.Status.Environments[0].Branch).To(Equal(testBranchDevelopment))
 				g.Expect(scs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 
 				// Validate status fields
@@ -310,7 +275,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 				g.Expect(scs.Status.Environments[0].NextWindowEnd).ToNot(BeNil(), "NextWindowEnd should be set")
 
 				// Verify CommitStatus was created for dev environment with pending phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-scheduled")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-inactive-"+testBranchDevelopment+"-scheduled")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -325,7 +290,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Consistently(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-inactive",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -339,7 +304,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 					"Should remain outside window")
 
 				// Verify CommitStatus phase remains pending
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-scheduled")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-inactive-"+testBranchDevelopment+"-scheduled")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -352,63 +317,10 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 		})
 	})
 
-	Context("When handling multiple environments with different schedules", func() {
-		ctx := context.Background()
-
-		var name string
-		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+	Describe("Multiple Environments with Different Schedules", func() {
 		var scheduledCommitStatus *promoterv1alpha1.ScheduledCommitStatus
 
 		BeforeEach(func() {
-			By("Creating the test resources")
-			var scmSecret *v1.Secret
-			var scmProvider *promoterv1alpha1.ScmProvider
-			var gitRepo *promoterv1alpha1.GitRepository
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "scheduled-status-multi", "default")
-
-			// Configure ProposedCommitStatuses to check for schedule commit status
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "schedule"},
-			}
-
-			setupInitialTestGitRepoOnServer(ctx, name, name)
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-			By("Waiting for PromotionStrategy to be reconciled")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Making a change to trigger proposed commits")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = os.RemoveAll(gitPath)
-			}()
-			makeChangeAndHydrateRepo(gitPath, name, name, "test commit for scheduled", "")
-
-			By("Waiting for proposed commits to appear")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				for _, env := range promotionStrategy.Status.Environments {
-					g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-
 			By("Creating ScheduledCommitStatus with multiple environments")
 			now := time.Now().UTC()
 			// Dev: in window (started 1h ago, lasts 2h)
@@ -418,7 +330,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 
 			scheduledCommitStatus = &promoterv1alpha1.ScheduledCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
+					Name:      name + "-multi",
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
@@ -427,7 +339,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 					},
 					Environments: []promoterv1alpha1.ScheduledCommitStatusEnvironment{
 						{
-							Branch: testEnvironmentDevelopment,
+							Branch: testBranchDevelopment,
 							Schedule: promoterv1alpha1.Schedule{
 								Cron:     devCron,
 								Window:   "2h",
@@ -435,7 +347,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 							},
 						},
 						{
-							Branch: testEnvironmentStaging,
+							Branch: testBranchStaging,
 							Schedule: promoterv1alpha1.Schedule{
 								Cron:     stagingCron,
 								Window:   "1h",
@@ -449,9 +361,8 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 		})
 
 		AfterEach(func() {
-			By("Cleaning up resources")
+			By("Cleaning up ScheduledCommitStatus")
 			_ = k8sClient.Delete(ctx, scheduledCommitStatus)
-			_ = k8sClient.Delete(ctx, promotionStrategy)
 		})
 
 		It("should handle different schedules for each environment", func() {
@@ -459,7 +370,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-multi",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -467,10 +378,10 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 
 				var devEnv, stagingEnv *promoterv1alpha1.ScheduledCommitStatusEnvironmentStatus
 				for i := range scs.Status.Environments {
-					if scs.Status.Environments[i].Branch == testEnvironmentDevelopment {
+					if scs.Status.Environments[i].Branch == testBranchDevelopment {
 						devEnv = &scs.Status.Environments[i]
 					}
-					if scs.Status.Environments[i].Branch == testEnvironmentStaging {
+					if scs.Status.Environments[i].Branch == testBranchStaging {
 						stagingEnv = &scs.Status.Environments[i]
 					}
 				}
@@ -488,67 +399,13 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 		})
 	})
 
-	Context("When handling timezones", func() {
-		ctx := context.Background()
-
-		var name string
-		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+	Describe("Timezone Handling", func() {
 		var scheduledCommitStatus *promoterv1alpha1.ScheduledCommitStatus
 
-		BeforeEach(func() {
-			By("Creating the test resources")
-			var scmSecret *v1.Secret
-			var scmProvider *promoterv1alpha1.ScmProvider
-			var gitRepo *promoterv1alpha1.GitRepository
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "scheduled-status-tz", "default")
-
-			// Configure ProposedCommitStatuses
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "schedule"},
-			}
-
-			setupInitialTestGitRepoOnServer(ctx, name, name)
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-			By("Waiting for PromotionStrategy to be reconciled")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Making a change to trigger proposed commits")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = os.RemoveAll(gitPath)
-			}()
-			makeChangeAndHydrateRepo(gitPath, name, name, "test commit for scheduled", "")
-
-			By("Waiting for proposed commits to appear")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				for _, env := range promotionStrategy.Status.Environments {
-					g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-		})
-
 		AfterEach(func() {
-			By("Cleaning up resources")
-			_ = k8sClient.Delete(ctx, scheduledCommitStatus)
-			_ = k8sClient.Delete(ctx, promotionStrategy)
+			if scheduledCommitStatus != nil {
+				_ = k8sClient.Delete(ctx, scheduledCommitStatus)
+			}
 		})
 
 		It("should handle America/New_York timezone correctly", func() {
@@ -563,7 +420,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 
 			scheduledCommitStatus = &promoterv1alpha1.ScheduledCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
+					Name:      name + "-tz",
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
@@ -572,7 +429,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 					},
 					Environments: []promoterv1alpha1.ScheduledCommitStatusEnvironment{
 						{
-							Branch: testEnvironmentDevelopment,
+							Branch: testBranchDevelopment,
 							Schedule: promoterv1alpha1.Schedule{
 								Cron:     cronExpr,
 								Window:   "2h",
@@ -588,7 +445,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-tz",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -600,64 +457,10 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 		})
 	})
 
-	Context("When schedule is updated to change window status", func() {
-		ctx := context.Background()
-
-		var name string
-		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+	Describe("Schedule Update Transition", func() {
 		var scheduledCommitStatus *promoterv1alpha1.ScheduledCommitStatus
 
 		BeforeEach(func() {
-			By("Creating the test resources")
-			var scmSecret *v1.Secret
-			var scmProvider *promoterv1alpha1.ScmProvider
-			var gitRepo *promoterv1alpha1.GitRepository
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "scheduled-status-transition", "default")
-
-			// Configure ProposedCommitStatuses to check for schedule commit status
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "schedule"},
-			}
-
-			setupInitialTestGitRepoOnServer(ctx, name, name)
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-			By("Waiting for PromotionStrategy to be reconciled with initial state")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Making a change to trigger proposed commits")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = os.RemoveAll(gitPath)
-			}()
-			makeChangeAndHydrateRepo(gitPath, name, name, "test commit for schedule transition", "")
-
-			By("Waiting for proposed commits to appear")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-				for _, env := range promotionStrategy.Status.Environments {
-					g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-
 			By("Creating a ScheduledCommitStatus with window far in the future (initially pending)")
 			now := time.Now().UTC()
 			// Create a window that starts 5 hours in the future
@@ -666,7 +469,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 
 			scheduledCommitStatus = &promoterv1alpha1.ScheduledCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
+					Name:      name + "-transition",
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
@@ -675,7 +478,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 					},
 					Environments: []promoterv1alpha1.ScheduledCommitStatusEnvironment{
 						{
-							Branch: testEnvironmentDevelopment,
+							Branch: testBranchDevelopment,
 							Schedule: promoterv1alpha1.Schedule{
 								Cron:     cronExpr,
 								Window:   "1h",
@@ -691,7 +494,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-transition",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -702,14 +505,13 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 		})
 
 		AfterEach(func() {
-			By("Cleaning up resources")
+			By("Cleaning up ScheduledCommitStatus")
 			_ = k8sClient.Delete(ctx, scheduledCommitStatus)
-			_ = k8sClient.Delete(ctx, promotionStrategy)
 		})
 
 		It("should transition from pending to success when schedule is updated to active window", func() {
 			By("Verifying initial pending state with CommitStatus")
-			commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-scheduled")
+			commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-transition-"+testBranchDevelopment+"-scheduled")
 			Eventually(func(g Gomega) {
 				var cs promoterv1alpha1.CommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -725,7 +527,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-transition",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -744,13 +546,13 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-transition",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(scs.Status.Environments).To(HaveLen(1))
-				g.Expect(scs.Status.Environments[0].Branch).To(Equal(testEnvironmentDevelopment))
+				g.Expect(scs.Status.Environments[0].Branch).To(Equal(testBranchDevelopment))
 				g.Expect(scs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)),
 					"Phase should transition to success when window becomes active")
 				g.Expect(scs.Status.Environments[0].CurrentlyInWindow).To(BeTrue(),
@@ -774,7 +576,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Consistently(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-transition",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -796,70 +598,17 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 		})
 	})
 
-	Context("When environments are removed from spec", func() {
-		ctx := context.Background()
-
-		var name string
-		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+	Describe("Environment Cleanup", func() {
 		var scheduledCommitStatus *promoterv1alpha1.ScheduledCommitStatus
 
 		BeforeEach(func() {
-			By("Creating the test resources")
-			var scmSecret *v1.Secret
-			var scmProvider *promoterv1alpha1.ScmProvider
-			var gitRepo *promoterv1alpha1.GitRepository
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "scheduled-cleanup", "default")
-
-			// Configure ProposedCommitStatuses to check for schedule commit status
-			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-				{Key: "schedule"},
-			}
-
-			setupInitialTestGitRepoOnServer(ctx, name, name)
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-			By("Waiting for PromotionStrategy to be reconciled")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-				g.Expect(promotionStrategy.Status.Environments[0].Active.Hydrated.Sha).ToNot(BeEmpty())
-			}, constants.EventuallyTimeout).Should(Succeed())
-
-			By("Making a change to trigger proposed commits")
-			gitPath, err := os.MkdirTemp("", "*")
-			Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = os.RemoveAll(gitPath)
-			}()
-			makeChangeAndHydrateRepo(gitPath, name, name, "test commit for cleanup", "")
-
-			By("Waiting for proposed commits to appear")
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
-					Namespace: "default",
-				}, promotionStrategy)
-				g.Expect(err).NotTo(HaveOccurred())
-				for _, env := range promotionStrategy.Status.Environments {
-					g.Expect(env.Proposed.Hydrated.Sha).ToNot(BeEmpty())
-				}
-			}, constants.EventuallyTimeout).Should(Succeed())
-
 			By("Creating ScheduledCommitStatus with two environments")
 			now := time.Now().UTC()
 			cronExpr := fmt.Sprintf("%d %d * * *", now.Add(-1*time.Hour).Minute(), now.Add(-1*time.Hour).Hour())
 
 			scheduledCommitStatus = &promoterv1alpha1.ScheduledCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name,
+					Name:      name + "-cleanup",
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.ScheduledCommitStatusSpec{
@@ -868,7 +617,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 					},
 					Environments: []promoterv1alpha1.ScheduledCommitStatusEnvironment{
 						{
-							Branch: testEnvironmentDevelopment,
+							Branch: testBranchDevelopment,
 							Schedule: promoterv1alpha1.Schedule{
 								Cron:     cronExpr,
 								Window:   "2h",
@@ -876,7 +625,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 							},
 						},
 						{
-							Branch: testEnvironmentStaging,
+							Branch: testBranchStaging,
 							Schedule: promoterv1alpha1.Schedule{
 								Cron:     cronExpr,
 								Window:   "2h",
@@ -892,7 +641,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-cleanup",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -901,15 +650,14 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 		})
 
 		AfterEach(func() {
-			By("Cleaning up resources")
+			By("Cleaning up ScheduledCommitStatus")
 			_ = k8sClient.Delete(ctx, scheduledCommitStatus)
-			_ = k8sClient.Delete(ctx, promotionStrategy)
 		})
 
 		It("should delete orphaned CommitStatus when environment is removed from spec", func() {
 			By("Verifying both CommitStatuses exist")
-			devCommitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentDevelopment+"-scheduled")
-			stagingCommitStatusName := utils.KubeSafeUniqueName(ctx, name+"-"+testEnvironmentStaging+"-scheduled")
+			devCommitStatusName := utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchDevelopment+"-scheduled")
+			stagingCommitStatusName := utils.KubeSafeUniqueName(ctx, name+"-cleanup-"+testBranchStaging+"-scheduled")
 
 			Eventually(func(g Gomega) {
 				var devCS promoterv1alpha1.CommitStatus
@@ -931,7 +679,7 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			Eventually(func(g Gomega) {
 				var scs promoterv1alpha1.ScheduledCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name,
+					Name:      name + "-cleanup",
 					Namespace: "default",
 				}, &scs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -969,7 +717,10 @@ var _ = Describe("ScheduledCommitStatus Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
+})
 
+// Separate Describe block for the test that doesn't need infrastructure
+var _ = Describe("ScheduledCommitStatus Controller - Missing PromotionStrategy", func() {
 	Context("When PromotionStrategy is not found", func() {
 		const resourceName = "scheduled-status-no-ps"
 
