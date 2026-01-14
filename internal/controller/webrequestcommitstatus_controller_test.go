@@ -779,6 +779,26 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				})
 			}))
 
+			By("Adding labels and annotations to the default namespace")
+			var ns v1.Namespace
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: "default"}, &ns)
+			Expect(err).NotTo(HaveOccurred())
+
+			if ns.Labels == nil {
+				ns.Labels = make(map[string]string)
+			}
+			if ns.Annotations == nil {
+				ns.Annotations = make(map[string]string)
+			}
+
+			ns.Labels["team"] = "platform"
+			ns.Labels["env-tier"] = "production"
+			ns.Annotations["slack-channel"] = "#deployments"
+			ns.Annotations["jira-project"] = "DEPLOY"
+
+			err = k8sClient.Update(ctx, &ns)
+			Expect(err).NotTo(HaveOccurred())
+
 			By("Creating the test resources")
 			var scmSecret *v1.Secret
 			var scmProvider *promoterv1alpha1.ScmProvider
@@ -807,19 +827,11 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).ToNot(BeEmpty())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
-			By("Creating a WebRequestCommitStatus with labels and annotations")
+			By("Creating a WebRequestCommitStatus using namespace labels and annotations")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
 					Namespace: "default",
-					Labels: map[string]string{
-						"team":     "platform",
-						"env-tier": "production",
-					},
-					Annotations: map[string]string{
-						"slack-channel": "#deployments",
-						"jira-project":  "DEPLOY",
-					},
 				},
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
@@ -833,14 +845,14 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Method: "POST",
 						Headers: map[string]string{
 							"Content-Type": "application/json",
-							"X-Team":       `{{ index .Labels "team" }}`,
-							"X-Tier":       `{{ index .Labels "env-tier" }}`,
+							"X-Team":       `{{ index .NamespaceMetadata.Labels "team" }}`,
+							"X-Tier":       `{{ index .NamespaceMetadata.Labels "env-tier" }}`,
 						},
 						Body: `{
-							"team": "{{ index .Labels "team" }}",
-							"tier": "{{ index .Labels "env-tier" }}",
-							"slack": "{{ index .Annotations "slack-channel" }}",
-							"jira": "{{ index .Annotations "jira-project" }}"
+							"team": "{{ index .NamespaceMetadata.Labels "team" }}",
+							"tier": "{{ index .NamespaceMetadata.Labels "env-tier" }}",
+							"slack": "{{ index .NamespaceMetadata.Annotations "slack-channel" }}",
+							"jira": "{{ index .NamespaceMetadata.Annotations "jira-project" }}"
 						}`,
 						Timeout: metav1.Duration{Duration: 10 * time.Second},
 					},
@@ -858,6 +870,17 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 			testServer.Close()
 			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
 			_ = k8sClient.Delete(ctx, promotionStrategy)
+
+			By("Cleaning up namespace labels and annotations")
+			var ns v1.Namespace
+			err := k8sClient.Get(ctx, types.NamespacedName{Name: "default"}, &ns)
+			if err == nil {
+				delete(ns.Labels, "team")
+				delete(ns.Labels, "env-tier")
+				delete(ns.Annotations, "slack-channel")
+				delete(ns.Annotations, "jira-project")
+				_ = k8sClient.Update(ctx, &ns)
+			}
 		})
 
 		It("should render labels and annotations in headers and body", func() {
