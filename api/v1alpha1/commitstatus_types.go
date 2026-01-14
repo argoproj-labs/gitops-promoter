@@ -32,10 +32,11 @@ type CommitStatusSpec struct {
 	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 
 	// SHA is the commit SHA to set the status on.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=40
-	// +kubebuilder:validation:MaxLength=40
-	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha"`
 
 	// Name is the name of the commit status.
@@ -70,8 +71,9 @@ type CommitStatusStatus struct {
 	// Id is the unique identifier of the commit status, set by the SCM
 	Id string `json:"id"`
 	// Sha is the commit SHA that the status is set on.
-	// +kubebuilder:validation:MaxLength=40
-	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha"`
 	// Phase is the state of the commit status. This will be mapped to the appropriate equivalent in the SCM.
 	// +kubebuilder:default:=pending

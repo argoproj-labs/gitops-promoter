@@ -93,9 +93,10 @@ spec:
                 description: |-
                   MergeSha is the commit SHA that the head branch must match before the PR can be merged.
                   This prevents a race condition where a PR is merged with a different commit than intended.
-                maxLength: 40
+                  Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                maxLength: 64
                 minLength: 40
-                pattern: ^[a-f0-9]{40}$
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
               sourceBranch:
                 description: SourceBranch is the base the git reference that we are

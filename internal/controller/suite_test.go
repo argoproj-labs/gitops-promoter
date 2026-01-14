@@ -61,10 +61,10 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/sosedoff/gitkit"
 	"gopkg.in/yaml.v3"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/controller/testutils"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -520,29 +520,15 @@ var _ = AfterSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 })
 
-type filterLogger struct{}
-
-func (f *filterLogger) Write(p []byte) (n int, err error) {
-	if strings.Contains(string(p), "request:") {
-		return len(p), nil
-	}
-	// Write directly to stdout instead of using log.Print to avoid recursive mutex lock
-	_, _ = os.Stdout.Write(p)
-	return len(p), nil
-}
-
 func startGitServer(gitStoragePath string) (string, *http.Server) {
-	hooks := &gitkit.HookScripts{
-		PreReceive: `echo "Hello World!"`,
+	// Use custom Git HTTP server that supports both SHA-1 and SHA-256
+	// Default to SHA-1 for backward compatibility with existing tests
+	service := &testutils.GitHTTPServer{
+		Logger:       log.New(os.Stdout, "git-server: ", log.LstdFlags),
+		RepoDir:      gitStoragePath,
+		ObjectFormat: "sha1", // Default to SHA-1, tests can override per-test
+		AutoCreate:   true,
 	}
-
-	// Configure git service
-	service := gitkit.New(gitkit.Config{
-		Dir:        gitStoragePath,
-		AutoCreate: true,
-		AutoHooks:  true,
-		Hooks:      hooks,
-	})
 
 	if err := service.Setup(); err != nil {
 		log.Fatal(err)
@@ -552,13 +538,7 @@ func startGitServer(gitStoragePath string) (string, *http.Server) {
 	gitServerPortStr := strconv.Itoa(gitServerPort)
 	server := &http.Server{Addr: ":" + gitServerPortStr, Handler: service}
 
-	// Disables logging for gitkit
-	// log.SetOutput(io.Discard)
-	gitKitFilterLogger := &filterLogger{}
-	log.SetOutput(gitKitFilterLogger)
-
 	go func() {
-		// Start HTTP server
 		if err := server.ListenAndServe(); err != nil {
 			fmt.Println(err)
 		}
@@ -708,6 +688,91 @@ func setupInitialTestGitRepoOnServer(ctx context.Context, owner string, name str
 		time.Sleep(1 * time.Second)
 	}
 	GinkgoLogr.Info("Git repository initialized", "path", gitPath)
+}
+
+// setupInitialSHA256TestGitRepo initializes a Git repository on the server using SHA-256.
+// This is the SHA-256 variant of setupInitialTestGitRepoOnServer.
+func setupInitialSHA256TestGitRepo(ctx context.Context, serverURL, owner, name string) {
+	gitPath, err := os.MkdirTemp("", "*-sha256-setup")
+	Expect(err).NotTo(HaveOccurred())
+	defer func() { _ = os.RemoveAll(gitPath) }()
+
+	// Initialize as SHA-256 (don't clone - server repo is empty)
+	_, err = runGitCmd(ctx, gitPath, "init", "--object-format=sha256")
+	Expect(err).NotTo(HaveOccurred())
+
+	_, err = runGitCmd(ctx, gitPath, "config", "user.name", "testuser")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "config", "user.email", "testemail@test.com")
+	Expect(err).NotTo(HaveOccurred())
+
+	// Add remote
+	repoURL := fmt.Sprintf("%s/%s/%s", serverURL, owner, name)
+	_, err = runGitCmd(ctx, gitPath, "remote", "add", "origin", repoURL)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create hydrator.metadata with placeholder
+	f, err := os.Create(path.Join(gitPath, "hydrator.metadata"))
+	Expect(err).NotTo(HaveOccurred())
+	_, err = f.WriteString(`{"drySHA": "n/a"}`)
+	Expect(err).NotTo(HaveOccurred())
+	_ = f.Close()
+
+	_, err = runGitCmd(ctx, gitPath, "add", "hydrator.metadata")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "commit", "-m", "init commit dry side n/a dry sha")
+	Expect(err).NotTo(HaveOccurred())
+
+	// Get the SHA (should be 64 chars for SHA-256)
+	sha, err := runGitCmd(ctx, gitPath, "rev-parse", "HEAD")
+	Expect(err).NotTo(HaveOccurred())
+	sha = strings.TrimSpace(sha)
+	Expect(sha).To(HaveLen(64), "Should get 64-char SHA-256 hash, got: %s", sha)
+
+	// Update hydrator.metadata with real SHA
+	f, err = os.Create(path.Join(gitPath, "hydrator.metadata"))
+	Expect(err).NotTo(HaveOccurred())
+	_, err = fmt.Fprintf(f, `{"drySHA": "%s"}`, sha)
+	Expect(err).NotTo(HaveOccurred())
+	_ = f.Close()
+
+	_, err = runGitCmd(ctx, gitPath, "add", "hydrator.metadata")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = runGitCmd(ctx, gitPath, "commit", "-m", "second commit with real dry sha")
+	Expect(err).NotTo(HaveOccurred())
+
+	// Get default branch name
+	defaultBranch, err := runGitCmd(ctx, gitPath, "rev-parse", "--abbrev-ref", "HEAD")
+	Expect(err).NotTo(HaveOccurred())
+	defaultBranch = strings.TrimSpace(defaultBranch)
+
+	// Push to server
+	_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", defaultBranch)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Create environment branches (same structure as setupInitialTestGitRepoOnServer)
+	for _, environment := range []string{"environment/development-next", "environment/staging-next", "environment/production-next"} {
+		_, err = runGitCmd(ctx, gitPath, "checkout", "--orphan", environment)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "commit", "--allow-empty", "-m", "initial empty commit for "+environment)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
+		Expect(err).NotTo(HaveOccurred())
+
+		// Sleep to differentiate commits
+		time.Sleep(1 * time.Second)
+
+		// Create active branch
+		activeB, _ := strings.CutSuffix(environment, "-next")
+		_, err = runGitCmd(ctx, gitPath, "checkout", "-b", activeB)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", activeB)
+		Expect(err).NotTo(HaveOccurred())
+
+		time.Sleep(1 * time.Second)
+	}
+
+	GinkgoLogr.Info("SHA-256 Git repository initialized", "path", gitPath)
 }
 
 func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {

@@ -87,10 +87,12 @@ spec:
                 - failure
                 type: string
               sha:
-                description: SHA is the commit SHA to set the status on.
-                maxLength: 40
+                description: |-
+                  SHA is the commit SHA to set the status on.
+                  Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                maxLength: 64
                 minLength: 40
-                pattern: ^[a-f0-9]{40}$
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
               url:
                 description: Url is a URL that the user can follow to see more details
@@ -186,9 +188,11 @@ spec:
                 - ""
                 type: string
               sha:
-                description: Sha is the commit SHA that the status is set on.
-                maxLength: 40
-                pattern: ^[a-f0-9]{40}$
+                description: |-
+                  Sha is the commit SHA that the status is set on.
+                  Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                maxLength: 64
+                pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
             required:
             - id

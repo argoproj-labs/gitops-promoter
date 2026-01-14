@@ -133,29 +133,31 @@ type GitCommitStatusEnvironmentStatus struct {
 	// The CommitStatus resource is created with this SHA, allowing the PromotionStrategy to gate
 	// promotions based on the validation of the ACTIVE commit.
 	// May be empty if the PromotionStrategy hasn't reconciled yet.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +required
 	// +kubebuilder:validation:MinLength=40
-	// +kubebuilder:validation:MaxLength=40
-	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	ProposedHydratedSha string `json:"proposedHydratedSha"`
 
 	// ActiveHydratedSha is the currently active (deployed) hydrated commit SHA that was validated.
 	// This comes from the PromotionStrategy's environment status.
 	// The expression is evaluated against THIS commit's data, not the proposed commit.
 	// May be empty if the PromotionStrategy hasn't reconciled yet.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +optional
-	// +kubebuilder:validation:MaxLength=40
-	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	ActiveHydratedSha string `json:"activeHydratedSha,omitempty"`
 
 	// TargetedSha is the commit SHA that was actually validated by the expression.
 	// This will match either ProposedHydratedSha or ActiveHydratedSha depending on
 	// the Target setting ("proposed" or "active").
 	// This field clarifies which commit's data was used in the expression evaluation.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +optional
-	// +optional
-	// +kubebuilder:validation:MaxLength=40
-	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	TargetedSha string `json:"targetedSha,omitempty"`
 
 	// Phase represents the current validation state of the commit.

@@ -84,7 +84,7 @@ var _ = Describe("CommitStatus Controller", func() {
 			}
 			err := k8sClient.Create(ctx, invalidCommitStatus)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("may not be longer than 40"))
+			Expect(err.Error()).To(ContainSubstring("may not be longer than 64"))
 		})
 
 		It("should reject a CommitStatus with a sha that contains invalid characters", func() {

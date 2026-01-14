@@ -148,8 +148,9 @@ type CommitMetadata struct {
 	// Body is the body of the commit message, excluding the subject line, i.e. `git show --format=%b`.
 	Body string `json:"body,omitempty"`
 	// Sha is the commit hash.
-	// +kubebuilder:validation:MaxLength=40
-	// +kubebuilder:validation:Pattern=`^[a-f0-9]{40}$`
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha,omitempty"`
 	// RepoURL is the URL of the repository where the commit is located.
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
