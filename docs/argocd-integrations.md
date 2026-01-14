@@ -85,4 +85,3 @@ To enable this, add the following to your `argocd-cm` ConfigMap:
 ```yaml
   resource.customLabels: promoter.argoproj.io/commit-status
 ```
-
