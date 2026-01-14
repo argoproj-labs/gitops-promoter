@@ -43,6 +43,15 @@ spec:
           emptyDir: {}
 ```
 
+### Compatibility Matrix
+
+The following table shows the compatibility between GitOps Promoter versions and Argo CD versions for the UI Extension:
+
+| GitOps Promoter Version | Argo CD Version |
+|-------------------------|-----------------|
+| v0.18.3+                | v2.3+           |
+| v0.18.2 and earlier     | v2.2.x and earlier |
+
 ## Deep Links
 
 Argo CD supports [deep links](https://argo-cd.readthedocs.io/en/stable/operator-manual/deep_links/) from a resource's details
@@ -76,3 +85,4 @@ To enable this, add the following to your `argocd-cm` ConfigMap:
 ```yaml
   resource.customLabels: promoter.argoproj.io/commit-status
 ```
+
