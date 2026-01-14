@@ -55,6 +55,15 @@ kubectl patch deployment argocd-server -n argocd --patch-file argocd-server-exte
 Once applied, you should see a new gitops-promoter section in the Argo CD UI
 ![Screenshot of Argo CD UI showing the Promoter section](assets/argocd-ui-extension.png)
 
+### Compatibility Matrix
+
+The following table shows the compatibility between GitOps Promoter versions and Argo CD versions for the UI Extension:
+
+| GitOps Promoter Version | Argo CD Version |
+|-------------------------|-----------------|
+| v0.18.3+                | v2.3+           |
+| v0.18.2 and earlier     | v2.2.x and earlier |
+
 ## Deep Links
 
 Argo CD supports [deep links](https://argo-cd.readthedocs.io/en/stable/operator-manual/deep_links/) from a resource's details
