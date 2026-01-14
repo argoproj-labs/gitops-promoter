@@ -10,6 +10,7 @@ An easy way to install the extension is to use the [argocd-extension-installer](
 You can use it by adding an init container to your `argocd-server` deployment. Here is an example:
 
 ```yaml
+# argocd-server-extension-patch.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -42,6 +43,17 @@ spec:
         - name: extensions
           emptyDir: {}
 ```
+
+You can apply the patch using the following command:
+```
+kubectl patch deployment argocd-server -n argocd --patch-file argocd-server-extension-patch.yaml
+```
+
+> [!NOTE]
+> In order to see gitops-promoter CRDs and promoter UI in the ArgoCD UI, they must be deployed in an ArgoCD application
+
+Once applied, you should see a new gitops-promoter section in the Argo CD UI
+![Screenshot of Argo CD UI showing the Promoter section](assets/argocd-ui-extension.png)
 
 ### Compatibility Matrix
 

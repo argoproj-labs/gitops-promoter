@@ -197,5 +197,5 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 		return getInstallationClient(scmProvider, secret, id)
 	}
 	appInstallationIdCacheMutex.Unlock()
-	return nil, nil, fmt.Errorf("installation not found for org: %s", org)
+	return nil, nil, fmt.Errorf("installation of app %d not found for org: %s", scmProvider.GetSpec().GitHub.AppID, org)
 }
