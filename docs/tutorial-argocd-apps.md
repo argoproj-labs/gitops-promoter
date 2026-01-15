@@ -92,14 +92,14 @@ Click on `New GitHub App`, pass the MFA challenge.
 
 Fill up the form with the following (leave non specified to defaults):
 
-| Field                                                  | Value                                                        |
-|--------------------------------------------------------|--------------------------------------------------------------|
-| GitHub App name                                        | A unique name of your choice (unique across the whole world) |
-| Homepage URL                                           | The URL of your profile                                      |
-| Webhook > Active                                       | False                                                        |
-| Permissions > Repository Permissions > Checks          | Read and write                                               |
-| Permissions > Repository Permissions > Content         | Read and write                                               |
-| Permissions > Repository Permissions > Pull requests   | Read and write                                               |
+| Field                                                  | Value                                                         |
+|--------------------------------------------------------|---------------------------------------------------------------|
+| GitHub App name                                        | A unique name of your choice (unique across the whole world)  |
+| Homepage URL                                           | The URL of your profile                                       |
+| Webhook > Active                                       | False (unless you configure it with Smee, as described below) |
+| Permissions > Repository Permissions > Checks          | Read and write                                                |
+| Permissions > Repository Permissions > Content         | Read and write                                                |
+| Permissions > Repository Permissions > Pull requests   | Read and write                                                |
 
 Hit the `Create GitHub App` button.
 
@@ -109,20 +109,27 @@ Once the app is created. Go to Install app and install it in your account.
 
 The webhook notifies the Promoter and Argo CD that a new commit was push/merged to the main branch. It greatly reduces the latency between deployment.
 
-However, we are running the workload locally and the webhook is not required for a simple demo.
+If you want your local demo to be very responsive, you can use [Smee.io](https://smee.io/) to forward the webhook events to your local machine.
 
-If you want to set up the webhook, read [Getting started](./getting-started.md) and try to use [https://smee.io/](https://smee.io/).
+```shell
+kubectl port-forward -n promoter-system svc/promoter-webhook-receiver 3333:3333
+smee -u https://smee.io/<YOUR CHANNEL ID> -t http://localhost:3333/
+```
 
-> [!TIP]
-> You can adjust the setting down to something like 15 or 30 seconds.
->
-> See the [default config](https://github.com/argoproj-labs/gitops-promoter/blob/65d5905c51acac5d1caf3af01ceb0747795207e5/config/config/controllerconfiguration.yaml#L14-L17) for the config location.
->
-> ```shell
-> kubectl patch -n promoter-system controllerconfiguration promoter-controller-configuration \
->   --type merge \
->   -p '{"spec": {"promotionStrategyRequeueDuration": "30s", "changeTransferPolicyRequeueDuration": "30s", "argocdCommitStatusRequeueDuration": "30s", "pullRequestRequeueDuration": "30s"}}'
-> ```
+Then set the webhook URL in your GitHub App settings to `https://smee.io/<YOUR CHANNEL ID>`.
+
+In the `Subscribe to events` section, check `Push`.
+
+#### Using requeue durations
+
+If you don't need superfast responsiveness for your local demo, you can just adjust the requeue duration down to
+something reasonably low like 30 seconds.
+
+```shell
+kubectl patch -n promoter-system controllerconfiguration promoter-controller-configuration \
+  --type merge \
+  -p '{"spec": {"promotionStrategyRequeueDuration": "30s", "changeTransferPolicyRequeueDuration": "30s", "argocdCommitStatusRequeueDuration": "30s", "pullRequestRequeueDuration": "30s"}}'
+```
 
 #### Generate a key
 
@@ -130,23 +137,13 @@ In the app config, in the section General. Under Private keys. Click on Generate
 
 Keep the file close for later use.
 
-#### Get app's identification
+#### Get the App ID
 
-In the app config, in the section General. Find the "App ID" field and take not of the number.
+In the app config, in the section General. Find the "App ID" field and take note of the number.
 
-Then, in Settings > Applications > `<your app>`. Find the installation ID in the URL: `https://github.com/settings/installations/<installation-id>`.
+#### Install the app in your org
 
-Keep these numbers for later use.
-
-### Give access to the repo to the app
-
-Back in Settings. Go to Integrations > Applications. You should see your GitHub App in the list.
-
-Click on Edit and change the Repository access section.
-
-- Only select repositories
-- Select your fork of `argocd-example-apps`
-- Click on Save
+Go to the `Install App` section, and click on `Install` beside your account name. Choose `Only select repositories` and select your fork of `argocd-example-apps`.
 
 ## Prepare the terminal environment
 
@@ -156,7 +153,6 @@ We need to set up some temporary environment variables.
 export GITHUB_ACCOUNT=<your-account-slug>
 export GITHUB_APP_KEY_PATH=<path-to-the-generate-private-key>
 export GITHUB_APP_ID=<your-github-app-id>
-export GITHUB_APP_INSTALLATION_ID=<your-github-app-installation-id>
 ```
 
 ## Configure the repo secret
@@ -167,9 +163,8 @@ Create the secret.
 kubectl create secret generic -n argocd github-app \
   --from-literal=url=https://github.com/${GITHUB_ACCOUNT}/argocd-example-apps \
   --from-literal=type=git \
-  --from-literal=githubAppID=${GITHUB_APP_ID} \
-  --from-literal=githubAppInstallationID=${GITHUB_APP_INSTALLATION_ID} \
-  --from-file=githubAppPrivateKey=${GITHUB_APP_KEY_PATH}
+  --from-literal=githubAppID=$GITHUB_APP_ID \
+  --from-file=githubAppPrivateKey=$GITHUB_APP_KEY_PATH
 kubectl label secret -n argocd github-app argocd.argoproj.io/secret-type=repository-write
 ```
 
@@ -214,7 +209,9 @@ EOF
 done
 ```
 
-If you go to the Argo CD UI, in the applications, you should now see the "SOURCE HYDRATOR" section in the header.
+If you go to the [Argo CD UI](https://localhost:8080/applications/argocd/development-helm-guestbook), in the applications, you should now see the "SOURCE HYDRATOR" section in the header.
+
+![Argo CD Application with Source Hydrator](./assets/source-hydrator.png)
 
 It should have the message "from HEAD (...) to environment/development-next (...)"
 
@@ -236,7 +233,7 @@ Fortunately, GitOps Promoter is here to automate the process.
 
 ```bash
 kubectl create secret generic github-app-promoter \
-  --from-file=githubAppPrivateKey=${GITHUB_APP_KEY_PATH}
+  --from-file=githubAppPrivateKey=$GITHUB_APP_KEY_PATH
 ```
 
 ### Create the SCM Provider
@@ -252,7 +249,6 @@ spec:
     name: github-app-promoter
   github:
     appID: ${GITHUB_APP_ID}
-    installationID: ${GITHUB_APP_INSTALLATION_ID} # Optional, will query ListInstallations if not provided
 EOF
 ```
 
