@@ -88,7 +88,7 @@ Argo provides an example repository: [https://github.com/argoproj/argocd-example
 
 In your GitHub account, go to Settings > Developer settings > GitHub Apps.
 
-Click on `New GitHub App`, pass the MFA challenge.
+Click on [`New GitHub App`](https://github.com/settings/apps/new), pass the MFA challenge.
 
 Fill up the form with the following (leave non specified to defaults):
 
