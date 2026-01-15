@@ -128,7 +128,7 @@ something reasonably low like 30 seconds.
 ```shell
 kubectl patch -n promoter-system controllerconfiguration promoter-controller-configuration \
   --type merge \
-  -p '{"spec": {"promotionStrategyRequeueDuration": "30s", "changeTransferPolicyRequeueDuration": "30s", "argocdCommitStatusRequeueDuration": "30s", "pullRequestRequeueDuration": "30s"}}'
+  -p '{"spec":{"promotionStrategy":{"workQueue":{"requeueDuration":"30s"}},"changeTransferPolicy":{"workQueue":{"requeueDuration":"30s"}},"argocdCommitStatus":{"workQueue":{"requeueDuration":"30s"}},"pullRequest":{"workQueue":{"requeueDuration":"30s"}}}}'
 ```
 
 #### Generate a key
