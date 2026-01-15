@@ -273,15 +273,9 @@ kubectl patch secret my-client-cert -n default \
   -p='[{"op":"add","path":"/data/ca.crt","value":"'$(base64 -w0 < ca.crt)'"}]'
 ```
 
-### Authentication Priority
+### Authentication Validation
 
-If multiple authentication methods are specified, only one will be used in this order:
-1. Basic Auth
-2. Bearer Token
-3. OAuth2
-4. TLS
-
-However, it's recommended to specify only one authentication method per WebRequestCommitStatus resource for clarity.
+Only one authentication method can be specified per WebRequestCommitStatus resource. The API will reject resources that specify multiple authentication methods (e.g., both `basic` and `bearer`).
 
 ### POST Request with Body
 
@@ -402,85 +396,6 @@ spec:
     - branch: environment/development
     - branch: environment/staging
     - branch: environment/production
-```
-
-## Authentication
-
-The controller supports multiple authentication methods via Kubernetes Secrets.
-
-### Bearer Token
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: api-credentials
-type: Opaque
-data:
-  token: <base64-encoded-token>
----
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: WebRequestCommitStatus
-metadata:
-  name: external-check
-spec:
-  # ... other fields ...
-  httpRequest:
-    url: "https://api.example.com/check"
-    method: GET
-    authSecretRef:
-      name: api-credentials
-      type: bearer
-```
-
-### Basic Auth
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: api-credentials
-type: Opaque
-data:
-  username: <base64-encoded-username>
-  password: <base64-encoded-password>
----
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: WebRequestCommitStatus
-metadata:
-  name: external-check
-spec:
-  # ... other fields ...
-  httpRequest:
-    authSecretRef:
-      name: api-credentials
-      type: basic
-```
-
-### Custom Headers
-
-All keys in the secret become HTTP headers:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: api-credentials
-type: Opaque
-data:
-  X-API-Key: <base64-encoded-key>
-  X-Custom-Header: <base64-encoded-value>
----
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: WebRequestCommitStatus
-metadata:
-  name: external-check
-spec:
-  # ... other fields ...
-  httpRequest:
-    authSecretRef:
-      name: api-credentials
-      type: header
 ```
 
 ## Expression Language
