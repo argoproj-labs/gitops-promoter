@@ -125,7 +125,7 @@ func NewDemoCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&repoName, "name", "gitops-promoter-examples", "Name of the repository to create")
-	cmd.Flags().BoolVar(&private, "private", false, "Create a private repository")
+	cmd.Flags().BoolVar(&private, "private", true, "Create a private repository")
 
 	return cmd
 }
