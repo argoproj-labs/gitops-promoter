@@ -1,0 +1,10 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ArgoCDCommitStatus
+metadata:
+  name: argocd-health
+spec:
+  promotionStrategyRef:
+    name: gitops-promoter-demo-promotion-strategy
+  applicationSelector:
+    matchLabels:
+      app-name: gitops-promoter-demo

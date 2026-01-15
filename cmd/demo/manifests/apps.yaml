@@ -1,0 +1,92 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dev-helm-guestbook
+  namespace: argocd
+  labels:
+    # This label allows the ArgoCDCommitStatus to find the applications.
+    app-name: gitops-promoter-demo-promotion-strategy
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: development
+  sourceHydrator:
+    drySource:
+      repoURL: https://github.com/<GITHUB_ORG_USERNAME>/<REPO_NAME>
+      path: helm-guestbook
+      targetRevision: HEAD
+    hydrateTo:
+      targetBranch: environment/development-next
+    syncSource:
+      targetBranch: environment/development
+      path: helm-guestbook
+  syncPolicy:
+    automated:
+      prune: true
+      allowEmpty: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: staging-helm-guestbook
+  namespace: argocd
+  labels:
+    # This label allows the ArgoCDCommitStatus to find the applications.
+    app-name: gitops-promoter-demo-promotion-strategy
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  sourceHydrator:
+    drySource:
+      repoURL: https://github.com/<GITHUB_ORG_USERNAME>/<REPO_NAME>
+      path: helm-guestbook
+      targetRevision: HEAD
+    hydrateTo:
+      targetBranch: environment/staging-next
+    syncSource:
+      targetBranch: environment/staging
+      path: helm-guestbook
+  syncPolicy:
+    automated:
+      prune: true
+      allowEmpty: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prod-helm-guestbook
+  namespace: argocd
+  labels:
+    # This label allows the ArgoCDCommitStatus to find the applications.
+    app-name: gitops-promoter-demo-promotion-strategy
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prod
+  sourceHydrator:
+    drySource:
+      repoURL: https://github.com/<GITHUB_ORG_USERNAME>/<REPO_NAME>
+      path: helm-guestbook
+      targetRevision: HEAD
+    hydrateTo:
+      targetBranch: environment/prod-next
+    syncSource:
+      targetBranch: environment/prod
+      path: helm-guestbook
+  syncPolicy:
+    automated:
+      prune: true
+      allowEmpty: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
