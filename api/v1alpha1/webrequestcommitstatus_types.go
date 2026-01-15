@@ -49,23 +49,20 @@ type WebRequestCommitStatusSpec struct {
 	// (GitHub, GitLab, etc.) as the commit status description.
 	// Supports Go templates with environment-specific variables.
 	//
-	// Available template variables (DescriptionTemplateData):
-	//   - {{ .Branch }}: the environment branch name (e.g., "environment-staging")
+	// Available template variables:
+	//   - {{ .Branch }}: the environment branch name (e.g., "environment/staging")
 	//   - {{ .ProposedHydratedSha }}: proposed commit SHA for this environment
 	//   - {{ .ActiveHydratedSha }}: active/deployed commit SHA for this environment
 	//   - {{ .ReportedSha }}: the commit SHA being reported on
 	//   - {{ .LastSuccessfulSha }}: last SHA that achieved success for this environment
 	//   - {{ .Phase }}: current phase (success/pending/failure)
-	//   - {{ .Key }}: the WebRequestCommitStatus key
-	//   - {{ .Name }}: the WebRequestCommitStatus resource name
-	//   - {{ .Namespace }}: the WebRequestCommitStatus namespace
-	//   - {{ .Labels }}: map of labels (use: {{ index .Labels "key" }})
-	//   - {{ .Annotations }}: map of annotations (use: {{ index .Annotations "key" }})
+	//   - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
+	//   - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 	//
 	// Examples:
 	//   - "External approval for {{ .Branch }}"
 	//   - "Checking deployment {{ .ReportedSha | trunc 7 }}"
-	//   - "{{ .Key }} validation - {{ .Phase }}"
+	//   - "{{ .Phase }} - waiting for external approval"
 	//
 	// If not specified, defaults to empty string.
 	// +optional
@@ -73,7 +70,7 @@ type WebRequestCommitStatusSpec struct {
 
 	// Url is a link to more details about this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status target URL.
-	// Supports Go templates with the same variables as Description (DescriptionTemplateData).
+	// Supports Go templates with the same variables as Description.
 	//
 	// This can link to:
 	//   - External approval system UI
@@ -143,15 +140,16 @@ type PollingSpec struct {
 // HTTPRequestSpec defines the HTTP request configuration.
 //
 // The URL, Headers, and Body fields support Go templates with the following variables:
+//   - {{ .Branch }}: the environment branch name (e.g., "environment/staging")
 //   - {{ .ProposedHydratedSha }}: the proposed commit SHA
 //   - {{ .ActiveHydratedSha }}: the active/deployed commit SHA
-//   - {{ .Key }}: the WebRequestCommitStatus key
-//   - {{ .Name }}: the WebRequestCommitStatus resource name
-//   - {{ .Namespace }}: the WebRequestCommitStatus namespace
-//   - {{ .Labels }}: map of labels from the WebRequestCommitStatus resource
-//   - {{ .Annotations }}: map of annotations from the WebRequestCommitStatus resource
+//   - {{ .ReportedSha }}: the commit SHA being reported on (based on reportOn setting)
+//   - {{ .LastSuccessfulSha }}: last SHA that achieved success (empty until first success)
+//   - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending)
+//   - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
+//   - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 //
-// Example accessing labels/annotations: {{ index .Labels "team" }} or {{ index .Annotations "slack-channel" }}
+// Example: "https://api.example.com/validate/{{ .Branch }}/{{ .ReportedSha }}"
 type HTTPRequestSpec struct {
 	// URL is the HTTP endpoint to request.
 	// Supports Go templates (see HTTPRequestSpec for available variables).

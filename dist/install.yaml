@@ -6266,23 +6266,20 @@ spec:
                   (GitHub, GitLab, etc.) as the commit status description.
                   Supports Go templates with environment-specific variables.
 
-                  Available template variables (DescriptionTemplateData):
-                    - {{ .Branch }}: the environment branch name (e.g., "environment-staging")
+                  Available template variables:
+                    - {{ .Branch }}: the environment branch name (e.g., "environment/staging")
                     - {{ .ProposedHydratedSha }}: proposed commit SHA for this environment
                     - {{ .ActiveHydratedSha }}: active/deployed commit SHA for this environment
                     - {{ .ReportedSha }}: the commit SHA being reported on
                     - {{ .LastSuccessfulSha }}: last SHA that achieved success for this environment
                     - {{ .Phase }}: current phase (success/pending/failure)
-                    - {{ .Key }}: the WebRequestCommitStatus key
-                    - {{ .Name }}: the WebRequestCommitStatus resource name
-                    - {{ .Namespace }}: the WebRequestCommitStatus namespace
-                    - {{ .Labels }}: map of labels (use: {{ index .Labels "key" }})
-                    - {{ .Annotations }}: map of annotations (use: {{ index .Annotations "key" }})
+                    - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
+                    - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
 
                   Examples:
                     - "External approval for {{ .Branch }}"
                     - "Checking deployment {{ .ReportedSha | trunc 7 }}"
-                    - "{{ .Key }} validation - {{ .Phase }}"
+                    - "{{ .Phase }} - waiting for external approval"
 
                   If not specified, defaults to empty string.
                 type: string
@@ -6561,7 +6558,7 @@ spec:
                 description: |-
                   Url is a link to more details about this validation that will be shown in the SCM provider
                   (GitHub, GitLab, etc.) as the commit status target URL.
-                  Supports Go templates with the same variables as Description (DescriptionTemplateData).
+                  Supports Go templates with the same variables as Description.
 
                   This can link to:
                     - External approval system UI

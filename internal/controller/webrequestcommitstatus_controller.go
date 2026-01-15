@@ -78,28 +78,16 @@ type NamespaceMetadata struct {
 	Annotations map[string]string
 }
 
-// WebRequestTemplateData represents the data available to Go templates in URL, Headers, and Body.
-type WebRequestTemplateData struct {
+// TemplateData represents the data available to Go templates in all templatable fields.
+// All fields are available in all templatable locations.
+// For HTTPRequest fields (url, headers, body): Phase and LastSuccessfulSha are from the previous reconcile.
+// For CommitStatus fields (description, url): Phase and LastSuccessfulSha reflect the current reconcile result.
+type TemplateData struct {
 	NamespaceMetadata   NamespaceMetadata
-	ProposedHydratedSha string
-	ActiveHydratedSha   string
-	Key                 string
-	Name                string
-	Namespace           string
-}
-
-// DescriptionTemplateData represents the data available to Go templates in the Description field.
-// This has access to environment-specific status information.
-type DescriptionTemplateData struct {
-	Key               string
-	Name              string
-	Namespace         string
-	NamespaceMetadata NamespaceMetadata
-	// Environment-specific fields from WebRequestCommitStatusEnvironmentStatus
 	Branch              string // The environment branch name
 	ProposedHydratedSha string // Proposed SHA for this environment
 	ActiveHydratedSha   string // Active SHA for this environment
-	ReportedSha         string // The SHA being reported on
+	ReportedSha         string // The SHA being reported on (based on reportOn setting)
 	LastSuccessfulSha   string // Last SHA that achieved success
 	Phase               string // Current phase (success/pending/failure)
 }
@@ -478,8 +466,16 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 		return result, nil
 	}
 
+	// Get values from previous reconcile (defaults if first run)
+	previousPhase := WebRequestPhasePending // Default to pending on first run
+	var lastSuccessfulSha string
+	if previousReconcileStatus != nil {
+		previousPhase = previousReconcileStatus.Phase
+		lastSuccessfulSha = previousReconcileStatus.LastSuccessfulSha
+	}
+
 	// Make HTTP request and evaluate expression
-	envResult, err := r.processEnvironmentRequest(ctx, wrcs, branch, proposedSha, activeSha, reportedSha)
+	envResult, err := r.processEnvironmentRequest(ctx, wrcs, branch, proposedSha, activeSha, reportedSha, previousPhase, lastSuccessfulSha)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process environment request for %q: %w", branch, err)
 	}
@@ -491,10 +487,6 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 	needsPolling := envResult.Phase != WebRequestPhaseSuccess || reportOn == ReportOnActive
 
 	// Detect if environment just transitioned to success (was not success before, is success now)
-	var previousPhase string
-	if previousReconcileStatus != nil {
-		previousPhase = previousReconcileStatus.Phase
-	}
 	transitioned := previousPhase != WebRequestPhaseSuccess && envResult.Phase == WebRequestPhaseSuccess
 
 	// Build result
@@ -527,7 +519,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 }
 
 // processEnvironmentRequest makes the HTTP request and evaluates the expression for a single environment
-func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, branch, proposedSha, activeSha, reportedSha string) (promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, error) {
+func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, branch, proposedSha, activeSha, reportedSha, previousPhase, lastSuccessfulSha string) (promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, error) {
 	logger := log.FromContext(ctx)
 	now := metav1.Now()
 
@@ -547,16 +539,18 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	}
 
 	// Prepare template data for request (URL, headers, body)
-	templateData := WebRequestTemplateData{
-		ProposedHydratedSha: proposedSha,
-		ActiveHydratedSha:   activeSha,
-		Key:                 wrcs.Spec.Key,
-		Name:                wrcs.Name,
-		Namespace:           wrcs.Namespace,
+	// Phase is from the previous reconcile (empty on first run)
+	templateData := TemplateData{
 		NamespaceMetadata: NamespaceMetadata{
 			Labels:      ns.Labels,
 			Annotations: ns.Annotations,
 		},
+		Branch:              branch,
+		ProposedHydratedSha: proposedSha,
+		ActiveHydratedSha:   activeSha,
+		ReportedSha:         reportedSha,
+		LastSuccessfulSha:   lastSuccessfulSha,
+		Phase:               previousPhase,
 	}
 
 	// Render URL template
@@ -779,11 +773,8 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		return nil, fmt.Errorf("failed to get namespace %q: %w", wrcs.Namespace, err)
 	}
 
-	// Render description with environment-specific context
-	descriptionData := DescriptionTemplateData{
-		Key:       wrcs.Spec.Key,
-		Name:      wrcs.Name,
-		Namespace: wrcs.Namespace,
+	// Render description with environment-specific context (includes Phase)
+	templateData := TemplateData{
 		NamespaceMetadata: NamespaceMetadata{
 			Labels:      ns.Labels,
 			Annotations: ns.Annotations,
@@ -796,13 +787,13 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		Phase:               envStatus.Phase,
 	}
 
-	description, err := r.renderTemplate("description", wrcs.Spec.Description, descriptionData)
+	description, err := r.renderTemplate("description", wrcs.Spec.Description, templateData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render description template: %w", err)
 	}
 
 	// Render URL with the same template data as description
-	url, err := r.renderTemplate("url", wrcs.Spec.Url, descriptionData)
+	url, err := r.renderTemplate("url", wrcs.Spec.Url, templateData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render url template: %w", err)
 	}

@@ -83,15 +83,18 @@ spec:
 ```
 
 Available template variables:
+- `{{ .Branch }}` - The environment branch name (e.g., "environment/staging")
 - `{{ .ProposedHydratedSha }}` - The proposed commit SHA
 - `{{ .ActiveHydratedSha }}` - The active/deployed commit SHA
-- `{{ .Key }}` - The WebRequestCommitStatus key
-- `{{ .Name }}` - The WebRequestCommitStatus resource name
-- `{{ .Namespace }}` - The WebRequestCommitStatus namespace
+- `{{ .ReportedSha }}` - The commit SHA being reported on (based on `reportOn` setting)
+- `{{ .LastSuccessfulSha }}` - Last SHA that achieved success (empty until first success)
+- `{{ .Phase }}` - Current phase (success/pending/failure)
 - `{{ .NamespaceMetadata.Labels }}` - Map of labels from the namespace where the WebRequestCommitStatus resides
 - `{{ .NamespaceMetadata.Annotations }}` - Map of annotations from the namespace where the WebRequestCommitStatus resides
 
-**Note:** To access specific label or annotation values with simple keys, use dot notation: `{{ .NamespaceMetadata.Labels.environment }}`. For keys containing hyphens or special characters, use the `index` function: `{{ index .NamespaceMetadata.Labels "cost-center" }}` or `{{ index .NamespaceMetadata.Annotations "notification-url" }}`
+**Note:** For `httpRequest` templates (`httpRequest.url`, `httpRequest.headers`, `httpRequest.body`), `Phase` and `LastSuccessfulSha` reflect the **previous** reconcile's values since the current phase isn't known until after the request completes. For the commit status fields (`description` and `url` at the spec level), they reflect the **current** reconcile's result.
+
+To access specific label or annotation values with simple keys, use dot notation: `{{ .NamespaceMetadata.Labels.environment }}`. For keys containing hyphens or special characters, use the `index` function: `{{ index .NamespaceMetadata.Labels "cost-center" }}` or `{{ index .NamespaceMetadata.Annotations "notification-url" }}`
 
 ## Authentication
 
