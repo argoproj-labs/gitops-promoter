@@ -42,7 +42,7 @@ Confirm that your access works with `kubectl get nodes`. Nodes should have a nam
 
 ```bash
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install-with-hydrator.yaml
+kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install-with-hydrator.yaml
 ```
 
 We want access to the UI, so open a dedicated terminal and run 
