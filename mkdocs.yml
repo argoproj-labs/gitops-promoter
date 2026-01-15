@@ -1,33 +1,153 @@
-site_name: GitOps Promoter - A GitOps First Environment Promotion Tool
-repo_url: https://github.com/argoproj-labs/gitops-promoter
+site_name: GitOps Promoter
+site_description: A GitOps First Environment Promotion Tool for Kubernetes
+site_author: Argo Project
 site_url: https://argo-gitops-promoter.readthedocs.io/
+repo_url: https://github.com/argoproj-labs/gitops-promoter
+repo_name: argoproj-labs/gitops-promoter
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2024-2026 Argo Project
+
 theme:
+  name: material
+  custom_dir: docs/overrides
+  logo: assets/logo.png
+  favicon: assets/favicon.png
   font:
     text: Work Sans
-  logo: assets/logo.png
-  name: material
+    code: Roboto Mono
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
   palette:
-    - primary: teal
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
       scheme: default
+      primary: teal
+      accent: deep orange
       toggle:
-        icon: material/toggle-switch-off-outline
+        icon: material/weather-night
         name: Switch to dark mode
-    - scheme: slate
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: deep orange
       toggle:
-        icon: material/toggle-switch
+        icon: material/weather-sunny
         name: Switch to light mode
+  features:
+    # Navigation
+    - navigation.instant        # Fast page loading
+    - navigation.instant.progress  # Show loading progress
+    - navigation.tracking       # Update URL with scroll position
+    - navigation.tabs          # Top-level sections as tabs
+    - navigation.tabs.sticky   # Tabs always visible
+    - navigation.sections      # Render top-level sections as groups
+    - navigation.expand        # Expand all sections by default
+    - navigation.path          # Show breadcrumbs
+    - navigation.indexes       # Section index pages
+    - navigation.top           # Back to top button
+    - navigation.footer        # Show previous/next navigation in footer
+    # Search
+    - search.suggest           # Search suggestions
+    - search.highlight         # Highlight search terms
+    - search.share            # Share search results
+    # Table of contents
+    - toc.follow              # Sidebar scrolls with page
+    - toc.integrate           # Integrate ToC into navigation
+    # Content
+    - content.code.copy        # Copy button for code blocks
+    - content.code.select      # Select code with click
+    - content.code.annotate    # Code annotations
+    - content.tabs.link        # Link content tabs
+    - content.tooltips         # Improved tooltips
+    - content.action.edit      # Edit button on pages
+    - content.action.view      # View source button
+
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+
 markdown_extensions:
-  - markdown_include.include
-  - codehilite:
-      css_class: highlight
+  # Python Markdown
+  - abbr
   - admonition
-  - pymdownx.superfences
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      permalink_title: Anchor link to this section
+      toc_depth: 3
+  - markdown_include.include
+
+  # Python Markdown Extensions
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+      use_pygments: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/argoproj-labs/gitops-promoter
+      name: GitOps Promoter on GitHub
+    - icon: fontawesome/brands/slack
+      link: https://argoproj.github.io/community/join-slack
+      name: Argo Project on Slack
+    - icon: fontawesome/solid/globe
+      link: https://argoproj.github.io/
+      name: Argo Project Website
+  version:
+    provider: mike
+  generator: false
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/extra.js
+
 nav:
-  - Overview: index.md
-  - Getting Started: getting-started.md
-  - Architecture: architecture.md
-  - CRD Specs: crd-specs.md
-  - Gating Promotions: gating-promotions.md
-  - Multi-Tenancy: multi-tenancy.md
-  - Tool Comparison: tool-comparison.md
-  - FAQs: faqs.md
+  - Home:
+    - Overview: index.md
+    - Getting Started: getting-started.md
+  - Concepts:
+    - Architecture: architecture.md
+    - Gating Promotions: gating-promotions.md
+    - Multi-Tenancy: multi-tenancy.md
+  - Reference:
+    - CRD Specs: crd-specs.md
+    - Tool Comparison: tool-comparison.md
+  - Help:
+    - FAQs: faqs.md

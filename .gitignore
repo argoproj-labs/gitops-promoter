@@ -38,3 +38,6 @@ junit.xml
 release_dist
 
 venv
+
+# MkDocs build output
+site/

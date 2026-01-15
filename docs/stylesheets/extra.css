@@ -1,0 +1,390 @@
+/* GitOps Promoter - Custom Styles */
+
+/* ============================================================================
+   Root Variables - Custom Colors
+   ========================================================================= */
+:root {
+  --gp-primary: #00897b;
+  --gp-accent: #ff6e40;
+  --gp-success: #4caf50;
+  --gp-warning: #ff9800;
+  --gp-error: #f44336;
+  --gp-info: #2196f3;
+
+  /* Shadows */
+  --gp-shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --gp-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.12);
+  --gp-shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.15);
+
+  /* Border radius */
+  --gp-radius-sm: 4px;
+  --gp-radius-md: 8px;
+  --gp-radius-lg: 12px;
+}
+
+/* ============================================================================
+   Enhanced Header Styling
+   ========================================================================= */
+.md-header {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+.md-header__title {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* ============================================================================
+   Improved Typography
+   ========================================================================= */
+.md-typeset h1 {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--gp-primary);
+  margin-top: 0;
+  padding-top: 1rem;
+  border-bottom: 3px solid var(--md-primary-fg-color);
+  padding-bottom: 0.5rem;
+}
+
+.md-typeset h2 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-top: 2rem;
+  padding-top: 0.5rem;
+  border-bottom: 2px solid var(--md-default-fg-color--lightest);
+  padding-bottom: 0.3rem;
+}
+
+.md-typeset h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--md-primary-fg-color);
+  margin-top: 1.5rem;
+}
+
+/* ============================================================================
+   Enhanced Code Blocks
+   ========================================================================= */
+.md-typeset code {
+  border-radius: var(--gp-radius-sm);
+  padding: 0.15em 0.4em;
+  font-size: 0.88em;
+  background-color: var(--md-code-bg-color);
+  box-shadow: var(--gp-shadow-sm);
+}
+
+.md-typeset pre {
+  border-radius: var(--gp-radius-md);
+  box-shadow: var(--gp-shadow-md);
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset pre > code {
+  box-shadow: none;
+  padding: 0;
+}
+
+/* Code block with title */
+.md-typeset .highlight {
+  margin: 1.5em 0;
+}
+
+/* ============================================================================
+   Polished Admonitions
+   ========================================================================= */
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: var(--gp-radius-md);
+  box-shadow: var(--gp-shadow-md);
+  border-left: 4px solid var(--md-primary-fg-color);
+  margin: 1.5em 0;
+  transition: all 0.3s ease;
+}
+
+.md-typeset .admonition:hover,
+.md-typeset details:hover {
+  box-shadow: var(--gp-shadow-lg);
+  transform: translateY(-2px);
+}
+
+.md-typeset .admonition-title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Custom admonition colors */
+.md-typeset .admonition.note {
+  border-left-color: var(--gp-info);
+}
+
+.md-typeset .admonition.tip,
+.md-typeset .admonition.success {
+  border-left-color: var(--gp-success);
+}
+
+.md-typeset .admonition.warning {
+  border-left-color: var(--gp-warning);
+}
+
+.md-typeset .admonition.danger,
+.md-typeset .admonition.error {
+  border-left-color: var(--gp-error);
+}
+
+/* ============================================================================
+   Enhanced Tables
+   ========================================================================= */
+.md-typeset table:not([class]) {
+  border-radius: var(--gp-radius-md);
+  overflow: hidden;
+  box-shadow: var(--gp-shadow-md);
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset table:not([class]) th {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 0.85em;
+  background-color: var(--md-primary-fg-color--light);
+  color: var(--md-primary-bg-color);
+}
+
+.md-typeset table:not([class]) tr:hover {
+  background-color: var(--md-default-fg-color--lightest);
+  transition: background-color 0.2s ease;
+}
+
+/* ============================================================================
+   Enhanced Buttons and Links
+   ========================================================================= */
+.md-typeset a {
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  transition: all 0.2s ease;
+}
+
+.md-typeset a:hover {
+  text-decoration-thickness: 3px;
+  color: var(--gp-accent);
+}
+
+/* Primary button style */
+.md-button {
+  border-radius: var(--gp-radius-md);
+  transition: all 0.3s ease;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: var(--gp-shadow-sm);
+}
+
+.md-button:hover {
+  box-shadow: var(--gp-shadow-md);
+  transform: translateY(-2px);
+}
+
+.md-button--primary {
+  background-color: var(--gp-primary);
+  border-color: var(--gp-primary);
+}
+
+/* ============================================================================
+   Enhanced Navigation
+   ========================================================================= */
+.md-nav__link--active {
+  font-weight: 600;
+  color: var(--gp-primary);
+  border-left: 3px solid var(--gp-primary);
+  padding-left: calc(1rem - 3px);
+}
+
+.md-tabs__link--active {
+  font-weight: 600;
+}
+
+/* ============================================================================
+   Improved Cards and Content Boxes
+   ========================================================================= */
+.md-typeset .grid {
+  margin: 1.5em 0;
+}
+
+.md-typeset .card {
+  border-radius: var(--gp-radius-lg);
+  box-shadow: var(--gp-shadow-md);
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+  border: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset .card:hover {
+  box-shadow: var(--gp-shadow-lg);
+  transform: translateY(-4px);
+}
+
+/* ============================================================================
+   Enhanced Search
+   ========================================================================= */
+.md-search__input {
+  border-radius: var(--gp-radius-lg);
+}
+
+.md-search__input::placeholder {
+  opacity: 0.6;
+}
+
+/* ============================================================================
+   Improved Tabs
+   ========================================================================= */
+.md-typeset .tabbed-set {
+  border-radius: var(--gp-radius-md);
+  box-shadow: var(--gp-shadow-md);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  margin: 1.5em 0;
+}
+
+.md-typeset .tabbed-labels > label {
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.md-typeset .tabbed-labels > label:hover {
+  color: var(--gp-primary);
+}
+
+/* ============================================================================
+   Footer Enhancements
+   ========================================================================= */
+.md-footer {
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.md-footer-meta {
+  background-color: var(--md-footer-bg-color--dark);
+}
+
+/* ============================================================================
+   Enhanced Back to Top Button
+   ========================================================================= */
+.md-top {
+  background-color: var(--gp-primary);
+  box-shadow: var(--gp-shadow-lg);
+  transition: all 0.3s ease;
+}
+
+.md-top:hover {
+  background-color: var(--gp-accent);
+  transform: scale(1.1);
+}
+
+/* ============================================================================
+   Custom Badge Styles
+   ========================================================================= */
+.md-typeset .badge {
+  display: inline-block;
+  padding: 0.2em 0.6em;
+  font-size: 0.85em;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: var(--gp-radius-sm);
+  background-color: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+}
+
+.md-typeset .badge-success {
+  background-color: var(--gp-success);
+  color: white;
+}
+
+.md-typeset .badge-warning {
+  background-color: var(--gp-warning);
+  color: white;
+}
+
+.md-typeset .badge-error {
+  background-color: var(--gp-error);
+  color: white;
+}
+
+/* ============================================================================
+   Copy Button Enhancement
+   ========================================================================= */
+.md-clipboard {
+  border-radius: var(--gp-radius-sm);
+  transition: all 0.2s ease;
+}
+
+.md-clipboard:hover {
+  background-color: var(--gp-primary);
+}
+
+/* ============================================================================
+   Responsive Improvements
+   ========================================================================= */
+@media screen and (max-width: 76.1875em) {
+  .md-nav--primary .md-nav__title {
+    background-color: var(--md-primary-fg-color);
+    font-weight: 600;
+  }
+}
+
+/* ============================================================================
+   Dark Mode Specific Adjustments
+   ========================================================================= */
+[data-md-color-scheme="slate"] {
+  --gp-primary: #26a69a;
+  --gp-accent: #ff8a65;
+}
+
+[data-md-color-scheme="slate"] .md-typeset h1 {
+  color: var(--gp-primary);
+}
+
+[data-md-color-scheme="slate"] .md-typeset code {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-md-color-scheme="slate"] .md-typeset pre {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================================================
+   Print Styles
+   ========================================================================= */
+@media print {
+  .md-typeset h1 {
+    page-break-before: always;
+  }
+
+  .md-typeset h1:first-child {
+    page-break-before: avoid;
+  }
+
+  .md-typeset pre,
+  .md-typeset .admonition {
+    page-break-inside: avoid;
+  }
+}
+
+/* ============================================================================
+   Smooth Scrolling
+   ========================================================================= */
+html {
+  scroll-behavior: smooth;
+}
+
+/* ============================================================================
+   Focus Indicators for Accessibility
+   ========================================================================= */
+a:focus,
+button:focus,
+input:focus {
+  outline: 2px solid var(--gp-accent);
+  outline-offset: 2px;
+}

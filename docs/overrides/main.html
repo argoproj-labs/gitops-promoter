@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block announce %}
+<!-- Custom announcement bar (optional - uncomment to use) -->
+<!--
+<div style="background: linear-gradient(90deg, #00897b, #26a69a); color: white; text-align: center; padding: 10px; font-weight: 500;">
+  🚀 GitOps Promoter v0.0.1-rc5 is now available!
+  <a href="https://github.com/argoproj-labs/gitops-promoter/releases" style="color: white; text-decoration: underline; margin-left: 10px;">View Release Notes</a>
+</div>
+-->
+{% endblock %}
+
+{% block footer %}
+{{ super() }}
+<!-- Custom footer enhancements -->
+<div class="md-footer-extra" style="background-color: var(--md-footer-bg-color--dark); padding: 20px 0; text-align: center; border-top: 1px solid var(--md-default-fg-color--lightest);">
+  <div class="md-footer-extra__inner md-grid" style="max-width: 1200px; margin: 0 auto; padding: 0 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
+
+      <!-- Left: Project Info -->
+      <div style="text-align: left; flex: 1; min-width: 250px;">
+        <p style="margin: 0; font-size: 0.9em; opacity: 0.8;">
+          <strong>GitOps Promoter</strong> is part of the
+          <a href="https://argoproj.github.io/" target="_blank" rel="noopener" style="color: var(--md-accent-fg-color);">Argo Project</a>
+        </p>
+        <p style="margin: 5px 0 0 0; font-size: 0.8em; opacity: 0.6;">
+          A GitOps First Environment Promotion Tool for Kubernetes
+        </p>
+      </div>
+
+      <!-- Center: Quick Links -->
+      <div style="text-align: center; flex: 1; min-width: 200px;">
+        <div style="display: flex; gap: 20px; justify-content: center; align-items: center;">
+          <a href="https://github.com/argoproj-labs/gitops-promoter" target="_blank" rel="noopener"
+             style="text-decoration: none; color: inherit; opacity: 0.8; transition: opacity 0.2s;"
+             onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
+            <svg style="width: 24px; height: 24px; vertical-align: middle;" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M12,2A10,10 0 0,0 2,12C2,16.42 4.87,20.17 8.84,21.5C9.34,21.58 9.5,21.27 9.5,21C9.5,20.77 9.5,20.14 9.5,19.31C6.73,19.91 6.14,17.97 6.14,17.97C5.68,16.81 5.03,16.5 5.03,16.5C4.12,15.88 5.1,15.9 5.1,15.9C6.1,15.97 6.63,16.93 6.63,16.93C7.5,18.45 8.97,18 9.54,17.76C9.63,17.11 9.89,16.67 10.17,16.42C7.95,16.17 5.62,15.31 5.62,11.5C5.62,10.39 6,9.5 6.65,8.79C6.55,8.54 6.2,7.5 6.75,6.15C6.75,6.15 7.59,5.88 9.5,7.17C10.29,6.95 11.15,6.84 12,6.84C12.85,6.84 13.71,6.95 14.5,7.17C16.41,5.88 17.25,6.15 17.25,6.15C17.8,7.5 17.45,8.54 17.35,8.79C18,9.5 18.38,10.39 18.38,11.5C18.38,15.32 16.04,16.16 13.81,16.41C14.17,16.72 14.5,17.33 14.5,18.26C14.5,19.6 14.5,20.68 14.5,21C14.5,21.27 14.66,21.59 15.17,21.5C19.14,20.16 22,16.42 22,12A10,10 0 0,0 12,2Z" />
+            </svg>
+          </a>
+          <a href="https://argoproj.github.io/community/join-slack" target="_blank" rel="noopener"
+             style="text-decoration: none; color: inherit; opacity: 0.8; transition: opacity 0.2s;"
+             onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'">
+            <svg style="width: 24px; height: 24px; vertical-align: middle;" viewBox="0 0 24 24">
+              <path fill="currentColor" d="M6,15A2,2 0 0,1 4,17A2,2 0 0,1 2,15A2,2 0 0,1 4,13H6V15M7,15A2,2 0 0,1 9,13A2,2 0 0,1 11,15V22A2,2 0 0,1 9,24A2,2 0 0,1 7,22V15M9,6A2,2 0 0,1 7,4A2,2 0 0,1 9,2A2,2 0 0,1 11,4V6H9M9,7A2,2 0 0,1 11,9A2,2 0 0,1 9,11H2A2,2 0 0,1 0,9A2,2 0 0,1 2,7H9M18,9A2,2 0 0,1 20,7A2,2 0 0,1 22,9A2,2 0 0,1 20,11H18V9M17,9A2,2 0 0,1 15,11A2,2 0 0,1 13,9V2A2,2 0 0,1 15,0A2,2 0 0,1 17,2V9M15,18A2,2 0 0,1 17,20A2,2 0 0,1 15,22A2,2 0 0,1 13,20V18H15M15,17A2,2 0 0,1 13,15A2,2 0 0,1 15,13H22A2,2 0 0,1 24,15A2,2 0 0,1 22,17H15Z" />
+            </svg>
+          </a>
+        </div>
+      </div>
+
+      <!-- Right: Stats/Badges -->
+      <div style="text-align: right; flex: 1; min-width: 200px;">
+        <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap;">
+          <a href="https://github.com/argoproj-labs/gitops-promoter/stargazers" target="_blank" rel="noopener">
+            <img src="https://img.shields.io/github/stars/argoproj-labs/gitops-promoter?style=social" alt="GitHub stars" style="vertical-align: middle;">
+          </a>
+          <a href="https://github.com/argoproj-labs/gitops-promoter/releases" target="_blank" rel="noopener">
+            <img src="https://img.shields.io/github/v/release/argoproj-labs/gitops-promoter?style=flat-square" alt="GitHub release" style="vertical-align: middle;">
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom: Legal -->
+    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--md-default-fg-color--lightest); font-size: 0.75em; opacity: 0.6;">
+      <p style="margin: 0;">
+        Made with ❤️ by the Argo Project community |
+        <a href="https://github.com/argoproj-labs/gitops-promoter/blob/main/LICENSE" target="_blank" rel="noopener" style="color: inherit;">Apache 2.0 License</a>
+      </p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<!-- Additional custom scripts can be added here -->
+<script>
+  // Add instant loading indicator
+  if (typeof app !== 'undefined') {
+    app.document$.subscribe(function() {
+      // Re-initialize custom enhancements on page change
+      if (typeof initExternalLinks === 'function') {
+        setTimeout(initExternalLinks, 100);
+      }
+    });
+  }
+</script>
+{% endblock %}
