@@ -10,6 +10,25 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
+func setupCluster(ctx context.Context) error {
+	// Install ArgoCD
+	if err := InstallArgoCD(ctx); err != nil {
+		return fmt.Errorf("failed to install ArgoCD: %w", err)
+	}
+
+	// Install GitOps Promoter
+	if err := InstallGitOpsPromoter(ctx); err != nil {
+		return fmt.Errorf("failed to install GitOps Promoter: %w", err)
+	}
+
+	// Patch ArgoCD to add extension
+	if err := PatchArgoCD(ctx); err != nil {
+		return fmt.Errorf("failed to patch ArgoCD: %w", err)
+	}
+
+	return nil
+}
+
 func InstallArgoCD(ctx context.Context) error {
 	// Read config file
 	content, err := os.ReadFile("cmd/demo/config/config.yaml")

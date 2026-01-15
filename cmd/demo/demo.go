@@ -1,16 +1,14 @@
 package demo
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
+	"github.com/fatih/color"
 	"github.com/google/go-github/v71/github"
 	"github.com/spf13/cobra"
 	"golang.org/x/oauth2"
-	"golang.org/x/term"
 )
 
 // Config structure for config.yaml
@@ -33,37 +31,13 @@ func NewDemoCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 
-			// Prompt for token (hidden input)
-			token, err := promptForToken()
+			// Prompt for credentials
+			credentials, err := promptForCredentials()
 			if err != nil {
-				return fmt.Errorf("failed to read token: %w", err)
+				return fmt.Errorf("failed to prompt for credentials: %w", err)
 			}
 
-			// Prompt for Application ID
-			appID, err := promptForAppID()
-			if err != nil {
-				return fmt.Errorf("failed to read app ID: %w", err)
-			}
-			fmt.Printf("Application ID: %s\n", appID)
-
-			// Prompt for Installation ID
-			// 0. Install ArgoCD
-			if err := InstallArgoCD(ctx); err != nil {
-				return fmt.Errorf("failed to install ArgoCD: %w", err)
-			}
-
-			// 1. Install GitOps Promoter
-			if err := InstallGitOpsPromoter(ctx); err != nil {
-				return fmt.Errorf("failed to install GitOps Promoter: %w", err)
-			}
-
-			// 2. Patch argocd to add extension
-			if err := PatchArgoCD(ctx); err != nil {
-				return fmt.Errorf("failed to patch ArgoCD: %w", err)
-			}
-
-			// 2. GitHub client
-			ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+			ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: credentials.Token})
 			tc := oauth2.NewClient(ctx, ts)
 			client := github.NewClient(tc)
 
@@ -73,7 +47,11 @@ func NewDemoCommand() *cobra.Command {
 				return fmt.Errorf("failed to get current user: %w", err)
 			}
 			username := user.GetLogin()
-			fmt.Printf("Current github user: %s\n", username)
+			color.Green("Current github user: %s\n", username)
+
+			if err := setupCluster(ctx); err != nil {
+				return fmt.Errorf("failed to setup cluster: %w", err)
+			}
 
 			// 3. Create the repository
 			fmt.Printf("Creating repository %s/%s...\n", username, repoName)
@@ -102,9 +80,43 @@ func NewDemoCommand() *cobra.Command {
 			if err := UploadManifests(ctx, client, repo, Replacements{
 				RepoName: repoName,
 				Username: username,
-				AppID:    appID,
+				AppID:    credentials.AppID,
 			}); err != nil {
 				return fmt.Errorf("failed to upload manifests: %w", err)
+			}
+
+			// Create promotion strategy secret
+			k8sClient, err := NewK8sClient()
+			if err != nil {
+				return fmt.Errorf("failed to create k8s client: %w", err)
+			}
+
+			// create helm-guestbook-ps ns
+			err = CreateNamespace(ctx, k8sClient, "helm-guestbook-ps")
+			if err != nil {
+				return fmt.Errorf("failed to create namespace: %w", err)
+			}
+
+			err = CreateOrUpdateSecret(ctx, k8sClient, "helm-guestbook-ps", "github-demo-secret", map[string]string{"githubAppPrivateKey": credentials.PrivateKey}, map[string]string{})
+
+			if err != nil {
+				return fmt.Errorf("failed to create promotion strategy github app secret: %w", err)
+			}
+
+			// Create a secret read and write for the hydrator
+			data := map[string]string{"githubAppPrivateKey": credentials.PrivateKey, "githubAppID": credentials.AppID, "type": "git", "url": fmt.Sprintf("https://github.com/%s/%s", username, repoName)}
+			labels := map[string]string{"argocd.argoproj.io/secret-type": "repository-write"}
+			err = CreateOrUpdateSecret(ctx, k8sClient, "argocd", "repo-write-promoter", data, labels)
+			if err != nil {
+				return fmt.Errorf("failed to create repo write secret: %w", err)
+			}
+
+			// Create a secret read
+			data = map[string]string{"password": credentials.Token, "type": "git", "url": fmt.Sprintf("https://github.com/%s/%s", username, repoName), "username": username}
+			labels = map[string]string{"argocd.argoproj.io/secret-type": "repository"}
+			err = CreateOrUpdateSecret(ctx, k8sClient, "argocd", "repo-read-promoter", data, labels)
+			if err != nil {
+				return fmt.Errorf("failed to create repo read secret: %w", err)
 			}
 
 			fmt.Println("Setup complete!")
@@ -116,33 +128,4 @@ func NewDemoCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&private, "private", false, "Create a private repository")
 
 	return cmd
-}
-
-func promptForToken() (string, error) {
-	fmt.Print("Enter your GitHub personal access token: ")
-
-	// Read password without echoing
-	tokenBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Println() // newline after hidden input
-	if err != nil {
-		// Fallback for non-terminal (e.g., piped input)
-		reader := bufio.NewReader(os.Stdin)
-		token, err := reader.ReadString('\n')
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(token), nil
-	}
-
-	return string(tokenBytes), nil
-}
-
-func promptForAppID() (string, error) {
-	fmt.Print("Enter your GitHub application ID: ")
-	reader := bufio.NewReader(os.Stdin)
-	appID, err := reader.ReadString('\n')
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(appID), nil
 }
