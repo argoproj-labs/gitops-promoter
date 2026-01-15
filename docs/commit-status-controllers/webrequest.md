@@ -365,14 +365,6 @@ spec:
   expression: 'Response.StatusCode == 200 && Response.Body.approved == true'
 ```
 
-**Why use namespace metadata?**
-
-Using namespace labels and annotations provides several benefits:
-- **Organizational context**: Namespace labels typically contain team ownership, environment classification, and cost allocation information
-- **Centralized management**: Update metadata in one place (the namespace) rather than on individual resources
-- **Consistent metadata**: All resources in the namespace automatically use the same organizational context
-- **Integration-friendly**: External systems receive the organizational context needed for routing, notifications, and tracking
-
 **Template syntax notes:**
 - Simple keys (alphanumeric, no hyphens): `{{ .NamespaceMetadata.Labels.environment }}`
 - Keys with hyphens or special characters: `{{ index .NamespaceMetadata.Labels "cost-center" }}`
@@ -493,20 +485,6 @@ spec:
     url: "https://jira.example.com/api/tickets/{{ .ProposedHydratedSha }}/status"
     method: GET
   expression: 'Response.StatusCode == 200 && Response.Body.status == "approved"'
-```
-
-### Feature Flag Check
-
-Ensure feature flags are enabled before promotion:
-
-```yaml
-spec:
-  description: "Feature flag verification"
-  url: "https://launchdarkly.example.com/dashboard/flags/enable-new-feature"
-  httpRequest:
-    url: "https://launchdarkly.example.com/api/flags/enable-new-feature"
-    method: GET
-  expression: 'Response.StatusCode == 200 && Response.Body.enabled == true'
 ```
 
 ### Monitoring Health Check
