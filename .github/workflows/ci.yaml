@@ -127,3 +127,21 @@ jobs:
           go-version: "1.25"
           cache: true
       - run: make nilaway-no-test
+  
+  ci:
+    name: Continuous Integration
+    needs: [build-ui, lint-go, test, lint-ui, lint-docs, codegen, nilaway]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "One or more jobs failed"
+            exit 1
+          fi
+          if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more jobs were cancelled"
+            exit 1
+          fi
+          echo "All jobs passed ✓"
