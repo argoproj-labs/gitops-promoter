@@ -329,4 +329,4 @@ We deployed the application "helm-guestbook" from the example repository.
 Try editing the main branch: number of replicas, helm templates... And see the PRs getting promoted from development to staging, then wait for your approval for the prod.
 
 > [!NOTE]
-> Since we are not using the webhook. It can takes 5 to 15 minutes to complete the cycle unless you've set the requeue duration to a lower value.
+> Since we are not using the webhook. It can take 5 to 15 minutes to complete the cycle unless you've set the requeue duration to a lower value.
