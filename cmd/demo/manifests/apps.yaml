@@ -5,7 +5,7 @@ metadata:
   namespace: argocd
   labels:
     # This label allows the ArgoCDCommitStatus to find the applications.
-    app-name: gitops-promoter-demo-promotion-strategy
+    app-name: helm-guestbook
 spec:
   project: default
   destination:
@@ -36,7 +36,7 @@ metadata:
   namespace: argocd
   labels:
     # This label allows the ArgoCDCommitStatus to find the applications.
-    app-name: gitops-promoter-demo-promotion-strategy
+    app-name: helm-guestbook
 spec:
   project: default
   destination:
@@ -67,7 +67,7 @@ metadata:
   namespace: argocd
   labels:
     # This label allows the ArgoCDCommitStatus to find the applications.
-    app-name: gitops-promoter-demo-promotion-strategy
+    app-name: helm-guestbook
 spec:
   project: default
   destination:

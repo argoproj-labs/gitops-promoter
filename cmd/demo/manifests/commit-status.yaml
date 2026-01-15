@@ -7,4 +7,4 @@ spec:
     name: gitops-promoter-demo-promotion-strategy
   applicationSelector:
     matchLabels:
-      app-name: gitops-promoter-demo
+      app-name: helm-guestbook
