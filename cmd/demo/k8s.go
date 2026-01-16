@@ -14,6 +14,41 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+// CreateRepoSecrets creates the ArgoCD repository secrets for read and write access
+func CreateRepoSecrets(ctx context.Context, k8sClient kubernetes.Interface, credentials *Credentials, username, repoName string) error {
+	repoURL := fmt.Sprintf("https://github.com/%s/%s", username, repoName)
+
+	// Create write secret (for hydrator)
+	writeData := map[string]string{
+		"githubAppPrivateKey": credentials.PrivateKey,
+		"githubAppID":         credentials.AppID,
+		"type":                "git",
+		"url":                 repoURL,
+	}
+	writeLabels := map[string]string{
+		"argocd.argoproj.io/secret-type": "repository-write",
+	}
+	if err := CreateOrUpdateSecret(ctx, k8sClient, "argocd", "repo-write-promoter", writeData, writeLabels); err != nil {
+		return fmt.Errorf("failed to create repo write secret: %w", err)
+	}
+
+	// Create read secret
+	readData := map[string]string{
+		"password": credentials.Token,
+		"username": username,
+		"type":     "git",
+		"url":      repoURL,
+	}
+	readLabels := map[string]string{
+		"argocd.argoproj.io/secret-type": "repository",
+	}
+	if err := CreateOrUpdateSecret(ctx, k8sClient, "argocd", "repo-read-promoter", readData, readLabels); err != nil {
+		return fmt.Errorf("failed to create repo read secret: %w", err)
+	}
+
+	return nil
+}
+
 func CreateOrUpdateSecret(ctx context.Context, clientset kubernetes.Interface, namespace, name string, data map[string]string, labels map[string]string) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{

@@ -2,13 +2,18 @@ package demo
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/goccy/go-yaml"
 )
+
+//go:embed app/app.yaml
+var appYAML []byte
 
 func setupCluster(ctx context.Context) error {
 	// Install ArgoCD
@@ -129,4 +134,27 @@ func PatchArgoCD(ctx context.Context) error {
 
 	color.Green("ArgoCD patched successfully ✓")
 	return nil
+}
+
+// ApplyBaseApp applies the embedded ArgoCD base application
+func ApplyBaseApp(ctx context.Context) error {
+	if err := KubectlApply(ctx, string(appYAML), "argocd"); err != nil {
+		return fmt.Errorf("failed to apply base app: %w", err)
+	}
+	return nil
+}
+
+// KubectlApply applies a YAML manifest string using kubectl
+func KubectlApply(ctx context.Context, manifest string, namespace string) error {
+	args := []string{"apply", "-f", "-"}
+	if namespace != "" {
+		args = append([]string{"-n", namespace}, args...)
+	}
+
+	cmd := exec.CommandContext(ctx, "kubectl", args...)
+	cmd.Stdin = strings.NewReader(manifest)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd.Run()
 }

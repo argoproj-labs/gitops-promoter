@@ -99,38 +99,20 @@ func NewDemoCommand() *cobra.Command {
 				return fmt.Errorf("failed to create namespace: %w", err)
 			}
 
-			// err = CreateOrUpdateSecret(ctx, k8sClient, "default", "github-demo-secret", map[string]string{"githubAppPrivateKey": credentials.PrivateKey}, map[string]string{})
-
-			// if err != nil {
-			// 	return fmt.Errorf("failed to create promotion strategy github app secret: %w", err)
-			// }
-
 			err = CreateOrUpdateSecret(ctx, k8sClient, "helm-guestbook-ps", "github-demo-secret", map[string]string{"githubAppPrivateKey": credentials.PrivateKey}, map[string]string{})
 
 			if err != nil {
 				return fmt.Errorf("failed to create promotion strategy github app secret: %w", err)
 			}
 
-			// Create a secret read and write for the hydrator
-			data := map[string]string{"githubAppPrivateKey": credentials.PrivateKey, "githubAppID": credentials.AppID, "type": "git", "url": fmt.Sprintf("https://github.com/%s/%s", username, repoName)}
-			labels := map[string]string{"argocd.argoproj.io/secret-type": "repository-write"}
-			err = CreateOrUpdateSecret(ctx, k8sClient, "argocd", "repo-write-promoter", data, labels)
-			if err != nil {
-				return fmt.Errorf("failed to create repo write secret: %w", err)
-			}
-
-			// Create a secret read
-			data = map[string]string{"password": credentials.Token, "type": "git", "url": fmt.Sprintf("https://github.com/%s/%s", username, repoName), "username": username}
-			labels = map[string]string{"argocd.argoproj.io/secret-type": "repository"}
-			err = CreateOrUpdateSecret(ctx, k8sClient, "argocd", "repo-read-promoter", data, labels)
-			if err != nil {
-				return fmt.Errorf("failed to create repo read secret: %w", err)
+			// Create repo secrets
+			if err := CreateRepoSecrets(ctx, k8sClient, credentials, username, repoName); err != nil {
+				return err
 			}
 
 			// Create base app
-			err = KubectlApplyFile(ctx, "cmd/demo/app/app.yaml", "argocd")
-			if err != nil {
-				return fmt.Errorf("failed to apply apps.yaml: %w", err)
+			if err := ApplyBaseApp(ctx); err != nil {
+				return err
 			}
 
 			color.Green("Setup complete!")
