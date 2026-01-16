@@ -4,7 +4,7 @@ metadata:
   name: argocd-health
 spec:
   promotionStrategyRef:
-    name: gitops-promoter-demo-promotion-strategy
+    name: demo-github
   applicationSelector:
     matchLabels:
       app-name: helm-guestbook

@@ -103,6 +103,12 @@ func NewDemoCommand() *cobra.Command {
 				return fmt.Errorf("failed to create promotion strategy github app secret: %w", err)
 			}
 
+			err = CreateOrUpdateSecret(ctx, k8sClient, "helm-guestbook-ps", "github-demo-secret", map[string]string{"githubAppPrivateKey": credentials.PrivateKey}, map[string]string{})
+
+			if err != nil {
+				return fmt.Errorf("failed to create promotion strategy github app secret: %w", err)
+			}
+
 			// Create a secret read and write for the hydrator
 			data := map[string]string{"githubAppPrivateKey": credentials.PrivateKey, "githubAppID": credentials.AppID, "type": "git", "url": fmt.Sprintf("https://github.com/%s/%s", username, repoName)}
 			labels := map[string]string{"argocd.argoproj.io/secret-type": "repository-write"}
