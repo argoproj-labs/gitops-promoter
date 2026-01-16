@@ -1,0 +1,23 @@
+FROM golang:1.25
+
+WORKDIR /
+
+# Install tini (required by deployment.yaml)
+RUN apt-get update && apt-get install -y tini && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Create git directory
+RUN mkdir -p /git
+
+# Copy pre-built binary
+COPY ./bin/gitops-promoter /gitops-promoter
+
+# Copy askpass script
+COPY hack/git/promoter_askpass.sh /git/promoter_askpass.sh
+
+# Copy UI static files
+COPY ui/web/static ./ui/web/static
+
+ENV PATH="${PATH}:/git"
+USER 65532:65532
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/gitops-promoter"]

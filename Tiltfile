@@ -36,6 +36,15 @@ local_resource(
     allow_parallel=True,
 )
 
+# Build binary locally
+local_resource(
+    'build-binary',
+    cmd='CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin/gitops-promoter ./cmd',
+    deps=['cmd', 'api', 'internal'],
+    resource_deps=['build-dashboard'],
+    labels=['build'],
+)
+
 # =============================================================================
 # Kubernetes Deployment (Controller runs in K8s)
 # =============================================================================
@@ -44,10 +53,10 @@ local_resource(
 docker_build(
     'quay.io/argoprojlabs/gitops-promoter',
     context='.',
-    dockerfile='Dockerfile',
-    only=[
-        'cmd', 'api', 'internal', 'ui', 'hack/git',
-        'go.mod', 'go.sum', 'Dockerfile',
+    dockerfile='Dockerfile.tilt',
+    live_update=[
+        sync('./bin/gitops-promoter', '/gitops-promoter'),
+        sync('./ui/web/static', '/ui/web/static'),
     ],
     ignore=[
         '**/node_modules',
