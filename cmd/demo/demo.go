@@ -3,6 +3,8 @@ package demo
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/fatih/color"
@@ -97,11 +99,11 @@ func NewDemoCommand() *cobra.Command {
 				return fmt.Errorf("failed to create namespace: %w", err)
 			}
 
-			err = CreateOrUpdateSecret(ctx, k8sClient, "default", "github-demo-secret", map[string]string{"githubAppPrivateKey": credentials.PrivateKey}, map[string]string{})
+			// err = CreateOrUpdateSecret(ctx, k8sClient, "default", "github-demo-secret", map[string]string{"githubAppPrivateKey": credentials.PrivateKey}, map[string]string{})
 
-			if err != nil {
-				return fmt.Errorf("failed to create promotion strategy github app secret: %w", err)
-			}
+			// if err != nil {
+			// 	return fmt.Errorf("failed to create promotion strategy github app secret: %w", err)
+			// }
 
 			err = CreateOrUpdateSecret(ctx, k8sClient, "helm-guestbook-ps", "github-demo-secret", map[string]string{"githubAppPrivateKey": credentials.PrivateKey}, map[string]string{})
 
@@ -125,7 +127,13 @@ func NewDemoCommand() *cobra.Command {
 				return fmt.Errorf("failed to create repo read secret: %w", err)
 			}
 
-			fmt.Println("Setup complete!")
+			// Create base app
+			err = KubectlApplyFile(ctx, "cmd/demo/app/app.yaml", "argocd")
+			if err != nil {
+				return fmt.Errorf("failed to apply apps.yaml: %w", err)
+			}
+
+			color.Green("Setup complete!")
 			return nil
 		},
 	}
@@ -134,4 +142,22 @@ func NewDemoCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&private, "private", true, "Create a private repository")
 
 	return cmd
+}
+
+// KubectlApplyFile applies a YAML file using kubectl
+func KubectlApplyFile(ctx context.Context, filePath string, namespace string) error {
+	args := []string{"apply", "-f", filePath}
+	if namespace != "" {
+		args = append([]string{"-n", namespace}, args...)
+	}
+
+	cmd := exec.CommandContext(ctx, "kubectl", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("kubectl apply failed: %w", err)
+	}
+
+	return nil
 }
