@@ -87,3 +87,16 @@ func CreateNamespace(ctx context.Context, clientset kubernetes.Interface, namesp
 
 	return nil
 }
+
+func createK8sClient() (kubernetes.Interface, error) {
+	config, err := getKubeConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get kube config: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create clientset: %w", err)
+	}
+	return clientset, nil
+}

@@ -5,13 +5,15 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
+	"github.com/goccy/go-yaml"
 	"golang.org/x/term"
-	"k8s.io/client-go/kubernetes"
 )
 
+// Credentials holds all user-provided authentication info
 type Credentials struct {
 	Token          string
 	AppID          string
@@ -19,35 +21,64 @@ type Credentials struct {
 	PrivateKeyPath string
 }
 
-func promptForCredentials() (*Credentials, error) {
-	// Prompt for token (hidden input)
-	token, err := promptForToken()
+// CredentialsProvider defines the interface for obtaining credentials
+type CredentialsProvider interface {
+	GetCredentials() (*Credentials, error)
+}
+
+// InteractivePrompter prompts the user for credentials via terminal
+type InteractivePrompter struct {
+	reader io.Reader
+	writer io.Writer
+}
+
+// NewInteractivePrompter creates a new interactive prompter
+func NewInteractivePrompter() *InteractivePrompter {
+	return &InteractivePrompter{
+		reader: os.Stdin,
+		writer: os.Stdout,
+	}
+}
+
+// WithReader sets a custom reader (useful for testing)
+func (p *InteractivePrompter) WithReader(r io.Reader) *InteractivePrompter {
+	p.reader = r
+	return p
+}
+
+// WithWriter sets a custom writer (useful for testing)
+func (p *InteractivePrompter) WithWriter(w io.Writer) *InteractivePrompter {
+	p.writer = w
+	return p
+}
+
+// GetCredentials implements CredentialsProvider
+func (p *InteractivePrompter) GetCredentials() (*Credentials, error) {
+	token, err := p.promptHidden("Enter your GitHub personal access token: ")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read token: %w", err)
 	}
 
-	// Prompt for Application ID
-	appID, err := promptForAppID()
+	appID, err := p.prompt("Enter your GitHub application ID: ")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read app ID: %w", err)
 	}
-	fmt.Printf("Application ID: %s\n", appID)
+	fmt.Fprintf(p.writer, "Application ID: %s\n", appID)
 
-	// Prompt for private key path
-	privateKeyPath, err := promptForPrivateKeyPath()
+	privateKeyPath, err := p.prompt("Enter path to your GitHub App private key (.pem): ")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read private key path: %w", err)
 	}
 
-	// Read the private key content
+	// Validate and read private key
+	validator := &PEMValidator{}
+	if err := validator.Validate(privateKeyPath); err != nil {
+		return nil, fmt.Errorf("invalid private key file: %w", err)
+	}
+
 	privateKeyContent, err := os.ReadFile(privateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read private key: %w", err)
-	}
-
-	// Validate the PEM file
-	if err := ValidatePrivateKeyPEM(privateKeyPath); err != nil {
-		return nil, fmt.Errorf("invalid private key file: %w", err)
 	}
 
 	return &Credentials{
@@ -58,62 +89,52 @@ func promptForCredentials() (*Credentials, error) {
 	}, nil
 }
 
-func promptForToken() (string, error) {
-	fmt.Print("Enter your GitHub personal access token: ")
-
-	// Read password without echoing
-	tokenBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-	fmt.Println() // newline after hidden input
-	if err != nil {
-		// Fallback for non-terminal (e.g., piped input)
-		reader := bufio.NewReader(os.Stdin)
-		token, err := reader.ReadString('\n')
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimSpace(token), nil
-	}
-
-	return string(tokenBytes), nil
-}
-
-func promptForAppID() (string, error) {
-	fmt.Print("Enter your GitHub application ID: ")
-	reader := bufio.NewReader(os.Stdin)
-	appID, err := reader.ReadString('\n')
+func (p *InteractivePrompter) prompt(message string) (string, error) {
+	fmt.Fprint(p.writer, message)
+	reader := bufio.NewReader(p.reader)
+	input, err := reader.ReadString('\n')
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(appID), nil
+	return strings.TrimSpace(input), nil
 }
 
-func promptForPrivateKeyPath() (string, error) {
-	fmt.Print("Enter path to your GitHub App private key (.pem): ")
-	reader := bufio.NewReader(os.Stdin)
-	privateKeyPath, err := reader.ReadString('\n')
-	if err != nil {
-		return "", fmt.Errorf("failed to read private key path: %w", err)
+func (p *InteractivePrompter) promptHidden(message string) (string, error) {
+	fmt.Fprint(p.writer, message)
+
+	if f, ok := p.reader.(*os.File); ok {
+		tokenBytes, err := term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(p.writer) // newline after hidden input
+		if err == nil {
+			return string(tokenBytes), nil
+		}
 	}
-	fmt.Printf("Private key path: %s\n", privateKeyPath)
-	return strings.TrimSpace(privateKeyPath), nil
+
+	// Fallback for non-terminal
+	return p.prompt("")
 }
 
-// NewK8sClient creates a Kubernetes clientset
-func NewK8sClient() (*kubernetes.Clientset, error) {
-	config, err := getKubeConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create clientset: %w", err)
-	}
-
-	return clientset, nil
+// FileCredentialsProvider loads credentials from a config file
+type FileCredentialsProvider struct {
+	configPath string
 }
 
-func ValidatePrivateKeyPEM(path string) error {
+// NewFileCredentialsProvider creates a provider that loads from a file
+func NewFileCredentialsProvider(path string) *FileCredentialsProvider {
+	return &FileCredentialsProvider{configPath: path}
+}
+
+// GetCredentials implements CredentialsProvider
+func (p *FileCredentialsProvider) GetCredentials() (*Credentials, error) {
+	// Load from YAML file (implement based on your config format)
+	return loadCredentialsFromFile(p.configPath)
+}
+
+// PEMValidator validates PEM files
+type PEMValidator struct{}
+
+// Validate checks if a file contains a valid private key
+func (v *PEMValidator) Validate(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read file: %w", err)
@@ -124,7 +145,6 @@ func ValidatePrivateKeyPEM(path string) error {
 		return fmt.Errorf("file does not contain valid PEM data")
 	}
 
-	// Check for expected types
 	switch block.Type {
 	case "RSA PRIVATE KEY":
 		_, err = x509.ParsePKCS1PrivateKey(block.Bytes)
@@ -141,4 +161,18 @@ func ValidatePrivateKeyPEM(path string) error {
 	}
 
 	return nil
+}
+
+func loadCredentialsFromFile(path string) (*Credentials, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	var credentials Credentials
+	if err := yaml.Unmarshal(content, &credentials); err != nil {
+		return nil, fmt.Errorf("failed to parse credentials: %w", err)
+	}
+
+	return &credentials, nil
 }

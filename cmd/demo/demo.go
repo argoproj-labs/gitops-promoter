@@ -34,7 +34,7 @@ func NewDemoCommand() *cobra.Command {
 			ctx := context.Background()
 
 			// Prompt for credentials
-			credentials, err := promptForCredentials()
+			credentials, err := NewInteractivePrompter().GetCredentials()
 			if err != nil {
 				return fmt.Errorf("failed to prompt for credentials: %w", err)
 			}
@@ -88,7 +88,7 @@ func NewDemoCommand() *cobra.Command {
 			}
 
 			// Create promotion strategy secret
-			k8sClient, err := NewK8sClient()
+			k8sClient, err := createK8sClient()
 			if err != nil {
 				return fmt.Errorf("failed to create k8s client: %w", err)
 			}
