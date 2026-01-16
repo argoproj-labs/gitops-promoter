@@ -2,9 +2,6 @@
 
 # Tiltfile for gitops-promoter
 
-# Allow using a custom Kubernetes context
-allow_k8s_contexts(k8s_context())
-
 # Configuration
 config.define_string('registry', args=True, usage='Container registry to push to (e.g., ttl.sh, localhost:5000)')
 cfg = config.parse()
