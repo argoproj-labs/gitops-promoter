@@ -2,14 +2,6 @@
 
 # Tiltfile for gitops-promoter
 
-# Configuration
-config.define_string('registry', args=True, usage='Container registry to push to (e.g., ttl.sh, localhost:5000)')
-cfg = config.parse()
-registry = cfg.get('registry', 'ttl.sh')
-
-# Use default_registry to rewrite image references
-default_registry(registry)
-
 # =============================================================================
 # Local Development (Dashboard runs locally with hot reload)
 # =============================================================================
