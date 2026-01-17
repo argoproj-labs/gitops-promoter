@@ -51,7 +51,7 @@ func InstallArgoCD(ctx context.Context) error {
 	url := config.ArgoCD.Upstream
 	// Run kubectl apply
 	fmt.Printf("Installing ArgoCD from %s...\n", url)
-	args := []string{"apply", "--server-side", "--force-conflicts", "-n", "argocd", "-f", url}
+	args := []string{"apply", "--server-side", "-n", "argocd", "-f", url}
 
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	cmd.Stdout = os.Stdout

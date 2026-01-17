@@ -109,9 +109,16 @@ func NewDemoCommand() *cobra.Command {
 			if err := CreateRepoSecrets(ctx, k8sClient, credentials, username, repoName); err != nil {
 				return err
 			}
+			color.Green("Repo secrets created!")
 
 			// Create base app
 			if err := ApplyBaseApp(ctx); err != nil {
+				return err
+			}
+			color.Green("Base app applied!")
+
+			// Copy helm-guestbook example to the repo
+			if err := CopyHelmGuestbook(ctx, client, repo, "helm-guestbook"); err != nil {
 				return err
 			}
 
