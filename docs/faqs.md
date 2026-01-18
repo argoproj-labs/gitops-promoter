@@ -22,6 +22,13 @@ applied to all environments.
 By focusing on the promotion part and leaving manifest manipulation to other tools, GitOps Promoter is able to reliably
 handle whatever manifest structure your organization prefers.
 
+## Why Should I use Webhooks?
+
+Webhooks allow GitOps Promoter to react to events from your Git repository in real-time. This means that when you push
+a new commit, GitOps Promoter can start the promotion process immediately, rather than waiting for a scheduled poll.
+Using webhooks can lead to faster deployments and a more responsive development process. Additionally, webhooks can
+reduce the load on your Git server by eliminating the need for frequent polling.
+
 ## How does GitOps Promoter handle concurrent releases?
 
 GitOps Promoter always works on releasing the latest DRY commit. If a new commit is pushed while another commit is still
