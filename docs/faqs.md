@@ -24,7 +24,7 @@ handle whatever manifest structure your organization prefers.
 
 ## Why Should I use Webhooks?
 
-Webhooks allow GitOps Promoter to react to events in your Git repository in real-time. This means that when you push
+Webhooks allow GitOps Promoter to react to events from your Git repository in real-time. This means that when you push
 a new commit, GitOps Promoter can start the promotion process immediately, rather than waiting for a scheduled poll.
 Using webhooks can lead to faster deployments and a more responsive development process. Additionally, webhooks can
 reduce the load on your Git server by eliminating the need for frequent polling.
