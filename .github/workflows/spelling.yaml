@@ -22,4 +22,4 @@ jobs:
     - name: Checkout Actions Repository
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # pin@v6
     - name: Spell Check Repo
-      uses: crate-ci/typos@0d9e0544bcde3be5b01a90e7aa9f90c63d3d5e9b  # v1.42.0
+      uses: crate-ci/typos@bb4666ad77b539a6b4ce4eda7ebb6de553704021  # v1.42.0
