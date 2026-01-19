@@ -1,4 +1,5 @@
 [files]
 extend-exclude = [
     "docs/assets/**",
+    "config/crd/bases/**",
 ]
