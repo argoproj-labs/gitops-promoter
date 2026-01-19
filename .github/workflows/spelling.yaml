@@ -5,12 +5,6 @@ permissions:
 
 on: 
   pull_request:
-    paths:
-      - 'docs/**'
-      - '*.md'
-      - 'README.md'
-      - '**/*.go'
-      - '.github/workflows/spelling.yaml' 
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,7 +15,7 @@ env:
 
 jobs:
   spelling:
-    timeout-minutes: 10
+    timeout-minutes: 5
     name: Spell Check with Typos
     runs-on: ubuntu-latest
     steps:
