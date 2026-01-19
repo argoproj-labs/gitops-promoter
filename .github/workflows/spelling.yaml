@@ -9,6 +9,7 @@ on:
       - 'docs/**'
       - '*.md'
       - 'README.md'
+      - '**/*.go'
       - '.github/workflows/spelling.yaml' 
 
 concurrency:
