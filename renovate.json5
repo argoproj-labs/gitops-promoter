@@ -117,9 +117,7 @@
     {
       customType: 'regex',
       description: 'Update Go version in go.mod',
-      managerFilePatterns: [
-        '/^go\\.mod$/',
-      ],
+      fileMatch: ['^go\\.mod$'],
       matchStrings: [
         'go (?<currentValue>\\d+\\.\\d+(\\.\\d+)?)',
       ],
@@ -130,9 +128,7 @@
     {
       customType: 'regex',
       description: 'Update Go version in GitHub Actions workflows',
-      managerFilePatterns: [
-        '/^\\.github/workflows/.*\\.ya?ml$/',
-      ],
+      fileMatch: ['^\\.github/workflows/.*\\.ya?ml$'],
       matchStrings: [
         'go-version:\\s*[\'"]?(?<currentValue>\\d+\\.\\d+)[\'"]?',
       ],
@@ -143,10 +139,7 @@
     {
       customType: 'regex',
       description: 'Update Go version in Dockerfiles',
-      managerFilePatterns: [
-        '/(^|/)Dockerfile$/',
-        '/(^|/)Dockerfile\\.[^/]*$/',
-      ],
+      fileMatch: ['(^|/)Dockerfile$', '(^|/)Dockerfile\\.[^/]*$'],
       matchStrings: [
         'FROM\\s+golang:(?<currentValue>\\d+\\.\\d+(\\.\\d+)?)',
       ],
@@ -157,9 +150,7 @@
     {
       customType: 'regex',
       description: 'Update golangci-lint version in Makefile',
-      managerFilePatterns: [
-        '/^Makefile$/',
-      ],
+      fileMatch: ['^Makefile$'],
       matchStrings: [
         'GOLANGCI_LINT_VERSION\\s*\\??=\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
       ],
@@ -172,9 +163,7 @@
     {
       customType: 'regex',
       description: 'Update golangci-lint version in GitHub Actions',
-      managerFilePatterns: [
-        '/^\\.github/workflows/.*\\.ya?ml$/',
-      ],
+      fileMatch: ['^\\.github/workflows/.*\\.ya?ml$'],
       matchStrings: [
         'uses:\\s+golangci/golangci-lint-action@v\\d+[\\s\\S]*?version:\\s*v(?<currentValue>\\d+\\.\\d+\\.\\d+)',
       ],
