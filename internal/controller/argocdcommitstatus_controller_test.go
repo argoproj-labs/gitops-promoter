@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -514,17 +515,23 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			// Force multiple reconciliations and verify they ALL produce identical error messages
 			// This catches nondeterministic behavior that the controller's map iteration would cause
 			for i := 0; i < 5; i++ {
-				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
-				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "sorting-test", Namespace: "default"}, updated)).To(Succeed())
+				// Use retry on conflict since the controller may update the status concurrently
+				err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+					updated := &promoterv1alpha1.ArgoCDCommitStatus{}
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: "sorting-test", Namespace: "default"}, updated); err != nil {
+						return fmt.Errorf("failed to get ArgoCDCommitStatus: %w", err)
+					}
 
-				// Trigger reconciliation by updating the spec (annotations won't work due to GenerationChangedPredicate)
-				// We toggle the URL template field to force generation increment
-				if i%2 == 0 {
-					updated.Spec.URL.Template = "http://example.com/test-" + strconv.Itoa(i)
-				} else {
-					updated.Spec.URL.Template = "http://example.com/test-alt-" + strconv.Itoa(i)
-				}
-				Expect(k8sClient.Update(ctx, updated)).To(Succeed())
+					// Trigger reconciliation by updating the spec (annotations won't work due to GenerationChangedPredicate)
+					// We toggle the URL template field to force generation increment
+					if i%2 == 0 {
+						updated.Spec.URL.Template = "http://example.com/test-" + strconv.Itoa(i)
+					} else {
+						updated.Spec.URL.Template = "http://example.com/test-alt-" + strconv.Itoa(i)
+					}
+					return k8sClient.Update(ctx, updated)
+				})
+				Expect(err).ToNot(HaveOccurred())
 
 				// Wait for reconciliation and verify error message is IDENTICAL to the first one
 				Eventually(func(g Gomega) {
