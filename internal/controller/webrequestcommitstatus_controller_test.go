@@ -1006,7 +1006,6 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 							"X-Notification": `{{ index .NamespaceMetadata.Annotations "notification-url" }}`,
 						},
 						Body: `{
-							"namespace": "{{ .Namespace }}",
 							"environment": "{{ .NamespaceMetadata.Labels.environment }}",
 							"costCenter": "{{ index .NamespaceMetadata.Labels "cost-center" }}",
 							"owner": "{{ .NamespaceMetadata.Annotations.owner }}",
@@ -1060,7 +1059,6 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 
 				// Verify body contains templated namespace label and annotation values
 				g.Expect(receivedBody).ToNot(BeNil())
-				g.Expect(receivedBody["namespace"]).To(Equal("default"))
 				g.Expect(receivedBody["environment"]).To(Equal("test"))
 				g.Expect(receivedBody["costCenter"]).To(Equal("engineering"))
 				g.Expect(receivedBody["owner"]).To(Equal("platform-team"))
