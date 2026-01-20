@@ -2,6 +2,8 @@
 
 # Tiltfile for gitops-promoter
 
+load('ext://restart_process', 'docker_build_with_restart')
+
 # =============================================================================
 # Local Development (Dashboard runs locally with hot reload)
 # =============================================================================
@@ -50,10 +52,11 @@ local_resource(
 # =============================================================================
 
 # Build Docker image for K8s deployment
-docker_build(
+docker_build_with_restart(
     'quay.io/argoprojlabs/gitops-promoter',
     context='.',
     dockerfile='Dockerfile.tilt',
+    entrypoint=['/gitops-promoter', 'controller'],
     live_update=[
         sync('./bin/gitops-promoter', '/gitops-promoter'),
         sync('./ui/web/static', '/ui/web/static'),
