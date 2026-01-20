@@ -13,4 +13,12 @@ const (
 	KubeconfigSecretLabel = "sigs.k8s.io/multicluster-runtime-kubeconfig"
 	// KubeconfigSecretKey is the key in the kubeconfig secret that contains the kubeconfig data.
 	KubeconfigSecretKey = "kubeconfig"
+
+	// PromotionStrategyControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the PromotionStrategy controller.
+	PromotionStrategyControllerFieldOwner = "promoter.argoproj.io/promotionstrategy-controller"
+
+	// ChangeTransferPolicyControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the ChangeTransferPolicy controller.
+	ChangeTransferPolicyControllerFieldOwner = "promoter.argoproj.io/changetransferpolicy-controller"
 )

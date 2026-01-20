@@ -160,6 +160,7 @@ type HealthyDryShas struct {
 	Time metav1.Time `json:"time"`
 }
 
+// +kubebuilder:ac:generate=true
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
