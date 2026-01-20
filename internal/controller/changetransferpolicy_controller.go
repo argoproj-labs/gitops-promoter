@@ -1089,13 +1089,18 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		return &pullRequest, fmt.Errorf("cannot merge PullRequest %q without an ID", pullRequest.Name)
 	}
 
-	// Use Server-Side Apply to set the PR state to merged
+	// Use SSA to set the PR state to merged, including all required spec fields
 	prApply := acv1alpha1.PullRequest(pullRequest.Name, pullRequest.Namespace).
 		WithSpec(acv1alpha1.PullRequestSpec().
+			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(pullRequest.Spec.RepositoryReference.Name)).
+			WithTitle(pullRequest.Spec.Title).
+			WithTargetBranch(pullRequest.Spec.TargetBranch).
+			WithSourceBranch(pullRequest.Spec.SourceBranch).
+			WithMergeSha(pullRequest.Spec.MergeSha).
 			WithState(promoterv1alpha1.PullRequestMerged))
 
 	if err := r.Apply(ctx, prApply, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
-		return &pullRequest, fmt.Errorf("failed to apply PR state %q: %w", pullRequest.Name, err)
+		return &pullRequest, fmt.Errorf("failed to apply PR %q state to merged: %w", pullRequest.Name, err)
 	}
 	r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
 	logger.Info("Merged pull request")
