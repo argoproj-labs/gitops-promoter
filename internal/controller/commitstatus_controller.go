@@ -42,7 +42,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -52,7 +52,7 @@ import (
 type CommitStatusReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
+	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 
 	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
@@ -119,7 +119,7 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, fmt.Errorf("failed to trigger reconcile of ChangeTransferPolicy via CommitStatus: %w", err)
 	}
 
-	r.Recorder.Eventf(&cs, "Normal", constants.CommitStatusSetReason, "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
+	r.Recorder.Eventf(&cs, nil, "Normal", constants.CommitStatusSetReason, "SettingCommitStatus", "Commit status %s set to %s for hash %s", cs.Name, cs.Spec.Phase, cs.Spec.Sha)
 
 	return ctrl.Result{}, nil
 }

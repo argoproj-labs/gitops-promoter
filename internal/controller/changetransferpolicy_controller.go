@@ -40,7 +40,7 @@ import (
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -67,7 +67,7 @@ type CTPEnqueueFunc func(namespace, name string)
 type ChangeTransferPolicyReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
+	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
@@ -554,7 +554,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
-			r.Recorder.Event(ctp, "Warning", constants.TooManyMatchingShaReason, constants.TooManyMatchingShaActiveMessage)
+			r.Recorder.Eventf(ctp, nil, "Warning", constants.TooManyMatchingShaReason, "EvaluatingPromotion", constants.TooManyMatchingShaActiveMessage)
 		}
 		return fmt.Errorf("failed to set active commit status state: %w", err)
 	}
@@ -563,7 +563,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
-			r.Recorder.Event(ctp, "Warning", constants.TooManyMatchingShaReason, constants.TooManyMatchingShaProposedMessage)
+			r.Recorder.Eventf(ctp, nil, "Warning", constants.TooManyMatchingShaReason, "EvaluatingPromotion", constants.TooManyMatchingShaProposedMessage)
 		}
 		return fmt.Errorf("failed to set proposed commit status state: %w", err)
 	}
@@ -929,11 +929,10 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	existingPR := &promoterv1alpha1.PullRequest{}
 	prExists := true
 	if err := r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: prName}, existingPR); err != nil {
-		if k8s_errors.IsNotFound(err) {
-			prExists = false
-		} else {
+		if !k8s_errors.IsNotFound(err) {
 			return nil, fmt.Errorf("failed to get existing PullRequest: %w", err)
 		}
+		prExists = false
 	}
 
 	// Build owner reference
@@ -1015,7 +1014,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 
 	// Log and emit events
 	if !prExists {
-		r.Recorder.Event(ctp, "Normal", constants.PullRequestCreatedReason, fmt.Sprintf(constants.PullRequestCreatedMessage, pr.Name))
+		r.Recorder.Eventf(ctp, nil, "Normal", constants.PullRequestCreatedReason, "CreatingPullRequest", constants.PullRequestCreatedMessage, pr.Name)
 		logger.V(4).Info("Created pull request", "pullRequest", pr.Name)
 	} else {
 		logger.V(4).Info("Applied pull request", "pullRequest", pr.Name)
@@ -1137,7 +1136,7 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	if err := r.Apply(ctx, prApply, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
 		return &pullRequest, fmt.Errorf("failed to apply PR %q state to merged: %w", pullRequest.Name, err)
 	}
-	r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
+	r.Recorder.Eventf(ctp, nil, "Normal", constants.PullRequestMergedReason, "MergingPullRequest", constants.PullRequestMergedMessage, pullRequest.Name)
 	logger.Info("Merged pull request")
 	return &pullRequest, nil
 }
@@ -1168,7 +1167,7 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 		return fmt.Errorf("failed to merge branches %q and %q with 'ours' strategy: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 	}
 
-	r.Recorder.Event(ctp, "Normal", constants.ResolvedConflictReason, fmt.Sprintf(constants.ResolvedConflictMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+	r.Recorder.Eventf(ctp, nil, "Normal", constants.ResolvedConflictReason, "ResolvingConflict", constants.ResolvedConflictMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 
 	return nil
 }

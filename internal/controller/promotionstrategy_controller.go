@@ -26,7 +26,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -56,7 +56,7 @@ type ctpEnqueueState struct {
 type PromotionStrategyReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
+	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 
 	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
@@ -320,7 +320,7 @@ func (r *PromotionStrategyReconciler) cleanupOrphanedChangeTransferPolicies(ctx 
 			return fmt.Errorf("failed to delete orphaned ChangeTransferPolicy %q: %w", ctp.Name, err)
 		}
 
-		r.Recorder.Eventf(ps, "Normal", constants.OrphanedChangeTransferPolicyDeletedReason, constants.OrphanedChangeTransferPolicyDeletedMessage, ctp.Name)
+		r.Recorder.Eventf(ps, nil, "Normal", constants.OrphanedChangeTransferPolicyDeletedReason, "CleaningOrphanedResources", constants.OrphanedChangeTransferPolicyDeletedMessage, ctp.Name)
 	}
 
 	return nil

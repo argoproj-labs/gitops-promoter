@@ -29,7 +29,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/multicluster-runtime/pkg/controller"
@@ -75,7 +75,7 @@ const lastTransitionTimeThreshold = 5 * time.Second
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
 	Manager                mcmanager.Manager
-	Recorder               record.EventRecorder
+	Recorder               events.EventRecorder
 	SettingsMgr            *settings.Manager
 	KubeConfigProvider     *kubeconfig.Provider
 	localClient            client.Client

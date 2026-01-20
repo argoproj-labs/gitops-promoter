@@ -31,7 +31,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,7 +48,7 @@ import (
 type TimedCommitStatusReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
+	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 	EnqueueCTP  CTPEnqueueFunc
 }
@@ -322,7 +322,7 @@ func (r *TimedCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.
 			return fmt.Errorf("failed to delete orphaned CommitStatus %q: %w", cs.Name, err)
 		}
 
-		r.Recorder.Eventf(tcs, "Normal", constants.OrphanedCommitStatusDeletedReason, constants.OrphanedCommitStatusDeletedMessage, cs.Name)
+		r.Recorder.Eventf(tcs, nil, "Normal", constants.OrphanedCommitStatusDeletedReason, "CleaningOrphanedResources", constants.OrphanedCommitStatusDeletedMessage, cs.Name)
 	}
 
 	return nil
