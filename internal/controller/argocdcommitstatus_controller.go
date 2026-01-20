@@ -64,7 +64,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1/applyconfiguration/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
 
