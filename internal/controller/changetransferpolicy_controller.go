@@ -970,6 +970,12 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		commitMessage = fmt.Sprintf("%s\n\n%s\n\n%s", title, description, commitTrailers)
 	}
 
+	// Determine the state: preserve existing state if PR exists, otherwise default to open
+	prState := promoterv1alpha1.PullRequestOpen
+	if prExists {
+		prState = existingPR.Spec.State
+	}
+
 	// Build the apply configuration
 	prApply := acv1alpha1.PullRequest(prName, ctp.Namespace).
 		WithLabels(map[string]string{
@@ -993,7 +999,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			WithDescription(description).
 			WithCommit(acv1alpha1.CommitConfiguration().WithMessage(commitMessage)).
 			WithMergeSha(ctp.Status.Proposed.Hydrated.Sha).
-			WithState(promoterv1alpha1.PullRequestOpen))
+			WithState(prState))
 
 	// Apply using Server-Side Apply
 	err = r.Apply(ctx, prApply, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership)
@@ -1089,15 +1095,44 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		return &pullRequest, fmt.Errorf("cannot merge PullRequest %q without an ID", pullRequest.Name)
 	}
 
-	// Use SSA to set the PR state to merged, including all required spec fields
+	// Use SSA to set the PR state to merged
+	// We need to include all fields that were originally set by this field owner to avoid SSA removing them
+	ownerRefs := make([]*acmetav1.OwnerReferenceApplyConfiguration, 0, len(pullRequest.OwnerReferences))
+	for _, ref := range pullRequest.OwnerReferences {
+		ownerRefApply := acmetav1.OwnerReference().
+			WithAPIVersion(ref.APIVersion).
+			WithKind(ref.Kind).
+			WithName(ref.Name).
+			WithUID(ref.UID)
+		if ref.Controller != nil {
+			ownerRefApply = ownerRefApply.WithController(*ref.Controller)
+		}
+		if ref.BlockOwnerDeletion != nil {
+			ownerRefApply = ownerRefApply.WithBlockOwnerDeletion(*ref.BlockOwnerDeletion)
+		}
+		ownerRefs = append(ownerRefs, ownerRefApply)
+	}
+
+	prSpec := acv1alpha1.PullRequestSpec().
+		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(pullRequest.Spec.RepositoryReference.Name)).
+		WithTitle(pullRequest.Spec.Title).
+		WithTargetBranch(pullRequest.Spec.TargetBranch).
+		WithSourceBranch(pullRequest.Spec.SourceBranch).
+		WithMergeSha(pullRequest.Spec.MergeSha).
+		WithState(promoterv1alpha1.PullRequestMerged)
+
+	if pullRequest.Spec.Description != "" {
+		prSpec = prSpec.WithDescription(pullRequest.Spec.Description)
+	}
+	if pullRequest.Spec.Commit.Message != "" {
+		prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().WithMessage(pullRequest.Spec.Commit.Message))
+	}
+
 	prApply := acv1alpha1.PullRequest(pullRequest.Name, pullRequest.Namespace).
-		WithSpec(acv1alpha1.PullRequestSpec().
-			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(pullRequest.Spec.RepositoryReference.Name)).
-			WithTitle(pullRequest.Spec.Title).
-			WithTargetBranch(pullRequest.Spec.TargetBranch).
-			WithSourceBranch(pullRequest.Spec.SourceBranch).
-			WithMergeSha(pullRequest.Spec.MergeSha).
-			WithState(promoterv1alpha1.PullRequestMerged))
+		WithLabels(pullRequest.Labels).
+		WithOwnerReferences(ownerRefs...).
+		WithFinalizers(pullRequest.Finalizers...).
+		WithSpec(prSpec)
 
 	if err := r.Apply(ctx, prApply, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
 		return &pullRequest, fmt.Errorf("failed to apply PR %q state to merged: %w", pullRequest.Name, err)
