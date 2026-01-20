@@ -368,15 +368,12 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 			WithPhase(phase).
 			WithSha(sha))
 
-	// Apply using Server-Side Apply
-	if err := r.Apply(ctx, commitStatusApply, client.FieldOwner(constants.TimedCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
-		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
-	}
-
-	// Get the applied object to return
+	// Apply using Server-Side Apply with Patch to get the result directly
 	commitStatus := &promoterv1alpha1.CommitStatus{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: tcs.Namespace, Name: commitStatusName}, commitStatus); err != nil {
-		return nil, fmt.Errorf("failed to get applied CommitStatus: %w", err)
+	commitStatus.Name = commitStatusName
+	commitStatus.Namespace = tcs.Namespace
+	if err := r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.TimedCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
 	}
 
 	return commitStatus, nil

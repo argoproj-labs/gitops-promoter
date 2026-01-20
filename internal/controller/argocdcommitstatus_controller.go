@@ -602,18 +602,15 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 			WithBlockOwnerDeletion(true)).
 		WithSpec(commitStatusSpec)
 
-	// Apply using Server-Side Apply
-	if err := r.localClient.Apply(ctx, commitStatusApply, client.FieldOwner(constants.ArgoCDCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+	// Apply using Server-Side Apply with Patch to get the result directly
+	commitStatus := &promoterv1alpha1.CommitStatus{}
+	commitStatus.Name = resourceName
+	commitStatus.Namespace = argoCDCommitStatus.Namespace
+	if err := r.localClient.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.ArgoCDCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
 		return nil, fmt.Errorf("failed to apply CommitStatus object: %w", err)
 	}
 
 	logger.Info("Applied CommitStatus", "name", resourceName, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
-
-	// Get the applied object to return
-	commitStatus := &promoterv1alpha1.CommitStatus{}
-	if err := r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, commitStatus); err != nil {
-		return nil, fmt.Errorf("failed to get applied CommitStatus: %w", err)
-	}
 
 	return commitStatus, nil
 }

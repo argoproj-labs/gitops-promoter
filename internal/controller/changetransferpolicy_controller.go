@@ -1000,16 +1000,12 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			WithMergeSha(ctp.Status.Proposed.Hydrated.Sha).
 			WithState(prState))
 
-	// Apply using Server-Side Apply
-	err = r.Apply(ctx, prApply, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply PullRequest %q: %w", prName, err)
-	}
-
-	// Get the applied object to return
+	// Apply using Server-Side Apply with Patch to get the result directly
 	pr := &promoterv1alpha1.PullRequest{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: prName}, pr); err != nil {
-		return nil, fmt.Errorf("failed to get applied PullRequest: %w", err)
+	pr.Name = prName
+	pr.Namespace = ctp.Namespace
+	if err = r.Patch(ctx, pr, utils.ApplyPatch{ApplyConfig: prApply}, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply PullRequest %q: %w", prName, err)
 	}
 
 	// Log and emit events
@@ -1133,12 +1129,16 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		WithFinalizers(pullRequest.Finalizers...).
 		WithSpec(prSpec)
 
-	if err := r.Apply(ctx, prApply, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
+	// Apply using Server-Side Apply with Patch to get the result directly
+	pr := &promoterv1alpha1.PullRequest{}
+	pr.Name = pullRequest.Name
+	pr.Namespace = pullRequest.Namespace
+	if err := r.Patch(ctx, pr, utils.ApplyPatch{ApplyConfig: prApply}, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
 		return &pullRequest, fmt.Errorf("failed to apply PR %q state to merged: %w", pullRequest.Name, err)
 	}
-	r.Recorder.Eventf(ctp, nil, "Normal", constants.PullRequestMergedReason, "MergingPullRequest", constants.PullRequestMergedMessage, pullRequest.Name)
+	r.Recorder.Eventf(ctp, nil, "Normal", constants.PullRequestMergedReason, "MergingPullRequest", constants.PullRequestMergedMessage, pr.Name)
 	logger.Info("Merged pull request")
-	return &pullRequest, nil
+	return pr, nil
 }
 
 // gitMergeStrategyOurs tests if there is a conflict between the active and proposed branches. If there is, we

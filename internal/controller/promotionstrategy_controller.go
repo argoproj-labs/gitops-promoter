@@ -251,16 +251,12 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			WithBlockOwnerDeletion(true)).
 		WithSpec(ctpSpec)
 
-	// Apply using Server-Side Apply
-	err := r.Apply(ctx, ctpApply, client.FieldOwner(constants.PromotionStrategyControllerFieldOwner), client.ForceOwnership)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply ChangeTransferPolicy %q: %w", ctpName, err)
-	}
-
-	// Get the applied object to return
+	// Apply using Server-Side Apply with Patch to get the result directly
 	ctp := &promoterv1alpha1.ChangeTransferPolicy{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: ps.Namespace, Name: ctpName}, ctp); err != nil {
-		return nil, fmt.Errorf("failed to get applied ChangeTransferPolicy: %w", err)
+	ctp.Name = ctpName
+	ctp.Namespace = ps.Namespace
+	if err := r.Patch(ctx, ctp, utils.ApplyPatch{ApplyConfig: ctpApply}, client.FieldOwner(constants.PromotionStrategyControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply ChangeTransferPolicy %q: %w", ctpName, err)
 	}
 
 	logger.V(4).Info("Applied ChangeTransferPolicy")
@@ -601,16 +597,12 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 			WithPhase(phase).
 			WithUrl(url))
 
-	// Apply using Server-Side Apply
-	err = r.Apply(ctx, commitStatusApply, client.FieldOwner(constants.PromotionStrategyControllerFieldOwner), client.ForceOwnership)
-	if err != nil {
-		return nil, fmt.Errorf("failed to apply previous environments CommitStatus: %w", err)
-	}
-
-	// Get the applied object to return
+	// Apply using Server-Side Apply with Patch to get the result directly
 	commitStatus := &promoterv1alpha1.CommitStatus{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: csName}, commitStatus); err != nil {
-		return nil, fmt.Errorf("failed to get applied CommitStatus: %w", err)
+	commitStatus.Name = csName
+	commitStatus.Namespace = ctp.Namespace
+	if err = r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.PromotionStrategyControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply previous environments CommitStatus: %w", err)
 	}
 
 	logger.V(4).Info("Applied previous environment CommitStatus")
