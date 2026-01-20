@@ -1,8 +1,8 @@
 name: Renovate
 on:
   schedule:
-    # Run every weekend at 3 AM UTC (Saturday and Sunday)
-    - cron: '0 3 * * 6,0'
+    # Run every (Wednesday, Saturday and Sunday) at 3 AM UTC 
+    - cron: '0 3 * * 0,3,6'
   workflow_dispatch:
     inputs:
       dryRun:
