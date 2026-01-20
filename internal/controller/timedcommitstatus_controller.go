@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -39,6 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1/applyconfiguration/api/v1alpha1"
 )
 
 // TimedCommitStatusReconciler reconciles a TimedCommitStatus object
@@ -340,43 +343,43 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-timed", tcs.Name, branch))
 
-	commitStatus := promoterv1alpha1.CommitStatus{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      commitStatusName,
-			Namespace: tcs.Namespace,
-		},
+	// Build owner reference
+	kind := reflect.TypeOf(promoterv1alpha1.TimedCommitStatus{}).Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+
+	// Build the apply configuration
+	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, tcs.Namespace).
+		WithLabels(map[string]string{
+			promoterv1alpha1.TimedCommitStatusLabel: utils.KubeSafeLabel(tcs.Name),
+			promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(branch),
+			promoterv1alpha1.CommitStatusLabel:      "timer",
+		}).
+		WithOwnerReferences(acmetav1.OwnerReference().
+			WithAPIVersion(gvk.GroupVersion().String()).
+			WithKind(gvk.Kind).
+			WithName(tcs.Name).
+			WithUID(tcs.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)).
+		WithSpec(acv1alpha1.CommitStatusSpec().
+			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
+			WithName("timer/" + envBranch).
+			WithDescription(message).
+			WithPhase(phase).
+			WithSha(sha))
+
+	// Apply using Server-Side Apply
+	if err := r.Apply(ctx, commitStatusApply, client.FieldOwner(constants.TimedCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
 	}
 
-	// Create or update the CommitStatus
-	_, err := ctrl.CreateOrUpdate(ctx, r.Client, &commitStatus, func() error {
-		// Set owner reference to the TimedCommitStatus
-		if err := ctrl.SetControllerReference(tcs, &commitStatus, r.Scheme); err != nil {
-			return fmt.Errorf("failed to set controller reference: %w", err)
-		}
-
-		// Set labels for easy identification
-		if commitStatus.Labels == nil {
-			commitStatus.Labels = make(map[string]string)
-		}
-		commitStatus.Labels[promoterv1alpha1.TimedCommitStatusLabel] = utils.KubeSafeLabel(tcs.Name)
-		commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
-		commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = "timer"
-
-		// Set the spec
-		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
-		// Use the environment branch name to show which environment's time gate this is checking
-		commitStatus.Spec.Name = "timer/" + envBranch
-		commitStatus.Spec.Description = message
-		commitStatus.Spec.Phase = phase
-		commitStatus.Spec.Sha = sha
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create or update CommitStatus: %w", err)
+	// Get the applied object to return
+	commitStatus := &promoterv1alpha1.CommitStatus{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: tcs.Namespace, Name: commitStatusName}, commitStatus); err != nil {
+		return nil, fmt.Errorf("failed to get applied CommitStatus: %w", err)
 	}
 
-	return &commitStatus, nil
+	return commitStatus, nil
 }
 
 // touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies

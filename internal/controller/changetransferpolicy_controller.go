@@ -41,7 +41,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -1090,17 +1089,13 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		return &pullRequest, fmt.Errorf("cannot merge PullRequest %q without an ID", pullRequest.Name)
 	}
 
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		var pr promoterv1alpha1.PullRequest
-		err = r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to get PR %q: %w", pullRequest.Name, err)
-		}
-		pr.Spec.State = promoterv1alpha1.PullRequestMerged
-		return r.Update(ctx, &pr)
-	})
-	if err != nil {
-		return &pullRequest, fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
+	// Use Server-Side Apply to set the PR state to merged
+	prApply := acv1alpha1.PullRequest(pullRequest.Name, pullRequest.Namespace).
+		WithSpec(acv1alpha1.PullRequestSpec().
+			WithState(promoterv1alpha1.PullRequestMerged))
+
+	if err := r.Apply(ctx, prApply, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
+		return &pullRequest, fmt.Errorf("failed to apply PR state %q: %w", pullRequest.Name, err)
 	}
 	r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
 	logger.Info("Merged pull request")
