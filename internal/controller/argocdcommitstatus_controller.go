@@ -215,7 +215,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 
 	if maxTimeUntilThreshold > 0 && maxTimeUntilThreshold < requeueDuration {
-		logger.V(4).Info("Requeueing for last transition time", "requeueIn", maxTimeUntilThreshold)
+		logger.V(4).Info("Requeuing for last transition time", "requeueIn", maxTimeUntilThreshold)
 		requeueDuration = maxTimeUntilThreshold
 	}
 

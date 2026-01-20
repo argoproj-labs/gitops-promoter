@@ -25,9 +25,9 @@ spec:
             - name: EXTENSION_NAME
               value: gitops-promoter
             - name: EXTENSION_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.20.2/gitops-promoter-argocd-extension.tar.gz
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.20.3/gitops-promoter-argocd-extension.tar.gz
             - name: EXTENSION_CHECKSUM_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.20.2/gitops-promoter_0.20.2_checksums.txt
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.20.3/gitops-promoter_0.20.3_checksums.txt
           volumeMounts:
             - name: extensions
               mountPath: /tmp/extensions/
@@ -54,6 +54,15 @@ kubectl patch deployment argocd-server -n argocd --patch-file argocd-server-exte
 
 Once applied, you should see a new gitops-promoter section in the Argo CD UI
 ![Screenshot of Argo CD UI showing the Promoter section](assets/argocd-ui-extension.png)
+
+### Compatibility Matrix
+
+The following table shows the compatibility between GitOps Promoter versions and Argo CD versions for the UI Extension:
+
+| GitOps Promoter Version | Argo CD Version |
+|-------------------------|-----------------|
+| v0.18.3+                | v2.3+           |
+| v0.18.2 and earlier     | v2.2.x and earlier |
 
 ## Deep Links
 
