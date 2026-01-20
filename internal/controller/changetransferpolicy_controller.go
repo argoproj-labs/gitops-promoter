@@ -1094,8 +1094,8 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		return &pullRequest, fmt.Errorf("cannot merge PullRequest %q without an ID", pullRequest.Name)
 	}
 
-	// Use SSA to set the PR state to merged
-	// We need to include all fields that were originally set by this field owner to avoid SSA removing them
+	// Update the PR state to merged using SSA.
+	// Re-specify ownerReferences, finalizers, and labels to preserve them in the apply.
 	ownerRefs := make([]*acmetav1.OwnerReferenceApplyConfiguration, 0, len(pullRequest.OwnerReferences))
 	for _, ref := range pullRequest.OwnerReferences {
 		ownerRefApply := acmetav1.OwnerReference().
