@@ -25,7 +25,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -146,7 +146,7 @@ func removeSecretFinalizerForProvider(
 func handleResourceFinalizerWithDependencies(
 	ctx context.Context,
 	c client.Client,
-	recorder record.EventRecorder,
+	recorder events.EventRecorder,
 	obj client.Object,
 	finalizer string,
 	resourceType string,
@@ -191,7 +191,7 @@ func handleResourceFinalizerWithDependencies(
 		errMsg := formatDependentResourceError(obj, resourceType, dependents)
 
 		// Emit Kubernetes event for better UX
-		recorder.Event(obj, "Warning", "DeletionBlocked", errMsg)
+		recorder.Eventf(obj, nil, "Warning", "DeletionBlocked", "Deletion", errMsg)
 
 		// Update gauge metric with current count of dependents
 		metrics.FinalizerDependentCount.WithLabelValues(
