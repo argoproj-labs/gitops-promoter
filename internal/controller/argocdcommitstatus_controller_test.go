@@ -417,26 +417,8 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
-			// Create the ArgoCDCommitStatus
-			cr := &promoterv1alpha1.ArgoCDCommitStatus{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "sorting-test",
-					Namespace: "default",
-				},
-				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
-					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
-						Name: "sorting-test-strategy",
-					},
-					ApplicationSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"argocd.com/argocd-commitstatus-selector": "sorting-test",
-						},
-					},
-				},
-			}
-			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
-
-			// Create Argo CD Applications with the correct branches
+			// Create Argo CD Applications with the correct branches BEFORE creating ArgoCDCommitStatus
+			// This ensures all applications are available when the first reconciliation happens
 			branches := []string{
 				"env/argocd/west",
 				"env/argocd/east",
@@ -475,6 +457,26 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 				Expect(k8sClient.Create(ctx, app)).To(Succeed())
 			}
+
+			// Create the ArgoCDCommitStatus AFTER all applications are created
+			// This ensures all applications are available when the first reconciliation happens
+			cr := &promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "sorting-test",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: "sorting-test-strategy",
+					},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"argocd.com/argocd-commitstatus-selector": "sorting-test",
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
 
 			// Wait for first reconciliation and capture the error message
 			var firstErrorMessage string

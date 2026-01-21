@@ -7,9 +7,11 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	bitbucket_cloud "github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
 	corev1 "k8s.io/api/core/v1"
@@ -62,6 +64,10 @@ func CreateGitOperationsProvider(
 		logger.V(4).Info("Creating Forgejo git authentication provider")
 		return forgejo.NewForgejoGitAuthenticationProvider(scmProvider, secret), nil
 
+	case scmProvider.GetSpec().Gitea != nil:
+		logger.V(4).Info("Creating Gitea git authentication provider")
+		return gitea.NewGiteaGitAuthenticationProvider(scmProvider, secret), nil
+
 	case scmProvider.GetSpec().BitbucketCloud != nil:
 		logger.V(4).Info("Creating Bitbucket Cloud git authentication provider")
 		provider, err := bitbucket_cloud.NewBitbucketCloudGitAuthenticationProvider(scmProvider, secret)
@@ -70,6 +76,9 @@ func CreateGitOperationsProvider(
 		}
 		return provider, nil
 
+	case scmProvider.GetSpec().AzureDevOps != nil:
+		logger.V(4).Info("Creating Azure DevOps git authentication provider")
+		return azuredevops.NewAzdoGitAuthenticationProvider(scmProvider, secret), nil
 	default:
 		return nil, errors.New("no supported git authentication provider found")
 	}

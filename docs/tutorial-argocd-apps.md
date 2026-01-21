@@ -42,7 +42,7 @@ Confirm that your access works with `kubectl get nodes`. Nodes should have a nam
 
 ```bash
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install-with-hydrator.yaml
+kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install-with-hydrator.yaml
 ```
 
 We want access to the UI, so open a dedicated terminal and run 
@@ -66,7 +66,7 @@ Connect with this password for the `admin` user.
 > See [Getting Started](./getting-started.md)
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.19.1/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.20.2/install.yaml
 ```
 
 > [!NOTE]
@@ -88,7 +88,7 @@ Argo provides an example repository: [https://github.com/argoproj/argocd-example
 
 In your GitHub account, go to Settings > Developer settings > GitHub Apps.
 
-Click on `New GitHub App`, pass the MFA challenge.
+Click on [`New GitHub App`](https://github.com/settings/apps/new), pass the MFA challenge.
 
 Fill up the form with the following (leave non specified to defaults):
 
@@ -324,7 +324,7 @@ Here, we implement a simple strategy:
 3. Manual merge on production
 
 > [!NOTE]
-> You should see 2 PRs getting merged automatically and 1 PR to merge manually for the production. That is normal: we branched from the main branch wich is DRY. The promoter detects change and do what's needed to sync the two branches.
+> You should see 2 PRs getting merged automatically and 1 PR to merge manually for the production. That is normal: we branched from the main branch which is DRY. The promoter detects change and do what's needed to sync the two branches.
 
 ## Play with your environment
 

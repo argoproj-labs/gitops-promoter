@@ -115,7 +115,7 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 
 .PHONY: nilaway-no-test
 nilaway-no-test: nilaway ## Run nilaway to remove nil checks from the code
-	$(NILAWAY) --test=false ./...
+	GOMEMLIMIT=8GiB $(NILAWAY) -test=false -exclude-pkgs="sigs.k8s.io,k8s.io" ./...
 
 ##@ Build
 
@@ -261,11 +261,11 @@ GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 KUSTOMIZE_VERSION ?= v5.3.0
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.7.2
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
-GORELEASER_VERSION ?= v2.6.1
+GORELEASER_VERSION ?= v2.13.2
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.

@@ -885,6 +885,14 @@ spec:
                       description: PullRequest is the state of the pull request that
                         was created for this ChangeTransferPolicy.
                       properties:
+                        externallyMergedOrClosed:
+                          description: |-
+                            ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
+                            This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                            When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                            This status is preserved even after the PullRequest resource is deleted, maintaining a historical
+                            record of the external action until a new pull request is created for this environment.
+                          type: boolean
                         id:
                           description: ID is the unique identifier of the pull request,
                             set by the SCM.
@@ -1201,6 +1209,14 @@ spec:
                 description: PullRequest is the state of the pull request that was
                   created for this ChangeTransferPolicy.
                 properties:
+                  externallyMergedOrClosed:
+                    description: |-
+                      ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
+                      This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+                      When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+                      This status is preserved even after the PullRequest resource is deleted, maintaining a historical
+                      record of the external action until a new pull request is created for this environment.
+                    type: boolean
                   id:
                     description: ID is the unique identifier of the pull request,
                       set by the SCM.

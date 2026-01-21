@@ -10,6 +10,7 @@ An easy way to install the extension is to use the [argocd-extension-installer](
 You can use it by adding an init container to your `argocd-server` deployment. Here is an example:
 
 ```yaml
+# argocd-server-extension-patch.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,14 +20,14 @@ spec:
     spec:
       initContainers:
         - name: extension-gitops-promoter
-          image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.8@sha256:e7cb054207620566286fce2d809b4f298a72474e0d8779ffa8ec92c3b630f054
+          image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
           env:
             - name: EXTENSION_NAME
               value: gitops-promoter
             - name: EXTENSION_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.19.1/gitops-promoter-argocd-extension.tar.gz
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.20.2/gitops-promoter-argocd-extension.tar.gz
             - name: EXTENSION_CHECKSUM_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.19.1/gitops-promoter_0.19.1_checksums.txt
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.20.2/gitops-promoter_0.20.2_checksums.txt
           volumeMounts:
             - name: extensions
               mountPath: /tmp/extensions/
@@ -38,7 +39,30 @@ spec:
           volumeMounts:
             - name: extensions
               mountPath: /tmp/extensions/
+      volumes:
+        - name: extensions
+          emptyDir: {}
 ```
+
+You can apply the patch using the following command:
+```
+kubectl patch deployment argocd-server -n argocd --patch-file argocd-server-extension-patch.yaml
+```
+
+> [!NOTE]
+> In order to see gitops-promoter CRDs and promoter UI in the ArgoCD UI, they must be deployed in an ArgoCD application
+
+Once applied, you should see a new gitops-promoter section in the Argo CD UI
+![Screenshot of Argo CD UI showing the Promoter section](assets/argocd-ui-extension.png)
+
+### Compatibility Matrix
+
+The following table shows the compatibility between GitOps Promoter versions and Argo CD versions for the UI Extension:
+
+| GitOps Promoter Version | Argo CD Version |
+|-------------------------|-----------------|
+| v0.18.3+                | v2.3+           |
+| v0.18.2 and earlier     | v2.2.x and earlier |
 
 ## Deep Links
 

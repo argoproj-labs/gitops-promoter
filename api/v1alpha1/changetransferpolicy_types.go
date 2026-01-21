@@ -214,6 +214,12 @@ type PullRequestCommonStatus struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
+	// ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
+	// This is set to true when the pull request has an ID but is no longer found on the SCM provider.
+	// When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
+	// This status is preserved even after the PullRequest resource is deleted, maintaining a historical
+	// record of the external action until a new pull request is created for this environment.
+	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 }
 
 // GetConditions returns the conditions of the ChangeTransferPolicy
