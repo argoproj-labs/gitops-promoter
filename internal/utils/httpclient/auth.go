@@ -108,7 +108,7 @@ func ApplyBasicAuth(ctx context.Context, k8sClient client.Client, req *http.Requ
 	username := string(secret.Data["username"])
 	password := string(secret.Data["password"])
 	if username == "" || password == "" {
-		return fmt.Errorf("basic auth secret must contain \"username\" and \"password\" keys")
+		return errors.New("basic auth secret must contain \"username\" and \"password\" keys")
 	}
 
 	credentials := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
@@ -126,7 +126,7 @@ func ApplyBearerAuth(ctx context.Context, k8sClient client.Client, req *http.Req
 
 	token := string(secret.Data["token"])
 	if token == "" {
-		return fmt.Errorf("bearer auth secret must contain \"token\" key")
+		return errors.New("bearer auth secret must contain \"token\" key")
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
