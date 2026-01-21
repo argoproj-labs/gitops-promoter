@@ -9,6 +9,7 @@ coverage:
         threshold: 0.1
 ignore:
   - 'api/v1alpha1'
+  - 'applyconfiguration'
   - 'test'
   - 'cmd'
   - 'config'

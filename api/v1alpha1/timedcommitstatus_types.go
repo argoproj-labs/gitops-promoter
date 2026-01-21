@@ -98,6 +98,7 @@ type TimedCommitStatusEnvironmentsStatus struct {
 	AtMostDurationRemaining metav1.Duration `json:"atMostDurationRemaining"`
 }
 
+// +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
