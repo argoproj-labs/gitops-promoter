@@ -558,13 +558,13 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	}
 
 	// Render URL template
-	url, err := r.renderTemplate("url", wrcs.Spec.HTTPRequest.URL, templateData)
+	url, err := r.renderTemplate("url", wrcs.Spec.HTTPRequest.URLTemplate, templateData)
 	if err != nil {
 		return result, fmt.Errorf("failed to render URL template: %w", err)
 	}
 
 	// Render body template
-	body, err := r.renderTemplate("body", wrcs.Spec.HTTPRequest.Body, templateData)
+	body, err := r.renderTemplate("body", wrcs.Spec.HTTPRequest.BodyTemplate, templateData)
 	if err != nil {
 		return result, fmt.Errorf("failed to render body template: %w", err)
 	}
@@ -581,12 +581,16 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	}
 
 	// Render and add headers
-	for key, value := range wrcs.Spec.HTTPRequest.Headers {
-		renderedValue, err := r.renderTemplate("header-"+key, value, templateData)
+	for nameTemplate, valueTemplate := range wrcs.Spec.HTTPRequest.HeaderTemplates {
+		renderedName, err := r.renderTemplate("header-name", nameTemplate, templateData)
 		if err != nil {
-			return result, fmt.Errorf("failed to render header %q template: %w", key, err)
+			return result, fmt.Errorf("failed to render header name template %q: %w", nameTemplate, err)
 		}
-		req.Header.Set(key, renderedValue)
+		renderedValue, err := r.renderTemplate("header-value", valueTemplate, templateData)
+		if err != nil {
+			return result, fmt.Errorf("failed to render header value template for %q: %w", renderedName, err)
+		}
+		req.Header.Set(renderedName, renderedValue)
 	}
 
 	// Use the timeout from spec (Kubernetes defaults to 30s via CRD validation)
@@ -791,13 +795,13 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		Phase:               envStatus.Phase,
 	}
 
-	description, err := r.renderTemplate("description", wrcs.Spec.Description, templateData)
+	description, err := r.renderTemplate("description", wrcs.Spec.DescriptionTemplate, templateData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render description template: %w", err)
 	}
 
 	// Render URL with the same template data as description
-	url, err := r.renderTemplate("url", wrcs.Spec.Url, templateData)
+	url, err := r.renderTemplate("url", wrcs.Spec.UrlTemplate, templateData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to render url template: %w", err)
 	}

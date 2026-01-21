@@ -6260,9 +6260,9 @@ spec:
           spec:
             description: spec defines the desired state of WebRequestCommitStatus
             properties:
-              description:
+              descriptionTemplate:
                 description: |-
-                  Description is a human-readable description of this validation that will be shown in the SCM provider
+                  DescriptionTemplate is a human-readable description of this validation that will be shown in the SCM provider
                   (GitHub, GitLab, etc.) as the commit status description.
                   Supports Go templates with environment-specific variables.
 
@@ -6354,16 +6354,6 @@ spec:
                               name:
                                 description: Name of the secret.
                                 type: string
-                              passwordKey:
-                                description: |-
-                                  PasswordKey is the key in the secret containing the password.
-                                  Defaults to "password".
-                                type: string
-                              usernameKey:
-                                description: |-
-                                  UsernameKey is the key in the secret containing the username.
-                                  Defaults to "username".
-                                type: string
                             required:
                             - name
                             type: object
@@ -6379,11 +6369,6 @@ spec:
                             description: SecretRef references a secret containing
                               the bearer token.
                             properties:
-                              key:
-                                description: |-
-                                  Key is the key in the secret containing the token.
-                                  Defaults to "token".
-                                type: string
                               name:
                                 description: Name of the secret.
                                 type: string
@@ -6475,17 +6460,18 @@ spec:
                         may be set
                       rule: '[has(self.basic),has(self.bearer),has(self.oauth2),has(self.tls)].filter(x,x==true).size()
                         <= 1'
-                  body:
+                  bodyTemplate:
                     description: |-
-                      Body is the request body to send.
+                      BodyTemplate is the request body to send.
                       Supports Go templates (see HTTPRequestSpec for available variables).
                     type: string
-                  headers:
+                  headerTemplates:
                     additionalProperties:
                       type: string
                     description: |-
-                      Headers are additional HTTP headers to include in the request.
-                      Header values support Go templates (see HTTPRequestSpec for available variables).
+                      HeaderTemplates are additional HTTP headers to include in the request.
+                      The map key is the header name (supports Go templates) and the value is the header value (supports Go templates).
+                      See HTTPRequestSpec for available template variables.
                     type: object
                   method:
                     description: Method is the HTTP method to use.
@@ -6500,14 +6486,14 @@ spec:
                     description: Timeout is the maximum time to wait for the HTTP
                       request to complete.
                     type: string
-                  url:
+                  urlTemplate:
                     description: |-
-                      URL is the HTTP endpoint to request.
+                      URLTemplate is the HTTP endpoint to request.
                       Supports Go templates (see HTTPRequestSpec for available variables).
                     type: string
                 required:
                 - method
-                - url
+                - urlTemplate
                 type: object
               key:
                 description: |-
@@ -6559,11 +6545,11 @@ spec:
                 - proposed
                 - active
                 type: string
-              url:
+              urlTemplate:
                 description: |-
-                  Url is a link to more details about this validation that will be shown in the SCM provider
+                  UrlTemplate is a link to more details about this validation that will be shown in the SCM provider
                   (GitHub, GitLab, etc.) as the commit status target URL.
-                  Supports Go templates with the same variables as Description.
+                  Supports Go templates with the same variables as DescriptionTemplate.
 
                   This can link to:
                     - External approval system UI
@@ -6577,7 +6563,6 @@ spec:
                     - "https://change-api.example.com/changes?asset={{ index .NamespaceMetadata.Labels \"asset-id\" }}"
 
                   If not specified, defaults to empty string (no URL shown).
-                pattern: ^(https?://.*)?$
                 type: string
             required:
             - expression

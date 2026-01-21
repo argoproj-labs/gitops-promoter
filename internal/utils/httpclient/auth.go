@@ -98,25 +98,17 @@ func ApplyAuth(ctx context.Context, k8sClient client.Client, req *http.Request, 
 }
 
 // ApplyBasicAuth applies HTTP Basic Authentication.
+// The secret must contain keys "username" and "password".
 func ApplyBasicAuth(ctx context.Context, k8sClient client.Client, req *http.Request, auth *promoterv1alpha1.BasicAuth, namespace string) error {
-	usernameKey := auth.SecretRef.UsernameKey
-	if usernameKey == "" {
-		usernameKey = "username"
-	}
-	passwordKey := auth.SecretRef.PasswordKey
-	if passwordKey == "" {
-		passwordKey = "password"
-	}
-
 	var secret corev1.Secret
 	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: auth.SecretRef.Name}, &secret); err != nil {
 		return fmt.Errorf("failed to get secret %q: %w", auth.SecretRef.Name, err)
 	}
 
-	username := string(secret.Data[usernameKey])
-	password := string(secret.Data[passwordKey])
+	username := string(secret.Data["username"])
+	password := string(secret.Data["password"])
 	if username == "" || password == "" {
-		return fmt.Errorf("basic auth secret must contain %q and %q keys", usernameKey, passwordKey)
+		return fmt.Errorf("basic auth secret must contain \"username\" and \"password\" keys")
 	}
 
 	credentials := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
@@ -125,20 +117,16 @@ func ApplyBasicAuth(ctx context.Context, k8sClient client.Client, req *http.Requ
 }
 
 // ApplyBearerAuth applies Bearer token authentication.
+// The secret must contain a key "token".
 func ApplyBearerAuth(ctx context.Context, k8sClient client.Client, req *http.Request, auth *promoterv1alpha1.BearerAuth, namespace string) error {
-	key := auth.SecretRef.Key
-	if key == "" {
-		key = "token"
-	}
-
 	var secret corev1.Secret
 	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: auth.SecretRef.Name}, &secret); err != nil {
 		return fmt.Errorf("failed to get secret %q: %w", auth.SecretRef.Name, err)
 	}
 
-	token := string(secret.Data[key])
+	token := string(secret.Data["token"])
 	if token == "" {
-		return fmt.Errorf("bearer auth secret must contain %q key", key)
+		return fmt.Errorf("bearer auth secret must contain \"token\" key")
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)

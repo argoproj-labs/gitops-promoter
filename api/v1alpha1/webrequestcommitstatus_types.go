@@ -45,7 +45,7 @@ type WebRequestCommitStatusSpec struct {
 	// +kubebuilder:validation:Pattern=^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
 	Key string `json:"key"`
 
-	// Description is a human-readable description of this validation that will be shown in the SCM provider
+	// DescriptionTemplate is a human-readable description of this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status description.
 	// Supports Go templates with environment-specific variables.
 	//
@@ -66,11 +66,11 @@ type WebRequestCommitStatusSpec struct {
 	//
 	// If not specified, defaults to empty string.
 	// +optional
-	Description string `json:"description,omitempty"`
+	DescriptionTemplate string `json:"descriptionTemplate,omitempty"`
 
-	// Url is a link to more details about this validation that will be shown in the SCM provider
+	// UrlTemplate is a link to more details about this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status target URL.
-	// Supports Go templates with the same variables as Description.
+	// Supports Go templates with the same variables as DescriptionTemplate.
 	//
 	// This can link to:
 	//   - External approval system UI
@@ -85,8 +85,7 @@ type WebRequestCommitStatusSpec struct {
 	//
 	// If not specified, defaults to empty string (no URL shown).
 	// +optional
-	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
-	Url string `json:"url,omitempty"`
+	UrlTemplate string `json:"urlTemplate,omitempty"`
 
 	// ReportOn specifies which commit SHA to report the CommitStatus on.
 	// - "proposed": Reports on the proposed hydrated commit SHA (default)
@@ -151,25 +150,26 @@ type PollingSpec struct {
 //
 // Example: "https://api.example.com/validate/{{ .Branch }}/{{ .ReportedSha }}"
 type HTTPRequestSpec struct {
-	// URL is the HTTP endpoint to request.
+	// URLTemplate is the HTTP endpoint to request.
 	// Supports Go templates (see HTTPRequestSpec for available variables).
 	// +required
-	URL string `json:"url"`
+	URLTemplate string `json:"urlTemplate"`
 
 	// Method is the HTTP method to use.
 	// +required
 	// +kubebuilder:validation:Enum=GET;POST;PUT;PATCH
 	Method string `json:"method"`
 
-	// Headers are additional HTTP headers to include in the request.
-	// Header values support Go templates (see HTTPRequestSpec for available variables).
+	// HeaderTemplates are additional HTTP headers to include in the request.
+	// The map key is the header name (supports Go templates) and the value is the header value (supports Go templates).
+	// See HTTPRequestSpec for available template variables.
 	// +optional
-	Headers map[string]string `json:"headers,omitempty"`
+	HeaderTemplates map[string]string `json:"headerTemplates,omitempty"`
 
-	// Body is the request body to send.
+	// BodyTemplate is the request body to send.
 	// Supports Go templates (see HTTPRequestSpec for available variables).
 	// +optional
-	Body string `json:"body,omitempty"`
+	BodyTemplate string `json:"bodyTemplate,omitempty"`
 
 	// Timeout is the maximum time to wait for the HTTP request to complete.
 	// +optional
@@ -267,9 +267,7 @@ type HttpAuthentication struct {
 //
 //	basic:
 //	  secretRef:
-//	    name: my-basic-auth-secret
-//	    usernameKey: username  # optional, defaults to "username"
-//	    passwordKey: password  # optional, defaults to "password"
+//	    name: my-basic-auth-secret  # secret must contain keys "username" and "password"
 type BasicAuth struct {
 	// SecretRef references a secret containing username and password.
 	// +required
@@ -277,20 +275,11 @@ type BasicAuth struct {
 }
 
 // BasicAuthSecretRef references a secret for basic authentication.
+// The secret must contain keys "username" and "password".
 type BasicAuthSecretRef struct {
 	// Name of the secret.
 	// +required
 	Name string `json:"name"`
-
-	// UsernameKey is the key in the secret containing the username.
-	// Defaults to "username".
-	// +optional
-	UsernameKey string `json:"usernameKey,omitempty"`
-
-	// PasswordKey is the key in the secret containing the password.
-	// Defaults to "password".
-	// +optional
-	PasswordKey string `json:"passwordKey,omitempty"`
 }
 
 // BearerAuth defines Bearer token authentication.
@@ -308,8 +297,7 @@ type BasicAuthSecretRef struct {
 //
 //	bearer:
 //	  secretRef:
-//	    name: my-bearer-token-secret
-//	    key: token  # optional, defaults to "token"
+//	    name: my-bearer-token-secret  # secret must contain key "token"
 type BearerAuth struct {
 	// SecretRef references a secret containing the bearer token.
 	// +required
@@ -317,15 +305,11 @@ type BearerAuth struct {
 }
 
 // BearerAuthSecretRef references a secret for bearer token authentication.
+// The secret must contain a key "token".
 type BearerAuthSecretRef struct {
 	// Name of the secret.
 	// +required
 	Name string `json:"name"`
-
-	// Key is the key in the secret containing the token.
-	// Defaults to "token".
-	// +optional
-	Key string `json:"key,omitempty"`
 }
 
 // OAuth2Auth defines OAuth2 client credentials authentication.

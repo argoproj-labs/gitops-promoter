@@ -95,13 +95,13 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:         "external-approval",
-					Description: "External approval check",
-					ReportOn:    "proposed",
+					Key:                 "external-approval",
+					DescriptionTemplate: "External approval check",
+					ReportOn:            "proposed",
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URL:     testServer.URL,
-						Method:  "GET",
-						Timeout: metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
 					Polling: promoterv1alpha1.PollingSpec{
@@ -214,13 +214,13 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:         "external-check",
-					Description: "External check",
-					ReportOn:    "proposed",
+					Key:                 "external-check",
+					DescriptionTemplate: "External check",
+					ReportOn:            "proposed",
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URL:     testServer.URL,
-						Method:  "GET",
-						Timeout: metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
 					Polling: promoterv1alpha1.PollingSpec{
@@ -329,13 +329,13 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:         "template-check",
-					Description: "Template check",
-					ReportOn:    "proposed",
+					Key:                 "template-check",
+					DescriptionTemplate: "Template check",
+					ReportOn:            "proposed",
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URL:     testServer.URL + "/{{ .ProposedHydratedSha }}",
-						Method:  "GET",
-						Timeout: metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate: testServer.URL + "/{{ .ProposedHydratedSha }}",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
 					Polling: promoterv1alpha1.PollingSpec{
@@ -456,18 +456,17 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:         "auth-check",
-					Description: "Auth check",
-					ReportOn:    "proposed",
+					Key:                 "auth-check",
+					DescriptionTemplate: "Auth check",
+					ReportOn:            "proposed",
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URL:     testServer.URL,
-						Method:  "GET",
-						Timeout: metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 						Authentication: &promoterv1alpha1.HttpAuthentication{
 							Bearer: &promoterv1alpha1.BearerAuth{
 								SecretRef: promoterv1alpha1.BearerAuthSecretRef{
 									Name: name + "-auth",
-									Key:  "token",
 								},
 							},
 						},
@@ -560,13 +559,13 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:         "expr-fail",
-					Description: "Expression failure test",
-					ReportOn:    "proposed",
+					Key:                 "expr-fail",
+					DescriptionTemplate: "Expression failure test",
+					ReportOn:            "proposed",
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URL:     testServer.URL,
-						Method:  "GET",
-						Timeout: metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `invalid syntax @#$%`,
 					Polling: promoterv1alpha1.PollingSpec{
@@ -658,13 +657,13 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:         "active-check",
-					Description: "Active check",
-					ReportOn:    "active",
+					Key:                 "active-check",
+					DescriptionTemplate: "Active check",
+					ReportOn:            "active",
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URL:     testServer.URL,
-						Method:  "GET",
-						Timeout: metav1.Duration{Duration: 10 * time.Second},
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
 					Polling: promoterv1alpha1.PollingSpec{
@@ -719,11 +718,11 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: "non-existent",
 					},
-					Key:         "test-key",
-					Description: "Test",
+					Key:                 "test-key",
+					DescriptionTemplate: "Test",
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URL:    "http://localhost:9999",
-						Method: "GET",
+						URLTemplate: "http://localhost:9999",
+						Method:      "GET",
 					},
 					Expression: `Response.StatusCode == 200`,
 					Polling: promoterv1alpha1.PollingSpec{
@@ -793,6 +792,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 
 			ns.Labels["team"] = "platform"
 			ns.Labels["env-tier"] = "production"
+			ns.Labels["header-prefix"] = "Custom"
 			ns.Annotations["slack-channel"] = "#deployments"
 			ns.Annotations["jira-project"] = "DEPLOY"
 
@@ -837,18 +837,20 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:         "metadata-check",
-					Description: "Metadata check",
-					ReportOn:    "proposed",
+					Key:                 "metadata-check",
+					DescriptionTemplate: "Metadata check",
+					ReportOn:            "proposed",
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URL:    testServer.URL,
-						Method: "POST",
-						Headers: map[string]string{
+						URLTemplate: testServer.URL,
+						Method:      "POST",
+						HeaderTemplates: map[string]string{
 							"Content-Type": "application/json",
 							"X-Team":       `{{ index .NamespaceMetadata.Labels "team" }}`,
 							"X-Tier":       `{{ index .NamespaceMetadata.Labels "env-tier" }}`,
+							// Templated header name - key contains template
+							`X-{{ index .NamespaceMetadata.Labels "header-prefix" }}-Header`: "templated-name-value",
 						},
-						Body: `{
+						BodyTemplate: `{
 							"team": "{{ index .NamespaceMetadata.Labels "team" }}",
 							"tier": "{{ index .NamespaceMetadata.Labels "env-tier" }}",
 							"slack": "{{ index .NamespaceMetadata.Annotations "slack-channel" }}",
@@ -877,6 +879,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 			if err == nil {
 				delete(ns.Labels, "team")
 				delete(ns.Labels, "env-tier")
+				delete(ns.Labels, "header-prefix")
 				delete(ns.Annotations, "slack-channel")
 				delete(ns.Annotations, "jira-project")
 				_ = k8sClient.Update(ctx, &ns)
@@ -899,6 +902,8 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				// Verify headers contain templated label values
 				g.Expect(receivedHeaders.Get("X-Team")).To(Equal("platform"))
 				g.Expect(receivedHeaders.Get("X-Tier")).To(Equal("production"))
+				// Verify templated header name: "X-{{ .Labels.header-prefix }}-Header" becomes "X-Custom-Header"
+				g.Expect(receivedHeaders.Get("X-Custom-Header")).To(Equal("templated-name-value"))
 
 				// Verify body contains templated label and annotation values
 				g.Expect(receivedBody).ToNot(BeNil())
@@ -993,19 +998,19 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
 						Name: name,
 					},
-					Key:         "namespace-metadata-check",
-					Description: "Check using namespace labels: {{ .NamespaceMetadata.Labels.environment }}",
-					ReportOn:    "proposed",
+					Key:                 "namespace-metadata-check",
+					DescriptionTemplate: "Check using namespace labels: {{ .NamespaceMetadata.Labels.environment }}",
+					ReportOn:            "proposed",
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-						URL:    testServer.URL,
-						Method: "POST",
-						Headers: map[string]string{
+						URLTemplate: testServer.URL,
+						Method:      "POST",
+						HeaderTemplates: map[string]string{
 							"Content-Type":   "application/json",
 							"X-Environment":  `{{ .NamespaceMetadata.Labels.environment }}`,
 							"X-Cost-Center":  `{{ index .NamespaceMetadata.Labels "cost-center" }}`,
 							"X-Notification": `{{ index .NamespaceMetadata.Annotations "notification-url" }}`,
 						},
-						Body: `{
+						BodyTemplate: `{
 							"environment": "{{ .NamespaceMetadata.Labels.environment }}",
 							"costCenter": "{{ index .NamespaceMetadata.Labels "cost-center" }}",
 							"owner": "{{ .NamespaceMetadata.Annotations.owner }}",
