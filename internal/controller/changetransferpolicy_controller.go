@@ -679,13 +679,19 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 		found := false
 		phase := promoterv1alpha1.CommitPhasePending
 		if len(csList.Items) == 1 {
+			// Default to pending if the phase is empty (can happen when CommitStatus is newly created
+			// and the controller hasn't updated status yet)
+			csPhase := csList.Items[0].Status.Phase
+			if csPhase == "" {
+				csPhase = promoterv1alpha1.CommitPhasePending
+			}
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:   status.Key,
-				Phase: string(csList.Items[0].Status.Phase),
+				Phase: string(csPhase),
 				Url:   csList.Items[0].Spec.Url,
 			})
 			found = true
-			phase = csList.Items[0].Status.Phase
+			phase = csPhase
 		} else if len(csList.Items) > 1 {
 			// TODO: decided how to bubble up errors
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
@@ -1091,22 +1097,17 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	}
 
 	// Update the PR state to merged using SSA.
-	// Re-specify ownerReferences, finalizers, and labels to preserve them in the apply.
-	ownerRefs := make([]*acmetav1.OwnerReferenceApplyConfiguration, 0, len(pullRequest.OwnerReferences))
-	for _, ref := range pullRequest.OwnerReferences {
-		ownerRefApply := acmetav1.OwnerReference().
-			WithAPIVersion(ref.APIVersion).
-			WithKind(ref.Kind).
-			WithName(ref.Name).
-			WithUID(ref.UID)
-		if ref.Controller != nil {
-			ownerRefApply = ownerRefApply.WithController(*ref.Controller)
-		}
-		if ref.BlockOwnerDeletion != nil {
-			ownerRefApply = ownerRefApply.WithBlockOwnerDeletion(*ref.BlockOwnerDeletion)
-		}
-		ownerRefs = append(ownerRefs, ownerRefApply)
-	}
+	// Re-specify this controller's ownerReference, finalizers, and labels to preserve them in the apply.
+	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+
+	ownerRef := acmetav1.OwnerReference().
+		WithAPIVersion(gvk.GroupVersion().String()).
+		WithKind(gvk.Kind).
+		WithName(ctp.Name).
+		WithUID(ctp.UID).
+		WithController(true).
+		WithBlockOwnerDeletion(true)
 
 	prSpec := acv1alpha1.PullRequestSpec().
 		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(pullRequest.Spec.RepositoryReference.Name)).
@@ -1125,8 +1126,8 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 
 	prApply := acv1alpha1.PullRequest(pullRequest.Name, pullRequest.Namespace).
 		WithLabels(pullRequest.Labels).
-		WithOwnerReferences(ownerRefs...).
-		WithFinalizers(pullRequest.Finalizers...).
+		WithOwnerReferences(ownerRef).
+		WithFinalizers(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer).
 		WithSpec(prSpec)
 
 	// Apply using Server-Side Apply with Patch to get the result directly
