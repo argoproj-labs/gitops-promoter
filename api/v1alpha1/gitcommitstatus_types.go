@@ -164,6 +164,7 @@ type GitCommitStatusEnvironmentStatus struct {
 	ExpressionResult *bool `json:"expressionResult,omitempty"`
 }
 
+// +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Key",type=string,JSONPath=`.spec.key`

@@ -344,6 +344,7 @@ type PullRequestTemplate struct {
 // controller health metrics.
 type ControllerConfigurationStatus struct{}
 
+// +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 

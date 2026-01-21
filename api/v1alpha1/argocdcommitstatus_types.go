@@ -127,6 +127,7 @@ type ApplicationsSelected struct {
 	ClusterName string `json:"clusterName"`
 }
 
+// +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 

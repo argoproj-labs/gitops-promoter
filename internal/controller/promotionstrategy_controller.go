@@ -20,19 +20,18 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"slices"
 	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -41,6 +40,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -56,7 +56,7 @@ type ctpEnqueueState struct {
 type PromotionStrategyReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
+	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 
 	// EnqueueCTP is a function to enqueue CTP reconcile requests without modifying the CTP object.
@@ -183,60 +183,85 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, environment promoterv1alpha1.Environment) (*promoterv1alpha1.ChangeTransferPolicy, error) {
 	logger := log.FromContext(ctx)
 
-	pcName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
+	ctpName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(ps.Name, environment.Branch))
 
-	// The code below sets the ownership for the Release Object
+	// Build owner reference
 	kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-	controllerRef := metav1.NewControllerRef(ps, gvk)
-	blockOwnerDeletion := true
-	controllerRef.BlockOwnerDeletion = &blockOwnerDeletion
 
-	ctp := promoterv1alpha1.ChangeTransferPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      pcName,
-			Namespace: ps.Namespace,
-		},
+	// Build active commit status selectors
+	activeCommitStatuses := make([]*acv1alpha1.CommitStatusSelectorApplyConfiguration, 0, len(environment.ActiveCommitStatuses)+len(ps.Spec.ActiveCommitStatuses))
+	for _, cs := range environment.ActiveCommitStatuses {
+		activeCommitStatuses = append(activeCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(cs.Key))
 	}
-	res, err := controllerutil.CreateOrUpdate(ctx, r.Client, &ctp, func() error {
-		ctp.OwnerReferences = []metav1.OwnerReference{*controllerRef}
-		ctp.Labels = map[string]string{
+	for _, cs := range ps.Spec.ActiveCommitStatuses {
+		activeCommitStatuses = append(activeCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(cs.Key))
+	}
+
+	// Build proposed commit status selectors
+	proposedCommitStatuses := make([]*acv1alpha1.CommitStatusSelectorApplyConfiguration, 0, len(environment.ProposedCommitStatuses)+len(ps.Spec.ProposedCommitStatuses))
+	for _, cs := range environment.ProposedCommitStatuses {
+		proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(cs.Key))
+	}
+	for _, cs := range ps.Spec.ProposedCommitStatuses {
+		proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(cs.Key))
+	}
+
+	// Add previous environment commit status if needed
+	environmentIndex, _ := utils.GetEnvironmentByBranch(*ps, environment.Branch)
+	previousEnvironmentIndex := environmentIndex - 1
+	if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
+		// Check if already present
+		found := false
+		for _, cs := range proposedCommitStatuses {
+			if cs.Key != nil && *cs.Key == promoterv1alpha1.PreviousEnvironmentCommitStatusKey {
+				found = true
+				break
+			}
+		}
+		if !found {
+			proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(promoterv1alpha1.PreviousEnvironmentCommitStatusKey))
+		}
+	}
+
+	// Build the spec
+	ctpSpec := acv1alpha1.ChangeTransferPolicySpec().
+		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
+		WithProposedBranch(fmt.Sprintf("%s-%s", environment.Branch, "next")).
+		WithActiveBranch(environment.Branch).
+		WithActiveCommitStatuses(activeCommitStatuses...).
+		WithProposedCommitStatuses(proposedCommitStatuses...)
+
+	if environment.AutoMerge != nil {
+		ctpSpec = ctpSpec.WithAutoMerge(*environment.AutoMerge)
+	}
+
+	// Build the apply configuration
+	ctpApply := acv1alpha1.ChangeTransferPolicy(ctpName, ps.Namespace).
+		WithLabels(map[string]string{
 			promoterv1alpha1.PromotionStrategyLabel: utils.KubeSafeLabel(ps.Name),
 			promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(environment.Branch),
-		}
-		ctp.Spec.RepositoryReference = ps.Spec.RepositoryReference
-		ctp.Spec.ProposedBranch = fmt.Sprintf("%s-%s", environment.Branch, "next")
-		ctp.Spec.ActiveBranch = environment.Branch
+		}).
+		WithOwnerReferences(acmetav1.OwnerReference().
+			WithAPIVersion(gvk.GroupVersion().String()).
+			WithKind(gvk.Kind).
+			WithName(ps.Name).
+			WithUID(ps.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)).
+		WithSpec(ctpSpec)
 
-		ctp.Spec.ActiveCommitStatuses = make([]promoterv1alpha1.CommitStatusSelector, 0, len(environment.ActiveCommitStatuses)+len(ps.Spec.ActiveCommitStatuses))
-		ctp.Spec.ActiveCommitStatuses = append(ctp.Spec.ActiveCommitStatuses, environment.ActiveCommitStatuses...)
-		ctp.Spec.ActiveCommitStatuses = append(ctp.Spec.ActiveCommitStatuses, ps.Spec.ActiveCommitStatuses...)
-
-		ctp.Spec.ProposedCommitStatuses = make([]promoterv1alpha1.CommitStatusSelector, 0, len(environment.ProposedCommitStatuses)+len(ps.Spec.ProposedCommitStatuses))
-		ctp.Spec.ProposedCommitStatuses = append(ctp.Spec.ProposedCommitStatuses, environment.ProposedCommitStatuses...)
-		ctp.Spec.ProposedCommitStatuses = append(ctp.Spec.ProposedCommitStatuses, ps.Spec.ProposedCommitStatuses...)
-
-		ctp.Spec.AutoMerge = environment.AutoMerge
-
-		environmentIndex, _ := utils.GetEnvironmentByBranch(*ps, environment.Branch)
-		previousEnvironmentIndex := environmentIndex - 1
-		if environmentIndex > 0 && len(ps.Spec.ActiveCommitStatuses) != 0 || (previousEnvironmentIndex >= 0 && len(ps.Spec.Environments[previousEnvironmentIndex].ActiveCommitStatuses) != 0) {
-			previousEnvironmentCommitStatusSelector := promoterv1alpha1.CommitStatusSelector{
-				Key: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-			}
-			if !slices.Contains(ctp.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector) {
-				ctp.Spec.ProposedCommitStatuses = append(ctp.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector)
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create or update ChangeTransferPolicy %q: %w", ctp.Name, err)
+	// Apply using Server-Side Apply with Patch to get the result directly
+	ctp := &promoterv1alpha1.ChangeTransferPolicy{}
+	ctp.Name = ctpName
+	ctp.Namespace = ps.Namespace
+	if err := r.Patch(ctx, ctp, utils.ApplyPatch{ApplyConfig: ctpApply}, client.FieldOwner(constants.PromotionStrategyControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply ChangeTransferPolicy %q: %w", ctpName, err)
 	}
-	logger.V(4).Info("CreateOrUpdate ChangeTransferPolicy result", "result", res)
 
-	return &ctp, nil
+	logger.V(4).Info("Applied ChangeTransferPolicy")
+
+	return ctp, nil
 }
 
 // cleanupOrphanedChangeTransferPolicies deletes ChangeTransferPolicies that are owned by this PromotionStrategy
@@ -291,7 +316,7 @@ func (r *PromotionStrategyReconciler) cleanupOrphanedChangeTransferPolicies(ctx 
 			return fmt.Errorf("failed to delete orphaned ChangeTransferPolicy %q: %w", ctp.Name, err)
 		}
 
-		r.Recorder.Eventf(ps, "Normal", constants.OrphanedChangeTransferPolicyDeletedReason, constants.OrphanedChangeTransferPolicyDeletedMessage, ctp.Name)
+		r.Recorder.Eventf(ps, nil, "Normal", constants.OrphanedChangeTransferPolicyDeletedReason, "CleaningOrphanedResources", constants.OrphanedChangeTransferPolicyDeletedMessage, ctp.Name)
 	}
 
 	return nil
@@ -524,11 +549,9 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 
 	// TODO: do we like this name proposed-<name>?
 	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
-	proposedCSObjectKey := client.ObjectKey{Namespace: ctp.Namespace, Name: csName}
 
 	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-	controllerRef := metav1.NewControllerRef(ctp, gvk)
 
 	// If there is only one commit status, use the URL from that commit status.
 	var url string
@@ -550,33 +573,39 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		description = pendingReason
 	}
 
-	commitStatus := &promoterv1alpha1.CommitStatus{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      proposedCSObjectKey.Name,
-			Namespace: proposedCSObjectKey.Namespace,
-		},
+	// Build the apply configuration
+	commitStatusApply := acv1alpha1.CommitStatus(csName, ctp.Namespace).
+		WithLabels(map[string]string{
+			promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+		}).
+		WithAnnotations(map[string]string{
+			promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation: string(yamlStatusMap),
+		}).
+		WithOwnerReferences(acmetav1.OwnerReference().
+			WithAPIVersion(gvk.GroupVersion().String()).
+			WithKind(gvk.Kind).
+			WithName(ctp.Name).
+			WithUID(ctp.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)).
+		WithSpec(acv1alpha1.CommitStatusSpec().
+			WithRepositoryReference(acv1alpha1.ObjectReference().
+				WithName(ctp.Spec.RepositoryReference.Name)).
+			WithSha(ctp.Status.Proposed.Hydrated.Sha).
+			WithName(previousEnvironmentBranch + " - synced and healthy").
+			WithDescription(description).
+			WithPhase(phase).
+			WithUrl(url))
+
+	// Apply using Server-Side Apply with Patch to get the result directly
+	commitStatus := &promoterv1alpha1.CommitStatus{}
+	commitStatus.Name = csName
+	commitStatus.Namespace = ctp.Namespace
+	if err = r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.PromotionStrategyControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply previous environments CommitStatus: %w", err)
 	}
 
-	res, err := controllerutil.CreateOrUpdate(ctx, r.Client, commitStatus, func() error {
-		commitStatus.Labels = map[string]string{
-			promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
-		}
-		commitStatus.Annotations = map[string]string{
-			promoterv1alpha1.CommitStatusPreviousEnvironmentStatusesAnnotation: string(yamlStatusMap),
-		}
-		commitStatus.OwnerReferences = []metav1.OwnerReference{*controllerRef}
-		commitStatus.Spec.RepositoryReference = ctp.Spec.RepositoryReference
-		commitStatus.Spec.Sha = ctp.Status.Proposed.Hydrated.Sha
-		commitStatus.Spec.Name = previousEnvironmentBranch + " - synced and healthy"
-		commitStatus.Spec.Description = description
-		commitStatus.Spec.Phase = phase
-		commitStatus.Spec.Url = url
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create or update previous environments CommitStatus: %w", err)
-	}
-	logger.V(4).Info("CreateOrUpdate previous environment CommitStatus result", "result", res)
+	logger.V(4).Info("Applied previous environment CommitStatus")
 
 	return commitStatus, nil
 }

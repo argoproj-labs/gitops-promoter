@@ -25,7 +25,7 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -58,7 +58,7 @@ import (
 type PullRequestReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
+	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 }
 
@@ -407,7 +407,7 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 	if err := provider.Update(ctx, pr.Spec.Title, pr.Spec.Description, pr); err != nil {
 		return err //nolint:wrapcheck // Error wrapping handled at top level
 	}
-	r.Recorder.Event(&pr, "Normal", constants.PullRequestUpdatedReason, fmt.Sprintf("Pull Request %s updated", pr.Name))
+	r.Recorder.Eventf(&pr, nil, "Normal", constants.PullRequestUpdatedReason, "UpdatingPullRequest", "Pull Request %s updated", pr.Name)
 	return nil
 }
 
