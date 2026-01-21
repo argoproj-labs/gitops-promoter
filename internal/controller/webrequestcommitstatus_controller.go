@@ -32,6 +32,7 @@ import (
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -94,6 +95,19 @@ type TemplateData struct {
 	ReportedSha         string // The SHA being reported on (based on reportOn setting)
 	LastSuccessfulSha   string // Last SHA that achieved success
 	Phase               string // Current phase (success/pending/failure)
+}
+
+// PollingExpressionData represents the data available to polling expressions.
+// This is used to evaluate whether polling should continue after each HTTP request.
+type PollingExpressionData struct {
+	PromotionStrategy promoterv1alpha1.PromotionStrategy
+	Environment       promoterv1alpha1.EnvironmentStatus
+	Response          ResponseData
+	ValidationResult  bool
+	Phase             string
+	ReportedSha       string
+	Branch            string
+	ExpressionData    map[string]any // Custom data from previous polling expression evaluation
 }
 
 // WebRequestCommitStatusReconciler reconciles a WebRequestCommitStatus object
@@ -439,6 +453,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 
 	// Determine if we can skip the web request and reuse previous success.
 	// We can skip (reuse) only when ALL of these conditions are met:
+	// - No custom polling expression is configured (expression controls its own polling)
 	// - reportOn is "proposed" (not "active", which requires continuous polling)
 	// - previousReconcileStatus exists (we've processed this environment before)
 	// - previousReconcileStatus.Phase is "success" (previous validation passed)
@@ -447,7 +462,9 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 	//
 	// This allows us to skip re-validating the same proposed SHA that already succeeded.
 	// For reportOn="active", we always make the request to enable continuous health monitoring.
-	canReuseStatus := previousReconcileStatus != nil && reportOn == ReportOnProposed &&
+	// When a polling expression is configured, we always evaluate it to let it control polling.
+	canReuseStatus := wrcs.Spec.Polling.Expression == "" &&
+		previousReconcileStatus != nil && reportOn == ReportOnProposed &&
 		previousReconcileStatus.Phase == WebRequestPhaseSuccess &&
 		previousReconcileStatus.ReportedSha == reportedSha &&
 		previousReconcileStatus.LastSuccessfulSha == reportedSha
@@ -479,16 +496,39 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 	}
 
 	// Make HTTP request and evaluate expression
-	envResult, err := r.processEnvironmentRequest(ctx, wrcs, branch, proposedSha, activeSha, reportedSha, previousPhase, lastSuccessfulSha)
+	envResult, httpResponseData, err := r.processEnvironmentRequest(ctx, wrcs, branch, proposedSha, activeSha, reportedSha, previousPhase, lastSuccessfulSha)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process environment request for %q: %w", branch, err)
 	}
 
-	// Determine if this environment needs continued polling:
-	// - Always poll if not yet successful (pending/failure)
-	// - Always poll if reportOn="active" (continuous monitoring)
-	// - Stop polling if reportOn="proposed" and successful (optimization)
-	needsPolling := envResult.Phase != WebRequestPhaseSuccess || reportOn == ReportOnActive
+	// Determine if this environment needs continued polling
+	var needsPolling bool
+	var expressionData map[string]any
+	if wrcs.Spec.Polling.Expression != "" {
+		// Use custom polling expression
+		// Pass previousReconcileStatus to access ExpressionData from previous reconcile
+		var pollingErr error
+		needsPolling, expressionData, pollingErr = r.evaluatePollingExpression(ctx, wrcs, ps, promoterEnvStatus, previousReconcileStatus, &envResult, httpResponseData, reportedSha, branch)
+		if pollingErr != nil {
+			// Return error to reconcile loop - will show in Ready condition
+			return nil, fmt.Errorf("failed to evaluate polling expression for environment %q: %w", branch, pollingErr)
+		}
+
+		// Store expression data in environment result for next reconcile
+		if expressionData != nil {
+			jsonData, err := json.Marshal(expressionData)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal expression data for environment %q: %w", branch, err)
+			}
+			envResult.ExpressionData = &apiextensionsv1.JSON{Raw: jsonData}
+		}
+	} else {
+		// Fall back to legacy reportOn behavior:
+		// - Always poll if not yet successful (pending/failure)
+		// - Always poll if reportOn="active" (continuous monitoring)
+		// - Stop polling if reportOn="proposed" and successful (optimization)
+		needsPolling = envResult.Phase != WebRequestPhaseSuccess || reportOn == ReportOnActive
+	}
 
 	// Detect if environment just transitioned to success (was not success before, is success now)
 	transitioned := previousPhase != WebRequestPhaseSuccess && envResult.Phase == WebRequestPhaseSuccess
@@ -522,8 +562,9 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 	return result, nil
 }
 
-// processEnvironmentRequest makes the HTTP request and evaluates the expression for a single environment
-func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, branch, proposedSha, activeSha, reportedSha, previousPhase, lastSuccessfulSha string) (promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, error) {
+// processEnvironmentRequest makes the HTTP request and evaluates the expression for a single environment.
+// Returns the environment status and the response data (for use in polling expressions).
+func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, branch, proposedSha, activeSha, reportedSha, previousPhase, lastSuccessfulSha string) (promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, ResponseData, error) {
 	logger := log.FromContext(ctx)
 	now := metav1.Now()
 
@@ -535,11 +576,14 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 		LastRequestTime:     &now,
 	}
 
+	// Initialize empty response data (will be populated after HTTP request)
+	var responseData ResponseData
+
 	// Fetch the namespace to get its labels and annotations
 	var ns corev1.Namespace
 	err := r.Get(ctx, client.ObjectKey{Name: wrcs.Namespace}, &ns)
 	if err != nil {
-		return result, fmt.Errorf("failed to get namespace %q: %w", wrcs.Namespace, err)
+		return result, responseData, fmt.Errorf("failed to get namespace %q: %w", wrcs.Namespace, err)
 	}
 
 	// Prepare template data for request (URL, headers, body)
@@ -560,13 +604,13 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	// Render URL template
 	url, err := r.renderTemplate("url", wrcs.Spec.HTTPRequest.URLTemplate, templateData)
 	if err != nil {
-		return result, fmt.Errorf("failed to render URL template: %w", err)
+		return result, responseData, fmt.Errorf("failed to render URL template: %w", err)
 	}
 
 	// Render body template
 	body, err := r.renderTemplate("body", wrcs.Spec.HTTPRequest.BodyTemplate, templateData)
 	if err != nil {
-		return result, fmt.Errorf("failed to render body template: %w", err)
+		return result, responseData, fmt.Errorf("failed to render body template: %w", err)
 	}
 
 	// Create HTTP request
@@ -577,18 +621,18 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 
 	req, err := http.NewRequestWithContext(ctx, wrcs.Spec.HTTPRequest.Method, url, reqBody)
 	if err != nil {
-		return result, fmt.Errorf("failed to create HTTP request: %w", err)
+		return result, responseData, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
 	// Render and add headers
 	for nameTemplate, valueTemplate := range wrcs.Spec.HTTPRequest.HeaderTemplates {
 		renderedName, err := r.renderTemplate("header-name", nameTemplate, templateData)
 		if err != nil {
-			return result, fmt.Errorf("failed to render header name template %q: %w", nameTemplate, err)
+			return result, responseData, fmt.Errorf("failed to render header name template %q: %w", nameTemplate, err)
 		}
 		renderedValue, err := r.renderTemplate("header-value", valueTemplate, templateData)
 		if err != nil {
-			return result, fmt.Errorf("failed to render header value template for %q: %w", renderedName, err)
+			return result, responseData, fmt.Errorf("failed to render header value template for %q: %w", renderedName, err)
 		}
 		req.Header.Set(renderedName, renderedValue)
 	}
@@ -599,13 +643,13 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	// Create HTTP client with appropriate configuration
 	httpClient, err := r.createHTTPClient(ctx, wrcs, timeout)
 	if err != nil {
-		return result, fmt.Errorf("failed to create HTTP client: %w", err)
+		return result, responseData, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
 	// Apply authentication (except TLS which is handled in client creation)
 	if wrcs.Spec.HTTPRequest.Authentication != nil {
 		if err := httpclient.ApplyAuth(ctx, r.Client, req, wrcs.Spec.HTTPRequest.Authentication, wrcs.Namespace); err != nil {
-			return result, fmt.Errorf("failed to apply authentication: %w", err)
+			return result, responseData, fmt.Errorf("failed to apply authentication: %w", err)
 		}
 	}
 
@@ -613,10 +657,10 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		logger.Error(err, "HTTP request failed", "url", url)
-		return result, fmt.Errorf("HTTP request failed: %w", err)
+		return result, responseData, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	if resp == nil {
-		return result, errors.New("HTTP request returned nil response")
+		return result, responseData, errors.New("HTTP request returned nil response")
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -627,7 +671,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return result, fmt.Errorf("failed to read response body: %w", err)
+		return result, responseData, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Parse response body as JSON if possible
@@ -638,7 +682,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	}
 
 	// Build response data for expression
-	responseData := ResponseData{
+	responseData = ResponseData{
 		StatusCode: resp.StatusCode,
 		Body:       bodyData,
 		Headers:    resp.Header,
@@ -647,12 +691,12 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentRequest(ctx context
 	// Evaluate expression
 	phase, exprResult, err := r.evaluateExpression(ctx, wrcs.Spec.Expression, responseData)
 	if err != nil {
-		return result, fmt.Errorf("failed to evaluate expression: %w", err)
+		return result, responseData, fmt.Errorf("failed to evaluate expression: %w", err)
 	}
 	result.Phase = phase
 	result.ExpressionResult = exprResult
 
-	return result, nil
+	return result, responseData, nil
 }
 
 // renderTemplate renders a Go template with the given data
@@ -734,6 +778,128 @@ func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Contex
 		return WebRequestPhaseSuccess, ptr.To(true), nil
 	}
 	return WebRequestPhasePending, ptr.To(false), nil
+}
+
+// evaluatePollingExpression evaluates the polling expression to determine if polling should continue.
+// Returns (needsPolling bool, expressionData map[string]any, error).
+// The expression can return either:
+//   - A boolean: true to continue polling, false to stop
+//   - An object with 'polling' field: {polling: bool, ...customData}
+//     Custom data is stored in ExpressionData and available in the next reconcile.
+func (r *WebRequestCommitStatusReconciler) evaluatePollingExpression(
+	ctx context.Context,
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	ps *promoterv1alpha1.PromotionStrategy,
+	envStatus *promoterv1alpha1.EnvironmentStatus,
+	previousReconcileStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus,
+	envResult *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus,
+	httpResponseData ResponseData,
+	reportedSha string,
+	branch string,
+) (bool, map[string]any, error) {
+	logger := log.FromContext(ctx)
+
+	// Get previous expression data from the previous reconcile status (not envResult which is fresh)
+	var previousExpressionData map[string]any
+	if previousReconcileStatus != nil && previousReconcileStatus.ExpressionData != nil && previousReconcileStatus.ExpressionData.Raw != nil {
+		if err := json.Unmarshal(previousReconcileStatus.ExpressionData.Raw, &previousExpressionData); err != nil {
+			logger.Error(err, "Failed to unmarshal previous expression data, starting fresh")
+			previousExpressionData = make(map[string]any)
+		}
+	} else {
+		previousExpressionData = make(map[string]any)
+	}
+
+	// Build expression data with the actual HTTP response
+	data := PollingExpressionData{
+		PromotionStrategy: *ps,
+		Environment:       *envStatus,
+		Response:          httpResponseData,
+		ValidationResult:  envResult.ExpressionResult != nil && *envResult.ExpressionResult,
+		Phase:             envResult.Phase,
+		ReportedSha:       reportedSha,
+		Branch:            branch,
+		ExpressionData:    previousExpressionData,
+	}
+
+	// Try to get cached compiled expression
+	cacheKey := "polling:" + wrcs.Spec.Polling.Expression
+	var program *vm.Program
+	if cached, ok := r.expressionCache.Load(cacheKey); ok {
+		program, ok = cached.(*vm.Program)
+		if !ok {
+			return false, nil, errors.New("invalid cached polling expression program")
+		}
+	} else {
+		// Compile the expression (don't use AsBool - we need to handle both types)
+		compiled, err := expr.Compile(wrcs.Spec.Polling.Expression, expr.Env(data))
+		if err != nil {
+			logger.Error(err, "Failed to compile polling expression", "expression", wrcs.Spec.Polling.Expression)
+			return false, nil, fmt.Errorf("polling expression compilation failed: %w", err)
+		}
+		program = compiled
+		r.expressionCache.Store(cacheKey, program)
+	}
+
+	// Run the expression
+	output, err := expr.Run(program, data)
+	if err != nil {
+		logger.Error(err, "Failed to evaluate polling expression", "expression", wrcs.Spec.Polling.Expression)
+		return false, nil, fmt.Errorf("polling expression evaluation failed: %w", err)
+	}
+
+	// Handle both boolean and object returns
+	switch v := output.(type) {
+	case bool:
+		// Simple boolean return
+		logger.V(1).Info("Evaluated polling expression (boolean)",
+			"expression", wrcs.Spec.Polling.Expression,
+			"result", v,
+			"branch", branch,
+			"phase", envResult.Phase)
+		return v, nil, nil
+
+	case map[string]any:
+		// Object return with 'polling' field
+		pollingField, ok := v["polling"]
+		if !ok {
+			return false, nil, fmt.Errorf("polling expression returned object without 'polling' field")
+		}
+
+		needsPolling, ok := pollingField.(bool)
+		if !ok {
+			return false, nil, fmt.Errorf("polling expression 'polling' field must be boolean, got %T", pollingField)
+		}
+
+		// Extract custom data (everything except 'polling' field)
+		customData := make(map[string]any)
+		for k, val := range v {
+			if k != "polling" {
+				customData[k] = val
+			}
+		}
+
+		logger.V(1).Info("Evaluated polling expression (object)",
+			"expression", wrcs.Spec.Polling.Expression,
+			"polling", needsPolling,
+			"customDataKeys", getMapKeys(customData),
+			"branch", branch,
+			"phase", envResult.Phase)
+
+		return needsPolling, customData, nil
+
+	default:
+		return false, nil, fmt.Errorf("polling expression must return boolean or object with 'polling' field, got %T", output)
+	}
+}
+
+// getMapKeys returns the keys of a map as a slice (helper for logging)
+func getMapKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies

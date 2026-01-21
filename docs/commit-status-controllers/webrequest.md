@@ -426,7 +426,7 @@ expression: 'Response.StatusCode == 200 && (Response.Body.approved == true || Re
 
 ## Polling Behavior
 
-The polling behavior depends on the `reportOn` setting:
+The polling behavior depends on the `reportOn` setting and the optional `polling.expression`:
 
 ### reportOn: proposed (default)
 
@@ -439,6 +439,101 @@ The polling behavior depends on the `reportOn` setting:
 - Polls forever, even after success
 - Useful for continuous health monitoring of deployed commits
 - The status can transition from success back to pending if the external system state changes
+
+### Custom Polling Expression
+
+For advanced use cases, you can use `polling.expression` to dynamically control polling behavior. This expression is evaluated after each HTTP request to determine if polling should continue.
+
+The expression can return:
+1. **Boolean**: `true` to continue polling, `false` to stop
+2. **Object with 'polling' field**: `{polling: true/false, ...customData}` - the `polling` field controls polling, and any additional fields are stored and available in the next reconcile as `ExpressionData`
+
+#### Available Variables
+
+The polling expression has access to:
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `PromotionStrategy` | PromotionStrategy | The full PromotionStrategy spec and status |
+| `Environment` | EnvironmentStatus | Current environment's status from PromotionStrategy |
+| `Response.StatusCode` | int | HTTP response status code from validation request |
+| `Response.Body` | any | Parsed response body (JSON as map or raw string) |
+| `Response.Headers` | map[string][]string | HTTP response headers |
+| `ValidationResult` | bool | Result of the main Expression evaluation |
+| `Phase` | string | Current phase (success/pending/failure) |
+| `ReportedSha` | string | The SHA being validated |
+| `Branch` | string | Environment branch name |
+| `ExpressionData` | map[string]any | Custom data from previous polling expression |
+
+**Note:** `PromotionStrategy.Status.Environments` is an ordered array representing the promotion sequence. `Environments[0]` is the first environment (e.g., dev), `Environments[1]` is second (e.g., staging), etc.
+
+#### Boolean Expression Examples
+
+```yaml
+# Always poll (equivalent to reportOn: active)
+polling:
+  expression: "true"
+
+# Stop polling after success (equivalent to reportOn: proposed)
+polling:
+  expression: 'Phase != "success"'
+
+# Poll until this SHA appears in the healthy history
+polling:
+  expression: '!any(Environment.LastHealthyDryShas, {.Sha == ReportedSha})'
+
+# Continue polling if PR is not merged yet
+polling:
+  expression: 'Phase == "success" && (Environment.PullRequest == nil || Environment.PullRequest.State != "merged")'
+```
+
+#### Object Expression Examples (State Tracking)
+
+Object expressions allow you to track state across reconciles:
+
+```yaml
+# Track dry SHA changes and restart polling when it changes
+polling:
+  expression: |
+    {
+      polling: len(PromotionStrategy.Status.Environments) > 0 &&
+               PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != "" &&
+               PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != ExpressionData["trackedSha"],
+      trackedSha: PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha
+    }
+
+# Track previous environment SHA and poll until it matches
+polling:
+  expression: |
+    prevEnv = filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"})[0];
+    {
+      polling: Phase != "success" || prevEnv.Active.Hydrated.Sha != ExpressionData["targetSha"],
+      targetSha: ReportedSha
+    }
+```
+
+#### Accessing Previous Environment
+
+To access the previous environment in the promotion sequence:
+
+```yaml
+polling:
+  expression: |
+    currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Branch});
+    currentIdx > 0 && (
+      Phase != "success" || 
+      PromotionStrategy.Status.Environments[currentIdx-1].Active.Hydrated.Sha != ReportedSha
+    )
+```
+
+#### Error Handling
+
+If the polling expression fails to compile or evaluate, the error is returned to the reconcile loop and will:
+- Set the Ready condition to `False` with the error message
+- Trigger automatic requeue with exponential backoff
+- Make expression errors immediately visible via `kubectl describe`
+
+This ensures broken expressions are immediately visible rather than silently falling back to default behavior
 
 ## Status Fields
 

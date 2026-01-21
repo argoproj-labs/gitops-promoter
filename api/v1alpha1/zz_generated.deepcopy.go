@@ -22,6 +22,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -2460,6 +2461,11 @@ func (in *WebRequestCommitStatusEnvironmentStatus) DeepCopyInto(out *WebRequestC
 		in, out := &in.ExpressionResult, &out.ExpressionResult
 		*out = new(bool)
 		**out = **in
+	}
+	if in.ExpressionData != nil {
+		in, out := &in.ExpressionData, &out.ExpressionData
+		*out = new(apiextensionsv1.JSON)
+		(*in).DeepCopyInto(*out)
 	}
 }
 

@@ -1094,4 +1094,459 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
+
+	Context("When polling expression is configured", func() {
+		ctx := context.Background()
+
+		var name string
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+		var testServer *httptest.Server
+		var requestCount int
+
+		BeforeEach(func() {
+			requestCount = 0
+
+			By("Creating a mock HTTP server")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requestCount++
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"approved":     true,
+					"requestCount": requestCount,
+				})
+			}))
+
+			By("Creating the test resources")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "webrequest-polling-expr", "default")
+
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "polling-expr-check"},
+			}
+
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			By("Waiting for PromotionStrategy to be reconciled")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, promotionStrategy)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+				g.Expect(promotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			testServer.Close()
+			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		It("should stop polling when boolean expression returns false", func() {
+			By("Creating a WebRequestCommitStatus with polling expression that returns false")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:                 "polling-expr-check",
+					DescriptionTemplate: "Polling expression check",
+					ReportOn:            "proposed",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 1 * time.Second},
+						// Expression returns false - should stop polling after success
+						Expression: `Phase != "success"`,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Verifying the WebRequestCommitStatus reaches success and stops polling")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+
+				// Verify Ready condition
+				readyCondition := meta.FindStatusCondition(wrcs.Status.Conditions, "Ready")
+				g.Expect(readyCondition).NotTo(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should continue polling when boolean expression returns true", func() {
+			By("Creating a WebRequestCommitStatus with polling expression that always returns true")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:                 "polling-expr-check",
+					DescriptionTemplate: "Polling expression check",
+					ReportOn:            "proposed",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 1 * time.Second},
+						// Expression always returns true - should keep polling
+						Expression: `true`,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Verifying the WebRequestCommitStatus reaches success but continues polling")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Waiting to verify multiple requests are made (polling continues)")
+			initialCount := requestCount
+			time.Sleep(3 * time.Second)
+			Expect(requestCount).To(BeNumerically(">", initialCount), "Expected more requests due to continuous polling")
+		})
+
+		It("should fail when polling expression has compilation error", func() {
+			By("Creating a WebRequestCommitStatus with invalid polling expression")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:                 "polling-expr-check",
+					DescriptionTemplate: "Polling expression check",
+					ReportOn:            "proposed",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 1 * time.Second},
+						// Invalid expression - syntax error
+						Expression: `invalid syntax here !!!`,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Verifying the Ready condition shows the compilation error")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				readyCondition := meta.FindStatusCondition(wrcs.Status.Conditions, "Ready")
+				g.Expect(readyCondition).NotTo(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(readyCondition.Message).To(ContainSubstring("polling expression"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should store and retrieve expression data across reconciles", func() {
+			By("Creating a WebRequestCommitStatus with object-returning polling expression")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:                 "polling-expr-check",
+					DescriptionTemplate: "Polling expression check",
+					ReportOn:            "proposed",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 1 * time.Second},
+						// Expression returns object with custom data
+						Expression: `{polling: true, trackedSha: ReportedSha}`,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Verifying the expression data is stored in status")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+
+				// Verify ExpressionData is populated
+				g.Expect(wrcs.Status.Environments[0].ExpressionData).NotTo(BeNil())
+				g.Expect(wrcs.Status.Environments[0].ExpressionData.Raw).NotTo(BeEmpty())
+
+				// Parse and verify the stored data
+				var storedData map[string]any
+				err = json.Unmarshal(wrcs.Status.Environments[0].ExpressionData.Raw, &storedData)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(storedData).To(HaveKey("trackedSha"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should fail when object expression is missing polling field", func() {
+			By("Creating a WebRequestCommitStatus with object expression missing polling field")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:                 "polling-expr-check",
+					DescriptionTemplate: "Polling expression check",
+					ReportOn:            "proposed",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 1 * time.Second},
+						// Object without 'polling' field
+						Expression: `{trackedSha: ReportedSha}`,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Verifying the Ready condition shows the missing polling field error")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				readyCondition := meta.FindStatusCondition(wrcs.Status.Conditions, "Ready")
+				g.Expect(readyCondition).NotTo(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(readyCondition.Message).To(ContainSubstring("polling"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should use legacy reportOn behavior when no polling expression is set", func() {
+			By("Creating a WebRequestCommitStatus without polling expression")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:                 "polling-expr-check",
+					DescriptionTemplate: "Polling expression check",
+					ReportOn:            "proposed",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 1 * time.Second},
+						// No Expression set - should use reportOn behavior
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Verifying the WebRequestCommitStatus reaches success")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+
+				// Verify Ready condition
+				readyCondition := meta.FindStatusCondition(wrcs.Status.Conditions, "Ready")
+				g.Expect(readyCondition).NotTo(BeNil())
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionTrue))
+
+				// ExpressionData should be nil when no polling expression is used
+				g.Expect(wrcs.Status.Environments[0].ExpressionData).To(BeNil())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should persist ExpressionData across reconciles and use it in subsequent evaluations", func() {
+			By("Creating a WebRequestCommitStatus with polling expression that tracks poll count")
+			// This expression:
+			// 1. On first run (ExpressionData is empty): initializes pollCount to 1
+			// 2. On subsequent runs: increments pollCount
+			// 3. Stops polling after pollCount reaches 4
+			// This tests that ExpressionData persists across reconciles and can be used to track state
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:                 "polling-expr-check",
+					DescriptionTemplate: "Polling expression check",
+					ReportOn:            "proposed",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 500 * time.Millisecond},
+						// Expression that uses ExpressionData to track poll count across reconciles:
+						// - Initializes pollCount to 1 on first evaluation
+						// - Increments pollCount on subsequent evaluations
+						// - Stops polling when pollCount >= 4
+						Expression: `
+							ExpressionData["pollCount"] == nil ? 
+								{polling: true, pollCount: 1} : 
+								{polling: ExpressionData["pollCount"] < 4, pollCount: ExpressionData["pollCount"] + 1}
+						`,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Verifying ExpressionData is stored with pollCount and increments over time")
+			// First, wait for initial reconciliation
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+
+				// Verify ExpressionData is populated with pollCount
+				g.Expect(wrcs.Status.Environments[0].ExpressionData).NotTo(BeNil())
+				g.Expect(wrcs.Status.Environments[0].ExpressionData.Raw).NotTo(BeEmpty())
+
+				var storedData map[string]any
+				err = json.Unmarshal(wrcs.Status.Environments[0].ExpressionData.Raw, &storedData)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(storedData).To(HaveKey("pollCount"))
+				g.Expect(storedData["pollCount"]).To(BeNumerically(">=", 1))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying pollCount increments across reconciles")
+			// Wait for a few more reconciles and verify pollCount increases
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(wrcs.Status.Environments[0].ExpressionData).NotTo(BeNil())
+
+				var storedData map[string]any
+				err = json.Unmarshal(wrcs.Status.Environments[0].ExpressionData.Raw, &storedData)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// pollCount should have incremented to at least 2 (showing state persisted)
+				g.Expect(storedData["pollCount"]).To(BeNumerically(">=", 2), "pollCount should increment across reconciles")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying polling eventually stops when pollCount reaches threshold")
+			// Wait for pollCount to reach 4 and polling to stop
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(wrcs.Status.Environments[0].ExpressionData).NotTo(BeNil())
+
+				var storedData map[string]any
+				err = json.Unmarshal(wrcs.Status.Environments[0].ExpressionData.Raw, &storedData)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// pollCount should reach at least 4 (the threshold)
+				g.Expect(storedData["pollCount"]).To(BeNumerically(">=", 4), "pollCount should reach threshold")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying polling has stopped (request count stabilizes)")
+			// Capture current request count and verify it doesn't increase much
+			initialCount := requestCount
+			time.Sleep(2 * time.Second)
+			// Allow for some variance due to timing, but it should stabilize
+			Expect(requestCount).To(BeNumerically("<=", initialCount+6), "Polling should have stopped or significantly slowed")
+		})
+	})
 })

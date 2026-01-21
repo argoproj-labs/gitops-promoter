@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -134,6 +135,79 @@ type PollingSpec struct {
 	// +optional
 	// +kubebuilder:default="1m"
 	Interval metav1.Duration `json:"interval,omitempty"`
+
+	// Expression (optional) is an expr expression that dynamically controls whether polling should continue.
+	// When specified, this expression is evaluated AFTER each HTTP request to determine if the controller should
+	// requeue and poll again.
+	//
+	// The expression can return:
+	//  1. Boolean: true/false to control polling
+	//  2. Object with 'polling' field: {polling: true/false, ...customData}
+	//     - The 'polling' field controls whether to continue polling
+	//     - Any additional fields are stored and available in the next reconcile as 'ExpressionData'
+	//
+	// Available variables in the expression context:
+	//   - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
+	//   - Environment (EnvironmentStatus): current environment's status from PromotionStrategy
+	//   - Response.StatusCode (int): HTTP response status code from validation request
+	//   - Response.Body (any): parsed response body (JSON as map[string]any, or raw string)
+	//   - Response.Headers (map[string][]string): HTTP response headers
+	//   - ValidationResult (bool): result of the main Expression evaluation
+	//   - Phase (string): current phase (success/pending/failure)
+	//   - ReportedSha (string): the SHA being validated
+	//   - Branch (string): environment branch name
+	//   - ExpressionData (map[string]any): custom data from previous polling expression evaluation
+	//
+	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
+	// Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
+	// Changes flow through the array in order. To access the previous environment, use array indexing:
+	//   currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Branch})
+	//   previousEnv = currentIdx > 0 ? PromotionStrategy.Status.Environments[currentIdx-1] : nil
+	//
+	// Examples (Boolean return):
+	//   # Always poll (equivalent to reportOn: active)
+	//   - "true"
+	//
+	//   # Stop polling after success (equivalent to reportOn: proposed)
+	//   - "Phase != 'success'"
+	//
+	//   # Poll until this SHA appears in the healthy history (validates deployment stability)
+	//   - "!any(Environment.LastHealthyDryShas, {.Sha == ReportedSha})"
+	//
+	//   # Continue polling if PR is not merged yet (monitors promotion progress)
+	//   - "Phase == 'success' && (Environment.PullRequest == nil || Environment.PullRequest.State != 'merged')"
+	//
+	// Examples (Object return with state tracking):
+	//   # Track dry SHA changes and restart polling when it changes
+	//   - |
+	//     {
+	//       polling: len(PromotionStrategy.Status.Environments) > 0 &&
+	//                PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != "" &&
+	//                PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != ExpressionData["trackedSha"],
+	//       trackedSha: PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha
+	//     }
+	//
+	//   # Poll until validation succeeds AND store the success timestamp
+	//   - |
+	//     {
+	//       polling: Phase != 'success',
+	//       firstSuccessTime: Phase == 'success' && ExpressionData["firstSuccessTime"] == nil ? now() : ExpressionData["firstSuccessTime"]
+	//     }
+	//
+	//   # Track previous environment SHA and poll until it matches
+	//   - |
+	//     prevEnv = filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"})[0];
+	//     {
+	//       polling: Phase != 'success' || prevEnv.Active.Hydrated.Sha != ExpressionData["targetSha"],
+	//       targetSha: ReportedSha
+	//     }
+	//
+	// When not specified, defaults to legacy reportOn behavior:
+	//   - reportOn: proposed → stops after Phase == success
+	//   - reportOn: active → always continues polling
+	//
+	// +optional
+	Expression string `json:"expression,omitempty"`
 }
 
 // HTTPRequestSpec defines the HTTP request configuration.
@@ -488,6 +562,14 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	// Only set when the expression successfully evaluates to a boolean.
 	// +optional
 	ExpressionResult *bool `json:"expressionResult,omitempty"`
+
+	// ExpressionData contains custom data returned by the polling expression.
+	// When the polling expression returns an object with fields beyond 'polling',
+	// those fields are stored here and made available in the next reconcile.
+	// This enables stateful polling logic that can track changes over time.
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	ExpressionData *apiextensionsv1.JSON `json:"expressionData,omitempty"`
 }
 
 // ResponseInfo contains information about the HTTP response.
