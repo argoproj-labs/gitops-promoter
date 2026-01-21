@@ -55,7 +55,14 @@ spec:
             properties:
               activeBranch:
                 description: ActiveBranch staging hydrated branch
+                maxLength: 255
+                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.])$
                 type: string
+                x-kubernetes-validations:
+                - message: Git ref cannot end with .lock
+                  rule: '!self.endsWith(''.lock'')'
               activeCommitStatuses:
                 description: ActiveCommitStatuses lists the statuses to be monitored
                   on the active branch
@@ -89,7 +96,14 @@ spec:
                 type: object
               proposedBranch:
                 description: ProposedBranch staging hydrated branch
+                maxLength: 255
+                pattern: ^(?:(?:[^\x00-\x1F\x7F ~^:?*\[\\/.](?:[^\x00-\x1F\x7F ~^:?*\[\\/]+)?)/)*(?:[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.@]|[^\x00-\x1F\x7F ~^:?*\[\\/.][^\x00-\x1F\x7F ~^:?*\[\\/]*[^\x00-\x1F\x7F
+                  ~^:?*\[\\/.])$
                 type: string
+                x-kubernetes-validations:
+                - message: Git ref cannot end with .lock
+                  rule: '!self.endsWith(''.lock'')'
               proposedCommitStatuses:
                 description: ProposedCommitStatuses lists the statuses to be monitored
                   on the proposed branch
