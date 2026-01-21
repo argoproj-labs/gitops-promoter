@@ -218,8 +218,7 @@ type HTTPRequestSpec struct {
 
 // HttpAuthentication defines authentication options for HTTP requests.
 //
-// Only one authentication method should be specified. If multiple methods are provided,
-// the first one found in this order will be used: Basic, Bearer, OAuth2, TLS.
+// Only one authentication method should be specified.
 //
 // Authentication methods:
 //
