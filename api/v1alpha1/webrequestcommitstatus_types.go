@@ -196,7 +196,7 @@ type PollingSpec struct {
 	//
 	//   # Track previous environment SHA and poll until it matches
 	//   - |
-	//     prevEnv = filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"})[0];
+	//     let prevEnv = filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"})[0];
 	//     {
 	//       polling: Phase != 'success' || prevEnv.Active.Hydrated.Sha != ExpressionData["targetSha"],
 	//       targetSha: ReportedSha

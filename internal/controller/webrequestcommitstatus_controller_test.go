@@ -1548,5 +1548,133 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 			// Allow for some variance due to timing, but it should stabilize
 			Expect(requestCount).To(BeNumerically("<=", initialCount+6), "Polling should have stopped or significantly slowed")
 		})
+
+		It("should access PromotionStrategy environment data and track previous environment SHA", func() {
+			By("Creating a WebRequestCommitStatus with polling expression that tracks previous environment SHA")
+			// This expression demonstrates accessing PromotionStrategy.Status.Environments
+			// to get the previous environment's Active.Hydrated.Sha and store it in ExpressionData.
+			// The expression:
+			// 1. Filters PromotionStrategy.Status.Environments to find the development environment
+			// 2. Stores the development environment's Active.Hydrated.Sha as targetSha
+			// 3. Uses a 'captured' flag to track state: first reconcile captures, second stops polling
+			// 4. This demonstrates using ExpressionData to control polling without external state
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:                 "polling-expr-check",
+					DescriptionTemplate: "Polling expression check",
+					ReportOn:            "proposed",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: `Response.StatusCode == 200`,
+					Polling: promoterv1alpha1.PollingSpec{
+						Interval: metav1.Duration{Duration: 500 * time.Millisecond},
+						// Expression that accesses PromotionStrategy data and uses ExpressionData to control polling:
+						// - Accesses the first environment (development) from PromotionStrategy.Status.Environments[0]
+						// - Captures its Active.Hydrated.Sha as targetSha
+						// - Uses 'captured' flag to stop polling after success
+						Expression: `
+							let alreadyCaptured = ExpressionData["captured"] == true;
+							{
+								polling: Phase != "success" || !alreadyCaptured,
+								targetSha: PromotionStrategy.Status.Environments[0].Active.Hydrated.Sha,
+								capturedFromBranch: PromotionStrategy.Status.Environments[0].Branch,
+								captured: Phase == "success"
+							}
+						`,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Verifying ExpressionData captures the development environment's SHA and sets captured flag")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+
+				// Verify ExpressionData is populated
+				g.Expect(wrcs.Status.Environments[0].ExpressionData).NotTo(BeNil())
+				g.Expect(wrcs.Status.Environments[0].ExpressionData.Raw).NotTo(BeEmpty())
+
+				var storedData map[string]any
+				err = json.Unmarshal(wrcs.Status.Environments[0].ExpressionData.Raw, &storedData)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Verify targetSha was captured from PromotionStrategy
+				g.Expect(storedData).To(HaveKey("targetSha"))
+				g.Expect(storedData["targetSha"]).NotTo(BeEmpty(), "targetSha should be captured from PromotionStrategy")
+
+				// Verify we captured the branch name too
+				g.Expect(storedData).To(HaveKey("capturedFromBranch"))
+				g.Expect(storedData["capturedFromBranch"]).To(Equal("environment/development"))
+
+				// Verify the captured flag is set (this controls polling)
+				g.Expect(storedData).To(HaveKey("captured"))
+				g.Expect(storedData["captured"]).To(BeTrue(), "captured flag should be true after success")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the captured SHA matches the actual PromotionStrategy development environment SHA")
+			var wrcs promoterv1alpha1.WebRequestCommitStatus
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}, &wrcs)
+			Expect(err).NotTo(HaveOccurred())
+
+			var storedData map[string]any
+			err = json.Unmarshal(wrcs.Status.Environments[0].ExpressionData.Raw, &storedData)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Get the actual development environment SHA from PromotionStrategy
+			err = k8sClient.Get(ctx, types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}, promotionStrategy)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
+
+			// The captured targetSha should match the development environment's Active.Hydrated.Sha
+			devEnvSha := promotionStrategy.Status.Environments[0].Active.Hydrated.Sha
+			Expect(storedData["targetSha"]).To(Equal(devEnvSha),
+				"Captured targetSha should match development environment's Active.Hydrated.Sha")
+
+			By("Verifying polling has stopped by checking state remains stable (using Consistently)")
+			// The polling interval is 500ms, so we check for 2 seconds (4x the interval)
+			// to ensure no more reconciles are happening that would change the state
+			Consistently(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Phase should remain success
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+
+				// ExpressionData should still have captured=true
+				g.Expect(wrcs.Status.Environments[0].ExpressionData).NotTo(BeNil())
+				var currentData map[string]any
+				err = json.Unmarshal(wrcs.Status.Environments[0].ExpressionData.Raw, &currentData)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(currentData["captured"]).To(BeTrue(), "captured flag should remain true")
+				g.Expect(currentData["targetSha"]).To(Equal(devEnvSha), "targetSha should remain unchanged")
+			}, 2*time.Second, 200*time.Millisecond).Should(Succeed())
+		})
 	})
 })
