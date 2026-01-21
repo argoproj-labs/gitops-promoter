@@ -22,7 +22,7 @@
     "css-loader": "^7.0.0",
     "eslint": "^8.57.1",
     "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-hooks": "^7.0.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "sass": "^1.89.2",
     "sass-loader": "^16.0.5",
@@ -35,8 +35,8 @@
     "@types/js-yaml": "^4.0.9",
     "axios": "^1.12.0",
     "js-yaml": "^4.1.1",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "zustand": "^3.7.2"
   },
   "overrides": {
