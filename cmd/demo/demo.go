@@ -117,9 +117,10 @@ func NewDemoCommand() *cobra.Command {
 			}
 			color.Green("Base app applied!")
 
-			// Copy helm-guestbook example to the repo
-			if err := CopyHelmGuestbook(ctx, client, repo, "helm-guestbook"); err != nil {
-				return err
+			// Copy helm-guestbook directory to the repo
+			err = CopyEmbeddedDirToRepo(ctx, client, username, repoName, "helm-guestbook")
+			if err != nil {
+				return fmt.Errorf("failed to copy directory: %w", err)
 			}
 
 			color.Green("Setup complete!")
