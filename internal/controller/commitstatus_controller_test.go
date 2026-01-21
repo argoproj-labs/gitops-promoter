@@ -63,7 +63,7 @@ var _ = Describe("CommitStatus Controller", func() {
 			}
 			err := k8sClient.Create(ctx, invalidCommitStatus)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("should be at least 40 chars long"))
+			Expect(err.Error()).To(ContainSubstring("should be at least 1 chars long"))
 		})
 
 		It("should reject a CommitStatus with a sha that is too long", func() {
@@ -119,7 +119,7 @@ var _ = Describe("CommitStatus Controller", func() {
 					RepositoryReference: promoterv1alpha1.ObjectReference{
 						Name: "test-repo",
 					},
-					Sha:         "abcdef1234567890abcdef1234567890abcdef12",
+					Sha:         "abcdef1234567890",
 					Name:        "test-commit-status",
 					Description: "Test commit status",
 				},
@@ -420,9 +420,9 @@ func commitStatusResources(ctx context.Context, name string) (*v1.Secret, *promo
 			RepositoryReference: promoterv1alpha1.ObjectReference{
 				Name: name,
 			},
-			Sha:   "abc1234567890abc1234567890abc12345678901", // Valid 40-char SHA-1
-			Name:  "test-status",                              // Can be customized by tests
-			Phase: promoterv1alpha1.CommitPhasePending,        // Reasonable default, can be customized
+			Sha:   "abc123",                            // Minimal valid SHA, can be customized by tests
+			Name:  "test-status",                       // Can be customized by tests
+			Phase: promoterv1alpha1.CommitPhasePending, // Reasonable default, can be customized
 			// Description and Url are optional and left empty for tests to set
 		},
 	}

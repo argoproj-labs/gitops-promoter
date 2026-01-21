@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -33,17 +32,9 @@ func (gh GitAuthenticationProvider) GetGitHttpsRepoUrl(gitRepo v1alpha1.GitRepos
 	gitServerPort := 5000 + ginkov2.GinkgoParallelProcess()
 	gitServerPortStr := strconv.Itoa(gitServerPort)
 
-	// If domain contains a port (e.g., "localhost:7000"), use it as-is
-	// This allows tests to specify custom servers
-	if gh.scmProvider.GetSpec().Fake != nil && gh.scmProvider.GetSpec().Fake.Domain != "" {
-		domain := gh.scmProvider.GetSpec().Fake.Domain
-		// If domain contains ":", assume it's host:port and use it directly
-		if strings.Contains(domain, ":") {
-			return fmt.Sprintf("http://%s/%s/%s", domain, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name) //nolint:revive // test helper uses http not https
-		}
+	if gh.scmProvider.GetSpec().Fake != nil && gh.scmProvider.GetSpec().Fake.Domain == "" {
+		return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 	}
-
-	// Default: use calculated port
 	return fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPortStr, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
 }
 

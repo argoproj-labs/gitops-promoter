@@ -112,7 +112,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 					},
 					Sync: argocd.SyncStatus{
 						Status:   "Synced",
-						Revision: "abc1234567890123456789012345678912345678",
+						Revision: "abc123",
 					},
 				},
 			}
@@ -154,8 +154,23 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
-			// Get the existing ControllerConfiguration from BeforeSuite
-			// We don't need to modify it since it already has WatchLocalApplications: true
+			// Create ControllerConfiguration to enable watching local applications
+			controllerConfig := &promoterv1alpha1.ControllerConfiguration{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "controller-config",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.ControllerConfigurationSpec{
+					ArgoCDCommitStatus: promoterv1alpha1.ArgoCDCommitStatusConfiguration{
+						WatchLocalApplications: true,
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000}, // 5 minutes in nanoseconds
+							MaxConcurrentReconciles: 10,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, controllerConfig)).To(Succeed())
 
 			// Clone the repo to a work tree so we can read and make commits
 			workTreePath, err := os.MkdirTemp("", "*")
@@ -334,7 +349,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			// Clean up
 			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
-			// Note: ControllerConfiguration is managed by BeforeSuite, not deleted here
+			Expect(k8sClient.Delete(ctx, controllerConfig)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
@@ -450,7 +465,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 						},
 						Sync: argocd.SyncStatus{
 							Status:   "Synced",
-							Revision: "abc1234567890123456789012345678912345678",
+							Revision: "abc123",
 						},
 					},
 				}

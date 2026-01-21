@@ -63,13 +63,9 @@ var _ = Describe("GitRepository Controller", func() {
 						Namespace: "default",
 					},
 					Spec: promoterv1alpha1.GitRepositorySpec{
-						Fake: &promoterv1alpha1.FakeRepo{
-							Name:  "test-repo",
-							Owner: "test-owner",
-						},
+						Fake: &promoterv1alpha1.FakeRepo{},
 						ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
 							Kind: promoterv1alpha1.ScmProviderKind,
-							Name: "test-provider",
 						},
 					},
 					// TODO(user): Specify other spec details if needed.

@@ -20,16 +20,12 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
-	"log"
-	"net/http"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/argoproj-labs/gitops-promoter/internal/controller/testutils"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/argocd"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -358,99 +354,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 					g.Expect(promotionStrategy.Status.Environments[1].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest).ToNot(BeNil(), "PromotionStrategy should preserve PR status")
 					g.Expect(promotionStrategy.Status.Environments[2].PullRequest.State).To(Equal(promoterv1alpha1.PullRequestMerged), "PR state should be merged")
-				}, constants.EventuallyTimeout).Should(Succeed())
-			})
-		})
-
-		Context("When git repo is initialized with SHA-256", Label("sha256"), func() {
-			var name string
-			var gitRepo *promoterv1alpha1.GitRepository
-			var promotionStrategy *promoterv1alpha1.PromotionStrategy
-			var typeNamespacedName types.NamespacedName
-			var ctpDev promoterv1alpha1.ChangeTransferPolicy
-			var sha256Server *http.Server
-			var sha256StoragePath string
-
-			BeforeEach(func() {
-				By("Starting dedicated SHA-256 Git HTTP server")
-				var err error
-				sha256StoragePath, err = os.MkdirTemp("", "sha256-git-*")
-				Expect(err).NotTo(HaveOccurred())
-
-				service := &testutils.GitHTTPServer{
-					Logger:       log.New(GinkgoWriter, "sha256: ", log.LstdFlags),
-					RepoDir:      sha256StoragePath,
-					ObjectFormat: "sha256",
-					AutoCreate:   true,
-				}
-				Expect(service.Setup()).To(Succeed())
-
-				sha256Port := 7000 + GinkgoParallelProcess()
-				sha256Server = &http.Server{Addr: ":" + strconv.Itoa(sha256Port), Handler: service}
-				go func() { _ = sha256Server.ListenAndServe() }()
-				time.Sleep(100 * time.Millisecond)
-
-				By("Creating the resources")
-				var scmSecret *v1.Secret
-				var scmProvider *promoterv1alpha1.ScmProvider
-				name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "ps-sha256", "default")
-
-				// Configure SCM provider to use SHA-256 server
-				scmProvider.Spec.Fake.Domain = fmt.Sprintf("localhost:%d", sha256Port)
-
-				serverURL := fmt.Sprintf("http://localhost:%d", sha256Port)
-				setupInitialSHA256TestGitRepo(ctx, serverURL, name, name)
-
-				typeNamespacedName = types.NamespacedName{Name: name, Namespace: "default"}
-				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-				Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-
-				ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
-			})
-
-			AfterEach(func() {
-				By("Cleaning up resources")
-				_ = k8sClient.Delete(ctx, promotionStrategy)
-				if sha256Server != nil {
-					_ = sha256Server.Shutdown(context.Background())
-				}
-				if sha256StoragePath != "" {
-					_ = os.RemoveAll(sha256StoragePath)
-				}
-			})
-
-			It("should successfully reconcile with 64-character SHA-256 hashes", func() {
-				By("Waiting for CTPs to reconcile with SHA-256 commits")
-				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
-						Namespace: typeNamespacedName.Namespace,
-					}, &ctpDev)
-					g.Expect(err).To(Succeed())
-
-					// Verify SHA-256 hashes (64 characters)
-					g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(HaveLen(64), "Should have 64-char SHA-256 hash")
-					g.Expect(ctpDev.Status.Active.Hydrated.Sha).To(MatchRegexp("^[a-f0-9]{64}$"))
-					g.Expect(ctpDev.Status.Active.Dry.Sha).To(HaveLen(64))
-					g.Expect(ctpDev.Status.Active.Dry.Sha).To(MatchRegexp("^[a-f0-9]{64}$"))
-				}, constants.EventuallyTimeout).Should(Succeed())
-
-				By("Verifying PromotionStrategy has SHA-256 hashes")
-				Eventually(func(g Gomega) {
-					_ = k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
-					g.Expect(promotionStrategy.Status.Environments).To(HaveLen(3))
-
-					// All environments should have 64-char hashes
-					for _, env := range promotionStrategy.Status.Environments {
-						if env.Active.Hydrated.Sha != "" {
-							g.Expect(env.Active.Hydrated.Sha).To(HaveLen(64))
-						}
-						if env.Active.Dry.Sha != "" {
-							g.Expect(env.Active.Dry.Sha).To(HaveLen(64))
-						}
-					}
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
@@ -4307,13 +4210,13 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
 					Proposed: promoterv1alpha1.CommitBranchState{
 						Dry: promoterv1alpha1.CommitShaState{
-							Sha: "abc1234567890123456789012345678912345678", // Proposed dry SHA (becomes target since newest)
+							Sha: "abc123", // Proposed dry SHA (becomes target since newest)
 						},
 						Hydrated: promoterv1alpha1.CommitShaState{
 							CommitTime: metav1.Now(),
 						},
 						Note: &promoterv1alpha1.HydratorMetadata{
-							DrySha: "old1234567890123456789012345678912345678", // Git note SHA (out-of-sync with target)
+							DrySha: "old123", // Git note SHA (out-of-sync with target)
 						},
 					},
 				},
