@@ -29,4 +29,8 @@ const (
 	// TimedCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
 	// performed by the TimedCommitStatus controller.
 	TimedCommitStatusControllerFieldOwner = "promoter.argoproj.io/timedcommitstatus-controller"
+
+	// WebRequestCommitStatusControllerFieldOwner is the field owner for Server-Side Apply operations
+	// performed by the WebRequestCommitStatus controller.
+	WebRequestCommitStatusControllerFieldOwner = "promoter.argoproj.io/webrequestcommitstatus-controller"
 )

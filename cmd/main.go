@@ -297,7 +297,7 @@ func runController(
 	if err := (&controller.WebRequestCommitStatusReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorderFor("WebRequestCommitStatus"),
+		Recorder:    localManager.GetEventRecorder("WebRequestCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {

@@ -189,6 +189,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.TimedCommitStatusStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("URLConfig"):
 		return &apiv1alpha1.URLConfigApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusConfiguration"):
+		return &apiv1alpha1.WebRequestCommitStatusConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WorkQueue"):
 		return &apiv1alpha1.WorkQueueApplyConfiguration{}
 

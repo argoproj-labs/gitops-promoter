@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"sync"
 	"text/template"
 	"time"
@@ -35,7 +36,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -46,8 +48,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/httpclient"
 )
@@ -96,7 +100,7 @@ type TemplateData struct {
 type WebRequestCommitStatusReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
+	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 	HTTPClient  *http.Client
 	EnqueueCTP  CTPEnqueueFunc
@@ -798,41 +802,39 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 		return nil, fmt.Errorf("failed to render url template: %w", err)
 	}
 
-	commitStatus := promoterv1alpha1.CommitStatus{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      commitStatusName,
-			Namespace: wrcs.Namespace,
-		},
+	// Build owner reference
+	kind := reflect.TypeOf(promoterv1alpha1.WebRequestCommitStatus{}).Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+
+	// Build the apply configuration
+	commitStatusApply := acv1alpha1.CommitStatus(commitStatusName, wrcs.Namespace).
+		WithLabels(map[string]string{
+			promoterv1alpha1.WebRequestCommitStatusLabel: utils.KubeSafeLabel(wrcs.Name),
+			promoterv1alpha1.EnvironmentLabel:            utils.KubeSafeLabel(branch),
+			promoterv1alpha1.CommitStatusLabel:           key,
+		}).
+		WithOwnerReferences(acmetav1.OwnerReference().
+			WithAPIVersion(gvk.GroupVersion().String()).
+			WithKind(gvk.Kind).
+			WithName(wrcs.Name).
+			WithUID(wrcs.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)).
+		WithSpec(acv1alpha1.CommitStatusSpec().
+			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
+			WithName(key).
+			WithDescription(description).
+			WithUrl(url).
+			WithPhase(commitPhase).
+			WithSha(sha))
+
+	// Apply using Server-Side Apply with Patch to get the result directly
+	commitStatus := &promoterv1alpha1.CommitStatus{}
+	commitStatus.Name = commitStatusName
+	commitStatus.Namespace = wrcs.Namespace
+	if err = r.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.WebRequestCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply CommitStatus: %w", err)
 	}
 
-	// Create or update the CommitStatus
-	_, err = ctrl.CreateOrUpdate(ctx, r.Client, &commitStatus, func() error {
-		// Set owner reference to the WebRequestCommitStatus
-		if err := ctrl.SetControllerReference(wrcs, &commitStatus, r.Scheme); err != nil {
-			return fmt.Errorf("failed to set controller reference: %w", err)
-		}
-
-		// Set labels for easy identification
-		if commitStatus.Labels == nil {
-			commitStatus.Labels = make(map[string]string)
-		}
-		commitStatus.Labels[promoterv1alpha1.WebRequestCommitStatusLabel] = utils.KubeSafeLabel(wrcs.Name)
-		commitStatus.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
-		commitStatus.Labels[promoterv1alpha1.CommitStatusLabel] = key
-
-		// Set the spec
-		commitStatus.Spec.RepositoryReference = ps.Spec.RepositoryReference
-		commitStatus.Spec.Name = key
-		commitStatus.Spec.Description = description
-		commitStatus.Spec.Url = url
-		commitStatus.Spec.Phase = commitPhase
-		commitStatus.Spec.Sha = sha
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create or update CommitStatus: %w", err)
-	}
-
-	return &commitStatus, nil
+	return commitStatus, nil
 }
