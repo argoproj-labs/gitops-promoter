@@ -29,7 +29,7 @@ import (
 	"time"
 
 	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/multicluster-runtime/pkg/controller"
@@ -59,9 +59,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 )
 
 // lastTransitionTimeThreshold is the threshold for the last transition time to consider an application healthy.
@@ -71,7 +75,7 @@ const lastTransitionTimeThreshold = 5 * time.Second
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
 	Manager                mcmanager.Manager
-	Recorder               record.EventRecorder
+	Recorder               events.EventRecorder
 	SettingsMgr            *settings.Manager
 	KubeConfigProvider     *kubeconfig.Provider
 	localClient            client.Client
@@ -546,28 +550,16 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 
 	kind := reflect.TypeOf(promoterv1alpha1.ArgoCDCommitStatus{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-	controllerRef := metav1.NewControllerRef(&argoCDCommitStatus, gvk)
 
-	desiredCommitStatus := promoterv1alpha1.CommitStatus{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName,
-			Namespace: argoCDCommitStatus.Namespace, // Applications could come from multiple namespaces have to put this somewhere and avoid collisions
-			Labels: map[string]string{
-				promoterv1alpha1.CommitStatusLabel: "argocd-health",
-				promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(targetBranch),
-			},
-			OwnerReferences: []metav1.OwnerReference{*controllerRef},
-		},
-		Spec: promoterv1alpha1.CommitStatusSpec{
-			RepositoryReference: promotionStrategy.Spec.RepositoryReference,
-			Sha:                 sha,
-			Name:                commitStatusName,
-			Description:         desc,
-			Phase:               phase,
-		},
-	}
+	// Build the spec
+	commitStatusSpec := acv1alpha1.CommitStatusSpec().
+		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(promotionStrategy.Spec.RepositoryReference.Name)).
+		WithSha(sha).
+		WithName(commitStatusName).
+		WithDescription(desc).
+		WithPhase(phase)
 
-	// Render URL from template if it exists, but don't block commit status update if it fails
+	// Render URL from template if it exists
 	if argoCDCommitStatus.Spec.URL.Template != "" {
 		data := URLTemplateData{
 			Environment:        targetBranch,
@@ -591,37 +583,36 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 		}
 
 		// Set the URL in the CommitStatus
-		logger.V(4).Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", desiredCommitStatus.Name, "namespace", desiredCommitStatus.Namespace)
-		desiredCommitStatus.Spec.Url = renderedURL
+		logger.V(4).Info("Rendered URL template", "url", renderedURL, "environment", targetBranch, "commitStatus", resourceName, "namespace", argoCDCommitStatus.Namespace)
+		commitStatusSpec = commitStatusSpec.WithUrl(renderedURL)
 	}
 
-	currentCommitStatus := promoterv1alpha1.CommitStatus{}
-	err := r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: resourceName}, &currentCommitStatus)
-	if err != nil {
-		if client.IgnoreNotFound(err) != nil {
-			return nil, fmt.Errorf("failed to get CommitStatus object: %w", err)
-		}
-		err = r.localClient.Create(ctx, &desiredCommitStatus)
-		logger.Info("Created CommitStatus", "name", desiredCommitStatus.Name, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create CommitStatus object: %w", err)
-		}
-		return &desiredCommitStatus, nil
+	// Build the apply configuration
+	commitStatusApply := acv1alpha1.CommitStatus(resourceName, argoCDCommitStatus.Namespace).
+		WithLabels(map[string]string{
+			promoterv1alpha1.CommitStatusLabel: "argocd-health",
+			promoterv1alpha1.EnvironmentLabel:  utils.KubeSafeLabel(targetBranch),
+		}).
+		WithOwnerReferences(acmetav1.OwnerReference().
+			WithAPIVersion(gvk.GroupVersion().String()).
+			WithKind(gvk.Kind).
+			WithName(argoCDCommitStatus.Name).
+			WithUID(argoCDCommitStatus.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)).
+		WithSpec(commitStatusSpec)
+
+	// Apply using Server-Side Apply with Patch to get the result directly
+	commitStatus := &promoterv1alpha1.CommitStatus{}
+	commitStatus.Name = resourceName
+	commitStatus.Namespace = argoCDCommitStatus.Namespace
+	if err := r.localClient.Patch(ctx, commitStatus, utils.ApplyPatch{ApplyConfig: commitStatusApply}, client.FieldOwner(constants.ArgoCDCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply CommitStatus object: %w", err)
 	}
 
-	if currentCommitStatus.Spec == desiredCommitStatus.Spec {
-		logger.V(4).Info("CommitStatus is already in sync", "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
-		return &currentCommitStatus, nil
-	}
+	logger.Info("Applied CommitStatus", "name", resourceName, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
 
-	currentCommitStatus.Spec = desiredCommitStatus.Spec
-	err = r.localClient.Update(ctx, &currentCommitStatus)
-	logger.Info("Updated CommitStatus", "name", desiredCommitStatus.Name, "targetBranch", targetBranch, "sha", sha, "phase", phase, "description", desc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to update CommitStatus object: %w", err)
-	}
-
-	return &currentCommitStatus, nil
+	return commitStatus, nil
 }
 
 func (r *ArgoCDCommitStatusReconciler) getPromotionStrategy(ctx context.Context, namespace string, promotionStrategyRef promoterv1alpha1.ObjectReference) (*promoterv1alpha1.PromotionStrategy, error) {

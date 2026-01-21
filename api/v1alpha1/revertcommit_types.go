@@ -38,6 +38,7 @@ type RevertCommitStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 }
 
+// +kubebuilder:ac:generate=true
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
