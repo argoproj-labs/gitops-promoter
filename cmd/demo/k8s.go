@@ -15,7 +15,12 @@ import (
 )
 
 // CreateRepoSecrets creates the ArgoCD repository secrets for read and write access
-func CreateRepoSecrets(ctx context.Context, k8sClient kubernetes.Interface, credentials *Credentials, username, repoName string) error {
+func CreateRepoSecrets(
+	ctx context.Context,
+	k8sClient kubernetes.Interface,
+	credentials *Credentials,
+	username, repoName string,
+) error {
 	repoURL := fmt.Sprintf("https://github.com/%s/%s", username, repoName)
 
 	// Create write secret (for hydrator)
@@ -28,7 +33,8 @@ func CreateRepoSecrets(ctx context.Context, k8sClient kubernetes.Interface, cred
 	writeLabels := map[string]string{
 		"argocd.argoproj.io/secret-type": "repository-write",
 	}
-	if err := CreateOrUpdateSecret(ctx, k8sClient, "argocd", "repo-write-promoter", writeData, writeLabels); err != nil {
+	err := CreateOrUpdateSecret(ctx, k8sClient, "argocd", "repo-write-promoter", writeData, writeLabels)
+	if err != nil {
 		return fmt.Errorf("failed to create repo write secret: %w", err)
 	}
 
@@ -42,21 +48,28 @@ func CreateRepoSecrets(ctx context.Context, k8sClient kubernetes.Interface, cred
 	readLabels := map[string]string{
 		"argocd.argoproj.io/secret-type": "repository",
 	}
-	if err := CreateOrUpdateSecret(ctx, k8sClient, "argocd", "repo-read-promoter", readData, readLabels); err != nil {
+	err = CreateOrUpdateSecret(ctx, k8sClient, "argocd", "repo-read-promoter", readData, readLabels)
+	if err != nil {
 		return fmt.Errorf("failed to create repo read secret: %w", err)
 	}
 
 	return nil
 }
 
-func CreateOrUpdateSecret(ctx context.Context, clientset kubernetes.Interface, namespace, name string, data map[string]string, labels map[string]string) error {
+// CreateOrUpdateSecret creates a secret or updates it if it already exists
+func CreateOrUpdateSecret(
+	ctx context.Context,
+	clientset kubernetes.Interface,
+	namespace, name string,
+	data map[string]string,
+	labels map[string]string,
+) error {
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 			Labels:    labels,
 		},
-
 		Type:       corev1.SecretTypeOpaque,
 		StringData: data,
 	}
@@ -69,7 +82,7 @@ func CreateOrUpdateSecret(ctx context.Context, clientset kubernetes.Interface, n
 		if err != nil {
 			return fmt.Errorf("failed to create secret: %w", err)
 		}
-		fmt.Printf("Secret %s/%s created ✓\n", namespace, name)
+		setupLog.Info("Secret %s/%s created ✓\n", namespace, name)
 	} else {
 		// Exists, update it
 		secret.ResourceVersion = existing.ResourceVersion
@@ -77,7 +90,7 @@ func CreateOrUpdateSecret(ctx context.Context, clientset kubernetes.Interface, n
 		if err != nil {
 			return fmt.Errorf("failed to update secret: %w", err)
 		}
-		fmt.Printf("Secret %s/%s updated ✓\n", namespace, name)
+		setupLog.Info("Secret %s/%s updated ✓\n", namespace, name)
 	}
 
 	return nil
@@ -105,13 +118,13 @@ func getKubeConfig() (*rest.Config, error) {
 	return config, nil
 }
 
+// CreateNamespace creates a Kubernetes namespace if it doesn't already exist
 func CreateNamespace(ctx context.Context, clientset kubernetes.Interface, namespace string) error {
 	_, err := clientset.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: namespace,
 		},
 	}, metav1.CreateOptions{})
-
 	if err != nil {
 		if errors.IsAlreadyExists(err) {
 			// Namespace already exists, that's fine

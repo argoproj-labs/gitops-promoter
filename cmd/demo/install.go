@@ -34,6 +34,7 @@ func setupCluster(ctx context.Context) error {
 	return nil
 }
 
+// InstallArgoCD installs ArgoCD into the cluster using the configured upstream manifest
 func InstallArgoCD(ctx context.Context) error {
 	// Read config file
 	content, err := os.ReadFile("cmd/demo/config/config.yaml")
@@ -47,10 +48,14 @@ func InstallArgoCD(ctx context.Context) error {
 		return fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	EnsureNamespace(ctx, "argocd")
+	if err := EnsureNamespace(ctx, "argocd"); err != nil {
+		return fmt.Errorf("failed to ensure argocd namespace: %w", err)
+	}
+
 	url := config.ArgoCD.Upstream
+
 	// Run kubectl apply
-	fmt.Printf("Installing ArgoCD from %s...\n", url)
+	color.Green("Installing ArgoCD from %s...\n", url)
 	args := []string{"apply", "--server-side", "-n", "argocd", "-f", url}
 
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
@@ -65,6 +70,7 @@ func InstallArgoCD(ctx context.Context) error {
 	return nil
 }
 
+// InstallGitOpsPromoter installs the GitOps Promoter controller into the cluster
 func InstallGitOpsPromoter(ctx context.Context) error {
 	content, err := os.ReadFile("cmd/demo/config/config.yaml")
 	if err != nil {
@@ -76,9 +82,12 @@ func InstallGitOpsPromoter(ctx context.Context) error {
 		return fmt.Errorf("failed to parse config: %w", err)
 	}
 
-	EnsureNamespace(ctx, "gitops-promoter")
+	if err := EnsureNamespace(ctx, "gitops-promoter"); err != nil {
+		return fmt.Errorf("failed to ensure gitops-promoter namespace: %w", err)
+	}
+
 	url := config.GitOpsPromoter.Upstream
-	fmt.Printf("Installing GitOps Promoter from %s...\n", url)
+	color.Green("Installing GitOps Promoter from %s...\n", url)
 	args := []string{"apply", "-f", url}
 
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
@@ -93,17 +102,18 @@ func InstallGitOpsPromoter(ctx context.Context) error {
 	return nil
 }
 
+// EnsureNamespace creates a namespace if it doesn't already exist
 func EnsureNamespace(ctx context.Context, namespace string) error {
 	if namespace == "" {
 		return nil
 	}
 
-	fmt.Printf("Ensuring namespace %s exists...\n", namespace)
+	setupLog.Info("Ensuring namespace exists", "namespace", namespace)
 
 	// Check if namespace exists
 	checkCmd := exec.CommandContext(ctx, "kubectl", "get", "namespace", namespace)
 	if err := checkCmd.Run(); err == nil {
-		fmt.Printf("Namespace %s already exists ✓\n", namespace)
+		setupLog.Info("Namespace already exists", "namespace", namespace)
 		return nil
 	}
 
@@ -116,10 +126,11 @@ func EnsureNamespace(ctx context.Context, namespace string) error {
 		return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
 	}
 
-	fmt.Printf("Namespace %s created ✓\n", namespace)
+	setupLog.Info("Namespace created", "namespace", namespace)
 	return nil
 }
 
+// PatchArgoCD patches the ArgoCD server deployment to enable the extension
 func PatchArgoCD(ctx context.Context) error {
 	patch := "cmd/demo/config/argocd-extension.yaml"
 
@@ -156,5 +167,8 @@ func KubectlApply(ctx context.Context, manifest string, namespace string) error 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("kubectl apply failed: %w", err)
+	}
+	return nil
 }

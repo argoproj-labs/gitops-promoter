@@ -363,7 +363,7 @@ func (pr *PullRequest) generatePullRequestUrl(ctx context.Context, prObj v1alpha
 
 // mapAzureDevOpsPRStatusToState maps Azure DevOps PullRequestStatus to GitOps Promoter PullRequestState
 func mapAzureDevOpsPRStatusToState(status git.PullRequestStatus) v1alpha1.PullRequestState {
-	switch status { //nolint:revive
+	switch status { //nolint:revive // Keep Active case explicit for clarity
 	case git.PullRequestStatusValues.Active:
 		return v1alpha1.PullRequestOpen
 	case git.PullRequestStatusValues.Completed:

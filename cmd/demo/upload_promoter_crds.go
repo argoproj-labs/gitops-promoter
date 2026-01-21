@@ -21,7 +21,13 @@ type Replacements struct {
 	PrivateKey string
 }
 
-func UploadManifests(ctx context.Context, client *github.Client, repo *github.Repository, replacements Replacements) error {
+// UploadManifests uploads manifest files to a GitHub repository with placeholder replacements
+func UploadManifests(
+	ctx context.Context,
+	client *github.Client,
+	repo *github.Repository,
+	replacements Replacements,
+) error {
 	owner := repo.GetOwner().GetLogin()
 	repoName := repo.GetName()
 

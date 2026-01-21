@@ -17,9 +17,9 @@
     "@types/react-dom": "^19.0.0",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
-    "@vitejs/plugin-react": "^5.0.0",
+    "@vitejs/plugin-react": "^4.2.1",
     "eslint": "^8.57.0",
-    "eslint-config-prettier": "^9.1.0",
+    "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-react": "^7.34.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
@@ -33,6 +33,6 @@
     "react-router-dom": "^6.22.0",
     "react-select": "^5.8.0",
     "sass": "^1.89.2",
-    "zustand": "^4.5.0"
+    "zustand": "^5.0.0"
   }
 }

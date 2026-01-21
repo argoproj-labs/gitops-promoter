@@ -103,6 +103,7 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
 }
 
+// +kubebuilder:ac:generate=true
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
