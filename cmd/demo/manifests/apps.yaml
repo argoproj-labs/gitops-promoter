@@ -16,6 +16,9 @@ spec:
       repoURL: https://github.com/<GITHUB_ORG_USERNAME>/<REPO_NAME>
       path: helm-guestbook
       targetRevision: HEAD
+      helm:
+        valueFiles:
+          - dev-values.yaml
     hydrateTo:
       targetBranch: environment/development-next
     syncSource:
@@ -47,6 +50,9 @@ spec:
       repoURL: https://github.com/<GITHUB_ORG_USERNAME>/<REPO_NAME>
       path: helm-guestbook
       targetRevision: HEAD
+      helm:
+        valueFiles:
+          - staging-values.yaml
     hydrateTo:
       targetBranch: environment/staging-next
     syncSource:
@@ -80,7 +86,7 @@ spec:
       targetRevision: HEAD
       helm:
         valueFiles:
-          - values.yaml
+          - dev-values.yaml
           - values-production-west.yaml
     hydrateTo:
       targetBranch: environment/prod-next
@@ -115,7 +121,7 @@ spec:
       targetRevision: HEAD
       helm:
         valueFiles:
-          - values.yaml
+          - dev-values.yaml
           - values-production-east.yaml
     hydrateTo:
       targetBranch: environment/prod-next
