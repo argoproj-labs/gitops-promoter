@@ -37,6 +37,15 @@ spec:
             type: object
           spec:
             properties:
+              source:
+                properties:
+                  repoURL:
+                    type: string
+                  targetRevision:
+                    type: string
+                required:
+                - repoURL
+                type: object
               sourceHydrator:
                 properties:
                   drySource:
