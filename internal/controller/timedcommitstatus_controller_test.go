@@ -343,16 +343,19 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			// during BeforeEach (TimedCommitStatus resource doesn't exist yet), so PRs would
 			// auto-merge immediately. We explicitly disable auto-merge to ensure we can observe
 			// the pending promotion state (proposed != active) before the time gate transitions.
-			err := k8sClient.Get(ctx, types.NamespacedName{
-				Name:      name,
-				Namespace: "default",
-			}, promotionStrategy)
-			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
 
-			promotionStrategy.Spec.Environments[1].AutoMerge = new(bool) // Set to false (zero value)
-			*promotionStrategy.Spec.Environments[1].AutoMerge = false
-			err = k8sClient.Update(ctx, promotionStrategy)
-			Expect(err).NotTo(HaveOccurred())
+				ps.Spec.Environments[1].AutoMerge = new(bool) // Set to false (zero value)
+				*ps.Spec.Environments[1].AutoMerge = false
+				err = k8sClient.Update(ctx, &ps)
+				g.Expect(err).NotTo(HaveOccurred(), "Should update PromotionStrategy (retries on conflict)")
+			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Creating a pending promotion in staging environment")
 			gitPath, err := os.MkdirTemp("", "*")
