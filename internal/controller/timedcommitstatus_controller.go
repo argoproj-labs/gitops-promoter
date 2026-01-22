@@ -358,7 +358,7 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 		WithLabels(map[string]string{
 			promoterv1alpha1.TimedCommitStatusLabel: utils.KubeSafeLabel(tcs.Name),
 			promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(branch),
-			promoterv1alpha1.CommitStatusLabel:      "timer",
+			promoterv1alpha1.CommitStatusLabel:      promoterv1alpha1.TimerCommitStatusKey,
 		}).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
@@ -369,7 +369,7 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 			WithBlockOwnerDeletion(true)).
 		WithSpec(acv1alpha1.CommitStatusSpec().
 			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
-			WithName("timer/" + envBranch).
+			WithName(promoterv1alpha1.TimerCommitStatusKey + "/" + envBranch).
 			WithDescription(message).
 			WithPhase(phase).
 			WithSha(sha))
@@ -410,7 +410,7 @@ func (r *TimedCommitStatusReconciler) autoConfigureTimerCheck(ctx context.Contex
 		if timedBranches[env.Branch] {
 			envApply := acv1alpha1.Environment().
 				WithBranch(env.Branch).
-				WithActiveCommitStatuses(acv1alpha1.CommitStatusSelector().WithKey("timer"))
+				WithActiveCommitStatuses(acv1alpha1.CommitStatusSelector().WithKey(promoterv1alpha1.TimerCommitStatusKey))
 
 			envApplyConfigs = append(envApplyConfigs, envApply)
 		}

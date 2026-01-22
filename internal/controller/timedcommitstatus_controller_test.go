@@ -52,7 +52,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 
 		// Configure ActiveCommitStatuses to check for timer commit status
 		promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "timer"},
+			{Key: promoterv1alpha1.TimerCommitStatusKey},
 		}
 
 		setupInitialTestGitRepoOnServer(ctx, name, name)
@@ -634,7 +634,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				// Check that development environment has timer activeCommitStatus
 				found := false
 				for _, cs := range ps.Spec.Environments[0].ActiveCommitStatuses {
-					if cs.Key == "timer" {
+					if cs.Key == promoterv1alpha1.TimerCommitStatusKey {
 						found = true
 						break
 					}
@@ -644,7 +644,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				// Check that staging environment has timer activeCommitStatus
 				found = false
 				for _, cs := range ps.Spec.Environments[1].ActiveCommitStatuses {
-					if cs.Key == "timer" {
+					if cs.Key == promoterv1alpha1.TimerCommitStatusKey {
 						found = true
 						break
 					}
@@ -654,7 +654,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				// Production should NOT have timer check (it's not in the TimedCommitStatus environments)
 				found = false
 				for _, cs := range ps.Spec.Environments[2].ActiveCommitStatuses {
-					if cs.Key == "timer" {
+					if cs.Key == promoterv1alpha1.TimerCommitStatusKey {
 						found = true
 						break
 					}

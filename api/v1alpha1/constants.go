@@ -22,6 +22,9 @@ const TimedCommitStatusLabel = "promoter.argoproj.io/timed-commit-status"
 // PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health
 const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 
+// TimerCommitStatusKey the commit status key name used by TimedCommitStatus controller for time-based gating
+const TimerCommitStatusKey = "timer"
+
 // CommitStatusPreviousEnvironmentStatusesAnnotation is the label used to identify commit statuses that make up the aggregated active commit status
 const CommitStatusPreviousEnvironmentStatusesAnnotation = "promoter.argoproj.io/previous-environment-statuses"
 
