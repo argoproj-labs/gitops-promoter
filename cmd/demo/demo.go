@@ -151,6 +151,10 @@ func NewDemoCommand() *cobra.Command {
 				return err
 			}
 
+			if err := installer.PortForward(ctx); err != nil {
+				return err
+			}
+
 			color.Green("Installation complete!")
 			return nil
 		},

@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/goccy/go-yaml"
@@ -157,6 +160,56 @@ func (i *Installer) RefreshAllApps(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// PortForward starts port forwarding with automatic restart on failure
+func (i *Installer) PortForward(ctx context.Context) error {
+	color.Green("Starting port forwards...")
+	color.Yellow("ArgoCD UI:         https://localhost:8000")
+	color.Yellow(`Login: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d`)
+	color.Yellow("Press Ctrl+C to stop\n")
+
+	// Context for cancellation
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Start port-forward with auto-restart
+	go i.runPortForwardWithRetry(ctx, "argocd-server", "argocd", "8000:443")
+
+	// Wait for interrupt signal
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	<-sigCh
+
+	color.Yellow("\nShutting down port forwards...")
+	cancel() // This will kill the port-forward commands
+
+	return nil
+}
+
+func (i *Installer) runPortForwardWithRetry(ctx context.Context, svc, namespace, ports string) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			cmd := exec.CommandContext(ctx, "kubectl", "port-forward", "svc/"+svc, "-n", namespace, ports)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+
+			color.Cyan("Starting port-forward: %s/%s -> %s", namespace, svc, ports)
+			err := cmd.Run()
+
+			if ctx.Err() != nil {
+				return // Context cancelled, exit
+			}
+
+			if err != nil {
+				color.Red("Port-forward %s failed: %v, restarting in 2s...", svc, err)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}
 }
 
 // --- Private helpers ---

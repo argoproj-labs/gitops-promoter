@@ -86,6 +86,7 @@ spec:
       targetRevision: HEAD
       helm:
         valueFiles:
+          - values.yaml
           - values-production-west.yaml
     hydrateTo:
       targetBranch: environment/prod-next
@@ -120,6 +121,7 @@ spec:
       targetRevision: HEAD
       helm:
         valueFiles:
+          - values.yaml
           - values-production-east.yaml
     hydrateTo:
       targetBranch: environment/prod-next
