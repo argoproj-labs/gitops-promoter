@@ -24,13 +24,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/go-github/v71/github"
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	githubscm "github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/google/go-github/v71/github"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -349,13 +349,15 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 		return []string{}, nil
 	}
 
-	// Extract required status checks
+	// Extract required status checks from BranchRules
 	var requiredChecks []string
-	for _, rule := range rules {
-		if rule.RequiredStatusChecks != nil && rule.RequiredStatusChecks.Parameters != nil {
-			for _, check := range rule.RequiredStatusChecks.Parameters.RequiredStatusChecks {
-				if check.Context != "" {
-					requiredChecks = append(requiredChecks, check.Context)
+	if rules != nil && rules.RequiredStatusChecks != nil {
+		for _, ruleStatusCheck := range rules.RequiredStatusChecks {
+			if ruleStatusCheck.Parameters.RequiredStatusChecks != nil {
+				for _, check := range ruleStatusCheck.Parameters.RequiredStatusChecks {
+					if check.Context != "" {
+						requiredChecks = append(requiredChecks, check.Context)
+					}
 				}
 			}
 		}
@@ -662,10 +664,30 @@ func (r *RequiredStatusCheckCommitStatusReconciler) triggerCTPReconciliation(ctx
 	}
 
 	// Trigger CTP reconciliation for changed branches
-	if len(changedBranches) > 0 {
+	if len(changedBranches) > 0 && r.EnqueueCTP != nil {
 		logger.Info("Triggering CTP reconciliation for changed branches", "branches", changedBranches)
-		for branch := range changedBranches {
-			r.EnqueueCTP(ctx, ps, branch)
+
+		// List CTPs to find the ones that match the changed branches
+		var ctpList promoterv1alpha1.ChangeTransferPolicyList
+		err := r.List(ctx, &ctpList, &client.ListOptions{
+			Namespace: ps.Namespace,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to list ChangeTransferPolicies for CTP enqueue: %w", err)
+		}
+
+		// Find CTPs that match changed branches and enqueue them
+		for _, ctp := range ctpList.Items {
+			// Check if this CTP belongs to this PromotionStrategy
+			if ctp.Labels[promoterv1alpha1.PromotionStrategyLabel] != ps.Name {
+				continue
+			}
+
+			// Check if this CTP's branch has changed
+			if changedBranches[ctp.Spec.ActiveBranch] {
+				r.EnqueueCTP(ctp.Namespace, ctp.Name)
+				logger.V(4).Info("Enqueued CTP for reconciliation", "ctp", ctp.Name, "branch", ctp.Spec.ActiveBranch)
+			}
 		}
 	}
 

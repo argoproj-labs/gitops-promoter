@@ -29,6 +29,7 @@ const (
 //   - ArgoCDCommitStatusConfiguration
 //   - TimedCommitStatusConfiguration
 //   - GitCommitStatusConfiguration
+//   - RequiredStatusCheckCommitStatusConfiguration
 type ControllerConfigurationTypes interface {
 	promoterv1alpha1.PromotionStrategyConfiguration |
 		promoterv1alpha1.ChangeTransferPolicyConfiguration |
@@ -36,7 +37,8 @@ type ControllerConfigurationTypes interface {
 		promoterv1alpha1.CommitStatusConfiguration |
 		promoterv1alpha1.ArgoCDCommitStatusConfiguration |
 		promoterv1alpha1.TimedCommitStatusConfiguration |
-		promoterv1alpha1.GitCommitStatusConfiguration
+		promoterv1alpha1.GitCommitStatusConfiguration |
+		promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration
 }
 
 // ControllerResultTypes is a constraint that defines the set of result types returned by controller
