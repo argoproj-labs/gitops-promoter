@@ -88,7 +88,7 @@ Repeat for each environment branch.
 Each required check gets its own CommitStatus resource with a predictable naming pattern:
 
 ```
-required-status-check-{normalized-context}-{hash}
+required-status-check-{normalized-name}-{hash}
 ```
 
 For example:
@@ -120,12 +120,10 @@ status:
       sha: abc123def456
       phase: pending
       requiredChecks:
-        - context: ci-tests
+        - name: ci-tests
           phase: success
-          commitStatusName: required-status-check-ci-tests-abc12345
-        - context: security-scan
+        - name: security-scan
           phase: pending
-          commitStatusName: required-status-check-security-scan-def67890
 ```
 
 ### List All CommitStatus Resources for Required Checks

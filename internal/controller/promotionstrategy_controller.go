@@ -272,7 +272,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 						// Add a CommitStatusSelector for each required check
 						for _, requiredCheck := range envStatus.RequiredChecks {
 							// The key matches the CommitStatus label that the RSCCS controller creates
-							checkKey := "required-status-check-" + requiredCheck.Context
+							checkKey := "required-status-check-" + requiredCheck.Name
 							checkSelector := promoterv1alpha1.CommitStatusSelector{
 								Key: checkKey,
 							}
@@ -281,7 +281,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 								logger.Info("Added required status check to ProposedCommitStatuses",
 									"checkKey", checkKey,
 									"branch", environment.Branch,
-									"context", requiredCheck.Context,
+									"name", requiredCheck.Name,
 									"ctpName", ctp.Name)
 							} else {
 								logger.Info("Required status check already in ProposedCommitStatuses",

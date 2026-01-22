@@ -12,7 +12,7 @@ import (
 type BranchProtection struct {
 	// RequiredChecks is a configurable list of required checks to return for testing
 	RequiredChecks []string
-	// CheckStatuses is a configurable map of check contexts to their statuses for testing
+	// CheckStatuses is a configurable map of check names to their statuses for testing
 	CheckStatuses map[string]promoterv1alpha1.CommitStatusPhase
 }
 
@@ -29,17 +29,17 @@ func NewFakeBranchProtectionProvider(secret v1.Secret) (*BranchProtection, error
 // DiscoverRequiredChecks returns the configured list of required checks for testing.
 func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *promoterv1alpha1.GitRepository, branch string) ([]scms.BranchProtectionCheck, error) {
 	checks := make([]scms.BranchProtectionCheck, 0, len(bp.RequiredChecks))
-	for _, checkContext := range bp.RequiredChecks {
+	for _, checkName := range bp.RequiredChecks {
 		checks = append(checks, scms.BranchProtectionCheck{
-			Context: checkContext,
+			Name: checkName,
 		})
 	}
 	return checks, nil
 }
 
-// PollCheckStatus returns the configured status for the given check context, or Success if not configured.
-func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv1alpha1.GitRepository, sha string, checkContext string) (promoterv1alpha1.CommitStatusPhase, error) {
-	if status, ok := bp.CheckStatuses[checkContext]; ok {
+// PollCheckStatus returns the configured status for the given check name, or Success if not configured.
+func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv1alpha1.GitRepository, sha string, checkName string) (promoterv1alpha1.CommitStatusPhase, error) {
+	if status, ok := bp.CheckStatuses[checkName]; ok {
 		return status, nil
 	}
 	// Default to success for testing

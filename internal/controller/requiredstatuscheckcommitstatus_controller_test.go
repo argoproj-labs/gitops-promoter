@@ -113,7 +113,7 @@ var _ = Describe("RequiredStatusCheckCommitStatus Controller", func() {
 		It("should create CommitStatus resources for each required check", func() {
 			// This test would verify that a CommitStatus resource is created
 			// for each required check with the correct naming convention:
-			// required-status-check-{context}-{hash}
+			// required-status-check-{name}-{hash}
 		})
 
 		It("should cleanup orphaned CommitStatus resources", func() {
