@@ -92,37 +92,7 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// Check if the TimedCommitStatus is being deleted
 	if !tcs.DeletionTimestamp.IsZero() {
-		// Handle cleanup
-		if controllerutil.ContainsFinalizer(&tcs, promoterv1alpha1.TimedCommitStatusFinalizer) {
-			// Fetch the PromotionStrategy to clean up auto-configured fields
-			var ps promoterv1alpha1.PromotionStrategy
-			psKey := client.ObjectKey{
-				Namespace: tcs.Namespace,
-				Name:      tcs.Spec.PromotionStrategyRef.Name,
-			}
-			err = r.Get(ctx, psKey, &ps)
-			if err != nil {
-				if k8serrors.IsNotFound(err) {
-					// PromotionStrategy already deleted, just remove finalizer
-					logger.Info("PromotionStrategy not found during cleanup, removing finalizer")
-				} else {
-					return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy during cleanup: %w", err)
-				}
-			} else {
-				// Clean up the auto-configured timer check
-				err = r.cleanupTimerCheck(ctx, &tcs, &ps)
-				if err != nil {
-					return ctrl.Result{}, fmt.Errorf("failed to cleanup timer check: %w", err)
-				}
-			}
-
-			// Remove finalizer
-			controllerutil.RemoveFinalizer(&tcs, promoterv1alpha1.TimedCommitStatusFinalizer)
-			if err := r.Update(ctx, &tcs); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
-			}
-		}
-		return ctrl.Result{}, nil
+		return r.handleFinalizerCleanup(ctx, &tcs)
 	}
 
 	// Add finalizer if it doesn't exist
@@ -525,6 +495,45 @@ func (r *TimedCommitStatusReconciler) cleanupTimerCheck(ctx context.Context, tcs
 	}
 
 	return nil
+}
+
+// handleFinalizerCleanup handles the cleanup process when a TimedCommitStatus is being deleted.
+// It removes the auto-configured timer check from the PromotionStrategy and removes the finalizer.
+func (r *TimedCommitStatusReconciler) handleFinalizerCleanup(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	// Only proceed if finalizer exists
+	if !controllerutil.ContainsFinalizer(tcs, promoterv1alpha1.TimedCommitStatusFinalizer) {
+		return ctrl.Result{}, nil
+	}
+
+	// Fetch the PromotionStrategy to clean up auto-configured fields
+	var ps promoterv1alpha1.PromotionStrategy
+	psKey := client.ObjectKey{
+		Namespace: tcs.Namespace,
+		Name:      tcs.Spec.PromotionStrategyRef.Name,
+	}
+	err := r.Get(ctx, psKey, &ps)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy during cleanup: %w", err)
+		}
+		// PromotionStrategy already deleted, just remove finalizer
+		logger.Info("PromotionStrategy not found during cleanup, removing finalizer")
+	} else {
+		// Clean up the auto-configured timer check
+		if err = r.cleanupTimerCheck(ctx, tcs, &ps); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to cleanup timer check: %w", err)
+		}
+	}
+
+	// Remove finalizer
+	controllerutil.RemoveFinalizer(tcs, promoterv1alpha1.TimedCommitStatusFinalizer)
+	if err := r.Update(ctx, tcs); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+	}
+
+	return ctrl.Result{}, nil
 }
 
 // touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
