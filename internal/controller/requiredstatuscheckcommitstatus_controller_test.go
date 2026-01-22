@@ -98,7 +98,6 @@ var _ = Describe("RequiredStatusCheckCommitStatus Controller", func() {
 			// 3. Verifying phase transitions trigger CTP reconciliation
 			// 4. Verifying cleanup of orphaned CommitStatus resources
 			// 5. Verifying dynamic requeue behavior (1 min for pending, configured for success)
-			// 6. Verifying per-environment exclusions work correctly
 		})
 
 		It("should not create RequiredStatusCheckCommitStatus when showRequiredStatusChecks is false", func() {
@@ -115,11 +114,6 @@ var _ = Describe("RequiredStatusCheckCommitStatus Controller", func() {
 			// This test would verify that a CommitStatus resource is created
 			// for each required check with the correct naming convention:
 			// required-status-check-{context}-{hash}
-		})
-
-		It("should apply per-environment exclusions", func() {
-			// This test would verify that checks listed in
-			// ExcludedRequiredStatusChecks are not surfaced as CommitStatus resources
 		})
 
 		It("should cleanup orphaned CommitStatus resources", func() {

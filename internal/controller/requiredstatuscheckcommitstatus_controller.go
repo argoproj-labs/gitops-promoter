@@ -383,17 +383,6 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 		requiredChecks = append(requiredChecks, check.Context)
 	}
 
-	// Apply exclusions
-	if len(env.ExcludedRequiredStatusChecks) > 0 {
-		var filteredChecks []string
-		for _, check := range requiredChecks {
-			if !slices.Contains(env.ExcludedRequiredStatusChecks, check) {
-				filteredChecks = append(filteredChecks, check)
-			}
-		}
-		requiredChecks = filteredChecks
-	}
-
 	return requiredChecks, nil
 }
 

@@ -106,15 +106,6 @@ spec:
                       description: Branch is the name of the active branch for the
                         environment.
                       type: string
-                    excludedRequiredStatusChecks:
-                      description: |-
-                        ExcludedRequiredStatusChecks lists GitHub check contexts to exclude from
-                        visibility when showRequiredStatusChecks is enabled. These checks will still
-                        be enforced by GitHub, but won't be surfaced as CommitStatus resources.
-                        Example: ["ci-tests", "security-scan"]
-                      items:
-                        type: string
-                      type: array
                     proposedCommitStatuses:
                       description: |-
                         ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running

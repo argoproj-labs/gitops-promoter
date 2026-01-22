@@ -98,13 +98,6 @@ type Environment struct {
 	// +listType:=map
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
-
-	// ExcludedRequiredStatusChecks lists GitHub check contexts to exclude from
-	// visibility when showRequiredStatusChecks is enabled. These checks will still
-	// be enforced by GitHub, but won't be surfaced as CommitStatus resources.
-	// Example: ["ci-tests", "security-scan"]
-	// +kubebuilder:validation:Optional
-	ExcludedRequiredStatusChecks []string `json:"excludedRequiredStatusChecks,omitempty"`
 }
 
 // GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.

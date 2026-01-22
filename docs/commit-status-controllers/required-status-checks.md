@@ -16,7 +16,6 @@ The Required Status Check Visibility Controller automatically discovers required
 ## Features
 
 - **Global toggle**: Enable/disable via `showRequiredStatusChecks` on PromotionStrategy (disabled by default)
-- **Per-environment exclusions**: Exclude specific checks from visibility per environment
 - **Granular visibility**: One CommitStatus resource per required check (not per ruleset)
 - **Dynamic polling**: 1 minute intervals when checks are pending, configurable interval otherwise
 - **Automatic cleanup**: Removes orphaned CommitStatus resources when checks are removed from rulesets
@@ -44,37 +43,6 @@ spec:
     - branch: environment/staging
     - branch: environment/prod
 ```
-
-### Exclude Specific Checks
-
-You can exclude specific required checks from visibility on a per-environment basis:
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: PromotionStrategy
-metadata:
-  name: my-app
-spec:
-  showRequiredStatusChecks: true
-
-  repositoryReference:
-    name: my-git-repo
-
-  environments:
-    - branch: environment/dev
-      # No exclusions - all required checks will be visible
-
-    - branch: environment/staging
-      excludedRequiredStatusChecks:
-        - "ci/expensive-test"  # Don't surface this check
-        - "security/nightly-scan"
-
-    - branch: environment/prod
-      excludedRequiredStatusChecks:
-        - "ci/nightly-scan"  # Don't surface this check
-```
-
-**Note:** Excluded checks are still enforced by GitHub - they're just not visible as CommitStatus resources in GitOps Promoter.
 
 ### Configure Polling Interval
 
@@ -262,8 +230,7 @@ The controller queries GitHub Rulesets on every reconcile loop. Changes to rules
 1. Verify ruleset configuration on GitHub:
    - Settings → Rules → Rulesets
    - Check which rulesets apply to the branch
-2. Use `excludedRequiredStatusChecks` to filter out unwanted checks
-3. Ensure rulesets target the correct branches
+2. Ensure rulesets target the correct branches
 
 ### Rate Limiting
 
@@ -319,31 +286,6 @@ spec:
     - branch: environment/prod
 ```
 
-### With Exclusions
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: PromotionStrategy
-metadata:
-  name: my-app
-spec:
-  showRequiredStatusChecks: true
-  repositoryReference:
-    name: my-app-repo
-  environments:
-    - branch: environment/dev
-      # All checks visible in dev
-
-    - branch: environment/staging
-      excludedRequiredStatusChecks:
-        - "ci/expensive-integration-test"  # Too slow for staging
-        - "security/nightly-scan"  # Only runs nightly
-
-    - branch: environment/prod
-      excludedRequiredStatusChecks:
-        - "ci/nightly-scan"  # Only runs nightly
-```
-
 ## Architecture
 
 ### CRD Hierarchy
@@ -363,7 +305,6 @@ CommitStatus (multiple)
    - Get all ChangeTransferPolicies for the PromotionStrategy
    - For each environment:
      - Call `GitHub.Repositories.GetRulesForBranch()` to discover required checks
-     - Apply per-environment exclusions
      - For each required check:
        - Call `GitHub.Checks.ListCheckRunsForRef()` to get check status
        - Create/update CommitStatus resource
