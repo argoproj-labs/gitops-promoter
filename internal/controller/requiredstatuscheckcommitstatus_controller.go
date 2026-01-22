@@ -496,7 +496,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 			cs.Labels = make(map[string]string)
 		}
 		cs.Labels[promoterv1alpha1.CommitStatusLabel] = fmt.Sprintf("required-status-check-%s", checkContext)
-		cs.Labels[promoterv1alpha1.EnvironmentLabel] = normalizeLabel(branch)
+		cs.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
 		cs.Labels[promoterv1alpha1.RequiredStatusCheckCommitStatusLabel] = rsccs.Name
 
 		// Set spec
@@ -534,15 +534,6 @@ func generateCommitStatusName(checkContext string, branch string) string {
 	normalized = strings.ReplaceAll(normalized, ".", "-")
 
 	return fmt.Sprintf("required-status-check-%s-%s", normalized, hash)
-}
-
-// normalizeLabel normalizes a string to be a valid Kubernetes label value
-func normalizeLabel(s string) string {
-	normalized := strings.ToLower(s)
-	normalized = strings.ReplaceAll(normalized, "/", "-")
-	normalized = strings.ReplaceAll(normalized, "_", "-")
-	normalized = strings.ReplaceAll(normalized, ".", "-")
-	return normalized
 }
 
 // calculateAggregatedPhase calculates the aggregated phase for an environment

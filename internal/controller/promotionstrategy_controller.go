@@ -30,6 +30,7 @@ import (
 
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
@@ -178,6 +179,12 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
+		Watches(&promoterv1alpha1.RequiredStatusCheckCommitStatus{}, handler.EnqueueRequestForOwner(
+			mgr.GetScheme(),
+			mgr.GetRESTMapper(),
+			&promoterv1alpha1.PromotionStrategy{},
+			handler.OnlyControllerOwner(),
+		)).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
@@ -232,6 +239,73 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			}
 			if !slices.Contains(ctp.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector) {
 				ctp.Spec.ProposedCommitStatuses = append(ctp.Spec.ProposedCommitStatuses, previousEnvironmentCommitStatusSelector)
+			}
+		}
+
+		// Automatically add required status checks if the feature is enabled
+		if ps.GetShowRequiredStatusChecks() {
+			logger.Info("Processing required status checks for CTP",
+				"branch", environment.Branch,
+				"ctpName", ctp.Name)
+			// Get the RequiredStatusCheckCommitStatus for this PromotionStrategy
+			// Use ps.Name directly (not KubeSafeUniqueName) to match how RSCCS is created
+			rsccsName := ps.Name
+			rsccs := &promoterv1alpha1.RequiredStatusCheckCommitStatus{}
+			getErr := r.Get(ctx, client.ObjectKey{Name: rsccsName, Namespace: ps.Namespace}, rsccs)
+			if getErr == nil {
+				logger.Info("Found RSCCS, checking environments",
+					"rsccsName", rsccsName,
+					"numEnvironments", len(rsccs.Status.Environments),
+					"targetBranch", environment.Branch)
+				// Find the environment status for this CTP's branch
+				foundEnv := false
+				for _, envStatus := range rsccs.Status.Environments {
+					logger.Info("Checking environment",
+						"envBranch", envStatus.Branch,
+						"targetBranch", environment.Branch,
+						"numRequiredChecks", len(envStatus.RequiredChecks))
+					if envStatus.Branch == environment.Branch {
+						foundEnv = true
+						logger.Info("Found matching environment",
+							"branch", environment.Branch,
+							"numRequiredChecks", len(envStatus.RequiredChecks))
+						// Add a CommitStatusSelector for each required check
+						for _, requiredCheck := range envStatus.RequiredChecks {
+							// The key matches the CommitStatus label that the RSCCS controller creates
+							checkKey := "required-status-check-" + requiredCheck.Context
+							checkSelector := promoterv1alpha1.CommitStatusSelector{
+								Key: checkKey,
+							}
+							if !slices.Contains(ctp.Spec.ProposedCommitStatuses, checkSelector) {
+								ctp.Spec.ProposedCommitStatuses = append(ctp.Spec.ProposedCommitStatuses, checkSelector)
+								logger.Info("Added required status check to ProposedCommitStatuses",
+									"checkKey", checkKey,
+									"branch", environment.Branch,
+									"context", requiredCheck.Context,
+									"ctpName", ctp.Name)
+							} else {
+								logger.Info("Required status check already in ProposedCommitStatuses",
+									"checkKey", checkKey,
+									"branch", environment.Branch)
+							}
+						}
+						break
+					}
+				}
+				if !foundEnv {
+					logger.Info("Did not find matching environment in RSCCS status",
+						"targetBranch", environment.Branch,
+						"rsccsEnvironments", len(rsccs.Status.Environments))
+				}
+			} else if !k8serrors.IsNotFound(getErr) {
+				// Log non-NotFound errors
+				logger.Error(getErr, "Failed to get RequiredStatusCheckCommitStatus",
+					"name", rsccsName,
+					"namespace", ps.Namespace)
+			} else {
+				logger.Info("RSCCS not found",
+					"name", rsccsName,
+					"namespace", ps.Namespace)
 			}
 		}
 
