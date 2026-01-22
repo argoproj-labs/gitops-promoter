@@ -46,7 +46,9 @@ This configuration:
 
 ### Integrating with PromotionStrategy
 
-To use time-based gating, configure your PromotionStrategy to check for the `timer` commit status key as an active commit status:
+The TimedCommitStatus controller automatically configures the `timer` commit status as an active commit status for environments that have timed gates configured. This happens via server-side apply, so you don't need to manually add it to your PromotionStrategy.
+
+Here's a basic PromotionStrategy that will work with TimedCommitStatus:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -56,22 +58,24 @@ metadata:
 spec:
   gitRepositoryRef:
     name: webservice-tier-1
-  activeCommitStatuses:
-    - key: timer
   environments:
     - branch: environment/development
     - branch: environment/staging
     - branch: environment/production
 ```
 
+When you create a TimedCommitStatus resource (shown in the example above), the controller will automatically add `activeCommitStatuses: [{key: "timer"}]` to the environments configured with timed gates (`development` and `staging` in the earlier example).
+
+**Note:** If you want to manually specify the `timer` check in your PromotionStrategy, you can still do so. The TimedCommitStatus controller uses server-side apply with its own field owner, so it won't conflict with manual configuration.
+
 In this configuration:
 - Changes must meet the 1-hour requirement in `development` before being promoted to `staging`
 - Changes must meet the 4-hour requirement in `staging` before being promoted to `production`
-- The timed gate applies globally as an active commit status, preventing promotions when time requirements are not met
+- The `timer` active commit status is automatically added by the TimedCommitStatus controller to the environments configured with timed gates
 
 ### Complete Example with Multiple Gates
 
-You can combine time-based gating with other commit status checks:
+You can combine time-based gating with other commit status checks. The TimedCommitStatus controller will automatically configure the `timer` check, so you only need to specify other checks:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -83,7 +87,6 @@ spec:
     name: webservice-tier-1
   activeCommitStatuses:
     - key: argocd-health
-    - key: timer
   proposedCommitStatuses:
     - key: manual-approval
   environments:
@@ -109,9 +112,9 @@ spec:
 
 This configuration requires:
 - Argo CD health checks to pass in all environments (active commit status)
-- 2-hour soak time in development before promoting to staging
-- 8-hour soak time in staging before promoting to production
-- 24-hour soak time in production (just informational does not block any promotion, because no next environment)
+- 2-hour soak time in development before promoting to staging (automatically configured)
+- 8-hour soak time in staging before promoting to production (automatically configured)
+- 24-hour soak time in production (just informational, does not block any promotion since there's no next environment)
 - Manual approval before any promotion (proposed commit status)
 
 ## Duration Formats
