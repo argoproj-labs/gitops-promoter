@@ -15,6 +15,9 @@ import (
 //go:embed app/app.yaml
 var appYAML []byte
 
+//go:embed config/requeue-duration.yaml
+var controllerConfigYAML []byte
+
 // Installer handles cluster setup operations
 type Installer struct {
 	config     Config
@@ -53,7 +56,7 @@ func (i *Installer) SetupCluster(ctx context.Context) error {
 		return fmt.Errorf("failed to patch ArgoCD: %w", err)
 	}
 
-	if err := i.PatchControllerConfiguration(ctx); err != nil {
+	if err := i.ApplyControllerConfiguration(ctx); err != nil {
 		return fmt.Errorf("failed to patch controller configuration: %w", err)
 	}
 
@@ -98,20 +101,11 @@ func (i *Installer) PatchArgoCD(ctx context.Context) error {
 	return nil
 }
 
-// PatchControllerConfiguration patches the controller configuration
-func (i *Installer) PatchControllerConfiguration(ctx context.Context) error {
-	patch := `{"spec":{"promotionStrategy":{"workQueue":{"requeueDuration":"30s"}},"changeTransferPolicy":{"workQueue":{"requeueDuration":"30s"}},"argocdCommitStatus":{"workQueue":{"requeueDuration":"30s"}},"pullRequest":{"workQueue":{"requeueDuration":"30s"}}}}`
-
-	args := []string{
-		"patch", "-n", "promoter-system",
-		"controllerconfiguration", "promoter-controller-configuration",
-		"--type", "merge", "-p", patch,
+// ApplyControllerConfiguration applies the controller configuration manifest to the cluster.
+func (i *Installer) ApplyControllerConfiguration(ctx context.Context) error {
+	if err := i.kubectlApplyManifest(ctx, string(controllerConfigYAML), ""); err != nil {
+		return fmt.Errorf("failed to apply controller configuration: %w", err)
 	}
-
-	if err := i.runKubectl(ctx, args...); err != nil {
-		return fmt.Errorf("failed to patch controller configuration: %w", err)
-	}
-
 	color.Green("Controller configuration patched ✓")
 	return nil
 }
@@ -149,7 +143,10 @@ func (i *Installer) runKubectl(ctx context.Context, args ...string) error {
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("kubectl %v failed: %w", args, err)
+	}
+	return nil
 }
 
 func (i *Installer) kubectlApplyURL(ctx context.Context, url, namespace string, serverSide bool) error {
@@ -175,5 +172,8 @@ func (i *Installer) kubectlApplyManifest(ctx context.Context, manifest, namespac
 	cmd.Stdin = strings.NewReader(manifest)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("kubectl %v failed: %w", args, err)
+	}
+	return nil
 }

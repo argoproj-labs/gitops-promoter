@@ -1,0 +1,18 @@
+piVersion: promoter.argoproj.io/v1alpha1
+kind: ControllerConfiguration
+metadata:
+  name: promoter-controller-configuration
+  namespace: promoter-system
+spec:
+  promotionStrategy:
+    workQueue:
+      requeueDuration: 30s
+  changeTransferPolicy:
+    workQueue:
+      requeueDuration: 30s
+  argocdCommitStatus:
+    workQueue:
+      requeueDuration: 30s
+  pullRequest:
+    workQueue:
+      requeueDuration: 30s

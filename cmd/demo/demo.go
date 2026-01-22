@@ -140,7 +140,7 @@ func NewDemoCommand() *cobra.Command {
 			color.Green("Application installed!")
 
 			// Update requeue interval
-			err = installer.PatchControllerConfiguration(ctx)
+			err = installer.ApplyControllerConfiguration(ctx)
 			if err != nil {
 				return err
 			}
