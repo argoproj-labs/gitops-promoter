@@ -15,131 +15,82 @@ import (
 //go:embed app/app.yaml
 var appYAML []byte
 
-func setupCluster(ctx context.Context) error {
-	// Install ArgoCD
-	if err := InstallArgoCD(ctx); err != nil {
+// Installer handles cluster setup operations
+type Installer struct {
+	config     Config
+	configPath string
+}
+
+// NewInstaller creates a new Installer with the given config path
+func NewInstaller(configPath string) (*Installer, error) {
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config: %w", err)
+	}
+
+	var config Config
+	if err := yaml.Unmarshal(content, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	return &Installer{
+		config:     config,
+		configPath: configPath,
+	}, nil
+}
+
+// SetupCluster runs the full cluster setup
+func (i *Installer) SetupCluster(ctx context.Context) error {
+	if err := i.InstallArgoCD(ctx); err != nil {
 		return fmt.Errorf("failed to install ArgoCD: %w", err)
 	}
 
-	// Install GitOps Promoter
-	if err := InstallGitOpsPromoter(ctx); err != nil {
+	if err := i.InstallGitOpsPromoter(ctx); err != nil {
 		return fmt.Errorf("failed to install GitOps Promoter: %w", err)
 	}
 
-	// Patch ArgoCD to add extension
-	if err := PatchArgoCD(ctx); err != nil {
+	if err := i.PatchArgoCD(ctx); err != nil {
 		return fmt.Errorf("failed to patch ArgoCD: %w", err)
 	}
 
+	if err := i.PatchControllerConfiguration(ctx); err != nil {
+		return fmt.Errorf("failed to patch controller configuration: %w", err)
+	}
+
 	return nil
 }
 
-// InstallArgoCD installs ArgoCD into the cluster using the configured upstream manifest
-func InstallArgoCD(ctx context.Context) error {
-	// Read config file
-	content, err := os.ReadFile("cmd/demo/config/config.yaml")
-	if err != nil {
-		return fmt.Errorf("failed to read config: %w", err)
+// InstallArgoCD installs ArgoCD into the cluster
+func (i *Installer) InstallArgoCD(ctx context.Context) error {
+	if err := i.ensureNamespace(ctx, "argocd"); err != nil {
+		return err
 	}
 
-	// Parse YAML
-	var config Config
-	if err := yaml.Unmarshal(content, &config); err != nil {
-		return fmt.Errorf("failed to parse config: %w", err)
-	}
-
-	if err := EnsureNamespace(ctx, "argocd"); err != nil {
-		return fmt.Errorf("failed to ensure argocd namespace: %w", err)
-	}
-
-	url := config.ArgoCD.Upstream
-
-	// Run kubectl apply
-	color.Green("Installing ArgoCD from %s...\n", url)
-	args := []string{"apply", "--server-side", "-n", "argocd", "-f", url}
-
-	cmd := exec.CommandContext(ctx, "kubectl", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("kubectl apply failed: %w", err)
-	}
-
-	color.Green("ArgoCD installed ✓")
-	return nil
+	color.Green("Installing ArgoCD from %s...\n", i.config.ArgoCD.Upstream)
+	return i.kubectlApplyURL(ctx, i.config.ArgoCD.Upstream, "argocd", true)
 }
 
-// InstallGitOpsPromoter installs the GitOps Promoter controller into the cluster
-func InstallGitOpsPromoter(ctx context.Context) error {
-	content, err := os.ReadFile("cmd/demo/config/config.yaml")
-	if err != nil {
-		return fmt.Errorf("failed to read config: %w", err)
+// InstallGitOpsPromoter installs the GitOps Promoter controller
+func (i *Installer) InstallGitOpsPromoter(ctx context.Context) error {
+	if err := i.ensureNamespace(ctx, "promoter-system"); err != nil {
+		return err
 	}
 
-	var config Config
-	if err := yaml.Unmarshal(content, &config); err != nil {
-		return fmt.Errorf("failed to parse config: %w", err)
-	}
-
-	if err := EnsureNamespace(ctx, "gitops-promoter"); err != nil {
-		return fmt.Errorf("failed to ensure gitops-promoter namespace: %w", err)
-	}
-
-	url := config.GitOpsPromoter.Upstream
-	color.Green("Installing GitOps Promoter from %s...\n", url)
-	args := []string{"apply", "-f", url}
-
-	cmd := exec.CommandContext(ctx, "kubectl", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("kubectl apply failed: %w", err)
+	color.Green("Installing GitOps Promoter from %s...\n", i.config.GitOpsPromoter.Upstream)
+	if err := i.kubectlApplyURL(ctx, i.config.GitOpsPromoter.Upstream, "", false); err != nil {
+		return err
 	}
 
 	color.Green("GitOps Promoter installed ✓")
 	return nil
 }
 
-// EnsureNamespace creates a namespace if it doesn't already exist
-func EnsureNamespace(ctx context.Context, namespace string) error {
-	if namespace == "" {
-		return nil
-	}
+// PatchArgoCD patches the ArgoCD server deployment
+func (i *Installer) PatchArgoCD(ctx context.Context) error {
+	patchFile := "cmd/demo/config/argocd-extension.yaml"
+	args := []string{"patch", "deployment", "argocd-server", "-n", "argocd", "--patch-file", patchFile}
 
-	setupLog.Info("Ensuring namespace exists", "namespace", namespace)
-
-	// Check if namespace exists
-	checkCmd := exec.CommandContext(ctx, "kubectl", "get", "namespace", namespace)
-	if err := checkCmd.Run(); err == nil {
-		setupLog.Info("Namespace already exists", "namespace", namespace)
-		return nil
-	}
-
-	// Create namespace
-	createCmd := exec.CommandContext(ctx, "kubectl", "create", "namespace", namespace)
-	createCmd.Stdout = os.Stdout
-	createCmd.Stderr = os.Stderr
-
-	if err := createCmd.Run(); err != nil {
-		return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
-	}
-
-	setupLog.Info("Namespace created", "namespace", namespace)
-	return nil
-}
-
-// PatchArgoCD patches the ArgoCD server deployment to enable the extension
-func PatchArgoCD(ctx context.Context) error {
-	patch := "cmd/demo/config/argocd-extension.yaml"
-
-	args := []string{"patch", "deployment", "argocd-server", "-n", "argocd", "--patch-file", patch}
-	cmd := exec.CommandContext(ctx, "kubectl", args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
+	if err := i.runKubectl(ctx, args...); err != nil {
 		return fmt.Errorf("kubectl patch failed: %w", err)
 	}
 
@@ -147,28 +98,82 @@ func PatchArgoCD(ctx context.Context) error {
 	return nil
 }
 
-// ApplyBaseApp applies the embedded ArgoCD base application
-func ApplyBaseApp(ctx context.Context) error {
-	if err := KubectlApply(ctx, string(appYAML), "argocd"); err != nil {
-		return fmt.Errorf("failed to apply base app: %w", err)
+// PatchControllerConfiguration patches the controller configuration
+func (i *Installer) PatchControllerConfiguration(ctx context.Context) error {
+	patch := `{"spec":{"promotionStrategy":{"workQueue":{"requeueDuration":"30s"}},"changeTransferPolicy":{"workQueue":{"requeueDuration":"30s"}},"argocdCommitStatus":{"workQueue":{"requeueDuration":"30s"}},"pullRequest":{"workQueue":{"requeueDuration":"30s"}}}}`
+
+	args := []string{
+		"patch", "-n", "promoter-system",
+		"controllerconfiguration", "promoter-controller-configuration",
+		"--type", "merge", "-p", patch,
 	}
+
+	if err := i.runKubectl(ctx, args...); err != nil {
+		return fmt.Errorf("failed to patch controller configuration: %w", err)
+	}
+
+	color.Green("Controller configuration patched ✓")
 	return nil
 }
 
-// KubectlApply applies a YAML manifest string using kubectl
-func KubectlApply(ctx context.Context, manifest string, namespace string) error {
+// ApplyBaseApp applies the embedded ArgoCD base application
+func (i *Installer) ApplyBaseApp(ctx context.Context) error {
+	return i.kubectlApplyManifest(ctx, string(appYAML), "argocd")
+}
+
+// --- Private helpers ---
+
+func (i *Installer) ensureNamespace(ctx context.Context, namespace string) error {
+	if namespace == "" {
+		return nil
+	}
+
+	setupLog.Info("Ensuring namespace exists", "namespace", namespace)
+
+	// Check if exists
+	if err := exec.CommandContext(ctx, "kubectl", "get", "namespace", namespace).Run(); err == nil {
+		setupLog.Info("Namespace already exists", "namespace", namespace)
+		return nil
+	}
+
+	// Create
+	if err := i.runKubectl(ctx, "create", "namespace", namespace); err != nil {
+		return fmt.Errorf("failed to create namespace %s: %w", namespace, err)
+	}
+
+	setupLog.Info("Namespace created", "namespace", namespace)
+	return nil
+}
+
+func (i *Installer) runKubectl(ctx context.Context, args ...string) error {
+	cmd := exec.CommandContext(ctx, "kubectl", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func (i *Installer) kubectlApplyURL(ctx context.Context, url, namespace string, serverSide bool) error {
+	args := []string{"apply"}
+	if serverSide {
+		args = append(args, "--server-side")
+	}
+	if namespace != "" {
+		args = append(args, "-n", namespace)
+	}
+	args = append(args, "-f", url)
+
+	return i.runKubectl(ctx, args...)
+}
+
+func (i *Installer) kubectlApplyManifest(ctx context.Context, manifest, namespace string) error {
 	args := []string{"apply", "-f", "-"}
 	if namespace != "" {
-		args = append([]string{"-n", namespace}, args...)
+		args = append(args, "-n", namespace)
 	}
 
 	cmd := exec.CommandContext(ctx, "kubectl", args...)
 	cmd.Stdin = strings.NewReader(manifest)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("kubectl apply failed: %w", err)
-	}
-	return nil
+	return cmd.Run()
 }

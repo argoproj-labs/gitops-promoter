@@ -89,6 +89,5 @@ func UploadManifests(
 			fmt.Printf("Created %s ✓\n", targetPath)
 		}
 	}
-
 	return nil
 }

@@ -40,6 +40,10 @@ func NewDemoCommand() *cobra.Command {
 		Short: "Setup a new gitops-promoter demo repository",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
+			installer, err := NewInstaller("cmd/demo/config/config.yaml")
+			if err != nil {
+				return err
+			}
 
 			// Prompt for credentials
 			credentials, err := NewInteractivePrompter().GetCredentials()
@@ -59,7 +63,7 @@ func NewDemoCommand() *cobra.Command {
 			username := user.GetLogin()
 			color.Green("Current github user: %s\n", username)
 
-			if err := setupCluster(ctx); err != nil {
+			if err := installer.SetupCluster(ctx); err != nil {
 				return fmt.Errorf("failed to setup cluster: %w", err)
 			}
 
@@ -122,7 +126,7 @@ func NewDemoCommand() *cobra.Command {
 			color.Green("Repo secrets created!")
 
 			// Create base app
-			if err := ApplyBaseApp(ctx); err != nil {
+			if err := installer.ApplyBaseApp(ctx); err != nil {
 				return err
 			}
 			color.Green("Base app applied!")
@@ -133,11 +137,17 @@ func NewDemoCommand() *cobra.Command {
 				return fmt.Errorf("failed to copy directory: %w", err)
 			}
 
-			color.Green("Setup complete!")
-			return nil
+			color.Green("Application installed!")
 
 			// Update requeue interval
+			err = installer.PatchControllerConfiguration(ctx)
+			if err != nil {
+				return err
+			}
+			color.Green("Updating requeue interval")
 
+			color.Green("Installation complete!")
+			return nil
 		},
 	}
 

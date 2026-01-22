@@ -1,5 +1,5 @@
 service:
-  type: LoadBalancer
+  type: NodePort
 
 region: us-west-2
 
