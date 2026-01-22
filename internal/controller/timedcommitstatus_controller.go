@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -88,6 +89,51 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// Remove any existing Ready condition. We want to start fresh.
 	meta.RemoveStatusCondition(tcs.GetConditions(), string(promoterConditions.Ready))
+
+	// Check if the TimedCommitStatus is being deleted
+	if !tcs.DeletionTimestamp.IsZero() {
+		// Handle cleanup
+		if controllerutil.ContainsFinalizer(&tcs, promoterv1alpha1.TimedCommitStatusFinalizer) {
+			// Fetch the PromotionStrategy to clean up auto-configured fields
+			var ps promoterv1alpha1.PromotionStrategy
+			psKey := client.ObjectKey{
+				Namespace: tcs.Namespace,
+				Name:      tcs.Spec.PromotionStrategyRef.Name,
+			}
+			err = r.Get(ctx, psKey, &ps)
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					// PromotionStrategy already deleted, just remove finalizer
+					logger.Info("PromotionStrategy not found during cleanup, removing finalizer")
+				} else {
+					return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy during cleanup: %w", err)
+				}
+			} else {
+				// Clean up the auto-configured timer check
+				err = r.cleanupTimerCheck(ctx, &tcs, &ps)
+				if err != nil {
+					return ctrl.Result{}, fmt.Errorf("failed to cleanup timer check: %w", err)
+				}
+			}
+
+			// Remove finalizer
+			controllerutil.RemoveFinalizer(&tcs, promoterv1alpha1.TimedCommitStatusFinalizer)
+			if err := r.Update(ctx, &tcs); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+			}
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Add finalizer if it doesn't exist
+	if !controllerutil.ContainsFinalizer(&tcs, promoterv1alpha1.TimedCommitStatusFinalizer) {
+		controllerutil.AddFinalizer(&tcs, promoterv1alpha1.TimedCommitStatusFinalizer)
+		if err := r.Update(ctx, &tcs); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+		// Return and requeue - the update will trigger another reconciliation
+		return ctrl.Result{}, nil
+	}
 
 	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
@@ -429,6 +475,53 @@ func (r *TimedCommitStatusReconciler) autoConfigureTimerCheck(ctx context.Contex
 		logger.V(4).Info("Auto-configured timer check on PromotionStrategy environments",
 			"promotionStrategy", ps.Name,
 			"configuredEnvironments", len(envApplyConfigs))
+	}
+
+	return nil
+}
+
+// cleanupTimerCheck removes the auto-configured "timer" active commit status
+// from PromotionStrategy environments when the TimedCommitStatus is deleted.
+func (r *TimedCommitStatusReconciler) cleanupTimerCheck(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
+	logger := log.FromContext(ctx)
+
+	// Build a map of branches configured in the TimedCommitStatus for quick lookup
+	timedBranches := make(map[string]bool, len(tcs.Spec.Environments))
+	for _, env := range tcs.Spec.Environments {
+		timedBranches[env.Branch] = true
+	}
+
+	// Build the apply configuration to remove timer check from environments
+	psApply := acv1alpha1.PromotionStrategy(ps.Name, ps.Namespace)
+	specApply := acv1alpha1.PromotionStrategySpec()
+	envApplyConfigs := make([]*acv1alpha1.EnvironmentApplyConfiguration, 0)
+
+	for _, env := range ps.Spec.Environments {
+		// Only clean up environments that were configured in the TimedCommitStatus
+		if timedBranches[env.Branch] {
+			// Create environment config with empty activeCommitStatuses to remove the timer check
+			// Server-side apply with our field owner will remove our managed field
+			envApply := acv1alpha1.Environment().
+				WithBranch(env.Branch).
+				WithActiveCommitStatuses() // Empty slice removes the field we manage
+
+			envApplyConfigs = append(envApplyConfigs, envApply)
+		}
+	}
+
+	// Only apply if we have environments to clean up
+	if len(envApplyConfigs) > 0 {
+		specApply = specApply.WithEnvironments(envApplyConfigs...)
+		psApply = psApply.WithSpec(specApply)
+
+		// Apply using Server-Side Apply - this will remove the fields managed by our field owner
+		if err := r.Patch(ctx, ps, utils.ApplyPatch{ApplyConfig: psApply}, client.FieldOwner(constants.TimedCommitStatusControllerFieldOwner)); err != nil {
+			return fmt.Errorf("failed to cleanup timer check from PromotionStrategy: %w", err)
+		}
+
+		logger.Info("Cleaned up timer check from PromotionStrategy environments",
+			"promotionStrategy", ps.Name,
+			"cleanedEnvironments", len(envApplyConfigs))
 	}
 
 	return nil

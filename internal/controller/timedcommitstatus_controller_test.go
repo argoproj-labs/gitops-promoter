@@ -682,6 +682,77 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				g.Expect(foundFieldOwner).To(BeTrue(), "PromotionStrategy should have TimedCommitStatus controller as field owner")
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("should cleanup timer activeCommitStatus when TimedCommitStatus is deleted", func() {
+			By("Verifying finalizer was added during creation")
+			Eventually(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-autoconfig",
+					Namespace: "default",
+				}, &tcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(tcs.Finalizers).To(ContainElement(promoterv1alpha1.TimedCommitStatusFinalizer),
+					"TimedCommitStatus should have finalizer")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting the TimedCommitStatus resource")
+			Expect(k8sClient.Delete(ctx, timedCommitStatus)).To(Succeed())
+
+			By("Verifying resource has DeletionTimestamp but is not immediately deleted (finalizer blocks it)")
+			Eventually(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-autoconfig",
+					Namespace: "default",
+				}, &tcs)
+				g.Expect(err).NotTo(HaveOccurred(), "Resource should still exist while finalizer is present")
+				g.Expect(tcs.DeletionTimestamp.IsZero()).To(BeFalse(), "DeletionTimestamp should be set")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Waiting for the PromotionStrategy to have timer check removed")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Verify the PromotionStrategy has environments configured
+				g.Expect(ps.Spec.Environments).To(HaveLen(3))
+
+				// Check that development environment NO LONGER has timer activeCommitStatus
+				found := false
+				for _, cs := range ps.Spec.Environments[0].ActiveCommitStatuses {
+					if cs.Key == promoterv1alpha1.TimerCommitStatusKey {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeFalse(), "Development environment should NOT have timer activeCommitStatus after deletion")
+
+				// Check that staging environment NO LONGER has timer activeCommitStatus
+				found = false
+				for _, cs := range ps.Spec.Environments[1].ActiveCommitStatuses {
+					if cs.Key == promoterv1alpha1.TimerCommitStatusKey {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeFalse(), "Staging environment should NOT have timer activeCommitStatus after deletion")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the TimedCommitStatus resource is fully deleted after finalizer removal")
+			Eventually(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-autoconfig",
+					Namespace: "default",
+				}, &tcs)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "TimedCommitStatus should be deleted after finalizer is removed")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 })
 
