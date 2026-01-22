@@ -287,7 +287,6 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 			envCheckStatuses = append(envCheckStatuses, promoterv1alpha1.RequiredCheckStatus{
 				Context:          checkContext,
 				Phase:            phase,
-				CommitStatusName: cs.Name,
 			})
 		}
 

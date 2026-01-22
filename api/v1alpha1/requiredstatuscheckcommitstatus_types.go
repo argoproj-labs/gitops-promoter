@@ -74,10 +74,6 @@ type RequiredCheckStatus struct {
 	// +kubebuilder:validation:Enum=pending;success;failure
 	// +required
 	Phase CommitStatusPhase `json:"phase"`
-
-	// CommitStatusName is the name of the CommitStatus resource created for this check
-	// +optional
-	CommitStatusName string `json:"commitStatusName,omitempty"`
 }
 
 // +kubebuilder:object:root=true

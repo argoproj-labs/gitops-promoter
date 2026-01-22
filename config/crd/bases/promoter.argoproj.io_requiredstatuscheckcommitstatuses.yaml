@@ -148,10 +148,6 @@ spec:
                         description: RequiredCheckStatus defines the status of a single
                           required check.
                         properties:
-                          commitStatusName:
-                            description: CommitStatusName is the name of the CommitStatus
-                              resource created for this check
-                            type: string
                           context:
                             description: Context is the check context name
                             type: string
