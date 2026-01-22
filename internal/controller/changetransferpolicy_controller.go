@@ -686,9 +686,10 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 				csPhase = promoterv1alpha1.CommitPhasePending
 			}
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-				Key:   status.Key,
-				Phase: string(csPhase),
-				Url:   csList.Items[0].Spec.Url,
+				Key:         status.Key,
+				Phase:       string(csPhase),
+				Url:         csList.Items[0].Spec.Url,
+				Description: csList.Items[0].Spec.Description,
 			})
 			found = true
 			phase = csPhase

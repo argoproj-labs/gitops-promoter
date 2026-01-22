@@ -44,7 +44,12 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
           {checks.map((check, index) => (
             <div key={index} className="health-check-item">
               <StatusIcon phase={check.status as StatusType} type="status" />
-              <span className="health-check-name">{check.name}</span>
+              <span 
+                className="health-check-name"
+                title={check.description || undefined}
+              >
+                {check.name}
+              </span>
               {check.url && (
                 <a 
                   href={check.url} 

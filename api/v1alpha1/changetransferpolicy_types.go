@@ -75,6 +75,9 @@ type ChangeRequestPolicyCommitStatusPhase struct {
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
+
+	// Description is the description of the commit status
+	Description string `json:"description,omitempty"`
 }
 
 // CommitBranchState defines the state of a branch in a ChangeTransferPolicy.
