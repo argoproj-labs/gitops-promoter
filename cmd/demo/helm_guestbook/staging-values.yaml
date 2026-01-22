@@ -15,7 +15,7 @@ service:
   type: ClusterIP
   port: 80
 
-region: us-central1
+region: us-central-2
 
 ingress:
   enabled: false

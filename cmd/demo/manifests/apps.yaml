@@ -73,7 +73,7 @@ metadata:
   namespace: argocd
   labels:
     # This label allows the ArgoCDCommitStatus to find the applications.
-    app-name: helm-guestbook-west
+    app-name: helm-guestbook
 spec:
   project: default
   destination:
@@ -86,7 +86,6 @@ spec:
       targetRevision: HEAD
       helm:
         valueFiles:
-          - dev-values.yaml
           - values-production-west.yaml
     hydrateTo:
       targetBranch: environment/prod-next
@@ -108,7 +107,7 @@ metadata:
   namespace: argocd
   labels:
     # This label allows the ArgoCDCommitStatus to find the applications.
-    app-name: helm-guestbook-east
+    app-name: helm-guestbook
 spec:
   project: default
   destination:
@@ -121,7 +120,6 @@ spec:
       targetRevision: HEAD
       helm:
         valueFiles:
-          - dev-values.yaml
           - values-production-east.yaml
     hydrateTo:
       targetBranch: environment/prod-next
