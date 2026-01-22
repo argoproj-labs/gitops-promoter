@@ -126,7 +126,7 @@ func NewDemoCommand() *cobra.Command {
 			color.Green("Repo secrets created!")
 
 			// Create base app
-			if err := installer.ApplyBaseApp(ctx); err != nil {
+			if err := installer.ApplyBaseApp(ctx, username, repoName); err != nil {
 				return err
 			}
 			color.Green("Base app applied!")

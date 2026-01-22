@@ -117,8 +117,10 @@ func (i *Installer) PatchControllerConfiguration(ctx context.Context) error {
 }
 
 // ApplyBaseApp applies the embedded ArgoCD base application
-func (i *Installer) ApplyBaseApp(ctx context.Context) error {
-	return i.kubectlApplyManifest(ctx, string(appYAML), "argocd")
+func (i *Installer) ApplyBaseApp(ctx context.Context, githubUser string, repoName string) error {
+	modifiedYAML := strings.ReplaceAll(string(appYAML), "<GITHUB_ORG_USERNAME>", githubUser)
+	modifiedYAML = strings.ReplaceAll(modifiedYAML, "<REPO_NAME>", repoName)
+	return i.kubectlApplyManifest(ctx, modifiedYAML, "argocd")
 }
 
 // --- Private helpers ---
