@@ -65,7 +65,14 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 			if ruleStatusCheck.Parameters.RequiredStatusChecks != nil {
 				for _, check := range ruleStatusCheck.Parameters.RequiredStatusChecks {
 					if check.Context != "" {
+						// Note: GitHub Rulesets API uses "context" (from older Commit Status API)
+						// while Check Runs API uses "name". Both refer to the same check identifier.
+						// We map it to "Name" in our generic interface.
+
 						// Convert GitHub's int64 IntegrationID to string
+						// Note: GitHub Rulesets API uses "integration_id" (legacy name from when
+						// GitHub Apps were called "GitHub Integrations"). The Check Runs API uses
+						// "app_id". Both refer to the same GitHub App numeric identifier.
 						var integrationID *string
 						if check.IntegrationID != nil {
 							idStr := strconv.FormatInt(*check.IntegrationID, 10)
@@ -98,6 +105,9 @@ func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv
 	name := repo.Spec.GitHub.Name
 
 	// Convert string IntegrationID back to int64 for GitHub API
+	// Note: The Check Runs API parameter is called "app_id" while the Rulesets API
+	// returns "integration_id". Both refer to the same GitHub App numeric identifier.
+	// We store it as a string in the generic interface to support other SCM providers.
 	var appID *int64
 	if check.IntegrationID != nil {
 		id, err := strconv.ParseInt(*check.IntegrationID, 10, 64)
@@ -109,6 +119,8 @@ func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv
 	}
 
 	// Query check runs for the specific check name, filtering by AppID if specified
+	// Note: Check Runs API uses "check_name" parameter and "name" field, while
+	// Rulesets API uses "context". Both refer to the same check identifier.
 	opts := &github.ListCheckRunsOptions{
 		CheckName: github.Ptr(check.Name),
 		AppID:     appID,
