@@ -65,7 +65,7 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 				for _, check := range ruleStatusCheck.Parameters.RequiredStatusChecks {
 					if check.Context != "" {
 						requiredChecks = append(requiredChecks, scms.BranchProtectionCheck{
-							Context: check.Context,
+							Name: check.Context,
 						})
 					}
 				}
@@ -78,7 +78,7 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 
 // PollCheckStatus queries GitHub Checks API to get the status of a specific required check
 // for the given commit SHA.
-func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv1alpha1.GitRepository, sha string, checkContext string) (promoterv1alpha1.CommitStatusPhase, error) {
+func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv1alpha1.GitRepository, sha string, checkName string) (promoterv1alpha1.CommitStatusPhase, error) {
 	logger := log.FromContext(ctx)
 
 	if repo.Spec.GitHub == nil {
@@ -90,12 +90,12 @@ func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv
 
 	// Query check runs for the specific check name
 	opts := &github.ListCheckRunsOptions{
-		CheckName: github.Ptr(checkContext),
+		CheckName: github.Ptr(checkName),
 	}
 
 	checkRuns, _, err := bp.client.Checks.ListCheckRunsForRef(ctx, owner, name, sha, opts)
 	if err != nil {
-		logger.Error(err, "failed to list check runs", "check", checkContext, "sha", sha)
+		logger.Error(err, "failed to list check runs", "check", checkName, "sha", sha)
 		// Default to pending if we can't get the status
 		return promoterv1alpha1.CommitPhasePending, nil
 	}

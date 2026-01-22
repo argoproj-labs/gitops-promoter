@@ -269,24 +269,24 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 
 		// Create/update CommitStatus resources for each check
 		var envCheckStatuses []promoterv1alpha1.RequiredCheckStatus
-		for _, checkContext := range requiredChecks {
-			phase, ok := checkStatuses[checkContext]
+		for _, checkName := range requiredChecks {
+			phase, ok := checkStatuses[checkName]
 			if !ok {
 				// If we couldn't get the status, default to pending
 				phase = promoterv1alpha1.CommitPhasePending
 			}
 
-			cs, err := r.updateCommitStatusForCheck(ctx, rsccs, ctp, env.Branch, checkContext, proposedSha, phase)
+			cs, err := r.updateCommitStatusForCheck(ctx, rsccs, ctp, env.Branch, checkName, proposedSha, phase)
 			if err != nil {
-				logger.Error(err, "failed to update CommitStatus", "check", checkContext)
+				logger.Error(err, "failed to update CommitStatus", "check", checkName)
 				// Continue to process other checks
 				continue
 			}
 
 			commitStatuses = append(commitStatuses, cs)
 			envCheckStatuses = append(envCheckStatuses, promoterv1alpha1.RequiredCheckStatus{
-				Context:          checkContext,
-				Phase:            phase,
+				Name:  checkName,
+				Phase: phase,
 			})
 		}
 
@@ -379,7 +379,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 	// Convert BranchProtectionCheck to string slice
 	var requiredChecks []string
 	for _, check := range checks {
-		requiredChecks = append(requiredChecks, check.Context)
+		requiredChecks = append(requiredChecks, check.Name)
 	}
 
 	return requiredChecks, nil
@@ -411,29 +411,29 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 
 	// Query check status for each required check
 	checkStatuses := make(map[string]promoterv1alpha1.CommitStatusPhase)
-	for _, checkContext := range requiredChecks {
-		phase, err := provider.PollCheckStatus(ctx, gitRepo, sha, checkContext)
+	for _, checkName := range requiredChecks {
+		phase, err := provider.PollCheckStatus(ctx, gitRepo, sha, checkName)
 		if err != nil {
 			if err == scms.ErrNotSupported {
 				// If not supported, default to pending
-				checkStatuses[checkContext] = promoterv1alpha1.CommitPhasePending
+				checkStatuses[checkName] = promoterv1alpha1.CommitPhasePending
 				continue
 			}
 			// For other errors, log but continue with pending status
 			// This ensures we don't fail the entire reconciliation if one check fails
-			checkStatuses[checkContext] = promoterv1alpha1.CommitPhasePending
+			checkStatuses[checkName] = promoterv1alpha1.CommitPhasePending
 			continue
 		}
-		checkStatuses[checkContext] = phase
+		checkStatuses[checkName] = phase
 	}
 
 	return checkStatuses, nil
 }
 
 // updateCommitStatusForCheck creates or updates a CommitStatus resource for a required check
-func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ctp *promoterv1alpha1.ChangeTransferPolicy, branch string, checkContext string, sha string, phase promoterv1alpha1.CommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
-	// Generate CommitStatus name: required-status-check-{context}-{hash}
-	name := generateCommitStatusName(checkContext, branch)
+func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ctp *promoterv1alpha1.ChangeTransferPolicy, branch string, checkName string, sha string, phase promoterv1alpha1.CommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
+	// Generate CommitStatus name: required-status-check-{name}-{hash}
+	name := generateCommitStatusName(checkName, branch)
 
 	cs := &promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
@@ -452,7 +452,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 		if cs.Labels == nil {
 			cs.Labels = make(map[string]string)
 		}
-		cs.Labels[promoterv1alpha1.CommitStatusLabel] = fmt.Sprintf("required-status-check-%s", checkContext)
+		cs.Labels[promoterv1alpha1.CommitStatusLabel] = fmt.Sprintf("required-status-check-%s", checkName)
 		cs.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
 		cs.Labels[promoterv1alpha1.RequiredStatusCheckCommitStatusLabel] = rsccs.Name
 
@@ -460,8 +460,8 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 		cs.Spec = promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: ctp.Spec.RepositoryReference,
 			Sha:                 sha,
-			Name:                fmt.Sprintf("Required Check: %s", checkContext),
-			Description:         fmt.Sprintf("GitHub required status check: %s", checkContext),
+			Name:                fmt.Sprintf("Required Check: %s", checkName),
+			Description:         fmt.Sprintf("Required status check: %s", checkName),
 			Phase:               phase,
 		}
 
@@ -472,20 +472,20 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 		return nil, fmt.Errorf("failed to create or update CommitStatus: %w", err)
 	}
 
-	r.Recorder.Eventf(cs, "Normal", constants.CommitStatusSetReason, "Required check %s status set to %s for hash %s", checkContext, phase, sha)
+	r.Recorder.Eventf(cs, "Normal", constants.CommitStatusSetReason, "Required check %s status set to %s for hash %s", checkName, phase, sha)
 
 	return cs, nil
 }
 
 // generateCommitStatusName generates a unique name for a CommitStatus resource
-func generateCommitStatusName(checkContext string, branch string) string {
-	// Create a hash of the check context and branch to ensure uniqueness
+func generateCommitStatusName(checkName string, branch string) string {
+	// Create a hash of the check name and branch to ensure uniqueness
 	h := sha256.New()
-	h.Write([]byte(checkContext + "-" + branch))
+	h.Write([]byte(checkName + "-" + branch))
 	hash := fmt.Sprintf("%x", h.Sum(nil))[:8]
 
-	// Normalize the check context to be a valid Kubernetes name
-	normalized := strings.ToLower(checkContext)
+	// Normalize the check name to be a valid Kubernetes name
+	normalized := strings.ToLower(checkName)
 	normalized = strings.ReplaceAll(normalized, "/", "-")
 	normalized = strings.ReplaceAll(normalized, "_", "-")
 	normalized = strings.ReplaceAll(normalized, ".", "-")

@@ -54,7 +54,7 @@ type RequiredStatusCheckEnvironmentStatus struct {
 
 	// RequiredChecks lists all required checks discovered from SCM branch protection rules
 	// +listType=map
-	// +listMapKey=context
+	// +listMapKey=name
 	// +optional
 	RequiredChecks []RequiredCheckStatus `json:"requiredChecks,omitempty"`
 
@@ -66,9 +66,9 @@ type RequiredStatusCheckEnvironmentStatus struct {
 
 // RequiredCheckStatus defines the status of a single required check.
 type RequiredCheckStatus struct {
-	// Context is the check context name
+	// Name is the check name
 	// +required
-	Context string `json:"context"`
+	Name string `json:"name"`
 
 	// Phase is the current phase of this check
 	// +kubebuilder:validation:Enum=pending;success;failure

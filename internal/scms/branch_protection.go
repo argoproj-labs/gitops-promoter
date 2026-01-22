@@ -13,7 +13,7 @@ import (
 type BranchProtectionProvider interface {
 	// DiscoverRequiredChecks queries the SCM's branch protection configuration
 	// to find all required status checks for the given repository and branch.
-	// Returns a list of check contexts that are required by branch protection rules.
+	// Returns a list of check names that are required by branch protection rules.
 	//
 	// Returns ErrNotSupported if the SCM provider does not support branch protection.
 	// Returns ErrNoProtection if the branch exists but has no protection rules configured.
@@ -26,18 +26,18 @@ type BranchProtectionProvider interface {
 	//   - ctx: Context for the request
 	//   - repo: The GitRepository to query
 	//   - sha: The commit SHA to check status for
-	//   - checkContext: The specific check identifier (e.g., "ci-tests", "security-scan")
+	//   - checkName: The specific check identifier (e.g., "ci-tests", "security-scan")
 	//
 	// Returns the current phase (Success, Failure, Pending) of the check.
 	// Returns CommitPhasePending if the check has not yet been reported.
 	// Returns ErrNotSupported if the SCM provider does not support status checks.
-	PollCheckStatus(ctx context.Context, repo *v1alpha1.GitRepository, sha string, checkContext string) (v1alpha1.CommitStatusPhase, error)
+	PollCheckStatus(ctx context.Context, repo *v1alpha1.GitRepository, sha string, checkName string) (v1alpha1.CommitStatusPhase, error)
 }
 
 // BranchProtectionCheck represents a required status check discovered from branch protection rules.
 type BranchProtectionCheck struct {
-	// Context is the check identifier (e.g., "ci-tests", "security-scan", "build/linux")
-	Context string
+	// Name is the check identifier (e.g., "ci-tests", "security-scan", "build/linux")
+	Name string
 }
 
 // Error constants for branch protection operations

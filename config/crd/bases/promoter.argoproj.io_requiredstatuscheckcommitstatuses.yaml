@@ -148,8 +148,8 @@ spec:
                         description: RequiredCheckStatus defines the status of a single
                           required check.
                         properties:
-                          context:
-                            description: Context is the check context name
+                          name:
+                            description: Name is the check name
                             type: string
                           phase:
                             description: Phase is the current phase of this check
@@ -159,12 +159,12 @@ spec:
                             - failure
                             type: string
                         required:
-                        - context
+                        - name
                         - phase
                         type: object
                       type: array
                       x-kubernetes-list-map-keys:
-                      - context
+                      - name
                       x-kubernetes-list-type: map
                     sha:
                       description: Sha is the commit SHA being checked
