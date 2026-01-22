@@ -25,12 +25,12 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	githubscm "github.com/argoproj-labs/gitops-promoter/internal/scms/github"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	"github.com/google/go-github/v71/github"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -306,7 +306,45 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 	return commitStatuses, nil
 }
 
-// discoverRequiredChecksForEnvironment queries GitHub Rulesets API to discover required checks
+// getBranchProtectionProvider creates the appropriate branch protection provider based on the SCM type.
+func (r *RequiredStatusCheckCommitStatusReconciler) getBranchProtectionProvider(
+	ctx context.Context,
+	repoRef promoterv1alpha1.ObjectReference,
+	namespace string,
+) (scms.BranchProtectionProvider, error) {
+	logger := log.FromContext(ctx)
+
+	// Get GitRepository
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{
+		Namespace: namespace,
+		Name:      repoRef.Name,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	// Get ScmProvider and Secret
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), repoRef, gitRepo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
+	}
+
+	// Create provider based on SCM type
+	if scmProvider.GetSpec().GitHub != nil {
+		provider, err := githubscm.NewGithubBranchProtectionProvider(ctx, r.Client, scmProvider, *secret, gitRepo.Spec.GitHub.Owner)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create GitHub branch protection provider: %w", err)
+		}
+		return provider, nil
+	}
+
+	// For other SCM providers, we'll add support later
+	// For now, log that it's not supported and return nil
+	logger.V(4).Info("Branch protection not supported for this SCM provider", "scmProvider", scmProvider.GetName())
+	return nil, scms.ErrNotSupported
+}
+
+// discoverRequiredChecksForEnvironment queries the SCM's branch protection to discover required checks
 func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, env promoterv1alpha1.Environment) ([]string, error) {
 	logger := log.FromContext(ctx)
 
@@ -319,48 +357,30 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	// Get ScmProvider and Secret
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ps.Spec.RepositoryReference, ps)
+	// Get branch protection provider
+	provider, err := r.getBranchProtectionProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
-	}
-
-	// Only support GitHub for now
-	if scmProvider.GetSpec().GitHub == nil {
-		logger.V(4).Info("ScmProvider is not GitHub, skipping required checks discovery")
-		return []string{}, nil
-	}
-
-	// Create GitHub client
-	githubProvider, err := githubscm.NewGithubCommitStatusProvider(ctx, r.Client, scmProvider, *secret, gitRepo.Spec.GitHub.Owner)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GitHub provider: %w", err)
-	}
-
-	// Get the underlying GitHub client
-	// Note: We need to expose GetClient() method on the GitHub provider
-	githubClient := githubProvider.GetClient()
-
-	// Query GetRulesForBranch
-	rules, _, err := githubClient.Repositories.GetRulesForBranch(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, env.Branch)
-	if err != nil {
-		// If the branch doesn't have rulesets, return empty list
-		logger.V(4).Info("No rulesets found for branch", "branch", env.Branch, "error", err)
-		return []string{}, nil
-	}
-
-	// Extract required status checks from BranchRules
-	var requiredChecks []string
-	if rules != nil && rules.RequiredStatusChecks != nil {
-		for _, ruleStatusCheck := range rules.RequiredStatusChecks {
-			if ruleStatusCheck.Parameters.RequiredStatusChecks != nil {
-				for _, check := range ruleStatusCheck.Parameters.RequiredStatusChecks {
-					if check.Context != "" {
-						requiredChecks = append(requiredChecks, check.Context)
-					}
-				}
-			}
+		if err == scms.ErrNotSupported {
+			logger.V(4).Info("Branch protection not supported for this SCM provider, skipping required checks discovery")
+			return []string{}, nil
 		}
+		return nil, fmt.Errorf("failed to get branch protection provider: %w", err)
+	}
+
+	// Discover required checks from the SCM
+	checks, err := provider.DiscoverRequiredChecks(ctx, gitRepo, env.Branch)
+	if err != nil {
+		if err == scms.ErrNoProtection {
+			logger.V(4).Info("No branch protection configured for branch", "branch", env.Branch)
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("failed to discover required checks: %w", err)
+	}
+
+	// Convert BranchProtectionCheck to string slice
+	var requiredChecks []string
+	for _, check := range checks {
+		requiredChecks = append(requiredChecks, check.Context)
 	}
 
 	// Apply exclusions
@@ -377,10 +397,8 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 	return requiredChecks, nil
 }
 
-// pollCheckStatusForEnvironment polls GitHub Checks API to get the status of each required check
+// pollCheckStatusForEnvironment polls the SCM to get the status of each required check
 func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, requiredChecks []string, sha string) (map[string]promoterv1alpha1.CommitStatusPhase, error) {
-	logger := log.FromContext(ctx)
-
 	if len(requiredChecks) == 0 {
 		return map[string]promoterv1alpha1.CommitStatusPhase{}, nil
 	}
@@ -394,83 +412,34 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	// Get ScmProvider and Secret
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), ps.Spec.RepositoryReference, ps)
+	// Get branch protection provider
+	provider, err := r.getBranchProtectionProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
+		if err == scms.ErrNotSupported {
+			return map[string]promoterv1alpha1.CommitStatusPhase{}, nil
+		}
+		return nil, fmt.Errorf("failed to get branch protection provider: %w", err)
 	}
-
-	// Only support GitHub for now
-	if scmProvider.GetSpec().GitHub == nil {
-		return map[string]promoterv1alpha1.CommitStatusPhase{}, nil
-	}
-
-	// Create GitHub client
-	githubProvider, err := githubscm.NewGithubCommitStatusProvider(ctx, r.Client, scmProvider, *secret, gitRepo.Spec.GitHub.Owner)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GitHub provider: %w", err)
-	}
-
-	githubClient := githubProvider.GetClient()
 
 	// Query check status for each required check
 	checkStatuses := make(map[string]promoterv1alpha1.CommitStatusPhase)
 	for _, checkContext := range requiredChecks {
-		opts := &github.ListCheckRunsOptions{
-			CheckName: github.Ptr(checkContext),
-		}
-
-		checkRuns, _, err := githubClient.Checks.ListCheckRunsForRef(ctx, gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name, sha, opts)
+		phase, err := provider.PollCheckStatus(ctx, gitRepo, sha, checkContext)
 		if err != nil {
-			logger.Error(err, "failed to list check runs", "check", checkContext, "sha", sha)
-			// Default to pending if we can't get the status
+			if err == scms.ErrNotSupported {
+				// If not supported, default to pending
+				checkStatuses[checkContext] = promoterv1alpha1.CommitPhasePending
+				continue
+			}
+			// For other errors, log but continue with pending status
+			// This ensures we don't fail the entire reconciliation if one check fails
 			checkStatuses[checkContext] = promoterv1alpha1.CommitPhasePending
 			continue
 		}
-
-		// If no check runs found, status is pending
-		if checkRuns == nil || len(checkRuns.CheckRuns) == 0 {
-			checkStatuses[checkContext] = promoterv1alpha1.CommitPhasePending
-			continue
-		}
-
-		// Get the latest check run
-		checkRun := checkRuns.CheckRuns[0]
-
-		// Map GitHub check status to CommitStatusPhase
-		phase := r.mapGitHubCheckStatusToPhase(checkRun)
 		checkStatuses[checkContext] = phase
 	}
 
 	return checkStatuses, nil
-}
-
-// mapGitHubCheckStatusToPhase maps GitHub check run status to CommitStatusPhase
-func (r *RequiredStatusCheckCommitStatusReconciler) mapGitHubCheckStatusToPhase(checkRun *github.CheckRun) promoterv1alpha1.CommitStatusPhase {
-	if checkRun.Status == nil {
-		return promoterv1alpha1.CommitPhasePending
-	}
-
-	status := *checkRun.Status
-
-	if status == "completed" {
-		if checkRun.Conclusion == nil {
-			return promoterv1alpha1.CommitPhasePending
-		}
-
-		conclusion := *checkRun.Conclusion
-		switch conclusion {
-		case "success", "neutral", "skipped":
-			return promoterv1alpha1.CommitPhaseSuccess
-		case "failure", "cancelled", "timed_out", "action_required":
-			return promoterv1alpha1.CommitPhaseFailure
-		default:
-			return promoterv1alpha1.CommitPhasePending
-		}
-	}
-
-	// Status is queued or in_progress
-	return promoterv1alpha1.CommitPhasePending
 }
 
 // updateCommitStatusForCheck creates or updates a CommitStatus resource for a required check
