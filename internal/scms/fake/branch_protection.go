@@ -38,8 +38,8 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 }
 
 // PollCheckStatus returns the configured status for the given check name, or Success if not configured.
-func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv1alpha1.GitRepository, sha string, checkName string) (promoterv1alpha1.CommitStatusPhase, error) {
-	if status, ok := bp.CheckStatuses[checkName]; ok {
+func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv1alpha1.GitRepository, sha string, check scms.BranchProtectionCheck) (promoterv1alpha1.CommitStatusPhase, error) {
+	if status, ok := bp.CheckStatuses[check.Name]; ok {
 		return status, nil
 	}
 	// Default to success for testing

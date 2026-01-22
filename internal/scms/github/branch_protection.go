@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/google/go-github/v71/github"
 	v1 "k8s.io/api/core/v1"
@@ -64,8 +65,16 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 			if ruleStatusCheck.Parameters.RequiredStatusChecks != nil {
 				for _, check := range ruleStatusCheck.Parameters.RequiredStatusChecks {
 					if check.Context != "" {
+						// Convert GitHub's int64 IntegrationID to string
+						var integrationID *string
+						if check.IntegrationID != nil {
+							idStr := strconv.FormatInt(*check.IntegrationID, 10)
+							integrationID = &idStr
+						}
+
 						requiredChecks = append(requiredChecks, scms.BranchProtectionCheck{
-							Name: check.Context,
+							Name:          check.Context,
+							IntegrationID: integrationID,
 						})
 					}
 				}
@@ -78,7 +87,7 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 
 // PollCheckStatus queries GitHub Checks API to get the status of a specific required check
 // for the given commit SHA.
-func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv1alpha1.GitRepository, sha string, checkName string) (promoterv1alpha1.CommitStatusPhase, error) {
+func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv1alpha1.GitRepository, sha string, check scms.BranchProtectionCheck) (promoterv1alpha1.CommitStatusPhase, error) {
 	logger := log.FromContext(ctx)
 
 	if repo.Spec.GitHub == nil {
@@ -88,14 +97,26 @@ func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv
 	owner := repo.Spec.GitHub.Owner
 	name := repo.Spec.GitHub.Name
 
-	// Query check runs for the specific check name
+	// Convert string IntegrationID back to int64 for GitHub API
+	var appID *int64
+	if check.IntegrationID != nil {
+		id, err := strconv.ParseInt(*check.IntegrationID, 10, 64)
+		if err != nil {
+			logger.Error(err, "failed to parse IntegrationID as int64", "integrationID", *check.IntegrationID)
+		} else {
+			appID = &id
+		}
+	}
+
+	// Query check runs for the specific check name, filtering by AppID if specified
 	opts := &github.ListCheckRunsOptions{
-		CheckName: github.Ptr(checkName),
+		CheckName: github.Ptr(check.Name),
+		AppID:     appID,
 	}
 
 	checkRuns, _, err := bp.client.Checks.ListCheckRunsForRef(ctx, owner, name, sha, opts)
 	if err != nil {
-		logger.Error(err, "failed to list check runs", "check", checkName, "sha", sha)
+		logger.Error(err, "failed to list check runs", "check", check.Name, "sha", sha, "appID", appID)
 		// Default to pending if we can't get the status
 		return promoterv1alpha1.CommitPhasePending, nil
 	}

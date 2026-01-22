@@ -268,23 +268,23 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 
 		// Create/update CommitStatus resources for each check
 		var envCheckStatuses []promoterv1alpha1.RequiredCheckStatus
-		for _, checkName := range requiredChecks {
-			phase, ok := checkStatuses[checkName]
+		for _, check := range requiredChecks {
+			phase, ok := checkStatuses[check.Name]
 			if !ok {
 				// If we couldn't get the status, default to pending
 				phase = promoterv1alpha1.CommitPhasePending
 			}
 
-			cs, err := r.updateCommitStatusForCheck(ctx, rsccs, ctp, env.Branch, checkName, proposedSha, phase)
+			cs, err := r.updateCommitStatusForCheck(ctx, rsccs, ctp, env.Branch, check.Name, proposedSha, phase)
 			if err != nil {
-				logger.Error(err, "failed to update CommitStatus", "check", checkName)
+				logger.Error(err, "failed to update CommitStatus", "check", check.Name)
 				// Continue to process other checks
 				continue
 			}
 
 			commitStatuses = append(commitStatuses, cs)
 			envCheckStatuses = append(envCheckStatuses, promoterv1alpha1.RequiredCheckStatus{
-				Name:  checkName,
+				Name:  check.Name,
 				Phase: phase,
 			})
 		}
@@ -343,7 +343,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) getBranchProtectionProvider(
 }
 
 // discoverRequiredChecksForEnvironment queries the SCM's branch protection to discover required checks
-func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, env promoterv1alpha1.Environment) ([]string, error) {
+func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, env promoterv1alpha1.Environment) ([]scms.BranchProtectionCheck, error) {
 	logger := log.FromContext(ctx)
 
 	// Get GitRepository
@@ -360,7 +360,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 	if err != nil {
 		if err == scms.ErrNotSupported {
 			logger.V(4).Info("Branch protection not supported for this SCM provider, skipping required checks discovery")
-			return []string{}, nil
+			return []scms.BranchProtectionCheck{}, nil
 		}
 		return nil, fmt.Errorf("failed to get branch protection provider: %w", err)
 	}
@@ -370,22 +370,16 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 	if err != nil {
 		if err == scms.ErrNoProtection {
 			logger.V(4).Info("No branch protection configured for branch", "branch", env.Branch)
-			return []string{}, nil
+			return []scms.BranchProtectionCheck{}, nil
 		}
 		return nil, fmt.Errorf("failed to discover required checks: %w", err)
 	}
 
-	// Convert BranchProtectionCheck to string slice
-	var requiredChecks []string
-	for _, check := range checks {
-		requiredChecks = append(requiredChecks, check.Name)
-	}
-
-	return requiredChecks, nil
+	return checks, nil
 }
 
 // pollCheckStatusForEnvironment polls the SCM to get the status of each required check
-func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, requiredChecks []string, sha string) (map[string]promoterv1alpha1.CommitStatusPhase, error) {
+func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, requiredChecks []scms.BranchProtectionCheck, sha string) (map[string]promoterv1alpha1.CommitStatusPhase, error) {
 	if len(requiredChecks) == 0 {
 		return map[string]promoterv1alpha1.CommitStatusPhase{}, nil
 	}
@@ -410,20 +404,20 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 
 	// Query check status for each required check
 	checkStatuses := make(map[string]promoterv1alpha1.CommitStatusPhase)
-	for _, checkName := range requiredChecks {
-		phase, err := provider.PollCheckStatus(ctx, gitRepo, sha, checkName)
+	for _, check := range requiredChecks {
+		phase, err := provider.PollCheckStatus(ctx, gitRepo, sha, check)
 		if err != nil {
 			if err == scms.ErrNotSupported {
 				// If not supported, default to pending
-				checkStatuses[checkName] = promoterv1alpha1.CommitPhasePending
+				checkStatuses[check.Name] = promoterv1alpha1.CommitPhasePending
 				continue
 			}
 			// For other errors, log but continue with pending status
 			// This ensures we don't fail the entire reconciliation if one check fails
-			checkStatuses[checkName] = promoterv1alpha1.CommitPhasePending
+			checkStatuses[check.Name] = promoterv1alpha1.CommitPhasePending
 			continue
 		}
-		checkStatuses[checkName] = phase
+		checkStatuses[check.Name] = phase
 	}
 
 	return checkStatuses, nil

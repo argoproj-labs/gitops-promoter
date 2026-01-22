@@ -26,18 +26,29 @@ type BranchProtectionProvider interface {
 	//   - ctx: Context for the request
 	//   - repo: The GitRepository to query
 	//   - sha: The commit SHA to check status for
-	//   - checkName: The specific check identifier (e.g., "ci-tests", "security-scan")
+	//   - check: The check to poll (includes name and optional IntegrationID)
 	//
 	// Returns the current phase (Success, Failure, Pending) of the check.
 	// Returns CommitPhasePending if the check has not yet been reported.
 	// Returns ErrNotSupported if the SCM provider does not support status checks.
-	PollCheckStatus(ctx context.Context, repo *v1alpha1.GitRepository, sha string, checkName string) (v1alpha1.CommitStatusPhase, error)
+	PollCheckStatus(ctx context.Context, repo *v1alpha1.GitRepository, sha string, check BranchProtectionCheck) (v1alpha1.CommitStatusPhase, error)
 }
 
 // BranchProtectionCheck represents a required status check discovered from branch protection rules.
 type BranchProtectionCheck struct {
 	// Name is the check identifier (e.g., "ci-tests", "security-scan", "build/linux")
 	Name string
+
+	// IntegrationID is the SCM application/integration identifier that must provide this check.
+	// This is used to distinguish between multiple checks with the same name
+	// from different applications or integrations.
+	// A nil value means any application can provide the check.
+	//
+	// SCM provider-specific interpretations:
+	// - GitHub: GitHub App ID as string (e.g., "15368" for GitHub Actions)
+	// - GitLab: Context/name identifier (e.g., "bundler:audit", "test")
+	// - Bitbucket: Build key identifier (e.g., "BAMBOO-PLAN", "jenkins-build")
+	IntegrationID *string
 }
 
 // Error constants for branch protection operations
