@@ -146,7 +146,8 @@ func (i *Installer) RefreshApp(ctx context.Context, appName string) error {
 // RefreshAllApps refreshes all ArgoCD applications in the argocd namespace
 func (i *Installer) RefreshAllApps(ctx context.Context) error {
 	// Get all application names
-	cmd := exec.CommandContext(ctx, "kubectl", "get", "applications", "-n", "argocd", "-o", "jsonpath={.items[*].metadata.name}")
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "applications", "-n",
+		"argocd", "-o", "jsonpath={.items[*].metadata.name}")
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("failed to list applications: %w", err)
@@ -166,7 +167,8 @@ func (i *Installer) RefreshAllApps(ctx context.Context) error {
 func (i *Installer) PortForward(ctx context.Context) error {
 	color.Green("Starting port forwards...")
 	color.Yellow("ArgoCD UI:         https://localhost:8000")
-	color.Yellow(`Login: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d`)
+	color.Yellow("  kubectl -n argocd get secret argocd-initial-admin-secret -o go-template=" +
+		"'{{.data.password | base64decode}}'")
 	color.Yellow("Press Ctrl+C to stop\n")
 
 	// Context for cancellation
