@@ -146,6 +146,11 @@ func NewDemoCommand() *cobra.Command {
 			}
 			color.Green("Updating requeue interval")
 
+			// Force refresh
+			if err := installer.RefreshApp(ctx, "helm-guestbook-ps"); err != nil {
+				return err
+			}
+
 			color.Green("Installation complete!")
 			return nil
 		},

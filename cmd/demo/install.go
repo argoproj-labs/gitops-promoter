@@ -123,6 +123,42 @@ func (i *Installer) ApplyBaseApp(ctx context.Context, githubUser string, repoNam
 	return i.kubectlApplyManifest(ctx, modifiedYAML, "argocd")
 }
 
+// RefreshApp forces a hard refresh on an ArgoCD application
+func (i *Installer) RefreshApp(ctx context.Context, appName string) error {
+	args := []string{
+		"annotate", "application", appName,
+		"-n", "argocd",
+		"argocd.argoproj.io/refresh=hard",
+		"--overwrite",
+	}
+
+	if err := i.runKubectl(ctx, args...); err != nil {
+		return fmt.Errorf("failed to refresh app %s: %w", appName, err)
+	}
+
+	color.Green("Application %s refreshed ✓", appName)
+	return nil
+}
+
+// RefreshAllApps refreshes all ArgoCD applications in the argocd namespace
+func (i *Installer) RefreshAllApps(ctx context.Context) error {
+	// Get all application names
+	cmd := exec.CommandContext(ctx, "kubectl", "get", "applications", "-n", "argocd", "-o", "jsonpath={.items[*].metadata.name}")
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to list applications: %w", err)
+	}
+
+	appNames := strings.Fields(string(output))
+	for _, appName := range appNames {
+		if err := i.RefreshApp(ctx, appName); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // --- Private helpers ---
 
 func (i *Installer) ensureNamespace(ctx context.Context, namespace string) error {
