@@ -120,6 +120,12 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned ChangeTransferPolicies: %w", err)
 	}
 
+	// Upsert RequiredStatusCheckCommitStatus if showRequiredStatusChecks is enabled
+	err = r.upsertRequiredStatusCheckCommitStatus(ctx, &ps)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to upsert RequiredStatusCheckCommitStatus: %w", err)
+	}
+
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
 	r.calculateStatus(&ps, ctps)
 
@@ -725,4 +731,66 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 	}
 
 	return false, ""
+}
+
+// upsertRequiredStatusCheckCommitStatus creates or deletes the RequiredStatusCheckCommitStatus based on the showRequiredStatusChecks field.
+func (r *PromotionStrategyReconciler) upsertRequiredStatusCheckCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
+	logger := log.FromContext(ctx)
+
+	// Generate RSCCS name from PromotionStrategy name
+	rsccsName := ps.Name
+
+	// Check if RSCCS already exists
+	var rsccs promoterv1alpha1.RequiredStatusCheckCommitStatus
+	rsccsKey := client.ObjectKey{
+		Namespace: ps.Namespace,
+		Name:      rsccsName,
+	}
+	err := r.Get(ctx, rsccsKey, &rsccs)
+	rsccsExists := err == nil
+
+	// If showRequiredStatusChecks is enabled, create or update RSCCS
+	if ps.GetShowRequiredStatusChecks() {
+		rsccs = promoterv1alpha1.RequiredStatusCheckCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      rsccsName,
+				Namespace: ps.Namespace,
+			},
+		}
+
+		_, err := controllerutil.CreateOrUpdate(ctx, r.Client, &rsccs, func() error {
+			// Set owner reference
+			if err := controllerutil.SetControllerReference(ps, &rsccs, r.Scheme); err != nil {
+				return err
+			}
+
+			// Set spec
+			rsccs.Spec = promoterv1alpha1.RequiredStatusCheckCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+					Name: ps.Name,
+				},
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			return fmt.Errorf("failed to create or update RequiredStatusCheckCommitStatus: %w", err)
+		}
+
+		logger.V(4).Info("RequiredStatusCheckCommitStatus created/updated", "name", rsccsName)
+		return nil
+	}
+
+	// If showRequiredStatusChecks is disabled and RSCCS exists, delete it
+	if rsccsExists {
+		logger.Info("Deleting RequiredStatusCheckCommitStatus as showRequiredStatusChecks is disabled", "name", rsccsName)
+		err := r.Delete(ctx, &rsccs)
+		if err != nil && !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("failed to delete RequiredStatusCheckCommitStatus: %w", err)
+		}
+		r.Recorder.Eventf(ps, "Normal", "RequiredStatusCheckCommitStatusDeleted", "Deleted RequiredStatusCheckCommitStatus %s", rsccsName)
+	}
+
+	return nil
 }

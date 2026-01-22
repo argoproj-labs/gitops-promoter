@@ -53,6 +53,15 @@ type PromotionStrategySpec struct {
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 
+	// ShowRequiredStatusChecks enables automatic discovery and visibility of GitHub required
+	// status checks. When enabled, the controller queries GitHub Rulesets API to discover
+	// required checks and creates CommitStatus resources for each, providing visibility into
+	// what checks are blocking PR merges. This keeps the PromotionStrategy in "progressing"
+	// state while waiting on checks, rather than "degraded" from failed merge attempts.
+	// Defaults to false.
+	// +kubebuilder:validation:Optional
+	ShowRequiredStatusChecks *bool `json:"showRequiredStatusChecks,omitempty"`
+
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
 	// +listType:=map
@@ -89,6 +98,13 @@ type Environment struct {
 	// +listType:=map
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+
+	// ExcludedRequiredStatusChecks lists GitHub check contexts to exclude from
+	// visibility when showRequiredStatusChecks is enabled. These checks will still
+	// be enforced by GitHub, but won't be surfaced as CommitStatus resources.
+	// Example: ["ci-tests", "security-scan"]
+	// +kubebuilder:validation:Optional
+	ExcludedRequiredStatusChecks []string `json:"excludedRequiredStatusChecks,omitempty"`
 }
 
 // GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.
@@ -126,6 +142,14 @@ type PromotionStrategyStatus struct {
 // GetConditions returns the conditions of the PromotionStrategy.
 func (ps *PromotionStrategy) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
+}
+
+// GetShowRequiredStatusChecks returns the value of the ShowRequiredStatusChecks field, defaulting to false if the field is nil.
+func (ps *PromotionStrategy) GetShowRequiredStatusChecks() bool {
+	if ps.Spec.ShowRequiredStatusChecks == nil {
+		return false
+	}
+	return *ps.Spec.ShowRequiredStatusChecks
 }
 
 // EnvironmentStatus defines the observed state of an environment in a PromotionStrategy.

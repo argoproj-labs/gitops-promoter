@@ -64,6 +64,11 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	GitCommitStatus GitCommitStatusConfiguration `json:"gitCommitStatus"`
+
+	// RequiredStatusCheckCommitStatus contains the configuration for the RequiredStatusCheckCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	RequiredStatusCheckCommitStatus RequiredStatusCheckCommitStatusConfiguration `json:"requiredStatusCheckCommitStatus"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -151,6 +156,17 @@ type TimedCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type GitCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the GitCommitStatus controller.
+	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// RequiredStatusCheckCommitStatusConfiguration defines the configuration for the RequiredStatusCheckCommitStatus controller.
+//
+// This configuration controls how the RequiredStatusCheckCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type RequiredStatusCheckCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the RequiredStatusCheckCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
