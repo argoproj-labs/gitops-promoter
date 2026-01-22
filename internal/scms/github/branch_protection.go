@@ -135,7 +135,6 @@ func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv
 }
 
 // mapGitHubCheckStatusToPhase maps GitHub check run status to CommitStatusPhase.
-// This is an internal helper function.
 func mapGitHubCheckStatusToPhase(checkRun *github.CheckRun) promoterv1alpha1.CommitStatusPhase {
 	if checkRun.Status == nil {
 		return promoterv1alpha1.CommitPhasePending
