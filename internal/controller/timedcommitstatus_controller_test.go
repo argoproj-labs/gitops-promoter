@@ -50,10 +50,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		By("Setting up test git repository and resources")
 		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-commit-status-test", "default")
 
-		// Configure ActiveCommitStatuses to check for timer commit status
-		promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: promoterv1alpha1.TimerCommitStatusKey},
-		}
+		// Note: No longer need to manually configure ActiveCommitStatuses for timer
+		// The TimedCommitStatus controller will auto-configure it
 
 		setupInitialTestGitRepoOnServer(ctx, name, name)
 
@@ -615,7 +613,18 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 
 		AfterEach(func() {
 			By("Cleaning up TimedCommitStatus")
-			_ = k8sClient.Delete(ctx, timedCommitStatus)
+			if timedCommitStatus != nil {
+				_ = k8sClient.Delete(ctx, timedCommitStatus)
+				// Wait for deletion to complete before next test
+				Eventually(func(g Gomega) {
+					var tcs promoterv1alpha1.TimedCommitStatus
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      timedCommitStatus.Name,
+						Namespace: "default",
+					}, &tcs)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "TimedCommitStatus should be deleted")
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
 		})
 
 		It("should auto-configure timer activeCommitStatus on PromotionStrategy environments", func() {
