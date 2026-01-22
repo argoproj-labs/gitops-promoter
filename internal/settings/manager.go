@@ -283,6 +283,8 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 		return config.Spec.TimedCommitStatus.WorkQueue, nil
 	case promoterv1alpha1.GitCommitStatusConfiguration:
 		return config.Spec.GitCommitStatus.WorkQueue, nil
+	case promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration:
+		return config.Spec.RequiredStatusCheckCommitStatus.WorkQueue, nil
 	default:
 		return promoterv1alpha1.WorkQueue{}, fmt.Errorf("unsupported configuration type: %T", cfg)
 	}

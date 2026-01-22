@@ -7032,6 +7032,14 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
+  requiredStatusCheckCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: 1s
+          maxDelay: 1m
+      requeueDuration: 5m
   timedCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10

@@ -102,3 +102,11 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
+  requiredStatusCheckCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 5
+      requeueDuration: "5m"
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "1s"
+          maxDelay: "1m"
