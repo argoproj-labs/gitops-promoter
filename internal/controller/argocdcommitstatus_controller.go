@@ -300,20 +300,23 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotio
 
 	for _, clusterApps := range apps {
 		for _, application := range clusterApps.Items {
-			if application.Spec.SourceHydrator == nil {
-				return nil, fmt.Errorf("application %s/%s does not have a SourceHydrator configured", application.GetNamespace(), application.GetName())
+			// Get repo URL from either SourceHydrator or Source
+			appRepoURL := application.GetRepoURL()
+			if appRepoURL == "" {
+				return nil, fmt.Errorf("application %s/%s must have either spec.sourceHydrator.drySource.repoURL or spec.source.repoURL configured", application.GetNamespace(), application.GetName())
 			}
 
 			// Check that all the applications are configured with the same repo
 			if repo == "" {
-				repo = application.Spec.SourceHydrator.DrySource.RepoURL
-			} else if repo != application.Spec.SourceHydrator.DrySource.RepoURL {
+				repo = appRepoURL
+			} else if repo != appRepoURL {
 				return nil, errors.New("all applications must have the same repo configured")
 			}
 
-			// Check that TargetBranch is not empty
-			if application.Spec.SourceHydrator.SyncSource.TargetBranch == "" {
-				return nil, fmt.Errorf("application %s/%s spec.sourceHydrator.syncSource.targetBranch must not be empty", application.GetNamespace(), application.GetName())
+			// Get environment (branch/targetRevision) from either SourceHydrator or Source
+			environment := application.GetEnvironment()
+			if environment == "" {
+				return nil, fmt.Errorf("application %s/%s must have either spec.sourceHydrator.syncSource.targetBranch or spec.source.targetRevision configured", application.GetNamespace(), application.GetName())
 			}
 
 			argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.ApplicationsSelected{
@@ -322,11 +325,11 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotio
 				Phase:              calculateApplicationPhase(&application),
 				Sha:                application.Status.Sync.Revision,
 				LastTransitionTime: application.Status.Health.LastTransitionTime,
-				Environment:        application.Spec.SourceHydrator.SyncSource.TargetBranch,
+				Environment:        environment,
 				ClusterName:        clusterApps.ClusterName,
 			})
 
-			aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch] = append(aggregates[application.Spec.SourceHydrator.SyncSource.TargetBranch], &application)
+			aggregates[environment] = append(aggregates[environment], &application)
 		}
 	}
 
