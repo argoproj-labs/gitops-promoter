@@ -92,7 +92,10 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// Check if the TimedCommitStatus is being deleted
 	if !tcs.DeletionTimestamp.IsZero() {
-		return r.handleFinalizerCleanup(ctx, &tcs)
+		if err := r.handleFinalizerCleanup(ctx, &tcs); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// Add finalizer if it doesn't exist
@@ -499,12 +502,12 @@ func (r *TimedCommitStatusReconciler) cleanupTimerCheck(ctx context.Context, tcs
 
 // handleFinalizerCleanup handles the cleanup process when a TimedCommitStatus is being deleted.
 // It removes the auto-configured timer check from the PromotionStrategy and removes the finalizer.
-func (r *TimedCommitStatusReconciler) handleFinalizerCleanup(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus) (ctrl.Result, error) {
+func (r *TimedCommitStatusReconciler) handleFinalizerCleanup(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus) error {
 	logger := log.FromContext(ctx)
 
 	// Only proceed if finalizer exists
 	if !controllerutil.ContainsFinalizer(tcs, promoterv1alpha1.TimedCommitStatusFinalizer) {
-		return ctrl.Result{}, nil
+		return nil
 	}
 
 	// Fetch the PromotionStrategy to clean up auto-configured fields
@@ -516,24 +519,24 @@ func (r *TimedCommitStatusReconciler) handleFinalizerCleanup(ctx context.Context
 	err := r.Get(ctx, psKey, &ps)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
-			return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy during cleanup: %w", err)
+			return fmt.Errorf("failed to get PromotionStrategy during cleanup: %w", err)
 		}
 		// PromotionStrategy already deleted, just remove finalizer
 		logger.Info("PromotionStrategy not found during cleanup, removing finalizer")
 	} else {
 		// Clean up the auto-configured timer check
 		if err = r.cleanupTimerCheck(ctx, tcs, &ps); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to cleanup timer check: %w", err)
+			return fmt.Errorf("failed to cleanup timer check: %w", err)
 		}
 	}
 
 	// Remove finalizer
 	controllerutil.RemoveFinalizer(tcs, promoterv1alpha1.TimedCommitStatusFinalizer)
 	if err := r.Update(ctx, tcs); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to remove finalizer: %w", err)
+		return fmt.Errorf("failed to remove finalizer: %w", err)
 	}
 
-	return ctrl.Result{}, nil
+	return nil
 }
 
 // touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
