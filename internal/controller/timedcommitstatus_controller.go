@@ -105,23 +105,29 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", tcs.Spec.PromotionStrategyRef.Name, err)
 	}
 
-	// 3. Process each environment defined in the TimedCommitStatus
+	// 3. Auto-configure the timer active commit status on the PromotionStrategy environments
+	err = r.autoConfigureTimerCheck(ctx, &tcs, &ps)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to auto-configure timer check: %w", err)
+	}
+
+	// 4. Process each environment defined in the TimedCommitStatus
 	// Returns the list of environments that transitioned to success and the CommitStatus objects
 	transitionedEnvironments, commitStatuses, err := r.processEnvironments(ctx, &tcs, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
 
-	// 4. Clean up orphaned CommitStatus resources that are no longer in the environment list
+	// 5. Clean up orphaned CommitStatus resources that are no longer in the environment list
 	err = r.cleanupOrphanedCommitStatuses(ctx, &tcs, commitStatuses)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
 	}
 
-	// 5. Inherit conditions from CommitStatus objects
+	// 6. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&tcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// 6. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
+	// 7. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
 	if len(transitionedEnvironments) > 0 {
 		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
 	}
@@ -377,6 +383,55 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	}
 
 	return commitStatus, nil
+}
+
+// autoConfigureTimerCheck uses server-side apply to add the "timer" active commit status
+// to each environment configured in the TimedCommitStatus. This eliminates the need for users
+// to manually add `activeCommitStatuses: [{key: "timer"}]` to their PromotionStrategy.
+func (r *TimedCommitStatusReconciler) autoConfigureTimerCheck(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
+	logger := log.FromContext(ctx)
+
+	// Build a map of branches configured in the TimedCommitStatus for quick lookup
+	timedBranches := make(map[string]bool, len(tcs.Spec.Environments))
+	for _, env := range tcs.Spec.Environments {
+		timedBranches[env.Branch] = true
+	}
+
+	// Build the apply configuration for the PromotionStrategy
+	// We only touch the spec.environments field to add activeCommitStatuses to environments
+	// that have timed gates configured
+	psApply := acv1alpha1.PromotionStrategy(ps.Name, ps.Namespace)
+
+	specApply := acv1alpha1.PromotionStrategySpec()
+	envApplyConfigs := make([]*acv1alpha1.EnvironmentApplyConfiguration, 0, len(ps.Spec.Environments))
+
+	for _, env := range ps.Spec.Environments {
+		// Only apply activeCommitStatuses to environments that are configured in the TimedCommitStatus
+		if timedBranches[env.Branch] {
+			envApply := acv1alpha1.Environment().
+				WithBranch(env.Branch).
+				WithActiveCommitStatuses(acv1alpha1.CommitStatusSelector().WithKey("timer"))
+
+			envApplyConfigs = append(envApplyConfigs, envApply)
+		}
+	}
+
+	// Only apply if we have environments to configure
+	if len(envApplyConfigs) > 0 {
+		specApply = specApply.WithEnvironments(envApplyConfigs...)
+		psApply = psApply.WithSpec(specApply)
+
+		// Apply using Server-Side Apply
+		if err := r.Patch(ctx, ps, utils.ApplyPatch{ApplyConfig: psApply}, client.FieldOwner(constants.TimedCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+			return fmt.Errorf("failed to apply timer check to PromotionStrategy: %w", err)
+		}
+
+		logger.V(4).Info("Auto-configured timer check on PromotionStrategy environments",
+			"promotionStrategy", ps.Name,
+			"configuredEnvironments", len(envApplyConfigs))
+	}
+
+	return nil
 }
 
 // touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies

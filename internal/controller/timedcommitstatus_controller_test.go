@@ -583,6 +583,106 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
+
+	Describe("Auto-Configuration of Timer Check", func() {
+		var timedCommitStatus *promoterv1alpha1.TimedCommitStatus
+
+		BeforeEach(func() {
+			By("Creating a TimedCommitStatus resource for development and staging")
+			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-autoconfig",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.TimedCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+						{
+							Branch:   testBranchDevelopment,
+							Duration: metav1.Duration{Duration: 1 * time.Hour},
+						},
+						{
+							Branch:   testBranchStaging,
+							Duration: metav1.Duration{Duration: 2 * time.Hour},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, timedCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up TimedCommitStatus")
+			_ = k8sClient.Delete(ctx, timedCommitStatus)
+		})
+
+		It("should auto-configure timer activeCommitStatus on PromotionStrategy environments", func() {
+			By("Waiting for the PromotionStrategy to have timer check auto-configured")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Verify the PromotionStrategy has environments configured
+				g.Expect(ps.Spec.Environments).To(HaveLen(3))
+
+				// Check that development environment has timer activeCommitStatus
+				found := false
+				for _, cs := range ps.Spec.Environments[0].ActiveCommitStatuses {
+					if cs.Key == "timer" {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeTrue(), "Development environment should have timer activeCommitStatus")
+
+				// Check that staging environment has timer activeCommitStatus
+				found = false
+				for _, cs := range ps.Spec.Environments[1].ActiveCommitStatuses {
+					if cs.Key == "timer" {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeTrue(), "Staging environment should have timer activeCommitStatus")
+
+				// Production should NOT have timer check (it's not in the TimedCommitStatus environments)
+				found = false
+				for _, cs := range ps.Spec.Environments[2].ActiveCommitStatuses {
+					if cs.Key == "timer" {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeFalse(), "Production environment should NOT have timer activeCommitStatus")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the field is managed by the TimedCommitStatus controller")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Check that the managed fields include the TimedCommitStatus controller field owner
+				foundFieldOwner := false
+				for _, mf := range ps.ManagedFields {
+					if mf.Manager == constants.TimedCommitStatusControllerFieldOwner {
+						foundFieldOwner = true
+						break
+					}
+				}
+				g.Expect(foundFieldOwner).To(BeTrue(), "PromotionStrategy should have TimedCommitStatus controller as field owner")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
 })
 
 // Separate Describe block for the test that doesn't need infrastructure
