@@ -56,7 +56,7 @@ func (i *Installer) SetupCluster(ctx context.Context) error {
 		return fmt.Errorf("failed to patch ArgoCD: %w", err)
 	}
 
-	if err := i.ApplyControllerConfiguration(ctx); err != nil {
+	if err := i.PatchControllerConfiguration(ctx); err != nil {
 		return fmt.Errorf("failed to patch controller configuration: %w", err)
 	}
 
@@ -101,10 +101,16 @@ func (i *Installer) PatchArgoCD(ctx context.Context) error {
 	return nil
 }
 
-// ApplyControllerConfiguration applies the controller configuration manifest to the cluster.
-func (i *Installer) ApplyControllerConfiguration(ctx context.Context) error {
-	if err := i.kubectlApplyManifest(ctx, string(controllerConfigYAML), ""); err != nil {
-		return fmt.Errorf("failed to apply controller configuration: %w", err)
+// PatchControllerConfiguration patches the ControllerConfiguration resource in the cluster.
+func (i *Installer) PatchControllerConfiguration(ctx context.Context) error {
+	args := []string{
+		"patch", "controllerconfiguration", "promoter-controller-configuration",
+		"-n", "promoter-system",
+		"--type", "merge",
+		"--patch", string(controllerConfigYAML),
+	}
+	if err := i.runKubectl(ctx, args...); err != nil {
+		return fmt.Errorf("failed to patch controller configuration: %w", err)
 	}
 	color.Green("Controller configuration patched ✓")
 	return nil
