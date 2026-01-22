@@ -52,7 +52,7 @@ type RequiredStatusCheckEnvironmentStatus struct {
 	// +required
 	Sha string `json:"sha"`
 
-	// RequiredChecks lists all required checks discovered from GitHub Rulesets
+	// RequiredChecks lists all required checks discovered from SCM branch protection rules
 	// +listType=map
 	// +listMapKey=context
 	// +optional
@@ -66,7 +66,7 @@ type RequiredStatusCheckEnvironmentStatus struct {
 
 // RequiredCheckStatus defines the status of a single required check.
 type RequiredCheckStatus struct {
-	// Context is the GitHub check context name
+	// Context is the check context name
 	// +required
 	Context string `json:"context"`
 

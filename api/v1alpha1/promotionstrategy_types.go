@@ -53,11 +53,10 @@ type PromotionStrategySpec struct {
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 
-	// ShowRequiredStatusChecks enables automatic discovery and visibility of GitHub required
-	// status checks. When enabled, the controller queries GitHub Rulesets API to discover
-	// required checks and creates CommitStatus resources for each, providing visibility into
-	// what checks are blocking PR merges. This keeps the PromotionStrategy in "progressing"
-	// state while waiting on checks, rather than "degraded" from failed merge attempts.
+	// ShowRequiredStatusChecks enables automatic discovery and visibility of required
+	// status checks from the SCM provider's branch protection rules. When enabled, the
+	// controller discovers required checks and creates CommitStatus resources for each,
+	// providing visibility into what checks are blocking PR merges.
 	// Defaults to false.
 	// +kubebuilder:validation:Optional
 	ShowRequiredStatusChecks *bool `json:"showRequiredStatusChecks,omitempty"`
