@@ -51,12 +51,6 @@ func NewGithubCommitStatusProvider(ctx context.Context, k8sClient client.Client,
 	}, nil
 }
 
-// GetClient returns the underlying GitHub client.
-// This is useful for accessing GitHub APIs that are not exposed by the CommitStatusProvider interface.
-func (cs *CommitStatus) GetClient() *github.Client {
-	return cs.client
-}
-
 // Set sets the commit status for a given commit SHA in the specified repository using GitHub Checks API.
 // If the SHA hasn't changed and we have an existing check run ID, it will update the existing check run.
 // Otherwise, it creates a new check run.
