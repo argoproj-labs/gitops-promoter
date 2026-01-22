@@ -50,3 +50,6 @@ const ScmProviderSecretFinalizer = "scmprovider.promoter.argoproj.io/secret-fina
 
 // ClusterScmProviderSecretFinalizer prevents deletion of Secret while ClusterScmProvider references it
 const ClusterScmProviderSecretFinalizer = "clusterscmprovider.promoter.argoproj.io/secret-finalizer"
+
+// TimedCommitStatusFinalizer prevents deletion of TimedCommitStatus until auto-configured fields are cleaned up
+const TimedCommitStatusFinalizer = "timedcommitstatus.promoter.argoproj.io/finalizer"
