@@ -681,7 +681,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 						},
 						Sync: argocd.SyncStatus{
 							Status:   "Synced",
-							Revision: "abc123",
+							Revision: "abc1230000000000000000000000000000000123",
 						},
 					},
 				}
