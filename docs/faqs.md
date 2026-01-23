@@ -10,6 +10,11 @@ The problems with using branches for environments are all related to the user ex
 When using GitOps promoter, the user only pushes to a single branch. Hydrated manifests are automatically managed in
 environment-specific branches, but the user never has to interact with them directly.
 
+## Does GitOps Promoter support multi Argo CD instances?
+Yes, It works with multiple Argo CD instances, whether they are running on the same machine or on different machines.
+Promotion is managed through Git, so each Argo CD instance (single or multiple) simply syncs from the relevant Git 
+repository as usual.
+
 ## How should I bump image tags?
 
 However you want! GitOps Promoter doesn't know how you structure your manifests, so it can't bump image tags, change 
