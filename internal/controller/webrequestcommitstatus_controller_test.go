@@ -1316,7 +1316,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 					Polling: promoterv1alpha1.PollingSpec{
 						Interval: metav1.Duration{Duration: 1 * time.Second},
 						// Expression returns object with custom data
-						Expression: `{polling: true, trackedSha: ReportedSha}`,
+						Expression: `{trigger: true, trackedSha: Environment.Proposed.Hydrated.Sha}`,
 					},
 				},
 			}
@@ -1345,8 +1345,8 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
-		It("should fail when object expression is missing polling field", func() {
-			By("Creating a WebRequestCommitStatus with object expression missing polling field")
+		It("should fail when object expression is missing trigger field", func() {
+			By("Creating a WebRequestCommitStatus with object expression missing trigger field")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -1367,14 +1367,14 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 					Expression: `Response.StatusCode == 200`,
 					Polling: promoterv1alpha1.PollingSpec{
 						Interval: metav1.Duration{Duration: 1 * time.Second},
-						// Object without 'polling' field
+						// Object without 'trigger' field
 						Expression: `{trackedSha: ReportedSha}`,
 					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
 
-			By("Verifying the Ready condition shows the missing polling field error")
+			By("Verifying the Ready condition shows the missing trigger field error")
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1386,7 +1386,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				readyCondition := meta.FindStatusCondition(wrcs.Status.Conditions, "Ready")
 				g.Expect(readyCondition).NotTo(BeNil())
 				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(readyCondition.Message).To(ContainSubstring("polling"))
+				g.Expect(readyCondition.Message).To(ContainSubstring("trigger"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
@@ -1471,10 +1471,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						// - Increments pollCount on subsequent evaluations
 						// - Stops polling when pollCount >= 4
 						Expression: `
-							ExpressionData["pollCount"] == nil ? 
-								{polling: true, pollCount: 1} : 
-								{polling: ExpressionData["pollCount"] < 4, pollCount: ExpressionData["pollCount"] + 1}
-						`,
+						ExpressionData["pollCount"] == nil ? 
+							{trigger: true, pollCount: 1} : 
+							{trigger: ExpressionData["pollCount"] < 4, pollCount: ExpressionData["pollCount"] + 1}
+					`,
 					},
 				},
 			}
@@ -1581,16 +1581,16 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						// Expression that accesses PromotionStrategy data and uses ExpressionData to control polling:
 						// - Accesses the first environment (development) from PromotionStrategy.Status.Environments[0]
 						// - Captures its Active.Hydrated.Sha as targetSha
-						// - Uses 'captured' flag to stop polling after success
+						// - Uses 'captured' flag to stop polling after first capture
 						Expression: `
-							let alreadyCaptured = ExpressionData["captured"] == true;
-							{
-								polling: Phase != "success" || !alreadyCaptured,
-								targetSha: PromotionStrategy.Status.Environments[0].Active.Hydrated.Sha,
-								capturedFromBranch: PromotionStrategy.Status.Environments[0].Branch,
-								captured: Phase == "success"
-							}
-						`,
+						let alreadyCaptured = ExpressionData["captured"] == true;
+						{
+							trigger: !alreadyCaptured,
+							targetSha: PromotionStrategy.Status.Environments[0].Active.Hydrated.Sha,
+							capturedFromBranch: PromotionStrategy.Status.Environments[0].Branch,
+							captured: true
+						}
+					`,
 					},
 				},
 			}
@@ -1625,7 +1625,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 
 				// Verify the captured flag is set (this controls polling)
 				g.Expect(storedData).To(HaveKey("captured"))
-				g.Expect(storedData["captured"]).To(BeTrue(), "captured flag should be true after success")
+				g.Expect(storedData["captured"]).To(BeTrue(), "captured flag should be true after first reconcile")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying the captured SHA matches the actual PromotionStrategy development environment SHA")
