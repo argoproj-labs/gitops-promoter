@@ -127,13 +127,118 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 				c := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
 				g.Expect(c).ToNot(BeNil())
-				g.Expect(c.Message).To(ContainSubstring("spec.sourceHydrator.syncSource.targetBranch must not be empty"))
+				g.Expect(c.Message).To(ContainSubstring("spec.sourceHydrator.syncSource.targetBranch or spec.source.targetRevision"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			// Clean up
 			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+		})
+
+		It("should work with applications that use spec.source instead of spec.sourceHydrator", func() {
+			ctx := context.TODO()
+
+			// Create required dependencies
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "non-hydrator-test", "default")
+
+			// Set up a real git repository on the test server
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+
+			// Simplify to just one environment for this test
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchStaging},
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			// Clone the repo to get the HEAD SHA
+			workTreePath, err := os.MkdirTemp("", "*")
+			Expect(err).ToNot(HaveOccurred())
+			defer func() {
+				_ = os.RemoveAll(workTreePath)
+			}()
+
+			_, err = runGitCmd(ctx, workTreePath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name), ".")
+			Expect(err).ToNot(HaveOccurred())
+			_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
+			Expect(err).ToNot(HaveOccurred())
+
+			sha, err := runGitCmd(ctx, workTreePath, "rev-parse", "HEAD")
+			Expect(err).ToNot(HaveOccurred())
+			sha = strings.TrimSpace(sha)
+
+			// Create Application WITHOUT SourceHydrator, using spec.source instead
+			app := &argocd.Application{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Application",
+					APIVersion: "argoproj.io/v1alpha1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-app-non-hydrator",
+					Labels: map[string]string{
+						"test": "non-hydrator",
+					},
+				},
+				Spec: argocd.ApplicationSpec{
+					Source: &argocd.Source{
+						RepoURL:        fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name),
+						TargetRevision: testBranchStaging,
+					},
+				},
+				Status: argocd.ApplicationStatus{
+					Health: argocd.HealthStatus{
+						Status:             argocd.HealthStatusHealthy,
+						LastTransitionTime: nil,
+					},
+					Sync: argocd.SyncStatus{
+						Status:   argocd.SyncStatusCodeSynced,
+						Revision: sha,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, app)).To(Succeed())
+
+			// Create ArgoCDCommitStatus
+			commitStatus := &promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      name,
+				},
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"test": "non-hydrator"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+
+			// Verify the application is selected and status is correct
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, updated)
+				g.Expect(err).ToNot(HaveOccurred())
+
+				// Verify application is selected
+				g.Expect(updated.Status.ApplicationsSelected).To(HaveLen(1))
+				g.Expect(updated.Status.ApplicationsSelected[0].Name).To(Equal("test-app-non-hydrator"))
+				g.Expect(updated.Status.ApplicationsSelected[0].Environment).To(Equal(testBranchStaging))
+				g.Expect(updated.Status.ApplicationsSelected[0].Sha).To(Equal(sha))
+				g.Expect(updated.Status.ApplicationsSelected[0].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Clean up
+			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 		})
 
 		It("should reconcile when sync status changes but health status and LastTransitionTime do not change", func() {
