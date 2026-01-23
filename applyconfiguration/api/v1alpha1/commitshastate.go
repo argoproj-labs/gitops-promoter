@@ -27,6 +27,7 @@ import (
 // CommitShaState defines the state of a commit in a branch.
 type CommitShaStateApplyConfiguration struct {
 	// Sha is the SHA of the commit in the branch
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	Sha *string `json:"sha,omitempty"`
 	// CommitTime is the time the commit was made
 	CommitTime *v1.Time `json:"commitTime,omitempty"`
