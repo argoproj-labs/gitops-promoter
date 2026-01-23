@@ -5,8 +5,10 @@ based on Argo CD's concept of a healthy application. The controller listens for 
 Applications based on a common label on the Application resources managed by a particular 
 PromotionStrategy.
 
-> [!IMPORTANT]
-> Currently this controller only works with Argo CD Applications that are configured to use the [Source Hydrator](https://argo-cd.readthedocs.io/en/stable/user-guide/source-hydrator/).
+> [!NOTE]
+> The controller supports both Argo CD Applications that use the [Source Hydrator](https://argo-cd.readthedocs.io/en/stable/user-guide/source-hydrator/) 
+> and standard Applications that use `spec.source`. For standard Applications, the `spec.source.targetRevision` 
+> field is used as the environment identifier (equivalent to `spec.sourceHydrator.syncSource.targetBranch` for hydrated applications).
 
 > [!IMPORTANT]
 > Currently the repo URL configured in the PromotionStrategy must be exactly the same as the repo URL configured in the Argo CD Application.
@@ -115,6 +117,50 @@ Single environment that filters applications by label selector.
 Multi-cluster environment that filters applications by label selector and environment. 
 ```yaml
 {!internal/controller/testdata/ArgoCDCommitStatus.yaml!}
+```
+
+### Using Standard Argo CD Applications (without Source Hydrator)
+
+The controller also supports standard Argo CD Applications that don't use the Source Hydrator. 
+In this case, the `spec.source.targetRevision` field is used as the environment identifier:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app-staging
+  labels:
+    app: my-app
+spec:
+  source:
+    repoURL: https://github.com/myorg/myrepo
+    targetRevision: environments/staging  # This becomes the environment identifier
+    path: manifests
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: my-app
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+```
+
+The ArgoCDCommitStatus configuration remains the same:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ArgoCDCommitStatus
+metadata:
+  name: my-app
+spec:
+  promotionStrategyRef:
+    name: my-app-strategy
+  applicationSelector:
+    matchLabels:
+      app: my-app
 ```
 
 ## Multi-Cluster Support

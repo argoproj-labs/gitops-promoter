@@ -532,6 +532,10 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 
 	proposedShas, err := gitOperations.GetBranchShas(ctx, ctp.Spec.ProposedBranch)
 	if err != nil {
+		// If the proposed branch doesn't exist, it's likely because the hydrator hasn't run yet
+		if strings.Contains(err.Error(), "couldn't find remote ref") {
+			return fmt.Errorf("failed to get SHAs for proposed branch %q: %w (this branch may not exist yet - check if your hydrator is running and has processed this branch)", ctp.Spec.ProposedBranch, err)
+		}
 		return fmt.Errorf("failed to get SHAs for proposed branch %q: %w", ctp.Spec.ProposedBranch, err)
 	}
 
