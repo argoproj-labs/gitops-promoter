@@ -440,75 +440,113 @@ The polling behavior depends on the `reportOn` setting and the optional `polling
 - Useful for continuous health monitoring of deployed commits
 - The status can transition from success back to pending if the external system state changes
 
-### Custom Polling Expression
+### Trigger Expression (polling.expression)
 
-For advanced use cases, you can use `polling.expression` to dynamically control polling behavior. This expression is evaluated after each HTTP request to determine if polling should continue.
+When `polling.expression` is configured, it overrides the default `reportOn` behavior. The expression is evaluated **before** each HTTP request to decide whether to make the request at all. This provides fine-grained control over when HTTP requests are triggered, enabling:
+
+- Conditional request triggering based on environment state
+- Request throttling and rate limiting
+- Attempt limiting (e.g., max 10 requests)
+- Custom backoff strategies
+- State-based decision making
+
+When a trigger expression is configured:
+- The controller always requeues at `polling.interval`
+- Each reconcile evaluates the expression
+- If expression returns `true` → HTTP request is made
+- If expression returns `false` → HTTP request is skipped, previous status is reused
+
+See the [Custom Trigger Expression](#custom-trigger-expression) section for detailed examples.
+
+### Custom Trigger Expression
+
+For advanced use cases, you can use `polling.expression` to dynamically control whether HTTP requests should be triggered. This expression is evaluated **before** each HTTP request to determine if the request should be made.
 
 The expression can return:
-1. **Boolean**: `true` to continue polling, `false` to stop
-2. **Object with 'polling' field**: `{polling: true/false, ...customData}` - the `polling` field controls polling, and any additional fields are stored and available in the next reconcile as `ExpressionData`
+1. **Boolean**: `true` to make the request, `false` to skip it
+2. **Object with 'trigger' field**: `{trigger: true/false, ...customData}` - the `trigger` field controls whether to make the request, and any additional fields are stored and available in the next reconcile as `ExpressionData`
 
 #### Available Variables
 
-The polling expression has access to:
+The trigger expression has access to:
 
 | Variable | Type | Description |
 |----------|------|-------------|
 | `PromotionStrategy` | PromotionStrategy | The full PromotionStrategy spec and status |
 | `Environment` | EnvironmentStatus | Current environment's status from PromotionStrategy |
-| `Response.StatusCode` | int | HTTP response status code from validation request |
-| `Response.Body` | any | Parsed response body (JSON as map or raw string) |
-| `Response.Headers` | map[string][]string | HTTP response headers |
-| `ValidationResult` | bool | Result of the main Expression evaluation |
-| `Phase` | string | Current phase (success/pending/failure) |
-| `ReportedSha` | string | The SHA being validated |
 | `Branch` | string | Environment branch name |
-| `ExpressionData` | map[string]any | Custom data from previous polling expression |
+| `ExpressionData` | map[string]any | Custom data from previous trigger expression evaluation |
 
 **Note:** `PromotionStrategy.Status.Environments` is an ordered array representing the promotion sequence. `Environments[0]` is the first environment (e.g., dev), `Environments[1]` is second (e.g., staging), etc.
+
+**Important:** The trigger expression evaluates **before** the HTTP request, so it does NOT have access to `Response`, `ValidationResult`, or `Phase` from the current reconcile. Use this to control whether to make the request based on environment state or custom tracking logic.
 
 #### Boolean Expression Examples
 
 ```yaml
-# Always poll (equivalent to reportOn: active)
+# Always trigger requests (default behavior)
 polling:
   expression: "true"
 
-# Stop polling after success (equivalent to reportOn: proposed)
+# Only trigger if environment has both proposed and active SHAs
 polling:
-  expression: 'Phase != "success"'
+  expression: 'Environment.Proposed.Hydrated.Sha != "" && Environment.Active.Hydrated.Sha != ""'
 
-# Poll until this SHA appears in the healthy history
+# Only trigger for specific branches
 polling:
-  expression: '!any(Environment.LastHealthyDryShas, {.Sha == ReportedSha})'
+  expression: 'Branch == "environment/production" || Branch == "environment/staging"'
 
-# Continue polling if PR is not merged yet
+# Trigger when SHA has changed in first environment
 polling:
-  expression: 'Phase == "success" && (Environment.PullRequest == nil || Environment.PullRequest.State != "merged")'
+  expression: |
+    len(PromotionStrategy.Status.Environments) > 0 &&
+    PromotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha != ""
 ```
 
 #### Object Expression Examples (State Tracking)
 
-Object expressions allow you to track state across reconciles:
+Object expressions allow you to track state across reconciles and implement custom logic:
 
 ```yaml
-# Track dry SHA changes and restart polling when it changes
+# Limit to 10 request attempts
 polling:
+  interval: 1m
   expression: |
     {
-      polling: len(PromotionStrategy.Status.Environments) > 0 &&
-               PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != "" &&
-               PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != ExpressionData["trackedSha"],
-      trackedSha: PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha
+      trigger: (ExpressionData.attempts ?? 0) < 10,
+      attempts: (ExpressionData.attempts ?? 0) + 1
     }
 
-# Track previous environment SHA and poll until it matches
+# Track dry SHA changes and only trigger when it changes
 polling:
   expression: |
-    prevEnv = filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"})[0];
+    currentDrySha = len(PromotionStrategy.Status.Environments) > 0 ? 
+                    PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha : "";
     {
-      polling: Phase != "success" || prevEnv.Active.Hydrated.Sha != ExpressionData["targetSha"],
-      targetSha: ReportedSha
+      trigger: currentDrySha != "" && currentDrySha != ExpressionData.trackedSha,
+      trackedSha: currentDrySha
+    }
+
+# Throttle requests - only trigger if 5 minutes have passed
+polling:
+  interval: 30s  # Check frequently
+  expression: |
+    {
+      trigger: (ExpressionData.lastRequestTime ?? 0) < (now() - 300),  # 5 minutes
+      lastRequestTime: now()
+    }
+
+# Progressive backoff - increase delay after each attempt
+polling:
+  interval: 1m
+  expression: |
+    attempts = ExpressionData.attempts ?? 0;
+    lastTime = ExpressionData.lastRequestTime ?? 0;
+    minDelay = attempts * 60;  # 1 min, 2 min, 3 min, etc.
+    {
+      trigger: (now() - lastTime) >= minDelay,
+      attempts: attempts + 1,
+      lastRequestTime: now()
     }
 ```
 
@@ -520,20 +558,18 @@ To access the previous environment in the promotion sequence:
 polling:
   expression: |
     currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Branch});
-    currentIdx > 0 && (
-      Phase != "success" || 
-      PromotionStrategy.Status.Environments[currentIdx-1].Active.Hydrated.Sha != ReportedSha
-    )
+    # Only trigger if we're not the first environment
+    currentIdx > 0 && PromotionStrategy.Status.Environments[currentIdx-1].Active.Hydrated.Sha != ""
 ```
 
 #### Error Handling
 
-If the polling expression fails to compile or evaluate, the error is returned to the reconcile loop and will:
+If the trigger expression fails to compile or evaluate, the error is returned to the reconcile loop and will:
 - Set the Ready condition to `False` with the error message
 - Trigger automatic requeue with exponential backoff
 - Make expression errors immediately visible via `kubectl describe`
 
-This ensures broken expressions are immediately visible rather than silently falling back to default behavior
+This ensures broken expressions are immediately visible rather than silently falling back to default behavior.
 
 ## Status Fields
 
