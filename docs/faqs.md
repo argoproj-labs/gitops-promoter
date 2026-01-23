@@ -11,9 +11,9 @@ When using GitOps promoter, the user only pushes to a single branch. Hydrated ma
 environment-specific branches, but the user never has to interact with them directly.
 
 ## Does GitOps Promoter support multi Argo CD instances?
-Yes, GitOps Promoter is very flexible.
-It can work with multiple Argo CD instance being on the same machine or different machines.
-The key is that promotion is managed via Git, and Argo CD (single or multiple instances) simply syncs from Git as usual.
+It works with multiple Argo CD instances, whether they are running on the same machine or on different machines.
+Promotion is managed through Git, so each Argo CD instance (single or multiple) simply syncs from the relevant Git 
+repository as usual.
 
 ## How should I bump image tags?
 
