@@ -35,13 +35,13 @@ spec:
   promotionStrategyRef:
     name: webservice-tier-1
   key: external-approval
-  description: "External approval check"
-  url: "https://approvals.example.com/requests/{{ .ReportedSha }}"
+  descriptionTemplate: "External approval check"
+  urlTemplate: "https://approvals.example.com/requests/{{ .ReportedSha }}"
   reportOn: proposed
   polling:
     interval: 2m
   httpRequest:
-    url: "https://api.example.com/approvals/check"
+    urlTemplate: "https://api.example.com/approvals/check"
     method: GET
     timeout: 30s
   expression: 'Response.StatusCode == 200 && Response.Body.approved == true'
@@ -55,7 +55,7 @@ This configuration:
 
 ### Using Template Variables
 
-Template variables are supported in the `description`, `url`, and `httpRequest` fields (`url`, `headers` values, and `body`).
+Template variables are supported in the `descriptionTemplate`, `urlTemplate`, and `httpRequest` fields (`urlTemplate`, `headerTemplates` keys and values, and `bodyTemplate`).
 
 The following example shows templates in both the commit status URL and the HTTP request URL:
 
@@ -68,15 +68,15 @@ spec:
   promotionStrategyRef:
     name: webservice-tier-1
   key: deployment-check
-  description: "Deployment verification for {{ .Branch }}"
-  url: "https://dashboard.example.com/deployments/{{ .ActiveHydratedSha | trunc 7 }}"
+  descriptionTemplate: "Deployment verification for {{ .Branch }}"
+  urlTemplate: "https://dashboard.example.com/deployments/{{ .ActiveHydratedSha | trunc 7 }}"
   reportOn: active
   polling:
     interval: 1m
   httpRequest:
-    url: "https://api.example.com/deployments/{{ .ActiveHydratedSha }}/status"
+    urlTemplate: "https://api.example.com/deployments/{{ .ActiveHydratedSha }}/status"
     method: GET
-    headers:
+    headerTemplates:
       Content-Type: application/json
     timeout: 30s
   expression: 'Response.StatusCode == 200 && Response.Body.status == "healthy"'
@@ -92,7 +92,7 @@ Available template variables:
 - `{{ .NamespaceMetadata.Labels }}` - Map of labels from the namespace where the WebRequestCommitStatus resides
 - `{{ .NamespaceMetadata.Annotations }}` - Map of annotations from the namespace where the WebRequestCommitStatus resides
 
-**Note:** For `httpRequest` templates (`httpRequest.url`, `httpRequest.headers`, `httpRequest.body`), `Phase` and `LastSuccessfulSha` reflect the **previous** reconcile's values since the current phase isn't known until after the request completes. For the commit status fields (`description` and `url` at the spec level), they reflect the **current** reconcile's result.
+**Note:** For `httpRequest` templates (`urlTemplate`, `headerTemplates`, `bodyTemplate`), `Phase` and `LastSuccessfulSha` reflect the **previous** reconcile's values since the current phase isn't known until after the request completes. For the commit status fields (`descriptionTemplate` and `urlTemplate` at the spec level), they reflect the **current** reconcile's result.
 
 To access specific label or annotation values with simple keys, use dot notation: `{{ .NamespaceMetadata.Labels.environment }}`. For keys containing hyphens or special characters, use the `index` function: `{{ index .NamespaceMetadata.Labels "cost-center" }}` or `{{ index .NamespaceMetadata.Annotations "notification-url" }}`
 
@@ -116,7 +116,7 @@ spec:
     name: my-strategy
   key: approval-check
   httpRequest:
-    url: "https://api.example.com/check"
+    urlTemplate: "https://api.example.com/check"
     method: GET
     authentication:
       basic:
@@ -153,7 +153,7 @@ spec:
     name: my-strategy
   key: api-check
   httpRequest:
-    url: "https://api.example.com/status"
+    urlTemplate: "https://api.example.com/status"
     method: GET
     authentication:
       bearer:
@@ -193,7 +193,7 @@ spec:
     name: my-strategy
   key: oauth-api-check
   httpRequest:
-    url: "https://api.example.com/secure/endpoint"
+    urlTemplate: "https://api.example.com/secure/endpoint"
     method: GET
     authentication:
       oauth2:
@@ -234,7 +234,7 @@ spec:
     name: my-strategy
   key: secure-api-check
   httpRequest:
-    url: "https://secure-api.example.com/check"
+    urlTemplate: "https://secure-api.example.com/check"
     method: GET
     authentication:
       tls:
@@ -288,17 +288,17 @@ spec:
   promotionStrategyRef:
     name: webservice-tier-1
   key: validation-check
-  description: "Validation service check"
-  url: "https://api.example.com/validate/{{ .ProposedHydratedSha | trunc 7 }}/details"
+  descriptionTemplate: "Validation service check"
+  urlTemplate: "https://api.example.com/validate/{{ .ProposedHydratedSha | trunc 7 }}/details"
   reportOn: proposed
   polling:
     interval: 5m
   httpRequest:
-    url: "https://api.example.com/validate"
+    urlTemplate: "https://api.example.com/validate"
     method: POST
-    headers:
+    headerTemplates:
       Content-Type: application/json
-    body: |
+    bodyTemplate: |
       {
         "proposedSha": "{{ .ProposedHydratedSha }}",
         "activeSha": "{{ .ActiveHydratedSha }}",
@@ -337,20 +337,20 @@ spec:
   promotionStrategyRef:
     name: webservice-tier-1
   key: deployment-check
-  description: "Deployment verification for {{ .NamespaceMetadata.Labels.environment }}"
-  url: "{{ index .NamespaceMetadata.Annotations \"notification-url\" }}/deployments/{{ .ReportedSha | trunc 7 }}"
+  descriptionTemplate: "Deployment verification for {{ .NamespaceMetadata.Labels.environment }}"
+  urlTemplate: "{{ index .NamespaceMetadata.Annotations \"notification-url\" }}/deployments/{{ .ReportedSha | trunc 7 }}"
   reportOn: proposed
   polling:
     interval: 2m
   httpRequest:
-    url: "https://api.example.com/deployments/validate"
+    urlTemplate: "https://api.example.com/deployments/validate"
     method: POST
-    headers:
+    headerTemplates:
       Content-Type: application/json
       X-Environment: '{{ .NamespaceMetadata.Labels.environment }}'
       X-Team: '{{ .NamespaceMetadata.Labels.team }}'
       X-Cost-Center: '{{ index .NamespaceMetadata.Labels "cost-center" }}'
-    body: |
+    bodyTemplate: |
       {
         "sha": "{{ .ProposedHydratedSha }}",
         "namespace": "{{ .Namespace }}",
@@ -368,7 +368,7 @@ spec:
 **Template syntax notes:**
 - Simple keys (alphanumeric, no hyphens): `{{ .NamespaceMetadata.Labels.environment }}`
 - Keys with hyphens or special characters: `{{ index .NamespaceMetadata.Labels "cost-center" }}`
-- Nested in structures: Works in `url`, `headers` values, `body`, and `description` fields
+- Nested in structures: Works in `urlTemplate`, `headerTemplates` values, `bodyTemplate`, and `descriptionTemplate` fields
 
 ### Integrating with PromotionStrategy
 
@@ -613,7 +613,7 @@ Integrate with ticketing or approval systems:
 ```yaml
 spec:
   httpRequest:
-    url: "https://jira.example.com/api/tickets/{{ .ProposedHydratedSha }}/status"
+    urlTemplate: "https://jira.example.com/api/tickets/{{ .ProposedHydratedSha }}/status"
     method: GET
   expression: 'Response.StatusCode == 200 && Response.Body.status == "approved"'
 ```
@@ -624,11 +624,11 @@ Verify monitoring shows healthy state:
 
 ```yaml
 spec:
-  description: "Health check for {{ .Branch }}"
-  url: "https://grafana.example.com/d/app-health?var-branch={{ .Branch }}"
+  descriptionTemplate: "Health check for {{ .Branch }}"
+  urlTemplate: "https://grafana.example.com/d/app-health?var-branch={{ .Branch }}"
   reportOn: active
   httpRequest:
-    url: "https://prometheus.example.com/api/v1/query?query=up{job='myapp'}"
+    urlTemplate: "https://prometheus.example.com/api/v1/query?query=up{job='myapp'}"
     method: GET
   expression: 'Response.StatusCode == 200 && Response.Body.data.result[0].value[1] == "1"'
 ```
@@ -639,12 +639,12 @@ Integrate with change management systems:
 
 ```yaml
 spec:
-  description: "Change management approval"
-  url: "https://servicenow.example.com/change/{{ .ProposedHydratedSha | trunc 7 }}"
+  descriptionTemplate: "Change management approval"
+  urlTemplate: "https://servicenow.example.com/change/{{ .ProposedHydratedSha | trunc 7 }}"
   httpRequest:
-    url: "https://servicenow.example.com/api/changes"
+    urlTemplate: "https://servicenow.example.com/api/changes"
     method: POST
-    body: |
+    bodyTemplate: |
       {
         "sha": "{{ .ProposedHydratedSha }}",
         "action": "check_approval"
