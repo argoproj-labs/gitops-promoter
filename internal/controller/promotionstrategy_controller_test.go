@@ -4357,7 +4357,47 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 			// Second call immediately - both should be rate limited
 			reconciler.enqueueOutOfSyncCTPs(ctx, ctps)
-			enqueueMutex.Lock()
+			enqueueMutex.Lock()Context("When deleting a PromotionStrategy", func() {
+				var ctx context.Context
+				var name string
+				var scmSecret *v1.Secret
+				var scmProvider *promoterv1alpha1.ScmProvider
+				var gitRepo *promoterv1alpha1.GitRepository
+				var promotionStrategy *promoterv1alpha1.PromotionStrategy
+				var typeNamespacedName types.NamespacedName
+		
+				BeforeEach(func() {
+					ctx = context.Background()
+		
+					By("Creating test resources")
+					name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "ps-deletion-test", "default")
+		
+					typeNamespacedName = types.NamespacedName{
+						Name:      name,
+						Namespace: "default",
+					}
+		
+					Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+					Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+					Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+					Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+				})
+		
+				It("should return early without requeue when deletion timestamp is set", func() {
+					By("Deleting the PromotionStrategy immediately")
+					Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+		
+					By("Verifying the PromotionStrategy is deleted without hanging")
+					// If the controller properly returns early without requeue when deletion timestamp is set,
+					// the resource should be deleted quickly via garbage collection.
+					// The key test is that deletion completes within the timeout - if there was an infinite
+					// requeue loop, this would timeout.
+					Eventually(func(g Gomega) {
+						err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+						g.Expect(errors.IsNotFound(err)).To(BeTrue(), "PromotionStrategy should be deleted")
+					}, constants.EventuallyTimeout).Should(Succeed())
+				})
+			})
 			secondCount := len(*enqueuedCTPs)
 			enqueueMutex.Unlock()
 			Expect(secondCount).To(Equal(2), "both should be rate limited")
@@ -4399,48 +4439,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			// ctp-1 was rate limited in the second call
 			Expect(secondCount).To(Equal(2), "only ctp-2 should have enqueued in second call")
 			Expect(lastEnqueuedName).To(Equal("ctp-2"), "ctp-2 should be the last enqueued")
-		})
-	})
-
-	Context("When deleting a PromotionStrategy", func() {
-		var ctx context.Context
-		var name string
-		var scmSecret *v1.Secret
-		var scmProvider *promoterv1alpha1.ScmProvider
-		var gitRepo *promoterv1alpha1.GitRepository
-		var promotionStrategy *promoterv1alpha1.PromotionStrategy
-		var typeNamespacedName types.NamespacedName
-
-		BeforeEach(func() {
-			ctx = context.Background()
-
-			By("Creating test resources")
-			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "ps-deletion-test", "default")
-
-			typeNamespacedName = types.NamespacedName{
-				Name:      name,
-				Namespace: "default",
-			}
-
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-		})
-
-		It("should return early without requeue when deletion timestamp is set", func() {
-			By("Deleting the PromotionStrategy immediately")
-			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
-
-			By("Verifying the PromotionStrategy is deleted without hanging")
-			// If the controller properly returns early without requeue when deletion timestamp is set,
-			// the resource should be deleted quickly via garbage collection.
-			// The key test is that deletion completes within the timeout - if there was an infinite
-			// requeue loop, this would timeout.
-			Eventually(func(g Gomega) {
-				err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
-				g.Expect(errors.IsNotFound(err)).To(BeTrue(), "PromotionStrategy should be deleted")
-			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
 })
