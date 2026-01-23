@@ -464,7 +464,15 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 	// - "Throttle requests based on time"
 	// - "Only trigger when SHA changes in another environment"
 	if wrcs.Spec.Polling.Expression != "" {
-		return r.processEnvironmentWithPollingExpression(ctx, wrcs, ps, promoterEnvStatus, previousReconcileStatus, reportedSha, reportOn, branch, proposedSha, activeSha, previousPhase, lastSuccessfulSha)
+		shaCtx := environmentSHAContext{
+			reportedSha:       reportedSha,
+			branch:            branch,
+			proposedSha:       proposedSha,
+			activeSha:         activeSha,
+			previousPhase:     previousPhase,
+			lastSuccessfulSha: lastSuccessfulSha,
+		}
+		return r.processEnvironmentWithPollingExpression(ctx, wrcs, ps, promoterEnvStatus, previousReconcileStatus, shaCtx)
 	}
 
 	// Legacy behavior: skip HTTP request if we can reuse previous successful status
@@ -540,6 +548,16 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 	return result, nil
 }
 
+// environmentSHAContext bundles SHA and branch information for environment processing
+type environmentSHAContext struct {
+	reportedSha       string
+	branch            string
+	proposedSha       string
+	activeSha         string
+	previousPhase     string
+	lastSuccessfulSha string
+}
+
 // processEnvironmentWithPollingExpression handles environment processing when a custom polling expression is configured.
 func (r *WebRequestCommitStatusReconciler) processEnvironmentWithPollingExpression(
 	ctx context.Context,
@@ -547,26 +565,26 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentWithPollingExpressi
 	ps *promoterv1alpha1.PromotionStrategy,
 	promoterEnvStatus *promoterv1alpha1.EnvironmentStatus,
 	previousReconcileStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus,
-	reportedSha, reportOn, branch, proposedSha, activeSha, previousPhase, lastSuccessfulSha string,
+	shaCtx environmentSHAContext,
 ) (*environmentProcessResult, error) {
 	logger := log.FromContext(ctx)
 
 	// On first reconcile (no previous status), always trigger request
 	if previousReconcileStatus == nil {
-		return r.makeRequestAndProcessResult(ctx, wrcs, ps, nil, previousReconcileStatus, reportedSha, branch, proposedSha, activeSha, previousPhase, lastSuccessfulSha)
+		return r.makeRequestAndProcessResult(ctx, wrcs, ps, nil, previousReconcileStatus, shaCtx)
 	}
 
 	// Evaluate trigger expression with current state
-	shouldTriggerRequest, expressionData, triggerErr := r.evaluatePollingExpressionPreRequest(ctx, wrcs, ps, promoterEnvStatus, previousReconcileStatus, branch)
+	shouldTriggerRequest, expressionData, triggerErr := r.evaluatePollingExpressionPreRequest(ctx, wrcs, ps, promoterEnvStatus, previousReconcileStatus, shaCtx.branch)
 	if triggerErr != nil {
-		return nil, fmt.Errorf("failed to evaluate trigger expression for environment %q: %w", branch, triggerErr)
+		return nil, fmt.Errorf("failed to evaluate trigger expression for environment %q: %w", shaCtx.branch, triggerErr)
 	}
 
 	// If expression says not to trigger, reuse previous status
 	if !shouldTriggerRequest {
 		logger.V(1).Info("Trigger expression returned false, skipping HTTP request",
-			"branch", branch,
-			"reportedSha", reportedSha)
+			"branch", shaCtx.branch,
+			"reportedSha", shaCtx.reportedSha)
 
 		result := &environmentProcessResult{
 			envStatus:    *previousReconcileStatus,
@@ -577,15 +595,15 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentWithPollingExpressi
 		if expressionData != nil {
 			jsonData, err := json.Marshal(expressionData)
 			if err != nil {
-				return nil, fmt.Errorf("failed to marshal expression data for environment %q: %w", branch, err)
+				return nil, fmt.Errorf("failed to marshal expression data for environment %q: %w", shaCtx.branch, err)
 			}
 			result.envStatus.ExpressionData = &apiextensionsv1.JSON{Raw: jsonData}
 		}
 
 		// Ensure CommitStatus exists even when skipping request
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, previousReconcileStatus.Phase, wrcs.Spec.Key, &result.envStatus)
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps, shaCtx.branch, shaCtx.reportedSha, previousReconcileStatus.Phase, wrcs.Spec.Key, &result.envStatus)
 		if err != nil {
-			return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
+			return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", shaCtx.branch, err)
 		}
 		result.commitStatus = cs
 
@@ -593,7 +611,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentWithPollingExpressi
 	}
 
 	// Make request and store expression data
-	return r.makeRequestAndProcessResult(ctx, wrcs, ps, expressionData, previousReconcileStatus, reportedSha, branch, proposedSha, activeSha, previousPhase, lastSuccessfulSha)
+	return r.makeRequestAndProcessResult(ctx, wrcs, ps, expressionData, previousReconcileStatus, shaCtx)
 }
 
 // makeRequestAndProcessResult makes the HTTP request, processes the result, and stores expression data if provided.
@@ -603,21 +621,21 @@ func (r *WebRequestCommitStatusReconciler) makeRequestAndProcessResult(
 	ps *promoterv1alpha1.PromotionStrategy,
 	expressionData map[string]any,
 	previousReconcileStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus,
-	reportedSha, branch, proposedSha, activeSha, previousPhase, lastSuccessfulSha string,
+	shaCtx environmentSHAContext,
 ) (*environmentProcessResult, error) {
 	logger := log.FromContext(ctx)
 
 	// Make HTTP request and evaluate validation expression
-	envResult, err := r.processEnvironmentRequest(ctx, wrcs, branch, proposedSha, activeSha, reportedSha, previousPhase, lastSuccessfulSha)
+	envResult, err := r.processEnvironmentRequest(ctx, wrcs, shaCtx.branch, shaCtx.proposedSha, shaCtx.activeSha, shaCtx.reportedSha, shaCtx.previousPhase, shaCtx.lastSuccessfulSha)
 	if err != nil {
-		return nil, fmt.Errorf("failed to process environment request for %q: %w", branch, err)
+		return nil, fmt.Errorf("failed to process environment request for %q: %w", shaCtx.branch, err)
 	}
 
 	// Store expression data from pre-request evaluation if we have it
 	if expressionData != nil {
 		jsonData, err := json.Marshal(expressionData)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal expression data for environment %q: %w", branch, err)
+			return nil, fmt.Errorf("failed to marshal expression data for environment %q: %w", shaCtx.branch, err)
 		}
 		envResult.ExpressionData = &apiextensionsv1.JSON{Raw: jsonData}
 	}
@@ -627,7 +645,7 @@ func (r *WebRequestCommitStatusReconciler) makeRequestAndProcessResult(
 	needsPolling := true
 
 	// Detect if environment just transitioned to success
-	transitioned := previousPhase != WebRequestPhaseSuccess && envResult.Phase == WebRequestPhaseSuccess
+	transitioned := shaCtx.previousPhase != WebRequestPhaseSuccess && envResult.Phase == WebRequestPhaseSuccess
 
 	// Build result
 	result := &environmentProcessResult{
@@ -635,23 +653,23 @@ func (r *WebRequestCommitStatusReconciler) makeRequestAndProcessResult(
 		transitioned: transitioned,
 		needsPolling: needsPolling,
 	}
-	result.envStatus.LastSuccessfulSha = determineLastSuccessfulSha(envResult.Phase, reportedSha, previousReconcileStatus)
+	result.envStatus.LastSuccessfulSha = determineLastSuccessfulSha(envResult.Phase, shaCtx.reportedSha, previousReconcileStatus)
 
 	// Log transition if detected
 	if transitioned {
-		logger.Info("Validation transitioned to success", "branch", branch, "sha", reportedSha)
+		logger.Info("Validation transitioned to success", "branch", shaCtx.branch, "sha", shaCtx.reportedSha)
 	}
 
 	// Create or update CommitStatus with full environment status
-	cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, envResult.Phase, wrcs.Spec.Key, &result.envStatus)
+	cs, err := r.upsertCommitStatus(ctx, wrcs, ps, shaCtx.branch, shaCtx.reportedSha, envResult.Phase, wrcs.Spec.Key, &result.envStatus)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
+		return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", shaCtx.branch, err)
 	}
 	result.commitStatus = cs
 
 	logger.Info("Processed environment web request",
-		"branch", branch,
-		"reportedSha", reportedSha,
+		"branch", shaCtx.branch,
+		"reportedSha", shaCtx.reportedSha,
 		"phase", envResult.Phase,
 		"statusCode", envResult.Response.StatusCode)
 
