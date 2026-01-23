@@ -40,7 +40,7 @@ type PromotionStrategySpec struct {
 	// +kubebuilder:validation:Optional
 	// +listType:=map
 	// +listMapKey=key
-	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses,omitempty"`
 
 	// ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
 	// in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
@@ -51,7 +51,7 @@ type PromotionStrategySpec struct {
 	// +kubebuilder:validation:Optional
 	// +listType:=map
 	// +listMapKey=key
-	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses,omitempty"`
 
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
@@ -79,7 +79,7 @@ type Environment struct {
 	// +kubebuilder:validation:Optional
 	// +listType:=map
 	// +listMapKey=key
-	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses"`
+	ActiveCommitStatuses []CommitStatusSelector `json:"activeCommitStatuses,omitempty"`
 	// ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
 	// in a live environment. If a proposed commit status is failing for a given environment, the dry commit will not
 	// be promoted to that environment.
@@ -89,7 +89,7 @@ type Environment struct {
 	// +kubebuilder:validation:Optional
 	// +listType:=map
 	// +listMapKey=key
-	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
+	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses,omitempty"`
 }
 
 // GetAutoMerge returns the value of the AutoMerge field, defaulting to true if the field is nil.
@@ -165,6 +165,7 @@ type HealthyDryShas struct {
 	Time metav1.Time `json:"time"`
 }
 
+// +kubebuilder:ac:generate=true
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 

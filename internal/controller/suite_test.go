@@ -357,7 +357,7 @@ var _ = BeforeSuite(func() {
 	ctpReconciler := &ChangeTransferPolicyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("ChangeTransferPolicy"),
+		Recorder:    k8sManager.GetEventRecorder("ChangeTransferPolicy"),
 		SettingsMgr: settingsMgr,
 	}
 	err = ctpReconciler.SetupWithManager(ctx, k8sManager)
@@ -369,7 +369,7 @@ var _ = BeforeSuite(func() {
 	err = (&CommitStatusReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("CommitStatus"),
+		Recorder:    k8sManager.GetEventRecorder("CommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
@@ -378,7 +378,7 @@ var _ = BeforeSuite(func() {
 	err = (&TimedCommitStatusReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("TimedCommitStatus"),
+		Recorder:    k8sManager.GetEventRecorder("TimedCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
@@ -387,7 +387,7 @@ var _ = BeforeSuite(func() {
 	err = (&PromotionStrategyReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("PromotionStrategy"),
+		Recorder:    k8sManager.GetEventRecorder("PromotionStrategy"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)
@@ -396,7 +396,7 @@ var _ = BeforeSuite(func() {
 	err = (&PullRequestReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("PullRequest"),
+		Recorder:    k8sManager.GetEventRecorder("PullRequest"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -404,28 +404,28 @@ var _ = BeforeSuite(func() {
 	err = (&RevertCommitReconciler{
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("RevertCommit"),
+		Recorder: k8sManager.GetEventRecorder("RevertCommit"),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ScmProviderReconciler{
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("ScmProvider"),
+		Recorder: k8sManager.GetEventRecorder("ScmProvider"),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&GitRepositoryReconciler{
 		Client:   k8sManager.GetClient(),
 		Scheme:   k8sManager.GetScheme(),
-		Recorder: k8sManager.GetEventRecorderFor("GitRepository"),
+		Recorder: k8sManager.GetEventRecorder("GitRepository"),
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&ClusterScmProviderReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("ClusterScmProvider"),
+		Recorder:    k8sManager.GetEventRecorder("ClusterScmProvider"),
 		SettingsMgr: settingsMgr,
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
@@ -434,14 +434,14 @@ var _ = BeforeSuite(func() {
 		Manager:            multiClusterManager,
 		SettingsMgr:        settingsMgr,
 		KubeConfigProvider: kubeconfigProvider,
-		Recorder:           k8sManager.GetEventRecorderFor("ArgoCDCommitStatus"),
+		Recorder:           k8sManager.GetEventRecorder("ArgoCDCommitStatus"),
 	}).SetupWithManager(ctx, multiClusterManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&GitCommitStatusReconciler{
 		Client:      k8sManager.GetClient(),
 		Scheme:      k8sManager.GetScheme(),
-		Recorder:    k8sManager.GetEventRecorderFor("GitCommitStatus"),
+		Recorder:    k8sManager.GetEventRecorder("GitCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(ctx, k8sManager)

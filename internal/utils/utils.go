@@ -18,7 +18,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -255,7 +255,7 @@ func HandleReconciliationResult(
 	startTime time.Time,
 	obj StatusConditionUpdater,
 	client client.Client,
-	recorder record.EventRecorder,
+	recorder events.EventRecorder,
 	err *error,
 ) {
 	// Recover from any panic and convert it to an error.
@@ -304,11 +304,11 @@ func HandleReconciliationResult(
 		if readyCondition.Status == metav1.ConditionFalse {
 			eventType = "Warning"
 		}
-		recorder.Eventf(obj, eventType, readyCondition.Reason, readyCondition.Message)
+		recorder.Eventf(obj, nil, eventType, readyCondition.Reason, "Reconciling", readyCondition.Message)
 	} else {
 		// Error case: set Ready condition to False
 		if !k8serrors.IsConflict(*err) {
-			recorder.Eventf(obj, "Warning", string(promoterConditions.ReconciliationError), "Reconciliation failed: %v", *err)
+			recorder.Eventf(obj, nil, "Warning", string(promoterConditions.ReconciliationError), "Reconciling", "Reconciliation failed: %v", *err)
 		}
 		meta.SetStatusCondition(conditions, metav1.Condition{
 			Type:               string(promoterConditions.Ready),

@@ -1,0 +1,18 @@
+FROM golang:1.25
+
+WORKDIR /
+
+RUN apt-get update && apt-get install -y tini && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /git
+
+
+ENV PATH="${PATH}:/git"
+USER 65532:65532
+
+WORKDIR /app
+COPY ./bin/gitops-promoter /app/gitops-promoter
+COPY hack/git/promoter_askpass.sh /git/promoter_askpass.sh
+COPY ui/web/static ./app/ui/web/static
+
+ENTRYPOINT ["/usr/bin/tini", "-s", "--", "/app/gitops-promoter"]

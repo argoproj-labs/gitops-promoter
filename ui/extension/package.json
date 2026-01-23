@@ -19,17 +19,17 @@
     "@types/react-dom": "^19.1.6",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
-    "css-loader": "^6.10.0",
+    "css-loader": "^7.0.0",
     "eslint": "^8.57.1",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "sass": "^1.89.2",
     "sass-loader": "^16.0.5",
-    "style-loader": "^3.3.4",
+    "style-loader": "^4.0.0",
     "ts-loader": "^9.5.1",
     "webpack": "^5.91.0",
-    "webpack-cli": "^5.1.4"
+    "webpack-cli": "^6.0.0"
   },
   "dependencies": {
     "@types/js-yaml": "^4.0.9",
@@ -37,7 +37,7 @@
     "js-yaml": "^4.1.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "zustand": "^3.7.2"
+    "zustand": "^5.0.0"
   },
   "overrides": {
     "undici": "^7.18.2"
