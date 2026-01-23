@@ -39,8 +39,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
+	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -54,6 +54,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 )
 
@@ -66,7 +67,7 @@ type CTPEnqueueFunc func(namespace, name string)
 type ChangeTransferPolicyReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
+	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 
 	// enqueueFunc is set during SetupWithManager and can be retrieved via GetEnqueueFunc.
@@ -553,7 +554,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
-			r.Recorder.Event(ctp, "Warning", constants.TooManyMatchingShaReason, constants.TooManyMatchingShaActiveMessage)
+			r.Recorder.Eventf(ctp, nil, "Warning", constants.TooManyMatchingShaReason, "EvaluatingPromotion", constants.TooManyMatchingShaActiveMessage)
 		}
 		return fmt.Errorf("failed to set active commit status state: %w", err)
 	}
@@ -562,7 +563,7 @@ func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ct
 	if err != nil {
 		var tooManyMatchingShaError *TooManyMatchingShaError
 		if errors.As(err, &tooManyMatchingShaError) {
-			r.Recorder.Event(ctp, "Warning", constants.TooManyMatchingShaReason, constants.TooManyMatchingShaProposedMessage)
+			r.Recorder.Eventf(ctp, nil, "Warning", constants.TooManyMatchingShaReason, "EvaluatingPromotion", constants.TooManyMatchingShaProposedMessage)
 		}
 		return fmt.Errorf("failed to set proposed commit status state: %w", err)
 	}
@@ -678,13 +679,19 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 		found := false
 		phase := promoterv1alpha1.CommitPhasePending
 		if len(csList.Items) == 1 {
+			// Default to pending if the phase is empty (can happen when CommitStatus is newly created
+			// and the controller hasn't updated status yet)
+			csPhase := csList.Items[0].Status.Phase
+			if csPhase == "" {
+				csPhase = promoterv1alpha1.CommitPhasePending
+			}
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:   status.Key,
-				Phase: string(csList.Items[0].Status.Phase),
+				Phase: string(csPhase),
 				Url:   csList.Items[0].Spec.Url,
 			})
 			found = true
-			phase = csList.Items[0].Status.Phase
+			phase = csPhase
 		} else if len(csList.Items) > 1 {
 			// TODO: decided how to bubble up errors
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
@@ -924,47 +931,33 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		return nil, fmt.Errorf("failed to template pull request: %w", err)
 	}
 
-	pr := promoterv1alpha1.PullRequest{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: ctp.Namespace,
-			Name:      prName,
-		},
+	// Check if the PR already exists to determine the commit message
+	existingPR := &promoterv1alpha1.PullRequest{}
+	prExists := true
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: prName}, existingPR); err != nil {
+		if !k8s_errors.IsNotFound(err) {
+			return nil, fmt.Errorf("failed to get existing PullRequest: %w", err)
+		}
+		prExists = false
 	}
-	res, err := controllerutil.CreateOrUpdate(ctx, r.Client, &pr, func() error {
-		kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
-		gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
-		controllerRef := metav1.NewControllerRef(ctp, gvk)
-		blockOwnerDeletion := true
-		controllerRef.BlockOwnerDeletion = &blockOwnerDeletion
 
-		pr.OwnerReferences = []metav1.OwnerReference{*controllerRef}
-		pr.Labels = map[string]string{
-			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
-			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
-			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
-		}
-		// Add CTP finalizer to ensure we can copy status before PR is deleted
-		controllerutil.AddFinalizer(&pr, promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer)
-		pr.Spec.RepositoryReference = ctp.Spec.RepositoryReference
-		pr.Spec.Title = title
-		pr.Spec.TargetBranch = ctp.Spec.ActiveBranch
-		pr.Spec.SourceBranch = ctp.Spec.ProposedBranch
-		pr.Spec.Description = description
-		pr.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s", title, description)
-		pr.Spec.MergeSha = ctp.Status.Proposed.Hydrated.Sha
-		if pr.CreationTimestamp.IsZero() {
-			// New PR
-			pr.Spec.State = promoterv1alpha1.PullRequestOpen
-			return nil
-		}
+	// Build owner reference
+	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
-		// Update existing PR
+	// Determine the commit message based on whether this is a new or existing PR
+	var commitMessage string
+	if !prExists {
+		// New PR
+		commitMessage = fmt.Sprintf("%s\n\n%s", title, description)
+	} else {
+		// Update existing PR - add trailers
 		commitTrailers := trailers{}
-		commitTrailers[constants.TrailerPullRequestID] = pr.Status.ID
-		commitTrailers[constants.TrailerPullRequestSourceBranch] = pr.Spec.SourceBranch
-		commitTrailers[constants.TrailerPullRequestTargetBranch] = pr.Spec.TargetBranch
-		commitTrailers[constants.TrailerPullRequestCreationTime] = pr.Status.PRCreationTime.Format(time.RFC3339)
-		commitTrailers[constants.TrailerPullRequestUrl] = pr.Status.Url
+		commitTrailers[constants.TrailerPullRequestID] = existingPR.Status.ID
+		commitTrailers[constants.TrailerPullRequestSourceBranch] = ctp.Spec.ProposedBranch
+		commitTrailers[constants.TrailerPullRequestTargetBranch] = ctp.Spec.ActiveBranch
+		commitTrailers[constants.TrailerPullRequestCreationTime] = existingPR.Status.PRCreationTime.Format(time.RFC3339)
+		commitTrailers[constants.TrailerPullRequestUrl] = existingPR.Status.Url
 
 		for _, status := range ctp.Status.Active.CommitStatuses {
 			commitTrailers[constants.TrailerCommitStatusActivePrefix+status.Key+"-phase"] = status.Phase
@@ -979,26 +972,57 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		commitTrailers[constants.TrailerShaDryActive] = ctp.Status.Active.Dry.Sha
 		commitTrailers[constants.TrailerShaDryProposed] = ctp.Status.Proposed.Dry.Sha
 
-		pr.Spec.Commit.Message = fmt.Sprintf("%s\n\n%s\n\n%s", pr.Spec.Title, pr.Spec.Description, commitTrailers)
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create or update PR %q: %w", prName, err)
-	}
-	switch res {
-	case controllerutil.OperationResultCreated:
-		r.Recorder.Event(ctp, "Normal", constants.PullRequestCreatedReason, fmt.Sprintf(constants.PullRequestCreatedMessage, pr.Name))
-		logger.V(4).Info("Created pull request", "pullRequest", pr)
-	case controllerutil.OperationResultNone:
-		logger.V(4).Info("Pull request already exists and is up to date", "pullRequest", pr)
-	case controllerutil.OperationResultUpdated:
-		logger.V(4).Info("Updated pull request", "pullRequest", pr)
-	default:
-		logger.V(4).Info("Unexpected operation result", "result", res)
+		commitMessage = fmt.Sprintf("%s\n\n%s\n\n%s", title, description, commitTrailers)
 	}
 
-	return &pr, nil
+	// Determine the state: preserve existing state if PR exists, otherwise default to open
+	prState := promoterv1alpha1.PullRequestOpen
+	if prExists {
+		prState = existingPR.Spec.State
+	}
+
+	// Build the apply configuration
+	prApply := acv1alpha1.PullRequest(prName, ctp.Namespace).
+		WithLabels(map[string]string{
+			promoterv1alpha1.PromotionStrategyLabel:    utils.KubeSafeLabel(ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]),
+			promoterv1alpha1.ChangeTransferPolicyLabel: utils.KubeSafeLabel(ctp.Name),
+			promoterv1alpha1.EnvironmentLabel:          utils.KubeSafeLabel(ctp.Spec.ActiveBranch),
+		}).
+		WithOwnerReferences(acmetav1.OwnerReference().
+			WithAPIVersion(gvk.GroupVersion().String()).
+			WithKind(gvk.Kind).
+			WithName(ctp.Name).
+			WithUID(ctp.UID).
+			WithController(true).
+			WithBlockOwnerDeletion(true)).
+		WithFinalizers(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer).
+		WithSpec(acv1alpha1.PullRequestSpec().
+			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ctp.Spec.RepositoryReference.Name)).
+			WithTitle(title).
+			WithTargetBranch(ctp.Spec.ActiveBranch).
+			WithSourceBranch(ctp.Spec.ProposedBranch).
+			WithDescription(description).
+			WithCommit(acv1alpha1.CommitConfiguration().WithMessage(commitMessage)).
+			WithMergeSha(ctp.Status.Proposed.Hydrated.Sha).
+			WithState(prState))
+
+	// Apply using Server-Side Apply with Patch to get the result directly
+	pr := &promoterv1alpha1.PullRequest{}
+	pr.Name = prName
+	pr.Namespace = ctp.Namespace
+	if err = r.Patch(ctx, pr, utils.ApplyPatch{ApplyConfig: prApply}, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
+		return nil, fmt.Errorf("failed to apply PullRequest %q: %w", prName, err)
+	}
+
+	// Log and emit events
+	if !prExists {
+		r.Recorder.Eventf(ctp, nil, "Normal", constants.PullRequestCreatedReason, "CreatingPullRequest", constants.PullRequestCreatedMessage, pr.Name)
+		logger.V(4).Info("Created pull request", "pullRequest", pr.Name)
+	} else {
+		logger.V(4).Info("Applied pull request", "pullRequest", pr.Name)
+	}
+
+	return pr, nil
 }
 
 // mergePullRequests tries to merge the pull request if all the checks have passed and the environment is set to auto merge.
@@ -1072,21 +1096,50 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 		return &pullRequest, fmt.Errorf("cannot merge PullRequest %q without an ID", pullRequest.Name)
 	}
 
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		var pr promoterv1alpha1.PullRequest
-		err = r.Get(ctx, client.ObjectKey{Namespace: pullRequest.Namespace, Name: pullRequest.Name}, &pr, &client.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("failed to get PR %q: %w", pullRequest.Name, err)
-		}
-		pr.Spec.State = promoterv1alpha1.PullRequestMerged
-		return r.Update(ctx, &pr)
-	})
-	if err != nil {
-		return &pullRequest, fmt.Errorf("failed to update PR %q: %w", pullRequest.Name, err)
+	// Update the PR state to merged using SSA.
+	// Re-specify this controller's ownerReference, finalizers, and labels to preserve them in the apply.
+	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
+	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
+
+	ownerRef := acmetav1.OwnerReference().
+		WithAPIVersion(gvk.GroupVersion().String()).
+		WithKind(gvk.Kind).
+		WithName(ctp.Name).
+		WithUID(ctp.UID).
+		WithController(true).
+		WithBlockOwnerDeletion(true)
+
+	prSpec := acv1alpha1.PullRequestSpec().
+		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(pullRequest.Spec.RepositoryReference.Name)).
+		WithTitle(pullRequest.Spec.Title).
+		WithTargetBranch(pullRequest.Spec.TargetBranch).
+		WithSourceBranch(pullRequest.Spec.SourceBranch).
+		WithMergeSha(pullRequest.Spec.MergeSha).
+		WithState(promoterv1alpha1.PullRequestMerged)
+
+	if pullRequest.Spec.Description != "" {
+		prSpec = prSpec.WithDescription(pullRequest.Spec.Description)
 	}
-	r.Recorder.Event(ctp, "Normal", constants.PullRequestMergedReason, fmt.Sprintf(constants.PullRequestMergedMessage, pullRequest.Name))
+	if pullRequest.Spec.Commit.Message != "" {
+		prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().WithMessage(pullRequest.Spec.Commit.Message))
+	}
+
+	prApply := acv1alpha1.PullRequest(pullRequest.Name, pullRequest.Namespace).
+		WithLabels(pullRequest.Labels).
+		WithOwnerReferences(ownerRef).
+		WithFinalizers(promoterv1alpha1.ChangeTransferPolicyPullRequestFinalizer).
+		WithSpec(prSpec)
+
+	// Apply using Server-Side Apply with Patch to get the result directly
+	pr := &promoterv1alpha1.PullRequest{}
+	pr.Name = pullRequest.Name
+	pr.Namespace = pullRequest.Namespace
+	if err := r.Patch(ctx, pr, utils.ApplyPatch{ApplyConfig: prApply}, client.FieldOwner(constants.ChangeTransferPolicyControllerFieldOwner), client.ForceOwnership); err != nil {
+		return &pullRequest, fmt.Errorf("failed to apply PR %q state to merged: %w", pullRequest.Name, err)
+	}
+	r.Recorder.Eventf(ctp, nil, "Normal", constants.PullRequestMergedReason, "MergingPullRequest", constants.PullRequestMergedMessage, pr.Name)
 	logger.Info("Merged pull request")
-	return &pullRequest, nil
+	return pr, nil
 }
 
 // gitMergeStrategyOurs tests if there is a conflict between the active and proposed branches. If there is, we
@@ -1115,7 +1168,7 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 		return fmt.Errorf("failed to merge branches %q and %q with 'ours' strategy: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 	}
 
-	r.Recorder.Event(ctp, "Normal", constants.ResolvedConflictReason, fmt.Sprintf(constants.ResolvedConflictMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch))
+	r.Recorder.Eventf(ctp, nil, "Normal", constants.ResolvedConflictReason, "ResolvingConflict", constants.ResolvedConflictMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 
 	return nil
 }

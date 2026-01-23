@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -183,7 +183,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 	var (
 		ctx      context.Context
 		obj      *promoterv1alpha1.PromotionStrategy
-		recorder record.EventRecorder
+		recorder events.EventRecorder
 		scheme   *runtime.Scheme
 	)
 
@@ -202,7 +202,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		}
 		scheme = runtime.NewScheme()
 		_ = promoterv1alpha1.AddToScheme(scheme)
-		recorder = record.NewFakeRecorder(10)
+		recorder = events.NewFakeRecorder(10)
 	})
 
 	It("should recover from panic and convert it to an error", func() {
