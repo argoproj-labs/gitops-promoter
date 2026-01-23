@@ -22,6 +22,10 @@ applied to all environments.
 By focusing on the promotion part and leaving manifest manipulation to other tools, GitOps Promoter is able to reliably
 handle whatever manifest structure your organization prefers.
 
+## Do I need Argo CD to use GitOps Promoter?
+No, GitOps Promoter works with any tools that can provide hydrated manifests in Git.
+Check the [Custom Hydration](./custom_hydration.md) documentation for more details.
+
 ## Why Should I use Webhooks?
 
 Webhooks allow GitOps Promoter to react to events from your Git repository in real-time. This means that when you push
