@@ -99,7 +99,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get PromitionStrategy %q: %w", req.Name, err)
 	}
 
-	// If the resource is being deleted, stop reconciling immediately without requeueing
+	// If the resource is being deleted, stop reconciling immediately without requeuing
 	if !ps.DeletionTimestamp.IsZero() {
 		logger.V(4).Info("PromotionStrategy is being deleted, skipping reconciliation")
 		return ctrl.Result{}, nil
