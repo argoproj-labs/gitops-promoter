@@ -15,7 +15,13 @@ type Application struct {
 }
 
 type ApplicationSpec struct {
+	Source         *Source         `json:"source,omitempty"`
 	SourceHydrator *SourceHydrator `json:"sourceHydrator,omitempty"`
+}
+
+type Source struct {
+	RepoURL        string `json:"repoURL"`
+	TargetRevision string `json:"targetRevision,omitempty"`
 }
 
 type SyncStatus struct {
@@ -73,6 +79,31 @@ type ApplicationList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Application `json:"items"`
+}
+
+// GetRepoURL returns the repository URL from either SourceHydrator or Source.
+// Returns empty string if neither is configured.
+func (a *Application) GetRepoURL() string {
+	if a.Spec.SourceHydrator != nil {
+		return a.Spec.SourceHydrator.DrySource.RepoURL
+	}
+	if a.Spec.Source != nil {
+		return a.Spec.Source.RepoURL
+	}
+	return ""
+}
+
+// GetEnvironment returns the environment identifier (branch name) from either
+// SourceHydrator.SyncSource.TargetBranch or Source.TargetRevision.
+// Returns empty string if neither is configured.
+func (a *Application) GetEnvironment() string {
+	if a.Spec.SourceHydrator != nil {
+		return a.Spec.SourceHydrator.SyncSource.TargetBranch
+	}
+	if a.Spec.Source != nil {
+		return a.Spec.Source.TargetRevision
+	}
+	return ""
 }
 
 func init() {
