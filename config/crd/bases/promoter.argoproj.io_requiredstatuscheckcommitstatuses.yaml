@@ -148,6 +148,11 @@ spec:
                         description: RequiredCheckStatus defines the status of a single
                           required check.
                         properties:
+                          integrationId:
+                            description: |-
+                              IntegrationID is the SCM application/integration identifier that must provide this check.
+                              A nil value means any application can provide the check.
+                            type: string
                           name:
                             description: Name is the check name
                             type: string

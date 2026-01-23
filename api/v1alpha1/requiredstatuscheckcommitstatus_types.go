@@ -70,6 +70,11 @@ type RequiredCheckStatus struct {
 	// +required
 	Name string `json:"name"`
 
+	// IntegrationID is the SCM application/integration identifier that must provide this check.
+	// A nil value means any application can provide the check.
+	// +optional
+	IntegrationID *string `json:"integrationId,omitempty"`
+
 	// Phase is the current phase of this check
 	// +kubebuilder:validation:Enum=pending;success;failure
 	// +required
