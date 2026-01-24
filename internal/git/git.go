@@ -340,7 +340,25 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 	stdout = strings.TrimSpace(stdout)
 	lines := strings.Split(stdout, "\n")
 	if len(lines) != len(branches) {
-		return nil, fmt.Errorf("expected %d lines from ls-remote, got %d: %s", len(branches), len(lines), stdout)
+		// Determine which branches are missing
+		foundBranches := make(map[string]bool)
+		for _, line := range lines {
+			if line == "" {
+				continue
+			}
+			_, ref, found := strings.Cut(line, "\t")
+			if found {
+				branch := strings.TrimPrefix(ref, "refs/heads/")
+				foundBranches[branch] = true
+			}
+		}
+		missingBranches := make([]string, 0)
+		for _, branch := range branches {
+			if !foundBranches[branch] {
+				missingBranches = append(missingBranches, branch)
+			}
+		}
+		return nil, fmt.Errorf("expected %d branches from ls-remote, got %d. Missing branches: [%s]. These branches may not exist yet - check your PromotionStrategy to verify the environment branches have been created", len(branches), len(lines), strings.Join(missingBranches, ", "))
 	}
 	shas := make(map[string]string, len(branches))
 	for i := range lines {
