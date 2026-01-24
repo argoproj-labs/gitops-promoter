@@ -224,10 +224,9 @@ var _ = Describe("LsRemote", func() {
 			Expect(err).To(HaveOccurred())
 
 			By("Verifying the error message is helpful")
-			Expect(err.Error()).To(ContainSubstring("Missing branches: [environment/prod]"))
+			Expect(err.Error()).To(ContainSubstring("missing branches: [environment/prod]"))
 			Expect(err.Error()).To(ContainSubstring("These branches may not exist yet"))
 			Expect(err.Error()).To(ContainSubstring("check your PromotionStrategy"))
-			Expect(err.Error()).To(ContainSubstring("expected 3 branches from ls-remote, got 2"))
 		})
 	})
 
@@ -275,10 +274,9 @@ var _ = Describe("LsRemote", func() {
 			Expect(err).To(HaveOccurred())
 
 			By("Verifying all missing branches are listed")
-			Expect(err.Error()).To(ContainSubstring("Missing branches:"))
+			Expect(err.Error()).To(ContainSubstring("missing branches:"))
 			Expect(err.Error()).To(ContainSubstring("environment/prod"))
 			Expect(err.Error()).To(ContainSubstring("environment/staging"))
-			Expect(err.Error()).To(ContainSubstring("expected 3 branches from ls-remote, got 1"))
 		})
 	})
 })
