@@ -1,6 +1,6 @@
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { StatusIcon, StatusType } from './StatusIcon';
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import './HealthSummary.scss';
 
 export interface HealthSummaryProps {
@@ -20,6 +20,9 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
   // Auto-expand if less than 3 checks
   const shouldAutoExpand = totalCount < 3;
   const [isExpanded, setIsExpanded] = useState(shouldAutoExpand);
+  const [hoveredCheckIndex, setHoveredCheckIndex] = useState<number | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   if (!shouldDisplay) {
     return null;
@@ -28,6 +31,29 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
   const handleClick = () => {
     setIsExpanded(!isExpanded);
   };
+
+  const handleMouseEnter = useCallback((index: number, event: React.MouseEvent<HTMLSpanElement | HTMLDivElement>) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+    
+    // Only update position if hovering over the check item (not the tooltip)
+    if ((event.currentTarget as HTMLElement).classList.contains('health-check-item')) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      setTooltipPosition({
+        top: rect.bottom + 4,
+        left: rect.left
+      });
+    }
+    
+    setHoveredCheckIndex(index);
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    timeoutRef.current = setTimeout(() => {
+      setHoveredCheckIndex(null);
+    }, 100);
+  }, []);
 
   return (
     <div className="health-summary">
@@ -42,13 +68,18 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
       {isExpanded && (
         <div className="health-details">
           {checks.map((check, index) => (
-            <div key={index} className="health-check-item">
+            <div 
+              key={index} 
+              className="health-check-item"
+              onMouseEnter={(e) => handleMouseEnter(index, e)}
+              onMouseLeave={handleMouseLeave}
+            >
               <StatusIcon phase={check.status as StatusType} type="status" />
-              <span 
-                className="health-check-name"
-                title={check.description || undefined}
-              >
-                {check.name}
+              <span className="health-check-name">
+                <span className="check-name-text">{check.name}</span>
+                {check.description && (
+                  <span className="check-description-preview">&nbsp;—&nbsp;{check.description}</span>
+                )}
               </span>
               {check.url && (
                 <a 
@@ -63,6 +94,24 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
               )}
             </div>
           ))}
+          {checks.map((check, index) => 
+            check.description && hoveredCheckIndex === index && (
+              <div
+                key={`tooltip-${index}`}
+                className="health-tooltip-container"
+                style={{ 
+                  top: `${tooltipPosition.top}px`, 
+                  left: `${tooltipPosition.left}px` 
+                }}
+                onMouseEnter={(e) => handleMouseEnter(index, e)}
+                onMouseLeave={handleMouseLeave}
+              >
+                <div className="health-tooltip">
+                  {check.description}
+                </div>
+              </div>
+            )
+          )}
         </div>
       )}
     </div>
