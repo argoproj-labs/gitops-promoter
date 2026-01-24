@@ -358,7 +358,7 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 				missingBranches = append(missingBranches, branch)
 			}
 		}
-		return nil, fmt.Errorf("missing branches: [%s]. These branches may not exist yet - check your PromotionStrategy to verify the environment branches have been created", strings.Join(missingBranches, ", "))
+		return nil, fmt.Errorf("missing branches: [%s] (these branches may not exist yet - check your PromotionStrategy to verify the environment branches have been created)", strings.Join(missingBranches, ", "))
 	}
 	shas := make(map[string]string, len(branches))
 	for i := range lines {

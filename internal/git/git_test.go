@@ -225,7 +225,7 @@ var _ = Describe("LsRemote", func() {
 
 			By("Verifying the error message is helpful")
 			Expect(err.Error()).To(ContainSubstring("missing branches: [environment/prod]"))
-			Expect(err.Error()).To(ContainSubstring("These branches may not exist yet"))
+			Expect(err.Error()).To(ContainSubstring("(these branches may not exist yet"))
 			Expect(err.Error()).To(ContainSubstring("check your PromotionStrategy"))
 		})
 	})
