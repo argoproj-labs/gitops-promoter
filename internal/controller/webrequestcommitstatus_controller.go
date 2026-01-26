@@ -58,12 +58,6 @@ import (
 )
 
 const (
-	// WebRequestPhaseSuccess indicates the expression evaluated to true
-	WebRequestPhaseSuccess = "success"
-	// WebRequestPhasePending indicates waiting for success (HTTP error, expression false, etc.)
-	WebRequestPhasePending = "pending"
-	// WebRequestPhaseFailure indicates a permanent failure (expression compilation error)
-	WebRequestPhaseFailure = "failure"
 	// ReportOnActive is the value for reportOn when reporting on active SHA
 	ReportOnActive = "active"
 	// ReportOnProposed is the value for reportOn when reporting on proposed SHA
@@ -120,25 +114,15 @@ type WebRequestCommitStatusReconciler struct {
 	expressionCache sync.Map
 }
 
-// Default interval when not specified in polling or trigger mode
-const defaultInterval = time.Minute
-
 // getRequeueDuration returns the requeue duration from the spec.
-// In trigger mode, returns mode.trigger.requeueDuration (or default if not set).
-// In polling mode, returns mode.polling.interval (or default if not set).
+// In trigger mode, returns mode.trigger.requeueDuration.
+// In polling mode, returns mode.polling.interval.
+// Both fields are defaulted to 1m by the API schema.
 func getRequeueDuration(spec *promoterv1alpha1.WebRequestCommitStatusSpec) time.Duration {
-	// Trigger mode: use requeueDuration
 	if spec.Mode.Trigger != nil {
-		if spec.Mode.Trigger.RequeueDuration.Duration > 0 {
-			return spec.Mode.Trigger.RequeueDuration.Duration
-		}
-		return defaultInterval
+		return spec.Mode.Trigger.RequeueDuration.Duration
 	}
-	// Polling mode: use interval
-	if spec.Mode.Polling != nil && spec.Mode.Polling.Interval.Duration > 0 {
-		return spec.Mode.Polling.Interval.Duration
-	}
-	return defaultInterval
+	return spec.Mode.Polling.Interval.Duration
 }
 
 // getTriggerExpression returns the trigger expression from the spec if configured.
@@ -400,8 +384,12 @@ func (r *WebRequestCommitStatusReconciler) calculateStatus(ctx context.Context, 
 			continue
 		}
 
+		// Find status from last reconciliation for this same environment.
+		// Will be nil on first reconciliation or for newly added environments (not an error).
+		previousReconcileStatus := findPreviousReconcileStatus(previousWebRequestCommitStatus, branch)
+
 		// Process this environment
-		result, err := r.processEnvironment(ctx, wrcs, ps, branch, promoterEnvStatus, previousWebRequestCommitStatus)
+		result, err := r.processEnvironment(ctx, wrcs, ps, promoterEnvStatus, previousReconcileStatus)
 		if err != nil {
 			return nil, nil, false, err
 		}
@@ -442,7 +430,7 @@ func determineLastSuccessfulSha(
 	currentPhase, reportedSha string,
 	previousReconcileStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus,
 ) string {
-	if currentPhase == WebRequestPhaseSuccess {
+	if currentPhase == string(promoterv1alpha1.CommitPhaseSuccess) {
 		return reportedSha
 	}
 	if previousReconcileStatus != nil {
@@ -453,17 +441,18 @@ func determineLastSuccessfulSha(
 
 // processEnvironment processes a single environment, making HTTP requests and evaluating conditions.
 // Returns the environment status and metadata without mutating wrcs.Status.
+// previousReconcileStatus is the status from the last reconciliation for this environment (nil on first run).
 func (r *WebRequestCommitStatusReconciler) processEnvironment(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,
-	branch string,
 	promoterEnvStatus *promoterv1alpha1.EnvironmentStatus,
-	previousWebRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatusStatus,
+	previousReconcileStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus,
 ) (*environmentProcessResult, error) {
 	logger := log.FromContext(ctx)
 
-	// Extract both SHAs from the environment status
+	// Extract branch and SHAs from the environment status
+	branch := promoterEnvStatus.Branch
 	proposedSha := promoterEnvStatus.Proposed.Hydrated.Sha
 	activeSha := promoterEnvStatus.Active.Hydrated.Sha
 
@@ -481,12 +470,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 		return nil, fmt.Errorf("reported SHA not yet available for branch %q (reportOn=%s): waiting for hydration", branch, reportOn)
 	}
 
-	// Find status from last reconciliation for this same environment.
-	// Will be nil on first reconciliation or for newly added environments (not an error).
-	previousReconcileStatus := findPreviousReconcileStatus(previousWebRequestCommitStatus, branch)
-
 	// Get values from previous reconcile (defaults if first run)
-	previousPhase := WebRequestPhasePending // Default to pending on first run
+	previousPhase := string(promoterv1alpha1.CommitPhasePending) // Default to pending on first run
 	var lastSuccessfulSha string
 	if previousReconcileStatus != nil {
 		previousPhase = previousReconcileStatus.Phase
@@ -512,7 +497,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 		return r.processEnvironmentWithPollingExpression(ctx, wrcs, ps, promoterEnvStatus, previousReconcileStatus, shaCtx)
 	}
 
-	// Legacy behavior: skip HTTP request if we can reuse previous successful status
+	// Polling mode: skip HTTP request if we can reuse previous successful status
 	// We can skip (reuse) only when ALL of these conditions are met:
 	// - No custom polling expression is configured (already checked above)
 	// - reportOn is "proposed" (not "active", which requires continuous polling)
@@ -521,7 +506,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 	// - previousReconcileStatus.ReportedSha matches current reportedSha (same SHA)
 	// - previousReconcileStatus.LastSuccessfulSha matches reportedSha (successful for this SHA)
 	canReuseStatus := previousReconcileStatus != nil && reportOn == ReportOnProposed &&
-		previousReconcileStatus.Phase == WebRequestPhaseSuccess &&
+		previousReconcileStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
 		previousReconcileStatus.ReportedSha == reportedSha &&
 		previousReconcileStatus.LastSuccessfulSha == reportedSha
 
@@ -531,7 +516,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 		}
 
 		// Ensure CommitStatus exists even when reusing status
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, WebRequestPhaseSuccess, wrcs.Spec.Key, &result.envStatus)
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, string(promoterv1alpha1.CommitPhaseSuccess), wrcs.Spec.Key, &result.envStatus)
 		if err != nil {
 			return nil, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
@@ -551,10 +536,10 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 	// - Always poll if not yet successful (pending/failure)
 	// - Always poll if reportOn="active" (continuous monitoring)
 	// - Stop polling if reportOn="proposed" and successful (optimization)
-	needsPolling := envResult.Phase != WebRequestPhaseSuccess || reportOn == ReportOnActive
+	needsPolling := envResult.Phase != string(promoterv1alpha1.CommitPhaseSuccess) || reportOn == ReportOnActive
 
 	// Detect if environment just transitioned to success (was not success before, is success now)
-	transitioned := previousPhase != WebRequestPhaseSuccess && envResult.Phase == WebRequestPhaseSuccess
+	transitioned := previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) && envResult.Phase == string(promoterv1alpha1.CommitPhaseSuccess)
 
 	// Build result
 	result := &environmentProcessResult{
@@ -682,7 +667,7 @@ func (r *WebRequestCommitStatusReconciler) makeRequestAndProcessResult(
 	needsPolling := true
 
 	// Detect if environment just transitioned to success
-	transitioned := shaCtx.previousPhase != WebRequestPhaseSuccess && envResult.Phase == WebRequestPhaseSuccess
+	transitioned := shaCtx.previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) && envResult.Phase == string(promoterv1alpha1.CommitPhaseSuccess)
 
 	// Build result
 	result := &environmentProcessResult{
@@ -894,7 +879,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Contex
 	if cached, ok := r.expressionCache.Load(expression); ok {
 		program, ok = cached.(*vm.Program)
 		if !ok {
-			return WebRequestPhaseFailure, nil, errors.New("invalid cached expression program")
+			return string(promoterv1alpha1.CommitPhaseFailure), nil, errors.New("invalid cached expression program")
 		}
 	} else {
 		// Compile the expression
@@ -902,7 +887,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Contex
 		compiled, err := expr.Compile(expression, expr.Env(env), expr.AsBool())
 		if err != nil {
 			logger.Error(err, "Failed to compile expression", "expression", expression)
-			return WebRequestPhaseFailure, nil, fmt.Errorf("expression compilation failed: %w", err)
+			return string(promoterv1alpha1.CommitPhaseFailure), nil, fmt.Errorf("expression compilation failed: %w", err)
 		}
 		program = compiled
 		r.expressionCache.Store(expression, program)
@@ -913,19 +898,19 @@ func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Contex
 	output, err := expr.Run(program, env)
 	if err != nil {
 		logger.Error(err, "Failed to evaluate expression", "expression", expression)
-		return WebRequestPhasePending, nil, fmt.Errorf("expression evaluation failed: %w", err)
+		return string(promoterv1alpha1.CommitPhasePending), nil, fmt.Errorf("expression evaluation failed: %w", err)
 	}
 
 	// Check if output is boolean
 	result, ok := output.(bool)
 	if !ok {
-		return WebRequestPhaseFailure, nil, fmt.Errorf("expression must return boolean, got %T", output)
+		return string(promoterv1alpha1.CommitPhaseFailure), nil, fmt.Errorf("expression must return boolean, got %T", output)
 	}
 
 	if result {
-		return WebRequestPhaseSuccess, ptr.To(true), nil
+		return string(promoterv1alpha1.CommitPhaseSuccess), ptr.To(true), nil
 	}
-	return WebRequestPhasePending, ptr.To(false), nil
+	return string(promoterv1alpha1.CommitPhasePending), ptr.To(false), nil
 }
 
 // evaluatePollingExpressionPreRequest evaluates the trigger expression (polling.expression) BEFORE making an HTTP request.
@@ -1071,9 +1056,9 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	// Map phase to CommitStatusPhase
 	var commitPhase promoterv1alpha1.CommitStatusPhase
 	switch phase {
-	case WebRequestPhaseSuccess:
+	case string(promoterv1alpha1.CommitPhaseSuccess):
 		commitPhase = promoterv1alpha1.CommitPhaseSuccess
-	case WebRequestPhaseFailure:
+	case string(promoterv1alpha1.CommitPhaseFailure):
 		commitPhase = promoterv1alpha1.CommitPhaseFailure
 	default:
 		commitPhase = promoterv1alpha1.CommitPhasePending
