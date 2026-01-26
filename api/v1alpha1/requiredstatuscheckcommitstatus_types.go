@@ -53,8 +53,8 @@ type RequiredStatusCheckEnvironmentStatus struct {
 	Sha string `json:"sha"`
 
 	// RequiredChecks lists all required checks discovered from SCM branch protection rules
-	// +listType=map
-	// +listMapKey=name
+	// Multiple checks can have the same name but different integration IDs
+	// +listType=atomic
 	// +optional
 	RequiredChecks []RequiredCheckStatus `json:"requiredChecks,omitempty"`
 

@@ -142,8 +142,9 @@ spec:
                       - failure
                       type: string
                     requiredChecks:
-                      description: RequiredChecks lists all required checks discovered
-                        from SCM branch protection rules
+                      description: |-
+                        RequiredChecks lists all required checks discovered from SCM branch protection rules
+                        Multiple checks can have the same name but different integration IDs
                       items:
                         description: RequiredCheckStatus defines the status of a single
                           required check.
@@ -168,9 +169,7 @@ spec:
                         - phase
                         type: object
                       type: array
-                      x-kubernetes-list-map-keys:
-                      - name
-                      x-kubernetes-list-type: map
+                      x-kubernetes-list-type: atomic
                     sha:
                       description: Sha is the commit SHA being checked
                       type: string

@@ -163,11 +163,14 @@ func mapGitHubCheckStatusToPhase(checkRun *github.CheckRun) promoterv1alpha1.Com
 		switch conclusion {
 		case "success", "neutral", "skipped":
 			return promoterv1alpha1.CommitPhaseSuccess
-		case "failure", "cancelled", "timed_out", "action_required":
-			// Note: "action_required" means the check requires manual user action
-			// (e.g., approval, acknowledgment) before proceeding. It blocks merging
-			// similar to a failure, so we treat it as CommitPhaseFailure.
+		case "failure", "cancelled", "timed_out":
 			return promoterv1alpha1.CommitPhaseFailure
+		case "action_required":
+			// Note: "action_required" means the check requires manual user action
+			// (e.g., approval, acknowledgment) before proceeding. While it blocks merging,
+			// it's semantically a waiting state (similar to autoMerge: false) rather than
+			// a failure state. We treat it as CommitPhasePending for consistency.
+			return promoterv1alpha1.CommitPhasePending
 		default:
 			return promoterv1alpha1.CommitPhasePending
 		}

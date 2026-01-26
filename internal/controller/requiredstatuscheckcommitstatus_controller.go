@@ -275,7 +275,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 				phase = promoterv1alpha1.CommitPhasePending
 			}
 
-			cs, err := r.updateCommitStatusForCheck(ctx, rsccs, ctp, env.Branch, check.Name, proposedSha, phase)
+			cs, err := r.updateCommitStatusForCheck(ctx, rsccs, ctp, env.Branch, check, proposedSha, phase)
 			if err != nil {
 				logger.Error(err, "failed to update CommitStatus", "check", check.Name)
 				// Continue to process other checks
@@ -425,9 +425,10 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 }
 
 // updateCommitStatusForCheck creates or updates a CommitStatus resource for a required check
-func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ctp *promoterv1alpha1.ChangeTransferPolicy, branch string, checkName string, sha string, phase promoterv1alpha1.CommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
+func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ctp *promoterv1alpha1.ChangeTransferPolicy, branch string, check scms.BranchProtectionCheck, sha string, phase promoterv1alpha1.CommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate CommitStatus name: required-status-check-{name}-{hash}
-	name := generateCommitStatusName(checkName, branch)
+	// Include integration ID in hash to support multiple checks with same name
+	name := generateCommitStatusName(check.Name, branch, check.IntegrationID)
 
 	cs := &promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
@@ -446,7 +447,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 		if cs.Labels == nil {
 			cs.Labels = make(map[string]string)
 		}
-		cs.Labels[promoterv1alpha1.CommitStatusLabel] = fmt.Sprintf("required-status-check-%s", checkName)
+		cs.Labels[promoterv1alpha1.CommitStatusLabel] = fmt.Sprintf("required-status-check-%s", check.Name)
 		cs.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
 		cs.Labels[promoterv1alpha1.RequiredStatusCheckCommitStatusLabel] = rsccs.Name
 
@@ -454,8 +455,8 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 		cs.Spec = promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: ctp.Spec.RepositoryReference,
 			Sha:                 sha,
-			Name:                fmt.Sprintf("Required Check: %s", checkName),
-			Description:         fmt.Sprintf("Required status check: %s", checkName),
+			Name:                fmt.Sprintf("Required Check: %s", check.Name),
+			Description:         fmt.Sprintf("Required status check: %s", check.Name),
 			Phase:               phase,
 		}
 
@@ -466,16 +467,21 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 		return nil, fmt.Errorf("failed to create or update CommitStatus: %w", err)
 	}
 
-	r.Recorder.Eventf(cs, "Normal", constants.CommitStatusSetReason, "Required check %s status set to %s for hash %s", checkName, phase, sha)
+	r.Recorder.Eventf(cs, "Normal", constants.CommitStatusSetReason, "Required check %s status set to %s for hash %s", check.Name, phase, sha)
 
 	return cs, nil
 }
 
 // generateCommitStatusName generates a unique name for a CommitStatus resource
-func generateCommitStatusName(checkName string, branch string) string {
-	// Create a hash of the check name and branch to ensure uniqueness
+// Includes integration ID in hash to support multiple checks with same name
+func generateCommitStatusName(checkName string, branch string, integrationID *string) string {
+	// Create a hash of the check name, branch, and integration ID to ensure uniqueness
 	h := sha256.New()
-	h.Write([]byte(checkName + "-" + branch))
+	hashInput := checkName + "-" + branch
+	if integrationID != nil {
+		hashInput += "-" + *integrationID
+	}
+	h.Write([]byte(hashInput))
 	hash := fmt.Sprintf("%x", h.Sum(nil))[:8]
 
 	// Normalize the check name to be a valid Kubernetes name
