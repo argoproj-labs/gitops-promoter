@@ -104,8 +104,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 5 * time.Second},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 5 * time.Second},
+						},
 					},
 				},
 			}
@@ -223,8 +225,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 5 * time.Second},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 5 * time.Second},
+						},
 					},
 				},
 			}
@@ -338,8 +342,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 5 * time.Second},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 5 * time.Second},
+						},
 					},
 				},
 			}
@@ -472,8 +478,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						},
 					},
 					Expression: `Response.StatusCode == 200 && Response.Body.approved == true`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 5 * time.Second},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 5 * time.Second},
+						},
 					},
 				},
 			}
@@ -568,8 +576,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `invalid syntax @#$%`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 5 * time.Second},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 5 * time.Second},
+						},
 					},
 				},
 			}
@@ -666,8 +676,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 5 * time.Second},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 5 * time.Second},
+						},
 					},
 				},
 			}
@@ -725,8 +737,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Method:      "GET",
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 5 * time.Second},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 5 * time.Second},
+						},
 					},
 				},
 			}
@@ -859,8 +873,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout: metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 5 * time.Second},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 5 * time.Second},
+						},
 					},
 				},
 			}
@@ -1019,8 +1035,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout: metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 5 * time.Second},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 5 * time.Second},
+						},
 					},
 				},
 			}
@@ -1174,10 +1192,12 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 1 * time.Second},
-						// Expression returns false - should stop polling after success
-						Expression: `Phase != "success"`,
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 1 * time.Second},
+							// Expression returns false - should stop polling after success
+							Expression: `Phase != "success"`,
+						},
 					},
 				},
 			}
@@ -1221,10 +1241,12 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 1 * time.Second},
-						// Expression always returns true - should keep polling
-						Expression: `true`,
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 1 * time.Second},
+							// Expression always returns true - should keep polling
+							Expression: `true`,
+						},
 					},
 				},
 			}
@@ -1268,10 +1290,12 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 1 * time.Second},
-						// Invalid expression - syntax error
-						Expression: `invalid syntax here !!!`,
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 1 * time.Second},
+							// Invalid expression - syntax error
+							Expression: `invalid syntax here !!!`,
+						},
 					},
 				},
 			}
@@ -1289,7 +1313,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				readyCondition := meta.FindStatusCondition(wrcs.Status.Conditions, "Ready")
 				g.Expect(readyCondition).NotTo(BeNil())
 				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-				g.Expect(readyCondition.Message).To(ContainSubstring("polling expression"))
+				g.Expect(readyCondition.Message).To(ContainSubstring("trigger expression"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
@@ -1313,10 +1337,12 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 1 * time.Second},
-						// Expression returns object with custom data
-						Expression: `{trigger: true, trackedSha: Environment.Proposed.Hydrated.Sha}`,
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 1 * time.Second},
+							// Expression returns object with custom data
+							Expression: `{trigger: true, trackedSha: Environment.Proposed.Hydrated.Sha}`,
+						},
 					},
 				},
 			}
@@ -1365,10 +1391,12 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 1 * time.Second},
-						// Object without 'trigger' field
-						Expression: `{trackedSha: ReportedSha}`,
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 1 * time.Second},
+							// Object without 'trigger' field
+							Expression: `{trackedSha: ReportedSha}`,
+						},
 					},
 				},
 			}
@@ -1410,9 +1438,10 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 1 * time.Second},
-						// No Expression set - should use reportOn behavior
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 1 * time.Second},
+						},
 					},
 				},
 			}
@@ -1464,17 +1493,19 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 500 * time.Millisecond},
-						// Expression that uses ExpressionData to track poll count across reconciles:
-						// - Initializes pollCount to 1 on first evaluation
-						// - Increments pollCount on subsequent evaluations
-						// - Stops polling when pollCount >= 4
-						Expression: `
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 500 * time.Millisecond},
+							// Expression that uses ExpressionData to track poll count across reconciles:
+							// - Initializes pollCount to 1 on first evaluation
+							// - Increments pollCount on subsequent evaluations
+							// - Stops polling when pollCount >= 4
+							Expression: `
 						ExpressionData["pollCount"] == nil ? 
 							{trigger: true, pollCount: 1} : 
 							{trigger: ExpressionData["pollCount"] < 4, pollCount: ExpressionData["pollCount"] + 1}
 					`,
+						},
 					},
 				},
 			}
@@ -1576,13 +1607,14 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
 					Expression: `Response.StatusCode == 200`,
-					Polling: promoterv1alpha1.PollingSpec{
-						Interval: metav1.Duration{Duration: 500 * time.Millisecond},
-						// Expression that accesses PromotionStrategy data and uses ExpressionData to control polling:
-						// - Accesses the first environment (development) from PromotionStrategy.Status.Environments[0]
-						// - Captures its Active.Hydrated.Sha as targetSha
-						// - Uses 'captured' flag to stop polling after first capture
-						Expression: `
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 500 * time.Millisecond},
+							// Expression that accesses PromotionStrategy data and uses ExpressionData to control polling:
+							// - Accesses the first environment (development) from PromotionStrategy.Status.Environments[0]
+							// - Captures its Active.Hydrated.Sha as targetSha
+							// - Uses 'captured' flag to stop polling after first capture
+							Expression: `
 						let alreadyCaptured = ExpressionData["captured"] == true;
 						{
 							trigger: !alreadyCaptured,
@@ -1591,6 +1623,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 							captured: true
 						}
 					`,
+						},
 					},
 				},
 			}

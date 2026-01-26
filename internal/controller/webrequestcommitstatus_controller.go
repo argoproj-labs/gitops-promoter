@@ -120,6 +120,41 @@ type WebRequestCommitStatusReconciler struct {
 	expressionCache sync.Map
 }
 
+// Default interval when not specified in polling or trigger mode
+const defaultInterval = time.Minute
+
+// getRequeueDuration returns the requeue duration from the spec.
+// In trigger mode, returns mode.trigger.requeueDuration (or default if not set).
+// In polling mode, returns mode.polling.interval (or default if not set).
+func getRequeueDuration(spec *promoterv1alpha1.WebRequestCommitStatusSpec) time.Duration {
+	// Trigger mode: use requeueDuration
+	if spec.Mode.Trigger != nil {
+		if spec.Mode.Trigger.RequeueDuration.Duration > 0 {
+			return spec.Mode.Trigger.RequeueDuration.Duration
+		}
+		return defaultInterval
+	}
+	// Polling mode: use interval
+	if spec.Mode.Polling != nil && spec.Mode.Polling.Interval.Duration > 0 {
+		return spec.Mode.Polling.Interval.Duration
+	}
+	return defaultInterval
+}
+
+// getTriggerExpression returns the trigger expression from the spec if configured.
+// Returns empty string if polling mode is configured.
+func getTriggerExpression(spec *promoterv1alpha1.WebRequestCommitStatusSpec) string {
+	if spec.Mode.Trigger != nil {
+		return spec.Mode.Trigger.Expression
+	}
+	return ""
+}
+
+// hasTriggerMode returns true if the spec has trigger mode configured.
+func hasTriggerMode(spec *promoterv1alpha1.WebRequestCommitStatusSpec) bool {
+	return spec.Mode.Trigger != nil && spec.Mode.Trigger.Expression != ""
+}
+
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses/finalizers,verbs=update
@@ -195,14 +230,16 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 
 // calculateRequeue determines when to requeue based on reportOn mode and polling needs
 func (r *WebRequestCommitStatusReconciler) calculateRequeue(wrcs *promoterv1alpha1.WebRequestCommitStatus, needsPolling bool) ctrl.Result {
-	// If reportOn: active, always requeue at Polling.Interval
+	requeueDuration := getRequeueDuration(&wrcs.Spec)
+
+	// If reportOn: active, always requeue at the configured duration
 	if wrcs.Spec.ReportOn == ReportOnActive {
-		return ctrl.Result{RequeueAfter: wrcs.Spec.Polling.Interval.Duration}
+		return ctrl.Result{RequeueAfter: requeueDuration}
 	}
 
 	// If reportOn: proposed, only requeue if any environment needs polling
 	if needsPolling {
-		return ctrl.Result{RequeueAfter: wrcs.Spec.Polling.Interval.Duration}
+		return ctrl.Result{RequeueAfter: requeueDuration}
 	}
 
 	// All environments successful - no requeue, PromotionStrategy watch handles SHA changes
@@ -463,7 +500,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironment(
 	// - "Limit to N request attempts"
 	// - "Throttle requests based on time"
 	// - "Only trigger when SHA changes in another environment"
-	if wrcs.Spec.Polling.Expression != "" {
+	if hasTriggerMode(&wrcs.Spec) {
 		shaCtx := environmentSHAContext{
 			reportedSha:       reportedSha,
 			branch:            branch,
@@ -924,8 +961,10 @@ func (r *WebRequestCommitStatusReconciler) evaluatePollingExpressionPreRequest(
 		ExpressionData:    previousExpressionData,
 	}
 
+	triggerExpr := getTriggerExpression(&wrcs.Spec)
+
 	// Try to get cached compiled expression
-	cacheKey := "trigger:" + wrcs.Spec.Polling.Expression
+	cacheKey := "trigger:" + triggerExpr
 	var program *vm.Program
 	if cached, ok := r.expressionCache.Load(cacheKey); ok {
 		program, ok = cached.(*vm.Program)
@@ -934,10 +973,10 @@ func (r *WebRequestCommitStatusReconciler) evaluatePollingExpressionPreRequest(
 		}
 	} else {
 		// Compile the expression (don't use AsBool - we need to handle both types)
-		compiled, err := expr.Compile(wrcs.Spec.Polling.Expression, expr.Env(data))
+		compiled, err := expr.Compile(triggerExpr, expr.Env(data))
 		if err != nil {
-			logger.Error(err, "Failed to compile polling expression", "expression", wrcs.Spec.Polling.Expression)
-			return false, nil, fmt.Errorf("polling expression compilation failed: %w", err)
+			logger.Error(err, "Failed to compile trigger expression", "expression", triggerExpr)
+			return false, nil, fmt.Errorf("trigger expression compilation failed: %w", err)
 		}
 		program = compiled
 		r.expressionCache.Store(cacheKey, program)
@@ -946,8 +985,8 @@ func (r *WebRequestCommitStatusReconciler) evaluatePollingExpressionPreRequest(
 	// Run the expression
 	output, err := expr.Run(program, data)
 	if err != nil {
-		logger.Error(err, "Failed to evaluate polling expression", "expression", wrcs.Spec.Polling.Expression)
-		return false, nil, fmt.Errorf("polling expression evaluation failed: %w", err)
+		logger.Error(err, "Failed to evaluate trigger expression", "expression", triggerExpr)
+		return false, nil, fmt.Errorf("trigger expression evaluation failed: %w", err)
 	}
 
 	// Handle both boolean and object returns
@@ -955,7 +994,7 @@ func (r *WebRequestCommitStatusReconciler) evaluatePollingExpressionPreRequest(
 	case bool:
 		// Simple boolean return
 		logger.V(1).Info("Evaluated trigger expression (boolean)",
-			"expression", wrcs.Spec.Polling.Expression,
+			"expression", triggerExpr,
 			"result", v,
 			"branch", branch)
 		return v, nil, nil
@@ -981,7 +1020,7 @@ func (r *WebRequestCommitStatusReconciler) evaluatePollingExpressionPreRequest(
 		}
 
 		logger.V(1).Info("Evaluated trigger expression (object)",
-			"expression", wrcs.Spec.Polling.Expression,
+			"expression", triggerExpr,
 			"trigger", shouldTrigger,
 			"customDataKeys", getMapKeys(customData),
 			"branch", branch)

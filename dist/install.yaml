@@ -6505,89 +6505,111 @@ spec:
                 minLength: 1
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                 type: string
-              polling:
-                description: Polling controls polling behavior for the HTTP request.
+              mode:
+                description: |-
+                  Mode controls how the controller polls or triggers HTTP requests.
+                  Exactly one of Polling or Trigger must be specified.
                 properties:
-                  expression:
+                  polling:
                     description: |-
-                      Expression (optional) is an expr expression that dynamically controls whether polling should continue.
-                      When specified, this expression is evaluated AFTER each HTTP request to determine if the controller should
-                      requeue and poll again.
-
-                      The expression can return:
-                       1. Boolean: true/false to control polling
-                       2. Object with 'polling' field: {polling: true/false, ...customData}
-                          - The 'polling' field controls whether to continue polling
-                          - Any additional fields are stored and available in the next reconcile as 'ExpressionData'
-
-                      Available variables in the expression context:
-                        - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
-                        - Environment (EnvironmentStatus): current environment's status from PromotionStrategy
-                        - Response.StatusCode (int): HTTP response status code from validation request
-                        - Response.Body (any): parsed response body (JSON as map[string]any, or raw string)
-                        - Response.Headers (map[string][]string): HTTP response headers
-                        - ValidationResult (bool): result of the main Expression evaluation
-                        - Phase (string): current phase (success/pending/failure)
-                        - ReportedSha (string): the SHA being validated
-                        - Branch (string): environment branch name
-                        - ExpressionData (map[string]any): custom data from previous polling expression evaluation
-
-                      Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
-                      Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
-                      Changes flow through the array in order. To access the previous environment, use array indexing:
-                        currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Branch})
-                        previousEnv = currentIdx > 0 ? PromotionStrategy.Status.Environments[currentIdx-1] : nil
-
-                      Examples (Boolean return):
-                        # Always poll (equivalent to reportOn: active)
-                        - "true"
-
-                        # Stop polling after success (equivalent to reportOn: proposed)
-                        - "Phase != 'success'"
-
-                        # Poll until this SHA appears in the healthy history (validates deployment stability)
-                        - "!any(Environment.LastHealthyDryShas, {.Sha == ReportedSha})"
-
-                        # Continue polling if PR is not merged yet (monitors promotion progress)
-                        - "Phase == 'success' && (Environment.PullRequest == nil || Environment.PullRequest.State != 'merged')"
-
-                      Examples (Object return with state tracking):
-                        # Track dry SHA changes and restart polling when it changes
-                        - |
-                          {
-                            polling: len(PromotionStrategy.Status.Environments) > 0 &&
-                                     PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != "" &&
-                                     PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != ExpressionData["trackedSha"],
-                            trackedSha: PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha
-                          }
-
-                        # Poll until validation succeeds AND store the success timestamp
-                        - |
-                          {
-                            polling: Phase != 'success',
-                            firstSuccessTime: Phase == 'success' && ExpressionData["firstSuccessTime"] == nil ? now() : ExpressionData["firstSuccessTime"]
-                          }
-
-                        # Track previous environment SHA and poll until it matches
-                        - |
-                          let prevEnv = filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"})[0];
-                          {
-                            polling: Phase != 'success' || prevEnv.Active.Hydrated.Sha != ExpressionData["targetSha"],
-                            targetSha: ReportedSha
-                          }
-
-                      When not specified, defaults to legacy reportOn behavior:
-                        - reportOn: proposed → stops after Phase == success
-                        - reportOn: active → always continues polling
-                    type: string
-                  interval:
-                    default: 1m
+                      Polling enables interval-based polling mode.
+                      The controller will poll the HTTP endpoint at the specified interval.
+                    properties:
+                      interval:
+                        default: 1m
+                        description: |-
+                          Interval controls how often to retry the HTTP request while in pending state.
+                          When reportOn is "proposed": stops polling after success for a given SHA.
+                          When reportOn is "active": always polls at this interval.
+                        type: string
+                    type: object
+                  trigger:
                     description: |-
-                      Interval controls how often to retry the HTTP request while in pending state.
-                      When reportOn is "proposed": stops polling after success for a given SHA.
-                      When reportOn is "active": always polls at this interval.
-                    type: string
+                      Trigger enables expression-based triggering mode.
+                      The controller will evaluate the expression to determine when to make HTTP requests.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is an expr expression that dynamically controls whether polling should continue.
+                          When specified, this expression is evaluated AFTER each HTTP request to determine if the controller should
+                          requeue and poll again.
+
+                          The expression can return:
+                           1. Boolean: true/false to control polling
+                           2. Object with 'polling' field: {polling: true/false, ...customData}
+                              - The 'polling' field controls whether to continue polling
+                              - Any additional fields are stored and available in the next reconcile as 'ExpressionData'
+
+                          Available variables in the expression context:
+                            - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
+                            - Environment (EnvironmentStatus): current environment's status from PromotionStrategy
+                            - Response.StatusCode (int): HTTP response status code from validation request
+                            - Response.Body (any): parsed response body (JSON as map[string]any, or raw string)
+                            - Response.Headers (map[string][]string): HTTP response headers
+                            - ValidationResult (bool): result of the main Expression evaluation
+                            - Phase (string): current phase (success/pending/failure)
+                            - ReportedSha (string): the SHA being validated
+                            - Branch (string): environment branch name
+                            - ExpressionData (map[string]any): custom data from previous polling expression evaluation
+
+                          Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
+                          Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
+                          Changes flow through the array in order. To access the previous environment, use array indexing:
+                            currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Branch})
+                            previousEnv = currentIdx > 0 ? PromotionStrategy.Status.Environments[currentIdx-1] : nil
+
+                          Examples (Boolean return):
+                            # Always poll (equivalent to reportOn: active)
+                            - "true"
+
+                            # Stop polling after success (equivalent to reportOn: proposed)
+                            - "Phase != 'success'"
+
+                            # Poll until this SHA appears in the healthy history (validates deployment stability)
+                            - "!any(Environment.LastHealthyDryShas, {.Sha == ReportedSha})"
+
+                            # Continue polling if PR is not merged yet (monitors promotion progress)
+                            - "Phase == 'success' && (Environment.PullRequest == nil || Environment.PullRequest.State != 'merged')"
+
+                          Examples (Object return with state tracking):
+                            # Track dry SHA changes and restart polling when it changes
+                            - |
+                              {
+                                polling: len(PromotionStrategy.Status.Environments) > 0 &&
+                                         PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != "" &&
+                                         PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != ExpressionData["trackedSha"],
+                                trackedSha: PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha
+                              }
+
+                            # Poll until validation succeeds AND store the success timestamp
+                            - |
+                              {
+                                polling: Phase != 'success',
+                                firstSuccessTime: Phase == 'success' && ExpressionData["firstSuccessTime"] == nil ? now() : ExpressionData["firstSuccessTime"]
+                              }
+
+                            # Track previous environment SHA and poll until it matches
+                            - |
+                              let prevEnv = filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"})[0];
+                              {
+                                polling: Phase != 'success' || prevEnv.Active.Hydrated.Sha != ExpressionData["targetSha"],
+                                targetSha: ReportedSha
+                              }
+                        type: string
+                      requeueDuration:
+                        default: 1m
+                        description: RequeueDuration specifies how long to wait before
+                          requeuing to re-evaluate the trigger expression.
+                        type: string
+                    required:
+                    - expression
+                    type: object
                 type: object
+                x-kubernetes-validations:
+                - message: exactly one of the fields in [polling trigger] must be
+                    set
+                  rule: '[has(self.polling),has(self.trigger)].filter(x,x==true).size()
+                    == 1'
               promotionStrategyRef:
                 description: |-
                   PromotionStrategyRef references the PromotionStrategy this applies to.
@@ -6640,6 +6662,7 @@ spec:
             - expression
             - httpRequest
             - key
+            - mode
             - promotionStrategyRef
             type: object
           status:

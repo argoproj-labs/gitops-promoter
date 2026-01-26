@@ -38,8 +38,9 @@ spec:
   descriptionTemplate: "External approval check"
   urlTemplate: "https://approvals.example.com/requests/{{ .ReportedSha }}"
   reportOn: proposed
-  polling:
-    interval: 2m
+  mode:
+    polling:
+      interval: 2m
   httpRequest:
     urlTemplate: "https://api.example.com/approvals/check"
     method: GET
@@ -71,8 +72,9 @@ spec:
   descriptionTemplate: "Deployment verification for {{ .Branch }}"
   urlTemplate: "https://dashboard.example.com/deployments/{{ .ActiveHydratedSha | trunc 7 }}"
   reportOn: active
-  polling:
-    interval: 1m
+  mode:
+    polling:
+      interval: 1m
   httpRequest:
     urlTemplate: "https://api.example.com/deployments/{{ .ActiveHydratedSha }}/status"
     method: GET
@@ -291,8 +293,9 @@ spec:
   descriptionTemplate: "Validation service check"
   urlTemplate: "https://api.example.com/validate/{{ .ProposedHydratedSha | trunc 7 }}/details"
   reportOn: proposed
-  polling:
-    interval: 5m
+  mode:
+    polling:
+      interval: 5m
   httpRequest:
     urlTemplate: "https://api.example.com/validate"
     method: POST
@@ -340,8 +343,9 @@ spec:
   descriptionTemplate: "Deployment verification for {{ .NamespaceMetadata.Labels.environment }}"
   urlTemplate: "{{ index .NamespaceMetadata.Annotations \"notification-url\" }}/deployments/{{ .ReportedSha | trunc 7 }}"
   reportOn: proposed
-  polling:
-    interval: 2m
+  mode:
+    polling:
+      interval: 2m
   httpRequest:
     urlTemplate: "https://api.example.com/deployments/validate"
     method: POST
@@ -424,25 +428,36 @@ expression: 'len(Response.Headers["X-Approval"]) > 0'
 expression: 'Response.StatusCode == 200 && (Response.Body.approved == true || Response.Body.override == true)'
 ```
 
-## Polling Behavior
+## Mode Configuration
 
-The polling behavior depends on the `reportOn` setting and the optional `polling.expression`:
+The `mode` field is required and controls how the controller operates. Exactly one of `polling` or `trigger` must be specified.
 
-### reportOn: proposed (default)
+### Polling Mode (mode.polling)
 
+Polling mode is used for simple interval-based HTTP requests:
+
+```yaml
+spec:
+  mode:
+    polling:
+      interval: 2m  # How often to make HTTP requests
+```
+
+The polling behavior depends on the `reportOn` setting:
+
+**reportOn: proposed (default)**
 - Polls until success for a given SHA, then stops polling
 - When the SHA changes (detected via PromotionStrategy watch), polling restarts
 - Efficient for approval workflows where you only need to check until approved
 
-### reportOn: active
-
+**reportOn: active**
 - Polls forever, even after success
 - Useful for continuous health monitoring of deployed commits
 - The status can transition from success back to pending if the external system state changes
 
-### Trigger Expression (polling.expression)
+### Trigger Mode (mode.trigger)
 
-When `polling.expression` is configured, it overrides the default `reportOn` behavior. The expression is evaluated **before** each HTTP request to decide whether to make the request at all. This provides fine-grained control over when HTTP requests are triggered, enabling:
+Trigger mode uses an expression to dynamically control whether HTTP requests should be made. This provides fine-grained control over when HTTP requests are triggered, enabling:
 
 - Conditional request triggering based on environment state
 - Request throttling and rate limiting
@@ -450,21 +465,61 @@ When `polling.expression` is configured, it overrides the default `reportOn` beh
 - Custom backoff strategies
 - State-based decision making
 
-When a trigger expression is configured:
-- The controller always requeues at `polling.interval`
+```yaml
+spec:
+  mode:
+    trigger:
+      requeueDuration: 1m  # How often to re-evaluate the trigger expression
+      expression: 'Environment.Proposed.Hydrated.Sha != ""'
+```
+
+When trigger mode is configured:
+- The controller **always** requeues at `requeueDuration` intervals to re-evaluate the expression
 - Each reconcile evaluates the expression
 - If expression returns `true` → HTTP request is made
 - If expression returns `false` → HTTP request is skipped, previous status is reused
 
-See the [Custom Trigger Expression](#custom-trigger-expression) section for detailed examples.
-
-### Custom Trigger Expression
-
-For advanced use cases, you can use `polling.expression` to dynamically control whether HTTP requests should be triggered. This expression is evaluated **before** each HTTP request to determine if the request should be made.
-
 The expression can return:
 1. **Boolean**: `true` to make the request, `false` to skip it
 2. **Object with 'trigger' field**: `{trigger: true/false, ...customData}` - the `trigger` field controls whether to make the request, and any additional fields are stored and available in the next reconcile as `ExpressionData`
+
+## Reconciliation Triggers
+
+The WebRequestCommitStatus controller reconciles in the following scenarios:
+
+### 1. Scheduled Requeues
+
+The controller schedules requeues based on the mode and current state:
+
+**Polling Mode:**
+- Requeues at `mode.polling.interval` while any environment is in `pending` phase
+- Requeues at `mode.polling.interval` indefinitely when `reportOn: active`
+- **Stops requeuing** when `reportOn: proposed` and all environments reach `success`
+
+**Trigger Mode:**
+- **Always requeues** at `mode.trigger.requeueDuration` to re-evaluate the trigger expression
+- The expression controls whether HTTP requests are made, not whether reconciliation occurs
+
+### 2. PromotionStrategy Changes
+
+The controller watches the referenced PromotionStrategy. When the PromotionStrategy status changes (e.g., new SHA is proposed, environment state changes), the controller is automatically triggered to reconcile. This ensures:
+
+- New commits are validated promptly without waiting for the next scheduled requeue
+- Environment transitions (like a new proposed SHA) trigger immediate validation
+- No polling is needed to detect PromotionStrategy changes
+
+### 3. Resource Changes
+
+Changes to the WebRequestCommitStatus resource itself (spec updates, annotations, etc.) trigger reconciliation.
+
+### Summary Table
+
+| Mode | Condition | Requeue Behavior |
+|------|-----------|------------------|
+| Polling | `reportOn: proposed`, any env pending | Requeue at `interval` |
+| Polling | `reportOn: proposed`, all envs success | No requeue (watch handles SHA changes) |
+| Polling | `reportOn: active` | Always requeue at `interval` |
+| Trigger | Always | Always requeue at `requeueDuration` |
 
 #### Available Variables
 
@@ -485,22 +540,30 @@ The trigger expression has access to:
 
 ```yaml
 # Always trigger requests (default behavior)
-polling:
-  expression: "true"
+mode:
+  trigger:
+    requeueDuration: 1m
+    expression: "true"
 
 # Only trigger if environment has both proposed and active SHAs
-polling:
-  expression: 'Environment.Proposed.Hydrated.Sha != "" && Environment.Active.Hydrated.Sha != ""'
+mode:
+  trigger:
+    requeueDuration: 1m
+    expression: 'Environment.Proposed.Hydrated.Sha != "" && Environment.Active.Hydrated.Sha != ""'
 
 # Only trigger for specific branches
-polling:
-  expression: 'Branch == "environment/production" || Branch == "environment/staging"'
+mode:
+  trigger:
+    requeueDuration: 1m
+    expression: 'Branch == "environment/production" || Branch == "environment/staging"'
 
 # Trigger when SHA has changed in first environment
-polling:
-  expression: |
-    len(PromotionStrategy.Status.Environments) > 0 &&
-    PromotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha != ""
+mode:
+  trigger:
+    requeueDuration: 1m
+    expression: |
+      len(PromotionStrategy.Status.Environments) > 0 &&
+      PromotionStrategy.Status.Environments[0].Proposed.Hydrated.Sha != ""
 ```
 
 #### Object Expression Examples (State Tracking)
@@ -509,45 +572,50 @@ Object expressions allow you to track state across reconciles and implement cust
 
 ```yaml
 # Limit to 10 request attempts
-polling:
-  interval: 1m
-  expression: |
-    {
-      trigger: (ExpressionData.attempts ?? 0) < 10,
-      attempts: (ExpressionData.attempts ?? 0) + 1
-    }
+mode:
+  trigger:
+    requeueDuration: 1m
+    expression: |
+      {
+        trigger: (ExpressionData.attempts ?? 0) < 10,
+        attempts: (ExpressionData.attempts ?? 0) + 1
+      }
 
 # Track dry SHA changes and only trigger when it changes
-polling:
-  expression: |
-    currentDrySha = len(PromotionStrategy.Status.Environments) > 0 ? 
-                    PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha : "";
-    {
-      trigger: currentDrySha != "" && currentDrySha != ExpressionData.trackedSha,
-      trackedSha: currentDrySha
-    }
+mode:
+  trigger:
+    requeueDuration: 1m
+    expression: |
+      currentDrySha = len(PromotionStrategy.Status.Environments) > 0 ? 
+                      PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha : "";
+      {
+        trigger: currentDrySha != "" && currentDrySha != ExpressionData.trackedSha,
+        trackedSha: currentDrySha
+      }
 
 # Throttle requests - only trigger if 5 minutes have passed
-polling:
-  interval: 30s  # Check frequently
-  expression: |
-    {
-      trigger: (ExpressionData.lastRequestTime ?? 0) < (now() - 300),  # 5 minutes
-      lastRequestTime: now()
-    }
+mode:
+  trigger:
+    requeueDuration: 30s  # Check frequently
+    expression: |
+      {
+        trigger: (ExpressionData.lastRequestTime ?? 0) < (now() - 300),  # 5 minutes
+        lastRequestTime: now()
+      }
 
 # Progressive backoff - increase delay after each attempt
-polling:
-  interval: 1m
-  expression: |
-    attempts = ExpressionData.attempts ?? 0;
-    lastTime = ExpressionData.lastRequestTime ?? 0;
-    minDelay = attempts * 60;  # 1 min, 2 min, 3 min, etc.
-    {
-      trigger: (now() - lastTime) >= minDelay,
-      attempts: attempts + 1,
-      lastRequestTime: now()
-    }
+mode:
+  trigger:
+    requeueDuration: 1m
+    expression: |
+      attempts = ExpressionData.attempts ?? 0;
+      lastTime = ExpressionData.lastRequestTime ?? 0;
+      minDelay = attempts * 60;  # 1 min, 2 min, 3 min, etc.
+      {
+        trigger: (now() - lastTime) >= minDelay,
+        attempts: attempts + 1,
+        lastRequestTime: now()
+      }
 ```
 
 #### Accessing Previous Environment
@@ -555,11 +623,13 @@ polling:
 To access the previous environment in the promotion sequence:
 
 ```yaml
-polling:
-  expression: |
-    currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Branch});
-    # Only trigger if we're not the first environment
-    currentIdx > 0 && PromotionStrategy.Status.Environments[currentIdx-1].Active.Hydrated.Sha != ""
+mode:
+  trigger:
+    requeueDuration: 1m
+    expression: |
+      currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Branch});
+      # Only trigger if we're not the first environment
+      currentIdx > 0 && PromotionStrategy.Status.Environments[currentIdx-1].Active.Hydrated.Sha != ""
 ```
 
 #### Error Handling

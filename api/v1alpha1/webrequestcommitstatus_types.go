@@ -122,21 +122,46 @@ type WebRequestCommitStatusSpec struct {
 	// +required
 	Expression string `json:"expression"`
 
-	// Polling controls polling behavior for the HTTP request.
-	// +optional
-	Polling PollingSpec `json:"polling,omitempty"`
+	// Mode controls how the controller polls or triggers HTTP requests.
+	// Exactly one of Polling or Trigger must be specified.
+	// +required
+	Mode ModeSpec `json:"mode"`
 }
 
-// PollingSpec defines polling configuration.
-type PollingSpec struct {
+// ModeSpec defines the operating mode for the WebRequestCommitStatus controller.
+// Exactly one of Polling or Trigger must be specified.
+//
+// +kubebuilder:validation:ExactlyOneOf=polling;trigger
+type ModeSpec struct {
+	// Polling enables interval-based polling mode.
+	// The controller will poll the HTTP endpoint at the specified interval.
+	// +optional
+	Polling *PollingModeSpec `json:"polling,omitempty"`
+
+	// Trigger enables expression-based triggering mode.
+	// The controller will evaluate the expression to determine when to make HTTP requests.
+	// +optional
+	Trigger *TriggerModeSpec `json:"trigger,omitempty"`
+}
+
+// PollingModeSpec defines interval-based polling configuration.
+type PollingModeSpec struct {
 	// Interval controls how often to retry the HTTP request while in pending state.
 	// When reportOn is "proposed": stops polling after success for a given SHA.
 	// When reportOn is "active": always polls at this interval.
 	// +optional
 	// +kubebuilder:default="1m"
 	Interval metav1.Duration `json:"interval,omitempty"`
+}
 
-	// Expression (optional) is an expr expression that dynamically controls whether polling should continue.
+// TriggerModeSpec defines expression-based trigger configuration.
+type TriggerModeSpec struct {
+	// RequeueDuration specifies how long to wait before requeuing to re-evaluate the trigger expression.
+	// +optional
+	// +kubebuilder:default="1m"
+	RequeueDuration metav1.Duration `json:"requeueDuration,omitempty"`
+
+	// Expression is an expr expression that dynamically controls whether polling should continue.
 	// When specified, this expression is evaluated AFTER each HTTP request to determine if the controller should
 	// requeue and poll again.
 	//
@@ -202,12 +227,8 @@ type PollingSpec struct {
 	//       targetSha: ReportedSha
 	//     }
 	//
-	// When not specified, defaults to legacy reportOn behavior:
-	//   - reportOn: proposed → stops after Phase == success
-	//   - reportOn: active → always continues polling
-	//
-	// +optional
-	Expression string `json:"expression,omitempty"`
+	// +required
+	Expression string `json:"expression"`
 }
 
 // HTTPRequestSpec defines the HTTP request configuration.
