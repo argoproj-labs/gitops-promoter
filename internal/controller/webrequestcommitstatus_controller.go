@@ -587,7 +587,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironmentWithPollingExpressi
 	}
 
 	// Evaluate trigger expression with current state
-	shouldTriggerRequest, expressionData, triggerErr := r.evaluatePollingExpressionPreRequest(ctx, wrcs, ps, promoterEnvStatus, previousReconcileStatus, branch)
+	shouldTriggerRequest, expressionData, triggerErr := r.evaluateTriggerExpression(ctx, wrcs, ps, promoterEnvStatus, previousReconcileStatus, branch)
 	if triggerErr != nil {
 		return nil, fmt.Errorf("failed to evaluate trigger expression for environment %q: %w", branch, triggerErr)
 	}
@@ -919,11 +919,11 @@ func (r *WebRequestCommitStatusReconciler) evaluateExpression(ctx context.Contex
 	return string(promoterv1alpha1.CommitPhasePending), ptr.To(false), nil
 }
 
-// evaluatePollingExpressionPreRequest evaluates the trigger expression (polling.expression) BEFORE making an HTTP request.
+// evaluateTriggerExpression evaluates the trigger expression (polling.expression) BEFORE making an HTTP request.
 // This allows the expression to control whether the HTTP request should be made at all.
 // The expression has access to PromotionStrategy, Environment, Branch, and ExpressionData (for state tracking).
 // Returns (shouldMakeRequest bool, expressionData map[string]any, error).
-func (r *WebRequestCommitStatusReconciler) evaluatePollingExpressionPreRequest(
+func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
 	ps *promoterv1alpha1.PromotionStrategy,

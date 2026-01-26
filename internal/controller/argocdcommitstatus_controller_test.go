@@ -384,6 +384,22 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 							},
 						},
 					},
+					WebRequestCommitStatus: promoterv1alpha1.WebRequestCommitStatusConfiguration{
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, controllerConfig)).To(Succeed())
