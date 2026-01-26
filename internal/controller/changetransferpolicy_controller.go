@@ -694,7 +694,10 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			found = true
 			phase = csPhase
 		} else if len(csList.Items) > 1 {
-			// TODO: decided how to bubble up errors
+			// TODO: Decide how to bubble up errors. In the cases of too many CommitStatuses or none found, today we
+			//       build a "synthetic" CommitStatus. But this can be confusing, because the commitStatuses field we're
+			//       populating generally contains copies of the contents of actual CommitStatus resources. We should
+			//       consider whether the API should have a dedicated field for reporting errors.
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:   status.Key,
 				Phase: string(promoterv1alpha1.CommitPhasePending),
@@ -702,14 +705,14 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			tooManyMatchingShaError = NewTooManyMatchingShaError(status.Key, csList.Items)
 			phase = promoterv1alpha1.CommitPhasePending
 		} else if len(csList.Items) == 0 {
-			// TODO: decided how to bubble up errors
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-				Key:   status.Key,
-				Phase: string(promoterv1alpha1.CommitPhasePending),
+				Key:         status.Key,
+				Phase:       string(promoterv1alpha1.CommitPhasePending),
+				Description: "Status has not been reported yet",
 			})
 			found = false
 			phase = promoterv1alpha1.CommitPhasePending
-			// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
+			// We might not want to event here because of the potential for a lot of events, when say Argo CD is slow at updating the status
 		}
 		logger.Info("CommitStatus State",
 			"key", status.Key,

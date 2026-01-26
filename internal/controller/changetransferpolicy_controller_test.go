@@ -218,6 +218,16 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				By("Adding a pending commit")
 				makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
+				By("Checking commit status before CommitStatus resource is created")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses).To(HaveLen(1))
+					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
+					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("pending"))
+					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Description).To(Equal("Status has not been reported yet"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
 				Eventually(func(g Gomega) {
 					sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
 					g.Expect(err).NotTo(HaveOccurred())
