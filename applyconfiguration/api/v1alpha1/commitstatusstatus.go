@@ -28,8 +28,11 @@ import (
 // CommitStatusStatus defines the observed state of CommitStatus
 type CommitStatusStatusApplyConfiguration struct {
 	// Id is the unique identifier of the commit status, set by the SCM
-	Id    *string                        `json:"id,omitempty"`
-	Sha   *string                        `json:"sha,omitempty"`
+	Id *string `json:"id,omitempty"`
+	// Sha is the commit SHA that the status is set on.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+	Sha *string `json:"sha,omitempty"`
+	// Phase is the state of the commit status. This will be mapped to the appropriate equivalent in the SCM.
 	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
