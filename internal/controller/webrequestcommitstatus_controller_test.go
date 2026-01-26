@@ -134,7 +134,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				// Should have status for dev environment
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
 				g.Expect(wrcs.Status.Environments[0].Branch).To(Equal(testBranchDevelopment))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Validate status fields are populated
 				g.Expect(wrcs.Status.Environments[0].ProposedHydratedSha).ToNot(BeEmpty())
@@ -254,7 +254,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
 				g.Expect(wrcs.Status.Environments[0].Branch).To(Equal(testBranchDevelopment))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhasePending))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 
 				// Expression result should be false
 				g.Expect(wrcs.Status.Environments[0].ExpressionResult).ToNot(BeNil())
@@ -370,7 +370,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Verify the SHA was correctly templated in the URL by checking that we received paths
 				// containing the expected SHA
@@ -507,7 +507,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Verify the auth header was sent correctly
 				g.Expect(receivedAuthHeader).To(Equal("Bearer test-token-123"))
@@ -704,7 +704,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Verify ReportedSha matches ActiveHydratedSha
 				g.Expect(wrcs.Status.Environments[0].ReportedSha).To(Equal(wrcs.Status.Environments[0].ActiveHydratedSha))
@@ -913,7 +913,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Verify headers contain templated label values
 				g.Expect(receivedHeaders.Get("X-Team")).To(Equal("platform"))
@@ -1073,7 +1073,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Verify headers contain templated namespace label/annotation values
 				g.Expect(receivedHeaders.Get("X-Environment")).To(Equal("test"))
@@ -1212,7 +1212,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Verify Ready condition
 				readyCondition := meta.FindStatusCondition(wrcs.Status.Conditions, "Ready")
@@ -1261,7 +1261,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Waiting to verify multiple requests are made (polling continues)")
@@ -1357,7 +1357,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Verify ExpressionData is populated
 				g.Expect(wrcs.Status.Environments[0].ExpressionData).NotTo(BeNil())
@@ -1456,7 +1456,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Verify Ready condition
 				readyCondition := meta.FindStatusCondition(wrcs.Status.Conditions, "Ready")
@@ -1521,7 +1521,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Verify ExpressionData is populated with pollCount
 				g.Expect(wrcs.Status.Environments[0].ExpressionData).NotTo(BeNil())
@@ -1638,7 +1638,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(wrcs.Status.Environments).To(HaveLen(3))
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// Verify ExpressionData is populated
 				g.Expect(wrcs.Status.Environments[0].ExpressionData).NotTo(BeNil())
@@ -1698,7 +1698,7 @@ var _ = Describe("WebRequestCommitStatus Controller", func() {
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Phase should remain success
-				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(WebRequestPhaseSuccess))
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
 				// ExpressionData should still have captured=true
 				g.Expect(wrcs.Status.Environments[0].ExpressionData).NotTo(BeNil())
