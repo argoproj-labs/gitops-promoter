@@ -70,13 +70,14 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 
 	// Map GitOps Promoter status phase to Azure DevOps status state
 	var state git.GitStatusState
-	switch commitStatus.Spec.Phase {
+	switch commitStatus.Spec.Phase { //nolint:revive
+	case v1alpha1.CommitPhasePending:
+		state = git.GitStatusStateValues.Pending
 	case v1alpha1.CommitPhaseSuccess:
 		state = git.GitStatusStateValues.Succeeded
 	case v1alpha1.CommitPhaseFailure:
 		state = git.GitStatusStateValues.Failed
 	default:
-		// Default to pending for any unknown or pending status
 		state = git.GitStatusStateValues.Pending
 	}
 
@@ -131,13 +132,14 @@ func (cs CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSta
 
 // mapAzureDevOpsStateToPhase maps Azure DevOps GitStatusState to GitOps Promoter CommitStatusPhase
 func mapAzureDevOpsStateToPhase(state git.GitStatusState) v1alpha1.CommitStatusPhase {
-	switch state {
+	switch state { //nolint:revive
+	case git.GitStatusStateValues.Pending:
+		return v1alpha1.CommitPhasePending
 	case git.GitStatusStateValues.Succeeded:
 		return v1alpha1.CommitPhaseSuccess
 	case git.GitStatusStateValues.Failed, git.GitStatusStateValues.Error:
 		return v1alpha1.CommitPhaseFailure
 	default:
-		// Default to pending for any unknown or pending status
 		return v1alpha1.CommitPhasePending
 	}
 }
