@@ -28,19 +28,18 @@ type URLConfigApplyConfiguration struct {
 	//
 	// Example:
 	//
-	// {{- $baseURL := "https://dev.argocd.local" -}}
-	// {{- if eq .Environment "environment/development" -}}
-	// {{- $baseURL = "https://dev.argocd.local" -}}
-	// {{- else if eq .Environment "environment/staging" -}}
-	// {{- $baseURL = "https://staging.argocd.local" -}}
-	// {{- else if eq .Environment "environment/production" -}}
-	// {{- $baseURL = "https://prod.argocd.local" -}}
-	// {{- end -}}
-	// {{- $labels := "" -}}
-	// {{- range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels -}}
-	// {{- $labels = printf "%s%s=%s," $labels $key $value -}}
-	// {{- end -}}
-	// {{ printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) }}
+	// {{- /* if eq .Environment "environment/development" */ -}}
+	// {{- /* $baseURL = "https://dev.argocd.local" */ -}}
+	// {{- /* else if eq .Environment "environment/staging" */ -}}
+	// {{- /* $baseURL = "https://staging.argocd.local" */ -}}
+	// {{- /* else if eq .Environment "environment/production" */ -}}
+	// {{- /* $baseURL = "https://prod.argocd.local" */ -}}
+	// {{- /* end */ -}}
+	// {{- /* $labels := "" */ -}}
+	// {{- /* range $key, $value := .ArgoCDCommitStatus.Spec.ApplicationSelector.MatchLabels */ -}}
+	// {{- /* $labels = printf "%s%s=%s," $labels $key $value */ -}}
+	// {{- /*end */ -}}
+	// {{ /* printf "%s/applications?labels=%s" $baseURL (urlQueryEscape $labels) */ }}
 	Template *string `json:"template,omitempty"`
 	// Options sets options for the template. Options are described by
 	// strings, either a simple string or "key=value". There can be at
