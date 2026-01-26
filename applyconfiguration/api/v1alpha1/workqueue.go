@@ -38,7 +38,7 @@ type WorkQueueApplyConfiguration struct {
 	RequeueDuration *v1.Duration `json:"requeueDuration,omitempty"`
 	// MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
 	// that can run for this controller. Higher values increase throughput but consume more
-	// resources. Must be at least 1.
+	// resources.
 	MaxConcurrentReconciles *int `json:"maxConcurrentReconciles,omitempty"`
 	// RateLimiter defines the rate limiting strategy for the controller's work queue.
 	// Rate limiting controls how quickly failed reconciliations are retried and helps
