@@ -29,6 +29,7 @@ type TimedCommitStatusEnvironmentsStatusApplyConfiguration struct {
 	// Branch is the name of the branch/environment.
 	Branch *string `json:"branch,omitempty"`
 	// Sha is the commit SHA being tracked for this environment.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	Sha *string `json:"sha,omitempty"`
 	// CommitTime is when the commit was deployed to the active environment.
 	CommitTime *v1.Time `json:"commitTime,omitempty"`
