@@ -42,6 +42,7 @@ type PullRequestSpecApplyConfiguration struct {
 	Commit *CommitConfigurationApplyConfiguration `json:"commit,omitempty"`
 	// MergeSha is the commit SHA that the head branch must match before the PR can be merged.
 	// This prevents a race condition where a PR is merged with a different commit than intended.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	MergeSha *string `json:"mergeSha,omitempty"`
 	// State of the pull request (closed, merged, or open). Must always be "open" when creating a new pull request.
 	// This value may not be changed to "closed" or "merged" unless the pull request status.id is set.
