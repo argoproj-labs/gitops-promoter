@@ -34,10 +34,12 @@ type ChangeTransferPolicySpec struct {
 
 	// ProposedBranch staging hydrated branch
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	ProposedBranch string `json:"proposedBranch"`
 
 	// ActiveBranch staging hydrated branch
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	ActiveBranch string `json:"activeBranch"`
 
 	// +kubebuilder:validation:Optional
@@ -98,6 +100,9 @@ type HydratorMetadata struct {
 	// RepoURL is the URL of the repository where the commit is located.
 	RepoURL string `json:"repoURL,omitempty"`
 	// DrySha is the SHA of the commit that was used as the dry source for hydration.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	DrySha string `json:"drySha,omitempty"`
 	// Author is the author of the dry commit that was used to hydrate the branch.
 	Author string `json:"author,omitempty"`
@@ -114,6 +119,9 @@ type HydratorMetadata struct {
 // CommitShaState defines the state of a commit in a branch.
 type CommitShaState struct {
 	// Sha is the SHA of the commit in the branch
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha,omitempty"`
 	// CommitTime is the time the commit was made
 	CommitTime metav1.Time `json:"commitTime,omitempty"`
