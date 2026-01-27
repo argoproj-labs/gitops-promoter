@@ -4355,10 +4355,21 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			})
 		})
 
-		// Edge case: previous env ahead with matching Note.DrySha
+		// Edge case: previous env has already moved past the commit we're trying to promote.
+		// This can happen when:
+		// 1. Dry commit ABC is made
+		// 2. All environments get hydrated for ABC
+		// 3. Before production merges ABC, someone makes dry commit DEF
+		// 4. Staging hydrates and merges DEF (skipping ABC)
+		// 5. Production is still trying to promote ABC, but staging is now ahead
+		//
+		// In this case, we allow promotion because:
+		// - Both environments have the same Note.DrySha (DEF), confirming they've seen the same dry commits
+		// - Staging has already merged a newer commit, so it's safe for production to proceed
 		It("allows when previous env merged newer commit with matching Note.DrySha", func() {
-			// Staging merged DEF, prod is promoting ABC, but both have Note.DrySha=DEF
+			// Staging: merged DEF, Note.DrySha=DEF (has processed up to DEF)
 			prevEnvStatus := makeEnvStatusWithTime("DEF", "DEF", "DEF", newerTime)
+			// Production: trying to promote ABC, but Note.DrySha=DEF (hydrator has also processed up to DEF)
 			currEnvStatus := promoterv1alpha1.EnvironmentStatus{
 				Active: promoterv1alpha1.CommitBranchState{
 					Dry: promoterv1alpha1.CommitShaState{Sha: "OLD", CommitTime: olderTime},
