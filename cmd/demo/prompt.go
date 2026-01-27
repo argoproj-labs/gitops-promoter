@@ -57,12 +57,12 @@ func (p *InteractivePrompter) WithWriter(w io.Writer) *InteractivePrompter {
 // GetCredentials implements CredentialsProvider
 func (p *InteractivePrompter) GetCredentials() (*Credentials, error) {
 	_, _ = p.prompt("Press Enter to continue...")
-	printTokenInformations()
+	printTokenInformation()
 	token, err := p.promptHidden("Enter your GitHub personal access token: ")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read token: %w", err)
 	}
-	printAppIDInformations()
+	printAppIDInformation()
 	appID, err := p.prompt("Enter your GitHub application ID: ")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read app ID: %w", err)
@@ -93,7 +93,8 @@ func (p *InteractivePrompter) GetCredentials() (*Credentials, error) {
 	}, nil
 }
 
-func (p *InteractivePrompter) PrintCLIInformations() {
+// PrintCLIInformation prints introductory information about the CLI
+func (p *InteractivePrompter) PrintCLIInformation() {
 	color.Cyan(`
 GitOps Promoter Demo CLI
 ========================
@@ -192,7 +193,8 @@ func loadCredentialsFromFile(path string) (*Credentials, error) {
 	return &credentials, nil
 }
 
-func printTokenInformations() {
+// printTokenInformation prints information about creating a GitHub personal access token
+func printTokenInformation() {
 	color.Yellow(`
 GitHub Token Requirements
 ========================
@@ -214,7 +216,8 @@ Create a token at: https://github.com/settings/tokens
 `)
 }
 
-func printAppIDInformations() {
+// printAppIDInformation prints information about creating a GitHub App
+func printAppIDInformation() {
 	color.Yellow(`
 GitHub App Configuration
 ========================
