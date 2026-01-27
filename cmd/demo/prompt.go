@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/fatih/color"
 	"github.com/goccy/go-yaml"
 )
 
@@ -55,11 +56,13 @@ func (p *InteractivePrompter) WithWriter(w io.Writer) *InteractivePrompter {
 
 // GetCredentials implements CredentialsProvider
 func (p *InteractivePrompter) GetCredentials() (*Credentials, error) {
+	_, _ = p.prompt("Press Enter to continue...")
+	printTokenInformations()
 	token, err := p.promptHidden("Enter your GitHub personal access token: ")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read token: %w", err)
 	}
-
+	printAppIDInformations()
 	appID, err := p.prompt("Enter your GitHub application ID: ")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read app ID: %w", err)
@@ -88,6 +91,20 @@ func (p *InteractivePrompter) GetCredentials() (*Credentials, error) {
 		PrivateKey:     string(privateKeyContent),
 		PrivateKeyPath: privateKeyPath,
 	}, nil
+}
+
+func (p *InteractivePrompter) PrintCLIInformations() {
+	color.Cyan(`
+GitOps Promoter Demo CLI
+========================
+This CLI will set up a demonstration of the GitOps Promoter with Github in your cluster.
+
+It will:
+  • Configure SCM provider credentials (GitHub App + Personal Access Token)
+  • Create necessary Kubernetes resources in your cluster
+  • Set up a sample promotion strategy for testing
+
+`)
 }
 
 func (p *InteractivePrompter) prompt(message string) (string, error) {
@@ -173,4 +190,55 @@ func loadCredentialsFromFile(path string) (*Credentials, error) {
 	}
 
 	return &credentials, nil
+}
+
+func printTokenInformations() {
+	color.Yellow(`
+GitHub Token Requirements
+========================
+This token is used to:
+  • Create and manage pull requests for promotions
+  • Read repository contents and branch information
+  • Set commit statuses for promotion tracking
+
+Required Permissions (Fine-Grained Token):
+  • Repository access: Select the target repository
+  • Contents: Read and Write
+  • Pull requests: Read and Write
+  • Commit statuses: Read and Write
+
+Or for a Classic Token:
+  • repo (Full control of private repositories)
+
+Create a token at: https://github.com/settings/tokens
+`)
+}
+
+func printAppIDInformations() {
+	color.Yellow(`
+GitHub App Configuration
+========================
+The GitHub App ID is required for authentication when performing Git operations.
+
+Why GitHub App?
+  • Higher API rate limits than personal tokens
+  • Fine-grained repository permissions
+  • Bot identity for commits and PRs (not tied to a user account)
+
+How to Create a GitHub App:
+  1. Go to: GitHub Settings → Developer settings → GitHub Apps → New GitHub App
+  2. Set any name (e.g., "gitops-promoter-demo") and homepage URL
+  3. Uncheck "Active" under Webhooks (not needed for demo)
+
+Required Repository Permissions:
+  • Contents: Read and Write
+  • Pull requests: Read and Write
+  • Commit statuses: Read and Write
+
+After Creation:
+  1. Copy the App ID from the top of the app settings page
+  2. Generate a Private Key (downloads a .pem file)
+
+Create at: https://github.com/settings/apps/new
+`)
 }

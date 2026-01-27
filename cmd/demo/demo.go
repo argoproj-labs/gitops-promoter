@@ -46,7 +46,9 @@ func NewDemoCommand() *cobra.Command {
 			}
 
 			// Prompt for credentials
-			credentials, err := NewInteractivePrompter().GetCredentials()
+			prompter := NewInteractivePrompter()
+			prompter.PrintCLIInformations()
+			credentials, err := prompter.GetCredentials()
 			if err != nil {
 				return fmt.Errorf("failed to prompt for credentials: %w", err)
 			}
