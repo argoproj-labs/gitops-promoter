@@ -805,9 +805,8 @@ func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.Enviro
 			}
 			// If this environment is also a no-op, continue looking further back
 		}
-		// If we get here, all preceding environments are no-ops and none have merged.
-		// This shouldn't normally happen (first env should always have real changes),
-		// but allow promotion as a fallback.
+		// If we get here, all preceding environments are no-ops (none had manifest changes).
+		// This is valid - e.g., a change that only affects production. Allow promotion.
 		return false, ""
 	}
 
