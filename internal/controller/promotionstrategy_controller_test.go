@@ -4298,6 +4298,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 		// Tests for non-no-op predecessor blocking (doesn't recurse)
 		Context("immediate predecessor with real changes", func() {
+			//nolint:unparam // proposedDrySha is always "ABC" in these tests but kept for consistency with other makeEnv helpers
 			makeEnv := func(branch, activeDrySha, proposedDrySha, noteDrySha string, activeCommitTime metav1.Time, healthStatus string) promoterv1alpha1.EnvironmentStatus {
 				return promoterv1alpha1.EnvironmentStatus{
 					Branch: branch,
