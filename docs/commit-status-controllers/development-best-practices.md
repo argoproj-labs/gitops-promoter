@@ -115,7 +115,12 @@ The `Description` field in a CommitStatus is displayed to users in their SCM pro
 
 ### Use Action-Oriented Language
 
-Frame status messages as ongoing actions using progressive verb forms (-ing verbs). This creates a sense that the system is actively working, not idle, even during wait states.
+Use active, present-tense language to convey the current state of the system. This creates a sense that the system is continuously monitoring and reporting status, not just recording historical events.
+
+**Philosophy:** Commit statuses should describe "what is happening now" rather than "what happened." This applies to all phases:
+- **Pending:** Use progressive verbs (-ing) to show active work
+- **Success:** Use present tense to describe the current healthy state  
+- **Failure:** Use present tense to describe the current problem
 
 ### Guidelines by Phase
 
@@ -134,29 +139,29 @@ Use present participles (verbs ending with -ing) to indicate active monitoring o
 
 #### Success Phase
 
-Use past tense to indicate completed actions:
+Use present tense to describe the current state:
 
-- ✅ **Use:** "Approved by admin"
-  - ❌ **Avoid:** "Approval completed"
-- ✅ **Use:** "Passed all health checks"
-  - ❌ **Avoid:** "Health checks successful"
-- ✅ **Use:** "Synced successfully"
-  - ❌ **Avoid:** "Sync complete"
-- ✅ **Use:** "Deployed to staging"
-  - ❌ **Avoid:** "Deployment finished"
+- ✅ **Use:** "All applications are healthy"
+  - ❌ **Avoid:** "Health checks passed"
+- ✅ **Use:** "Approval is granted"
+  - ❌ **Avoid:** "Approved successfully"
+- ✅ **Use:** "Time requirement is met"
+  - ❌ **Avoid:** "Timer completed"
+- ✅ **Use:** "Environment is synced"
+  - ❌ **Avoid:** "Sync finished"
 
 #### Failure Phase
 
-Use past tense to clearly state what went wrong:
+Use present tense to describe the current problem:
 
-- ✅ **Use:** "Rejected by approver"
-  - ❌ **Avoid:** "Approval failed"
-- ✅ **Use:** "Failed health check: application degraded"
-  - ❌ **Avoid:** "Health check failure"
-- ✅ **Use:** "Timed out waiting for sync"
-  - ❌ **Avoid:** "Sync timeout"
-- ✅ **Use:** "Deployment failed: pods not ready"
-  - ❌ **Avoid:** "Deployment error"
+- ✅ **Use:** "Applications are degraded"
+  - ❌ **Avoid:** "Health check failed"
+- ✅ **Use:** "Approval is denied"
+  - ❌ **Avoid:** "Approval was rejected"
+- ✅ **Use:** "Deployment is unhealthy: pods not ready"
+  - ❌ **Avoid:** "Deployment failed"
+- ✅ **Use:** "Sync is timing out"
+  - ❌ **Avoid:** "Sync timed out"
 
 ### Additional Tips
 
@@ -173,13 +178,13 @@ Use past tense to clearly state what went wrong:
 commitStatus.Spec.Phase = promoterv1alpha1.CommitPhasePending
 commitStatus.Spec.Description = fmt.Sprintf("Waiting for %d/%d applications to sync", synced, total)
 
-// Success phase - completed action
+// Success phase - current state
 commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-commitStatus.Spec.Description = fmt.Sprintf("All %d applications synced successfully", total)
+commitStatus.Spec.Description = fmt.Sprintf("All %d applications are healthy", total)
 
-// Failure phase - specific error
+// Failure phase - current problem
 commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseFailure
-commitStatus.Spec.Description = fmt.Sprintf("Failed to sync: %s", errorDetail)
+commitStatus.Spec.Description = fmt.Sprintf("Applications are degraded: %s", errorDetail)
 ```
 
 ## Triggering Reconciliation of ChangeTransferPolicies

@@ -225,7 +225,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses).To(HaveLen(1))
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("pending"))
-					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Description).To(Equal("Status has not been reported yet"))
+					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Description).To(Equal("Waiting for status to be reported"))
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				Eventually(func(g Gomega) {

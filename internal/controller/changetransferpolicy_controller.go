@@ -708,7 +708,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:         status.Key,
 				Phase:       string(promoterv1alpha1.CommitPhasePending),
-				Description: "Status has not been reported yet",
+				Description: "Waiting for status to be reported",
 			})
 			found = false
 			phase = promoterv1alpha1.CommitPhasePending
