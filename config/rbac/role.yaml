@@ -39,6 +39,7 @@ rules:
   - controllerconfigurations
   - gitcommitstatuses
   - gitrepositories
+  - previousenvironmentcommitstatuses
   - promotionstrategies
   - pullrequests
   - revertcommits
@@ -62,6 +63,7 @@ rules:
   - controllerconfigurations/finalizers
   - gitcommitstatuses/finalizers
   - gitrepositories/finalizers
+  - previousenvironmentcommitstatuses/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
   - revertcommits/finalizers
@@ -79,6 +81,7 @@ rules:
   - controllerconfigurations/status
   - gitcommitstatuses/status
   - gitrepositories/status
+  - previousenvironmentcommitstatuses/status
   - promotionstrategies/status
   - pullrequests/status
   - revertcommits/status

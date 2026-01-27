@@ -137,6 +137,16 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.HydratorMetadataApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectReference"):
 		return &apiv1alpha1.ObjectReferenceApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PreviousEnvEnvironment"):
+		return &apiv1alpha1.PreviousEnvEnvironmentApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PreviousEnvEnvironmentStatus"):
+		return &apiv1alpha1.PreviousEnvEnvironmentStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PreviousEnvironmentCommitStatus"):
+		return &apiv1alpha1.PreviousEnvironmentCommitStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PreviousEnvironmentCommitStatusSpec"):
+		return &apiv1alpha1.PreviousEnvironmentCommitStatusSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("PreviousEnvironmentCommitStatusStatus"):
+		return &apiv1alpha1.PreviousEnvironmentCommitStatusStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategy"):
 		return &apiv1alpha1.PromotionStrategyApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategyConfiguration"):

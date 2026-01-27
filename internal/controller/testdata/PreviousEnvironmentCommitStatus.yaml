@@ -1,0 +1,70 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PreviousEnvironmentCommitStatus
+metadata:
+  name: webservice-tier-1-previous-env
+  namespace: default
+  # This resource is created and managed by the PromotionStrategy controller.
+  # It should NOT be created manually by users.
+  ownerReferences:
+    - apiVersion: promoter.argoproj.io/v1alpha1
+      kind: PromotionStrategy
+      name: webservice-tier-1
+      uid: 12345678-1234-1234-1234-123456789012
+      controller: true
+      blockOwnerDeletion: true
+spec:
+  # Reference to the parent PromotionStrategy
+  promotionStrategyRef:
+    name: webservice-tier-1
+
+  # List of environments derived from the PromotionStrategy
+  # The controller only creates previous-environment checks for environments
+  # that are NOT the first (i.e., have a previous environment to check)
+  environments:
+    - branch: environment/development
+      # ActiveCommitStatuses inherited from PromotionStrategy
+      activeCommitStatuses:
+        - key: healthy
+        - key: argocd-sync
+
+    - branch: environment/staging
+      activeCommitStatuses:
+        - key: healthy
+        - key: argocd-sync
+
+    - branch: environment/production
+      activeCommitStatuses:
+        - key: healthy
+        - key: argocd-sync
+
+status:
+  # Status is populated by the controller showing the state of each
+  # previous-environment check
+  environments:
+    # Development has no previous environment, so no status entry here
+
+    # Staging checks that development is healthy before allowing promotion
+    - branch: environment/staging
+      # Name of the CommitStatus resource created for this check
+      commitStatusName: promoter-previous-env-webservice-tier-1-staging
+      # Current phase of the check
+      phase: success
+      # The previous environment branch being checked
+      previousEnvironmentBranch: environment/development
+      # The SHA this status applies to
+      sha: abc123def456789
+
+    # Production checks that staging is healthy before allowing promotion
+    - branch: environment/production
+      commitStatusName: promoter-previous-env-webservice-tier-1-production
+      phase: pending
+      previousEnvironmentBranch: environment/staging
+      sha: def456ghi789012
+
+  # Standard conditions
+  conditions:
+    - type: Ready
+      status: "True"
+      reason: ReconcileComplete
+      message: "All previous-environment checks are configured"
+      lastTransitionTime: "2024-01-15T10:30:00Z"
