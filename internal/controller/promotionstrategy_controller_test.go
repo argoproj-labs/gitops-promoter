@@ -4594,6 +4594,360 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(isPending).To(BeFalse(), "prod should be allowed when dev is healthy")
 			Expect(reason).To(BeEmpty())
 		})
+
+		// Tests for 4+ environments to verify recursive lookback works correctly
+		Context("with 4+ environments (recursive lookback)", func() {
+			// Helper to create an environment with specific state
+			makeEnv := func(branch, activeDrySha, proposedDrySha, noteDrySha string, activeCommitTime metav1.Time, healthStatus string) promoterv1alpha1.EnvironmentStatus {
+				return promoterv1alpha1.EnvironmentStatus{
+					Branch: branch,
+					Active: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha:        activeDrySha,
+							CommitTime: activeCommitTime,
+						},
+						CommitStatuses: []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+							{Key: "health", Phase: healthStatus},
+						},
+					},
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{
+							Sha:        proposedDrySha,
+							CommitTime: activeCommitTime,
+						},
+						Note: &promoterv1alpha1.HydratorMetadata{
+							DrySha: noteDrySha,
+						},
+					},
+				}
+			}
+
+			It("blocks env5 when env1 hasn't hydrated yet (4 environments before)", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// Change ABC needs to go through all environments
+				// env1 hasn't hydrated yet, all others have
+				// env5 should be blocked - the recursive check will find env4 hasn't merged first
+				// (checking happens from env4 backward)
+
+				env1 := makeEnv("environment/env1", "OLD", "OLD", "OLD", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env2 := makeEnv("environment/env2", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				// env4 hasn't merged (Active.Dry.Sha = OLD, not ABC), so we block there first
+				Expect(isPending).To(BeTrue(), "env5 should be blocked when env4 hasn't merged")
+				Expect(reason).To(ContainSubstring("Waiting for previous environment to be promoted"))
+			})
+
+			It("blocks env5 when env1 hasn't hydrated, env2-4 are no-ops", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// Change ABC affects env1 and env5 only
+				// env2, env3, env4 are no-ops
+				// env1 hasn't hydrated yet
+				// env5 should be blocked waiting for env1's hydrator
+
+				env1 := makeEnv("environment/env1", "OLD", "OLD", "OLD", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				// No-op environments: Note.DrySha != Proposed.Dry.Sha
+				env2 := makeEnv("environment/env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				// Recursion: env4 is no-op -> env3 is no-op -> env2 is no-op -> env1 hasn't hydrated for ABC
+				Expect(isPending).To(BeTrue(), "env5 should be blocked when env1 hasn't hydrated")
+				Expect(reason).To(ContainSubstring("hydrator"))
+			})
+
+			It("blocks env5 when env1 hasn't merged yet (4 environments before, all hydrated)", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// All environments have hydrated ABC
+				// env1 hasn't merged yet (Active.Dry.Sha = OLD)
+				// env5 should be blocked waiting for env1 to be promoted
+
+				env1 := makeEnv("environment/env1", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env2 := makeEnv("environment/env2", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				Expect(isPending).To(BeTrue(), "env5 should be blocked when env1 hasn't merged")
+				Expect(reason).To(ContainSubstring("Waiting for previous environment to be promoted"))
+			})
+
+			It("blocks env5 when env1 merged but is unhealthy (4 environments before)", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// env1 has merged ABC but health check is pending
+				// env2, env3, env4 haven't merged yet
+				// env5 should be blocked - env4 hasn't merged first (checking happens from env4 backward)
+
+				env1 := makeEnv("environment/env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhasePending))
+				env2 := makeEnv("environment/env2", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				// env4 hasn't merged (Active.Dry.Sha = OLD), so we block there first
+				Expect(isPending).To(BeTrue(), "env5 should be blocked when env4 hasn't merged")
+				Expect(reason).To(ContainSubstring("Waiting for previous environment to be promoted"))
+			})
+
+			It("blocks env5 when env1 merged but unhealthy, env2-4 are no-ops", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// env1 has merged ABC but health check is pending
+				// env2, env3, env4 are no-ops
+				// env5 should be blocked because env1 is unhealthy
+
+				env1 := makeEnv("environment/env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhasePending))
+				// No-op environments
+				env2 := makeEnv("environment/env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				// Recursion skips no-ops and finds env1 merged but unhealthy
+				Expect(isPending).To(BeTrue(), "env5 should be blocked when env1 is unhealthy")
+				Expect(reason).To(ContainSubstring("environment/env1"))
+				Expect(reason).To(ContainSubstring("commit status"))
+			})
+
+			It("allows env5 when env1 merged and is healthy (4 environments before, env2-4 not merged)", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// env1 has merged ABC and is healthy
+				// env2, env3, env4 haven't merged yet (still waiting)
+				// env5 should be blocked because env2, env3, env4 need to merge first
+
+				env1 := makeEnv("environment/env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env2 := makeEnv("environment/env2", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				// env4 hasn't merged yet, so env5 should be blocked
+				Expect(isPending).To(BeTrue(), "env5 should be blocked when env4 hasn't merged")
+				Expect(reason).To(ContainSubstring("Waiting for previous environment to be promoted"))
+			})
+
+			It("allows env5 when env4 merged and is healthy (sequential promotion)", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// All environments have merged ABC sequentially and are healthy
+				// env5 should be allowed to promote
+
+				env1 := makeEnv("environment/env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env2 := makeEnv("environment/env2", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				Expect(isPending).To(BeFalse(), "env5 should be allowed when env4 is healthy")
+				Expect(reason).To(BeEmpty())
+			})
+
+			It("blocks env5 when env4 merged but unhealthy (sequential promotion)", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// All environments have merged ABC but env4 is unhealthy
+				// env5 should be blocked
+
+				env1 := makeEnv("environment/env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env2 := makeEnv("environment/env2", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhasePending))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				Expect(isPending).To(BeTrue(), "env5 should be blocked when env4 is unhealthy")
+				Expect(reason).To(ContainSubstring("environment/env4"))
+				Expect(reason).To(ContainSubstring("commit status"))
+			})
+
+			It("allows env5 when env1 merged and healthy, env2-4 are all no-ops", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// Change ABC only affects env1 and env5
+				// env2, env3, env4 are all no-ops (Note.DrySha = ABC but Proposed.Dry.Sha = OLD)
+				// env1 has merged ABC and is healthy
+				// env5 should be allowed because env1 is healthy
+
+				env1 := makeEnv("environment/env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				// No-op environments: Note.DrySha != Proposed.Dry.Sha
+				env2 := makeEnv("environment/env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				Expect(isPending).To(BeFalse(), "env5 should be allowed when env1 is healthy and env2-4 are no-ops")
+				Expect(reason).To(BeEmpty())
+			})
+
+			It("blocks env5 when env1 not merged yet, env2-4 are all no-ops", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// Change ABC only affects env1 and env5
+				// env2, env3, env4 are all no-ops
+				// env1 hasn't merged ABC yet
+				// env5 should be blocked waiting for env1 to be promoted
+
+				env1 := makeEnv("environment/env1", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				// No-op environments
+				env2 := makeEnv("environment/env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				Expect(isPending).To(BeTrue(), "env5 should be blocked when env1 hasn't merged")
+				Expect(reason).To(ContainSubstring("Waiting for previous environment to be promoted"))
+			})
+
+			It("allows env5 when ALL preceding environments are no-ops (prod-only change)", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// Change ABC only affects env5 (prod-only change)
+				// env1, env2, env3, env4 are all no-ops
+				// env5 should be allowed because there's nothing to wait for
+
+				// All no-op environments
+				env1 := makeEnv("environment/env1", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env2 := makeEnv("environment/env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				Expect(isPending).To(BeFalse(), "env5 should be allowed when all preceding envs are no-ops")
+				Expect(reason).To(BeEmpty())
+			})
+
+			It("allows env5 when env3 merged and healthy, env4 is no-op (mixed scenario)", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// Change ABC affects env1, env2, env3, and env5 but NOT env4
+				// env1, env2, env3 have all merged ABC
+				// env4 is a no-op
+				// env5 should be allowed because env3 (the last non-no-op) is healthy
+
+				env1 := makeEnv("environment/env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env2 := makeEnv("environment/env2", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				// env4 is a no-op
+				env4 := makeEnv("environment/env4", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				Expect(isPending).To(BeFalse(), "env5 should be allowed when env3 is healthy and env4 is no-op")
+				Expect(reason).To(BeEmpty())
+			})
+
+			It("blocks env5 when env3 merged but unhealthy, env4 is no-op (mixed scenario)", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// Change ABC affects env1, env2, env3, and env5 but NOT env4
+				// env1, env2 have merged ABC and are healthy
+				// env3 has merged ABC but is unhealthy
+				// env4 is a no-op
+				// env5 should be blocked because env3 is unhealthy
+
+				env1 := makeEnv("environment/env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env2 := makeEnv("environment/env2", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhasePending))
+				// env4 is a no-op
+				env4 := makeEnv("environment/env4", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				Expect(isPending).To(BeTrue(), "env5 should be blocked when env3 is unhealthy")
+				Expect(reason).To(ContainSubstring("environment/env3"))
+				Expect(reason).To(ContainSubstring("commit status"))
+			})
+
+			It("blocks env5 when env2 not hydrated, env3-4 are no-ops (hydration gap in middle)", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5
+				// env1 has merged ABC and is healthy
+				// env2 hasn't hydrated yet (still showing OLD)
+				// env3, env4 are no-ops (somehow hydrated before env2 - shouldn't happen but testing edge case)
+				// env5 should be blocked because env2 hasn't hydrated
+
+				env1 := makeEnv("environment/env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env2 := makeEnv("environment/env2", "OLD", "OLD", "OLD", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env5)
+
+				Expect(isPending).To(BeTrue(), "env5 should be blocked when env2 hasn't hydrated")
+				Expect(reason).To(ContainSubstring("hydrator"))
+			})
+
+			It("with 6 environments: allows env6 when env1 healthy, env2-5 are no-ops", func() {
+				// Scenario: env1 -> env2 -> env3 -> env4 -> env5 -> env6
+				// Change ABC only affects env1 and env6
+				// env2, env3, env4, env5 are all no-ops
+				// env1 has merged ABC and is healthy
+				// env6 should be allowed
+
+				env1 := makeEnv("environment/env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env2 := makeEnv("environment/env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env6 := makeEnv("environment/env6", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4, env5}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env6)
+
+				Expect(isPending).To(BeFalse(), "env6 should be allowed when env1 is healthy and env2-5 are no-ops")
+				Expect(reason).To(BeEmpty())
+			})
+
+			It("with 6 environments: blocks env6 when env1 unhealthy, env2-5 are no-ops", func() {
+				// Same as above but env1 is unhealthy
+
+				env1 := makeEnv("environment/env1", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhasePending))
+				env2 := makeEnv("environment/env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env3 := makeEnv("environment/env3", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env4 := makeEnv("environment/env4", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env5 := makeEnv("environment/env5", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+				env6 := makeEnv("environment/env6", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+
+				precedingEnvs := []promoterv1alpha1.EnvironmentStatus{env1, env2, env3, env4, env5}
+				isPending, reason := isPreviousEnvironmentPending(precedingEnvs, env6)
+
+				Expect(isPending).To(BeTrue(), "env6 should be blocked when env1 is unhealthy")
+				Expect(reason).To(ContainSubstring("environment/env1"))
+				Expect(reason).To(ContainSubstring("commit status"))
+			})
+		})
 	})
 
 	// Note: Each test creates its own reconciler and state instead of using shared BeforeEach setup.
