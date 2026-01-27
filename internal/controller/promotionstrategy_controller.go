@@ -338,7 +338,7 @@ func (r *PromotionStrategyReconciler) cleanupOrphanedChangeTransferPolicies(ctx 
 // cleanupOrphanedPreviousEnvironmentCommitStatuses deletes previous-environment CommitStatuses that are owned by this PromotionStrategy
 // but are not in the current list of valid CTPs (i.e., they correspond to removed or renamed environments).
 //
-//nolint:dupl // Similar to CTP cleanup but works with CommitStatus type
+
 func (r *PromotionStrategyReconciler) cleanupOrphanedPreviousEnvironmentCommitStatuses(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, validCtps []*promoterv1alpha1.ChangeTransferPolicy) error {
 	logger := log.FromContext(ctx)
 
