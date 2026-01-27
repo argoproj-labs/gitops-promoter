@@ -36,8 +36,10 @@ func NewDemoCommand() *cobra.Command {
 	var private bool
 
 	cmd := &cobra.Command{
-		Use:   "demo",
-		Short: "Setup a new gitops-promoter demo repository",
+		Use:          "demo",
+		Short:        "Setup a new gitops-promoter demo repository",
+		Long:         `This command will guide you through setting up a demo environment for GitOps Promoter.`,
+		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 			installer, err := NewInstaller("cmd/demo/config/config.yaml")
