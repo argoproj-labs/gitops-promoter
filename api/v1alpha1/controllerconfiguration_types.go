@@ -172,9 +172,9 @@ type WorkQueue struct {
 
 	// MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
 	// that can run for this controller. Higher values increase throughput but consume more
-	// resources. Must be at least 1.
+	// resources.
 	// +required
-	// +Validation:Minimum=1
+	// +kubebuilder:validation:Minimum=1
 	MaxConcurrentReconciles int `json:"maxConcurrentReconciles"`
 
 	// RateLimiter defines the rate limiting strategy for the controller's work queue.
@@ -277,7 +277,7 @@ type FastSlow struct {
 	// MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
 	// Must be at least 1.
 	// +required
-	// +Validation:Minimum=1
+	// +kubebuilder:validation:Minimum=1
 	MaxFastAttempts int `json:"maxFastAttempts"`
 }
 
@@ -293,14 +293,14 @@ type Bucket struct {
 	// Qps (queries per second) is the rate at which tokens are added to the bucket.
 	// This defines the sustained rate limit for operations. Must be non-negative.
 	// +required
-	// +Validation:Minimum=0
+	// +kubebuilder:validation:Minimum=0
 	Qps int `json:"qps"`
 
 	// Bucket is the maximum number of tokens that can be accumulated in the bucket.
 	// This defines the maximum burst size - how many operations can occur in rapid
 	// succession before rate limiting takes effect. Must be non-negative.
 	// +required
-	// +Validation:Minimum=0
+	// +kubebuilder:validation:Minimum=0
 	Bucket int `json:"bucket"`
 }
 
