@@ -652,7 +652,9 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			continue
 		}
 
-		isPending, pendingReason := isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus)
+		// Pass all preceding environment statuses so we can look back past no-op hydrations
+		precedingEnvStatuses := ps.Status.Environments[:i]
+		isPending, pendingReason := isPreviousEnvironmentPending(precedingEnvStatuses, currentEnvironmentStatus)
 
 		commitStatusPhase := promoterv1alpha1.CommitPhaseSuccess
 		if isPending {
@@ -694,7 +696,15 @@ func getNoteDrySha(note *promoterv1alpha1.HydratorMetadata) string {
 }
 
 // isPreviousEnvironmentPending returns whether the previous environment is pending and a reason string if it is pending.
-func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
+// precedingEnvStatuses contains all environments before the current one, in order (index 0 is first env, last index is immediate previous).
+func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.EnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
+	if len(precedingEnvStatuses) == 0 {
+		return false, ""
+	}
+
+	// The immediate previous environment
+	previousEnvironmentStatus := precedingEnvStatuses[len(precedingEnvStatuses)-1]
+
 	previousEnvProposedNoteSha := getNoteDrySha(previousEnvironmentStatus.Proposed.Note)
 	previousEnvProposedDrySha := previousEnvironmentStatus.Proposed.Dry.Sha
 
@@ -750,7 +760,58 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 		}
 	}
 
-	// Finally, check that the previous environment's commit statuses are passing.
+	// Check commit statuses. For no-op hydrations, we need to look back to find an environment
+	// that actually deployed the change, since the immediate previous environment's Active.CommitStatuses
+	// would be for an older deployment.
+	//
+	// Example: dev -> staging -> prod, where a change affects dev and prod but staging is a no-op.
+	// When checking if prod can promote:
+	// - staging has noOpHydration=true (Note.DrySha differs from Proposed.Dry.Sha)
+	// - staging's Active.CommitStatuses are for the OLD deployment (not the new dry SHA)
+	// - We need to check dev's Active.CommitStatuses instead, since dev actually deployed the change
+	if noOpHydration {
+		// Find the most recent environment that actually deployed this dry SHA (not a no-op).
+		// Walk backwards through preceding environments to find one where Active.Dry.Sha matches
+		// the target dry SHA (meaning it merged the change).
+		for i := len(precedingEnvStatuses) - 1; i >= 0; i-- {
+			envStatus := precedingEnvStatuses[i]
+			envNoteSha := getNoteDrySha(envStatus.Proposed.Note)
+			envProposedDrySha := envStatus.Proposed.Dry.Sha
+
+			// Check if this environment is also a no-op
+			envIsNoOp := envNoteSha != "" && envProposedDrySha != envNoteSha
+
+			// Check if this environment has merged the target dry SHA
+			envMergedTarget := envStatus.Active.Dry.Sha == currentEnvHydratedForDrySha
+
+			if envMergedTarget {
+				// This environment actually merged the target dry SHA - check its commit statuses
+				if !utils.AreCommitStatusesPassing(envStatus.Active.CommitStatuses) {
+					if len(envStatus.Active.CommitStatuses) == 1 {
+						return true, fmt.Sprintf("Waiting for %q environment's %q commit status to be successful", envStatus.Branch, envStatus.Active.CommitStatuses[0].Key)
+					}
+					return true, fmt.Sprintf("Waiting for %q environment's commit statuses to be successful", envStatus.Branch)
+				}
+				// Found a healthy environment that deployed the change
+				return false, ""
+			}
+
+			// If this environment is NOT a no-op (i.e., it has real changes to deploy),
+			// but it hasn't merged yet, we need to wait for it.
+			if !envIsNoOp {
+				// This environment has real changes but hasn't merged the target SHA yet.
+				// We need to wait for it to be promoted.
+				return true, "Waiting for previous environment to be promoted"
+			}
+			// If this environment is also a no-op, continue looking further back
+		}
+		// If we get here, all preceding environments are no-ops and none have merged.
+		// This shouldn't normally happen (first env should always have real changes),
+		// but allow promotion as a fallback.
+		return false, ""
+	}
+
+	// Standard case: previous environment actually deployed the change, check its commit statuses
 	previousEnvironmentPassing := utils.AreCommitStatusesPassing(previousEnvironmentStatus.Active.CommitStatuses)
 	if !previousEnvironmentPassing {
 		if len(previousEnvironmentStatus.Active.CommitStatuses) == 1 {
