@@ -750,11 +750,6 @@ func checkPrecedingEnvironment(precedingEnvStatuses []promoterv1alpha1.Environme
 		return true, "Waiting for the hydrator to finish processing the proposed dry commit"
 	}
 
-	// Check if this environment is a no-op (git note updated but no new commit).
-	// A no-op is when Note.DrySha differs from Proposed.Dry.Sha - the git note was updated
-	// to a newer dry SHA, but hydrator.metadata still has the old value because no new commit was created.
-	envIsNoOp := envHydratedForDrySha != envProposedDrySha
-
 	// Check if this environment has merged the target dry SHA
 	envMergedTarget := envStatus.Active.Dry.Sha == targetDrySha
 
@@ -770,6 +765,11 @@ func checkPrecedingEnvironment(precedingEnvStatuses []promoterv1alpha1.Environme
 		// This environment actually merged the target dry SHA - check its commit statuses
 		return checkCommitStatusesPassing(envStatus.Active.CommitStatuses, envStatus.Branch)
 	}
+
+	// Check if this environment is a no-op (git note updated but no new commit).
+	// A no-op is when Note.DrySha differs from Proposed.Dry.Sha - the git note was updated
+	// to a newer dry SHA, but hydrator.metadata still has the old value because no new commit was created.
+	envIsNoOp := envHydratedForDrySha != envProposedDrySha
 
 	// If this environment is NOT a no-op (i.e., it has real changes to deploy),
 	// but it hasn't merged yet, we need to wait for it.
