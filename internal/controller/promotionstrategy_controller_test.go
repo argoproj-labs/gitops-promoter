@@ -3913,6 +3913,165 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				g.Expect(ctpProd.Status.Active.Dry.Sha).To(Equal(firstDrySha))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("should block production when staging is no-op but dev hasn't finished promoting", func() {
+			// This test verifies the bug fix for the scenario where:
+			// 1. A change is made that affects dev and prod but NOT staging (staging is no-op)
+			// 2. Dev, staging, and prod all get hydrated (staging via git note only)
+			// 3. Production should NOT be able to promote until dev has merged AND is healthy
+			//
+			// Previously, prod would incorrectly promote in parallel with dev because
+			// the code only checked the immediate previous environment (staging), which
+			// had a no-op hydration and thus appeared "complete".
+
+			By("Waiting for ChangeTransferPolicies to be created and reconciled")
+			var ctpProd promoterv1alpha1.ChangeTransferPolicy
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).NotTo(BeEmpty())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpStaging.Status.Active.Dry.Sha).NotTo(BeEmpty())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Status.Active.Dry.Sha).NotTo(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			initialDevActiveSha := ctpDev.Status.Active.Dry.Sha
+
+			By("Making a dry commit that will affect dev and prod but NOT staging")
+			gitPath, err := cloneTestRepo(ctx, name)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { _ = os.RemoveAll(gitPath) }()
+
+			drySha, err := makeDryCommit(ctx, gitPath, "change affecting dev and prod only")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Hydrating dev-next (has real changes)")
+			err = hydrateEnvironment(ctx, gitPath, testBranchDevelopmentNext, drySha, "hydrate dev")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Adding git note to staging-next (no-op - manifests unchanged)")
+			err = addNoteToEnvironment(ctx, gitPath, testBranchStagingNext, drySha)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Hydrating prod-next (has real changes)")
+			err = hydrateEnvironment(ctx, gitPath, testBranchProductionNext, drySha, "hydrate prod")
+			Expect(err).NotTo(HaveOccurred())
+
+			By("Waiting for all CTPs to see the new proposed dry SHA")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Equal(drySha))
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpStaging.Name,
+					Namespace: ctpStaging.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+				// Staging should have the git note but NOT a new proposed commit
+				g.Expect(ctpStaging.Status.Proposed.Note).NotTo(BeNil())
+				g.Expect(ctpStaging.Status.Proposed.Note.DrySha).To(Equal(drySha))
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpProd.Name,
+					Namespace: ctpProd.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Status.Proposed.Dry.Sha).To(Equal(drySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying production's previous environment check is PENDING (waiting for dev)")
+			// At this point, dev hasn't merged yet, so prod should be blocked
+			Eventually(func(g Gomega) {
+				var prevEnvCS promoterv1alpha1.CommitStatus
+				csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpProd.Name)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      csName,
+					Namespace: "default",
+				}, &prevEnvCS)
+				g.Expect(err).To(Succeed())
+				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "prod should be blocked while dev hasn't merged")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying production has NOT promoted yet (still on initial SHA)")
+			Consistently(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpProd.Name,
+					Namespace: ctpProd.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Status.Active.Dry.Sha).NotTo(Equal(drySha), "prod should NOT have promoted yet")
+			}, "3s", "500ms").Should(Succeed())
+
+			By("Waiting for dev to merge (auto-merge since it's first environment)")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpDev.Name,
+					Namespace: ctpDev.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Setting dev's commit status to success")
+			_, err = runGitCmd(ctx, gitPath, "fetch")
+			Expect(err).NotTo(HaveOccurred())
+			devActiveSha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+ctpDev.Spec.ActiveBranch)
+			Expect(err).NotTo(HaveOccurred())
+			devActiveSha = strings.TrimSpace(devActiveSha)
+
+			_, err = controllerutil.CreateOrUpdate(ctx, k8sClient, activeCommitStatusDevelopment, func() error {
+				activeCommitStatusDevelopment.Spec.Sha = devActiveSha
+				activeCommitStatusDevelopment.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+				return nil
+			})
+			Expect(err).To(Succeed())
+
+			By("Verifying production's previous environment check is now SUCCESS")
+			Eventually(func(g Gomega) {
+				var prevEnvCS promoterv1alpha1.CommitStatus
+				csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctpProd.Name)
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      csName,
+					Namespace: "default",
+				}, &prevEnvCS)
+				g.Expect(err).To(Succeed())
+				g.Expect(prevEnvCS.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "prod should be unblocked after dev is healthy")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying production now promotes the dry SHA")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      ctpProd.Name,
+					Namespace: ctpProd.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+				g.Expect(ctpProd.Status.Active.Dry.Sha).To(Equal(drySha))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying dev promoted before prod (dev's active SHA changed first)")
+			// This is a sanity check - dev should have the new SHA
+			Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(drySha))
+			// And it should be different from the initial SHA
+			Expect(ctpDev.Status.Active.Dry.Sha).NotTo(Equal(initialDevActiveSha))
+		})
 	})
 
 	Context("isPreviousEnvironmentPending", func() {
