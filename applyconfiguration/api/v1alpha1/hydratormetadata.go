@@ -30,6 +30,7 @@ type HydratorMetadataApplyConfiguration struct {
 	// RepoURL is the URL of the repository where the commit is located.
 	RepoURL *string `json:"repoURL,omitempty"`
 	// DrySha is the SHA of the commit that was used as the dry source for hydration.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	DrySha *string `json:"drySha,omitempty"`
 	// Author is the author of the dry commit that was used to hydrate the branch.
 	Author *string `json:"author,omitempty"`

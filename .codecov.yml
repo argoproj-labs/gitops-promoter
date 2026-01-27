@@ -16,4 +16,5 @@ ignore:
   - 'dist'
   - 'hack'
   - 'internal/scms/mock'
+  - 'internal/controller/testutils'
   - '**/zz_generated.*'

@@ -185,3 +185,35 @@ When you delete a PromotionStrategy and its associated resources, the finalizers
 
 If you attempt to delete resources out of order, Kubernetes will mark them for deletion but they will remain in a 
 "Terminating" state until their dependent resources are removed. This is normal and expected behavior.
+
+## Validation Conventions
+
+### Commit SHA Format
+
+All SHA fields in the CRDs support both SHA-1 (40 characters) and SHA-256 (64 characters) lowercase hexadecimal hashes. This ensures compatibility with both traditional and modern Git repositories while maintaining reliable comparisons between SHAs.
+
+#### Background on Git Hash Functions
+
+Git is transitioning from SHA-1 to SHA-256 as documented in the [Git hash function transition plan](https://git-scm.com/docs/hash-function-transition). While most Git repositories currently use SHA-1 (40-character hashes), newer repositories can be created with SHA-256 (64-character hashes). This project supports both formats to ensure compatibility during and after the transition period.
+
+The validation rules differ based on whether the field is required or optional:
+
+**Required SHA fields** (in spec):
+```yaml
+# +kubebuilder:validation:MinLength=40
+# +kubebuilder:validation:MaxLength=64
+# +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+```
+
+**Optional SHA fields** (omitempty):
+```yaml
+# +kubebuilder:validation:MaxLength=64
+# +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+```
+
+**Rationale:**
+- `MinLength=40`: Makes the field truly required (enforces non-empty for required fields)
+- `MaxLength=64`: Accommodates both SHA-1 (40 chars) and SHA-256 (64 chars)
+- `Pattern=^([a-f0-9]{40}|[a-f0-9]{64})$`: Validates exact format - either 40 or 64 lowercase hex characters
+
+Optional fields omit `MinLength` so they can be empty, but when provided, they must match one of the two valid SHA formats (40 or 64 characters).

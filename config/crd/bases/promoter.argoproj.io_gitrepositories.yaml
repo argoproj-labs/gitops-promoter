@@ -71,6 +71,7 @@ spec:
                   name:
                     description: Name is the name of the repository.
                     maxLength: 62
+                    minLength: 1
                     pattern: ^[a-zA-Z0-9_.-]+$
                     type: string
                   owner:
@@ -89,9 +90,11 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the repository.
+                    minLength: 1
                     type: string
                   owner:
                     description: Owner is the owner of the repository.
+                    minLength: 1
                     type: string
                 required:
                 - name
@@ -103,9 +106,11 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the repository.
+                    minLength: 1
                     type: string
                   owner:
                     description: Owner is the owner of the repository.
+                    minLength: 1
                     type: string
                 required:
                 - name
@@ -133,12 +138,14 @@ spec:
                   name:
                     description: Name is the name of the repository.
                     maxLength: 100
+                    minLength: 1
                     pattern: ^[a-zA-Z0-9_\-\.]+$
                     type: string
                   owner:
                     description: Owner is the owner of the repository, which can be
                       a user or an organization.
                     maxLength: 39
+                    minLength: 1
                     pattern: ^[a-zA-Z0-9][a-zA-Z0-9\-]*$
                     type: string
                 required:
@@ -151,15 +158,18 @@ spec:
                 properties:
                   name:
                     description: Name is the project slug of the repository.
+                    minLength: 1
                     pattern: ^[a-zA-Z0-9_\-\/.]+$
                     type: string
                   namespace:
                     description: Namespace is the user, group or group with subgroup
                       (e.g. group/subgroup).
+                    minLength: 1
                     pattern: ^[a-zA-Z0-9_\-\/.]+$
                     type: string
                   projectId:
                     description: ProjectID is the ID of the project in GitLab.
+                    minimum: 0
                     type: integer
                 required:
                 - name
@@ -179,6 +189,9 @@ spec:
                     type: string
                   name:
                     description: Name is the name of the resource being referenced
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - kind

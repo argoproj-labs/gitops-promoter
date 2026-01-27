@@ -64,6 +64,7 @@ type PromotionStrategySpec struct {
 type Environment struct {
 	// Branch is the name of the active branch for the environment.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Branch string `json:"branch"`
 	// AutoMerge determines whether the dry commit should be automatically merged into the next branch in the sequence.
 	// If false, the dry commit will be proposed but not merged.
@@ -131,6 +132,7 @@ func (ps *PromotionStrategy) GetConditions() *[]metav1.Condition {
 // EnvironmentStatus defines the observed state of an environment in a PromotionStrategy.
 type EnvironmentStatus struct {
 	// Branch is the name of the active branch for the environment.
+	// +kubebuilder:validation:MinLength=1
 	Branch string `json:"branch"`
 	// Proposed is the state of the proposed branch for the environment.
 	Proposed CommitBranchState `json:"proposed"`
@@ -155,6 +157,9 @@ type EnvironmentStatus struct {
 // HealthyDryShas is a list of dry commits that were observed to be healthy in the environment.
 type HealthyDryShas struct {
 	// Sha is the commit SHA of the dry commit that was observed to be healthy.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha"`
 	// Time is the time when the proposed commit for the given dry SHA was merged into the active branch.
 	Time metav1.Time `json:"time"`

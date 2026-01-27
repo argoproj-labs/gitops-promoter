@@ -285,5 +285,13 @@ func (pr *PullRequest) GetUrl(ctx context.Context, prObj v1alpha1.PullRequest) (
 		return "", fmt.Errorf("failed to get repo: %w", err)
 	}
 
-	return fmt.Sprintf("https://%s/%s/%s/-/merge_requests/%s", pr.client.BaseURL(), repo.Spec.GitLab.Namespace, repo.Spec.GitLab.Name, prObj.Status.ID), nil
+	return FormatMergeRequestUrl(pr.client, repo.Spec.GitLab, prObj.Status.ID), nil
+}
+
+// FormatMergeRequestUrl constructs a GitLab merge request URL from the client's base URL and repository details.
+// The client's BaseURL() returns the full API URL including protocol (e.g., "https://gitlab.example.com/api/v4").
+// This function extracts the scheme and host to construct the web UI URL for the merge request.
+func FormatMergeRequestUrl(client *gitlab.Client, gitlabRepo *v1alpha1.GitLabRepo, prID string) string {
+	baseURL := client.BaseURL()
+	return fmt.Sprintf("%s://%s/%s/%s/-/merge_requests/%s", baseURL.Scheme, baseURL.Host, gitlabRepo.Namespace, gitlabRepo.Name, prID)
 }

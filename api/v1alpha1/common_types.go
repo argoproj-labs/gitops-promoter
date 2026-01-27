@@ -12,6 +12,7 @@ type GitHub struct {
 	Domain string `json:"domain,omitempty"`
 	// AppID is the GitHub App ID.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Minimum=0
 	AppID int64 `json:"appID"`
 	// InstallationID is the GitHub App Installation ID. If you want to use this ScmProvider for multiple
 	// GitHub orgs, do not specify this field. The installation ID will be inferred from the repo owner
@@ -25,6 +26,7 @@ type GitHub struct {
 type GitLab struct {
 	// Domain is the GitLab domain, such as "gitlab.mycompany.com". If using the default GitLab domain, leave this field
 	// empty.
+	// +kubebuilder:validation:XValidation:rule=`self != "gitlab.com"`, message="Instead of setting the domain to gitlab.com, leave the field blank"
 	Domain string `json:"domain,omitempty"`
 }
 
@@ -36,6 +38,8 @@ type Forgejo struct {
 	// Domain is the Forgejo domain, such as "codeberg.org" or "forgejo.mycompany.com".
 	// There is no default domain since Forgejo is not a service like Gitlab or Github.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
 	Domain string `json:"domain"`
 }
 
@@ -64,6 +68,8 @@ type AzureDevOps struct {
 // Fake is a placeholder for a fake SCM provider, used for testing purposes.
 type Fake struct {
 	// Domain is the domain of the fake SCM provider. This is used for testing purposes.
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
 	Domain string `json:"domain,omitempty"`
 }
 
@@ -71,6 +77,9 @@ type Fake struct {
 type ObjectReference struct {
 	// Name is the name of the object to refer to.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	Name string `json:"name"`
 }
 
@@ -81,11 +90,13 @@ type GitHubRepo struct {
 
 	// Owner is the owner of the repository, which can be a user or an organization.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=39
 	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9][a-zA-Z0-9\-]*$
 	Owner string `json:"owner"`
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=100
 	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9_\-\.]+$
 	Name string `json:"name"`
@@ -95,13 +106,16 @@ type GitHubRepo struct {
 type GitLabRepo struct {
 	// Namespace is the user, group or group with subgroup (e.g. group/subgroup).
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9_\-\/.]+$
 	Namespace string `json:"namespace"`
 	// Name is the project slug of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:Pattern=^[a-zA-Z0-9_\-\/.]+$
 	Name string `json:"name"`
 	// ProjectID is the ID of the project in GitLab.
+	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:Required
 	ProjectID int `json:"projectId"`
 }
@@ -110,9 +124,11 @@ type GitLabRepo struct {
 type ForgejoRepo struct {
 	// Owner is the owner of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Owner string `json:"owner"`
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 }
 
@@ -136,6 +152,7 @@ type BitbucketCloudRepo struct {
 	Owner string `json:"owner"`
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=62
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_.-]+$"
 	Name string `json:"name"`
@@ -159,9 +176,11 @@ type AzureDevOpsRepo struct {
 type FakeRepo struct {
 	// Owner is the owner of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Owner string `json:"owner"`
 	// Name is the name of the repository.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 }
 
@@ -176,6 +195,9 @@ type CommitMetadata struct {
 	// Body is the body of the commit message, excluding the subject line, i.e. `git show --format=%b`.
 	Body string `json:"body,omitempty"`
 	// Sha is the commit hash.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha,omitempty"`
 	// RepoURL is the URL of the repository where the commit is located.
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"

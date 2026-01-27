@@ -272,6 +272,116 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 						WorkQueue: promoterv1alpha1.WorkQueue{
 							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000}, // 5 minutes in nanoseconds
 							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					PromotionStrategy: promoterv1alpha1.PromotionStrategyConfiguration{
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					ChangeTransferPolicy: promoterv1alpha1.ChangeTransferPolicyConfiguration{
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					PullRequest: promoterv1alpha1.PullRequestConfiguration{
+						Template: promoterv1alpha1.PullRequestTemplate{
+							Title:       "Test PR",
+							Description: "Test Description",
+						},
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					CommitStatus: promoterv1alpha1.CommitStatusConfiguration{
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					TimedCommitStatus: promoterv1alpha1.TimedCommitStatusConfiguration{
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					GitCommitStatus: promoterv1alpha1.GitCommitStatusConfiguration{
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
 						},
 					},
 				},
@@ -467,6 +577,18 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 		It("should produce a deterministic, sorted branch list across multiple reconciliations", func() {
 			ctx := context.TODO()
 
+			// Create a secret for the SCM provider
+			scmSecret := &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "fake-scm-secret",
+					Namespace: "default",
+				},
+				Data: map[string][]byte{
+					"token": []byte("fake-token"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+
 			// Create a fake SCM provider
 			scmProvider := &promoterv1alpha1.ScmProvider{
 				ObjectMeta: metav1.ObjectMeta{
@@ -481,18 +603,6 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-
-			// Create a secret for the SCM provider
-			scmSecret := &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "fake-scm-secret",
-					Namespace: "default",
-				},
-				Data: map[string][]byte{
-					"token": []byte("fake-token"),
-				},
-			}
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 
 			// Create a GitRepository with an INVALID URL to trigger ls-remote error
 			gitRepo := &promoterv1alpha1.GitRepository{
@@ -571,7 +681,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 						},
 						Sync: argocd.SyncStatus{
 							Status:   "Synced",
-							Revision: "abc123",
+							Revision: "abc1230000000000000000000000000000000123",
 						},
 					},
 				}

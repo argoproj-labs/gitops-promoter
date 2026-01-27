@@ -3,6 +3,9 @@
 GitOps Promoter is designed to work with any hydration system that follows a simple contract. This page documents the
 requirements for building a custom hydrator that integrates with GitOps Promoter.
 
+Using a custom hydrator makes sense if you don't want to use Argo CD's Source Hydrator feature (for example, if you use
+a different GitOps operator) or if you are promoting things other than Kubernetes manifests.
+
 ## Overview
 
 A hydrator is a tool that watches a "DRY" (Don't Repeat Yourself) branch for new commits and transforms them into
@@ -90,6 +93,9 @@ is identical to what's already on the proposed branch. If nothing has changed, d
 This prevents GitOps Promoter from creating Pull Requests for changes that have no effect.
 
 ## Example Implementations
+
+These example scripts would run on every push to the DRY branch. They could run anywhere, but a common choice would be
+a CI system like GitHub Actions, since it can easily trigger on pushes and has built-in git support.
 
 ### Minimal Example
 

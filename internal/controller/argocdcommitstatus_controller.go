@@ -284,7 +284,7 @@ func (r *ArgoCDCommitStatusReconciler) getHeadShasForBranches(ctx context.Contex
 
 	headShasByTargetBranch, err := git.LsRemote(ctx, gitAuthProvider, gitRepo, targetBranches...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to ls-remote sha for branch [%s]: %w", strings.Join(targetBranches, " "), err)
+		return nil, fmt.Errorf("failed to ls-remote sha: %w", err)
 	}
 
 	return headShasByTargetBranch, nil

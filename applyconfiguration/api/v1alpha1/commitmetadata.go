@@ -35,6 +35,7 @@ type CommitMetadataApplyConfiguration struct {
 	// Body is the body of the commit message, excluding the subject line, i.e. `git show --format=%b`.
 	Body *string `json:"body,omitempty"`
 	// Sha is the commit hash.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	Sha *string `json:"sha,omitempty"`
 	// RepoURL is the URL of the repository where the commit is located.
 	RepoURL *string `json:"repoURL,omitempty"`
