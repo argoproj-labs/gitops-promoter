@@ -58,6 +58,11 @@ spec:
             description: CommitStatusSpec defines the desired state of CommitStatus
             properties:
               description:
+                description: |-
+                  Description is a human-readable description of the commit status.
+                  This is shown in the SCM provider (GitHub, GitLab, etc.) as the commit status description.
+                  Use an action-oriented message to convey that the system is actively working. For example,
+                  "Waiting for approval" instead of "Approval pending."
                 type: string
               gitRepositoryRef:
                 description: ObjectReference is a reference to an object by name.

@@ -41,6 +41,10 @@ type CommitStatusSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
 
+	// Description is a human-readable description of the commit status.
+	// This is shown in the SCM provider (GitHub, GitLab, etc.) as the commit status description.
+	// Use an action-oriented message to convey that the system is actively working. For example,
+	// "Waiting for approval" instead of "Approval pending."
 	Description string `json:"description"`
 
 	// +kubebuilder:validation:Required
