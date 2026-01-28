@@ -676,16 +676,22 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 
 		if len(csList.Items) == 1 {
 			// Single match: use base key
-			phase := string(csList.Items[0].Status.Phase)
+			// Default to pending if the phase is empty (can happen when CommitStatus is newly created
+			// and the controller hasn't updated status yet)
+			csPhase := csList.Items[0].Status.Phase
+			if csPhase == "" {
+				csPhase = promoterv1alpha1.CommitPhasePending
+			}
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-				Key:   status.Key,
-				Phase: phase,
-				Url:   csList.Items[0].Spec.Url,
+				Key:         status.Key,
+				Phase:       string(csPhase),
+				Url:         csList.Items[0].Spec.Url,
+				Description: csList.Items[0].Spec.Description,
 			})
-			logger.Info("CommitStatus State",
+			logger.V(4).Info("CommitStatus State",
 				"key", status.Key,
 				"sha", targetCommitBranchState.Hydrated.Sha,
-				"phase", phase,
+				"phase", csPhase,
 				"found", true,
 				"foundCount", 1)
 		} else if len(csList.Items) > 1 {
@@ -693,33 +699,38 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			// This handles cases like multiple required checks with the same external name
 			// Example: required-status-check-lint-4106c0da, required-status-check-lint-a5fde8a8
 			for _, cs := range csList.Items {
-				phase := string(cs.Status.Phase)
+				// Default to pending if the phase is empty
+				csPhase := cs.Status.Phase
+				if csPhase == "" {
+					csPhase = promoterv1alpha1.CommitPhasePending
+				}
 				commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-					Key:   cs.Name,
-					Phase: phase,
-					Url:   cs.Spec.Url,
+					Key:         cs.Name,
+					Phase:       string(csPhase),
+					Url:         cs.Spec.Url,
+					Description: cs.Spec.Description,
 				})
-				logger.Info("CommitStatus State",
+				logger.V(4).Info("CommitStatus State",
 					"key", cs.Name,
 					"baseKey", status.Key,
 					"sha", targetCommitBranchState.Hydrated.Sha,
-					"phase", phase,
+					"phase", csPhase,
 					"found", true)
 			}
-			logger.Info("CommitStatus State - Multiple matches handled",
+			logger.V(4).Info("CommitStatus State - Multiple matches handled",
 				"baseKey", status.Key,
 				"foundCount", len(csList.Items))
 		} else {
 			// No matches: add pending entry with base key
-			phase := string(promoterv1alpha1.CommitPhasePending)
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-				Key:   status.Key,
-				Phase: phase,
+				Key:         status.Key,
+				Phase:       string(promoterv1alpha1.CommitPhasePending),
+				Description: "Waiting for status to be reported",
 			})
-			logger.Info("CommitStatus State",
+			logger.V(4).Info("CommitStatus State",
 				"key", status.Key,
 				"sha", targetCommitBranchState.Hydrated.Sha,
-				"phase", phase,
+				"phase", promoterv1alpha1.CommitPhasePending,
 				"found", false,
 				"foundCount", 0)
 		}

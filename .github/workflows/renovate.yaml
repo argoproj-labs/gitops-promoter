@@ -1,8 +1,8 @@
 name: Renovate
 on:
   schedule:
-    # Run every weekend at 3 AM UTC (Saturday and Sunday)
-    - cron: '0 3 * * 6,0'
+    # Run every (Wednesday, Saturday and Sunday) at 3 AM UTC 
+    - cron: '0 3 * * 0,3,6'
   workflow_dispatch:
     inputs:
       dryRun:
@@ -32,7 +32,7 @@ jobs:
       issues: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6.0.2
 
       - name: Get token
         id: get_token
@@ -42,7 +42,7 @@ jobs:
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
 
       - name: Self-hosted Renovate
-        uses: renovatebot/github-action@v44.2.4
+        uses: renovatebot/github-action@v44.2.6
         with:
           configurationFile: renovate.json5
           token: ${{ steps.get_token.outputs.token }}

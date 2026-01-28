@@ -33,6 +33,7 @@ type PullRequestSpec struct {
 	RepositoryReference ObjectReference `json:"gitRepositoryRef"`
 	// Title is the title of the pull request.
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Title string `json:"title"`
 	// TargetBranch is the head the git reference we are merging from Head ---> Base
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Value is immutable"
@@ -48,10 +49,11 @@ type PullRequestSpec struct {
 	Commit CommitConfiguration `json:"commit,omitempty"`
 	// MergeSha is the commit SHA that the head branch must match before the PR can be merged.
 	// This prevents a race condition where a PR is merged with a different commit than intended.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MinLength=40
 	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:Pattern=`^[a-fA-F0-9]+$`
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	MergeSha string `json:"mergeSha"`
 	// State of the pull request (closed, merged, or open). Must always be "open" when creating a new pull request.
 	// This value may not be changed to "closed" or "merged" unless the pull request status.id is set.
@@ -103,6 +105,7 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
 }
 
+// +kubebuilder:ac:generate=true
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 

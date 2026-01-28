@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.19.0
+    controller-gen.kubebuilder.io/version: v0.20.0
   name: argocdcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -101,6 +101,9 @@ spec:
                 properties:
                   name:
                     description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -160,13 +163,14 @@ spec:
                   ApplicationsSelected represents the Argo CD applications that are selected by the commit status.
                   This field is sorted by environment (same order as the referenced PromotionStrategy), then namespace, then name.
                 items:
-                  description: ApplicationsSelected represents the Argo CD applications
-                    that are selected by the commit status.
+                  description: |-
+                    ApplicationsSelected represents the Argo CD applications that are selected by the commit status. The fields in this
+                    struct are all required, since the controller should always fully construct this information.
                   properties:
                     clusterName:
                       description: |-
                         ClusterName is the name of the cluster that the application manifest is deployed to. An empty string indicates
-                        the local cluster.
+                        the local cluster. There is no minimum length, since the local cluster is represented by an empty string.
                       type: string
                     environment:
                       description: Environment is the syncSource.targetBranch of the
@@ -179,16 +183,30 @@ spec:
                       type: string
                     name:
                       description: Name is the name of the Argo CD application.
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
                     namespace:
                       description: Namespace is the namespace of the Argo CD application.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
                       type: string
                     phase:
                       description: Phase is the current phase of the commit status.
+                      enum:
+                      - pending
+                      - success
+                      - failure
                       type: string
                     sha:
-                      description: Sha is the commit SHA that this status is associated
-                        with.
+                      description: |-
+                        Sha is the commit SHA that this status is associated with.
+                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                      maxLength: 64
+                      minLength: 40
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                       type: string
                   required:
                   - clusterName

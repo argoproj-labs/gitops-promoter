@@ -74,6 +74,7 @@ type ScmProviderStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+// +kubebuilder:ac:generate=true
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
