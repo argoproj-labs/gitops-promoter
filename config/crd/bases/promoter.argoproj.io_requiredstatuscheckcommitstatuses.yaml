@@ -125,8 +125,8 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               environments:
-                description: Environments contains status for each environment's branch
-                  protection checks
+                description: Environments contains status for each environment's required
+                  checks
                 items:
                   description: RequiredStatusCheckEnvironmentStatus defines the observed
                     required check status for a specific environment.
@@ -143,7 +143,7 @@ spec:
                       type: string
                     requiredChecks:
                       description: |-
-                        RequiredChecks lists all required checks discovered from SCM branch protection rules
+                        RequiredChecks lists all required checks discovered from SCM protection rules
                         Multiple checks can have the same name but different integration IDs
                       items:
                         description: RequiredCheckStatus defines the status of a single

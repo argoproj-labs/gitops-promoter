@@ -173,24 +173,24 @@ type RequiredStatusCheckCommitStatusConfiguration struct {
 
 	// Enabled controls whether the RequiredStatusCheckCommitStatus controller is active.
 	// When enabled, the controller discovers required status checks from the SCM provider's
-	// branch protection rules and creates CommitStatus resources for each, providing
+	// protection rules and creates CommitStatus resources for each, providing
 	// visibility into what checks are blocking PR merges.
 	// Defaults to false.
 	// +optional
 	// +kubebuilder:default=false
 	Enabled bool `json:"enabled,omitempty"`
 
-	// RulesetCacheTTL is how long to cache branch protection ruleset discovery results.
-	// Rulesets change infrequently, so caching reduces API calls significantly.
+	// RequiredCheckCacheTTL is how long to cache required check discovery results.
+	// Required checks change infrequently, so caching reduces API calls significantly.
 	// Set to "0s" to disable caching (not recommended).
 	// Minimum: 0s (disables caching), Recommended: >= 15m
 	// +optional
 	// +kubebuilder:default="15m"
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
-	RulesetCacheTTL *metav1.Duration `json:"rulesetCacheTTL,omitempty"`
+	RequiredCheckCacheTTL *metav1.Duration `json:"requiredCheckCacheTTL,omitempty"`
 
-	// RulesetCacheMaxSize is the maximum number of entries to store in the ruleset cache.
+	// RequiredCheckCacheMaxSize is the maximum number of entries to store in the required check cache.
 	// When the cache exceeds this size, expired entries are removed. If still over limit,
 	// the oldest entries are evicted to maintain the size limit.
 	// Set to 0 for unlimited cache size (not recommended for production).
@@ -198,7 +198,7 @@ type RequiredStatusCheckCommitStatusConfiguration struct {
 	// +optional
 	// +kubebuilder:default=1000
 	// +kubebuilder:validation:Minimum=0
-	RulesetCacheMaxSize *int `json:"rulesetCacheMaxSize,omitempty"`
+	RequiredCheckCacheMaxSize *int `json:"requiredCheckCacheMaxSize,omitempty"`
 
 	// PendingCheckInterval is how frequently to poll when checks are pending.
 	// Lower values provide faster updates but consume more API quota.

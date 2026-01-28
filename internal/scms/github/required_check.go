@@ -20,33 +20,33 @@ import (
 )
 
 var (
-	// rulesetCache stores branch protection ruleset discovery results
-	rulesetCache = make(map[string]*rulesetCacheEntry)
+	// requiredCheckCache stores required check discovery results
+	requiredCheckCache = make(map[string]*requiredCheckCacheEntry)
 
-	// rulesetCacheMutex protects access to rulesetCache and cache configuration
-	rulesetCacheMutex sync.RWMutex
+	// requiredCheckCacheMutex protects access to requiredCheckCache and cache configuration
+	requiredCheckCacheMutex sync.RWMutex
 
-	// rulesetCacheTTL is how long to cache ruleset discovery results
-	rulesetCacheTTL = 15 * time.Minute // Default, updated from config
+	// requiredCheckCacheTTL is how long to cache required check discovery results
+	requiredCheckCacheTTL = 15 * time.Minute // Default, updated from config
 
-	// rulesetCacheMaxSize is the maximum number of entries in the cache
-	rulesetCacheMaxSize = 1000 // Default, updated from config
+	// requiredCheckCacheMaxSize is the maximum number of entries in the cache
+	requiredCheckCacheMaxSize = 1000 // Default, updated from config
 
-	// rulesetFlight prevents duplicate concurrent API calls for the same cache key
-	rulesetFlight singleflight.Group
+	// requiredCheckFlight prevents duplicate concurrent API calls for the same cache key
+	requiredCheckFlight singleflight.Group
 )
 
-type rulesetCacheEntry struct {
-	checks    []scms.BranchProtectionCheck
+type requiredCheckCacheEntry struct {
+	checks    []scms.RequiredCheck
 	expiresAt time.Time
 }
 
-// Compile-time check to ensure BranchProtection implements scms.BranchProtectionProvider
-var _ scms.BranchProtectionProvider = &BranchProtection{}
+// Compile-time check to ensure RequiredCheck implements scms.RequiredCheckProvider
+var _ scms.RequiredCheckProvider = &RequiredCheck{}
 
-// BranchProtection implements the scms.BranchProtectionProvider interface for GitHub.
+// RequiredCheck implements the scms.RequiredCheckProvider interface for GitHub.
 // It uses GitHub's Rulesets API to discover required checks and the Checks API to poll status.
-type BranchProtection struct {
+type RequiredCheck struct {
 	client    *github.Client
 	k8sClient client.Client
 
@@ -54,11 +54,11 @@ type BranchProtection struct {
 	domain string
 }
 
-// NewGithubBranchProtectionProvider creates a new instance of BranchProtection for GitHub.
+// NewGithubRequiredCheckProvider creates a new instance of RequiredCheck for GitHub.
 // It initializes the GitHub client using the provided SCM provider configuration and secret.
-// cacheTTL specifies how long to cache ruleset discovery results (0 disables caching).
+// cacheTTL specifies how long to cache required check discovery results (0 disables caching).
 // cacheMaxSize specifies the maximum number of cache entries (0 for unlimited).
-func NewGithubBranchProtectionProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string, cacheTTL time.Duration, cacheMaxSize int) (*BranchProtection, error) {
+func NewGithubRequiredCheckProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string, cacheTTL time.Duration, cacheMaxSize int) (*RequiredCheck, error) {
 	githubClient, _, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GitHub client: %w", err)
@@ -72,12 +72,12 @@ func NewGithubBranchProtectionProvider(ctx context.Context, k8sClient client.Cli
 
 	// Update package-level cache configuration (thread-safe)
 	// This ensures all provider instances use the latest configuration
-	rulesetCacheMutex.Lock()
-	rulesetCacheTTL = cacheTTL
-	rulesetCacheMaxSize = cacheMaxSize
-	rulesetCacheMutex.Unlock()
+	requiredCheckCacheMutex.Lock()
+	requiredCheckCacheTTL = cacheTTL
+	requiredCheckCacheMaxSize = cacheMaxSize
+	requiredCheckCacheMutex.Unlock()
 
-	return &BranchProtection{
+	return &RequiredCheck{
 		client:    githubClient,
 		k8sClient: k8sClient,
 		domain:    domain,
@@ -89,7 +89,7 @@ func NewGithubBranchProtectionProvider(ctx context.Context, k8sClient client.Cli
 //
 // Returns empty slice when no rulesets are configured for the branch.
 // Returns error for auth failures, rate limits, repository not found, or network errors.
-func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *promoterv1alpha1.GitRepository, branch string) ([]scms.BranchProtectionCheck, error) {
+func (rc *RequiredCheck) DiscoverRequiredChecks(ctx context.Context, repo *promoterv1alpha1.GitRepository, branch string) ([]scms.RequiredCheck, error) {
 	logger := log.FromContext(ctx)
 
 	if repo.Spec.GitHub == nil {
@@ -98,33 +98,33 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 
 	owner := repo.Spec.GitHub.Owner
 	name := repo.Spec.GitHub.Name
-	cacheKey := fmt.Sprintf("%s|%s|%s|%s", bp.domain, owner, name, branch)
+	cacheKey := fmt.Sprintf("%s|%s|%s|%s", rc.domain, owner, name, branch)
 
 	// Fast path: check cache with read lock first
-	rulesetCacheMutex.RLock()
-	if entry, found := rulesetCache[cacheKey]; found {
+	requiredCheckCacheMutex.RLock()
+	if entry, found := requiredCheckCache[cacheKey]; found {
 		if time.Now().Before(entry.expiresAt) {
 			// Cache hit with valid entry
-			rulesetCacheMutex.RUnlock()
-			logger.V(4).Info("Using cached ruleset discovery",
+			requiredCheckCacheMutex.RUnlock()
+			logger.V(4).Info("Using cached required check discovery",
 				"branch", branch,
 				"checks", len(entry.checks),
 				"expiresIn", time.Until(entry.expiresAt).Round(time.Second))
 			return entry.checks, nil
 		}
 	}
-	rulesetCacheMutex.RUnlock()
+	requiredCheckCacheMutex.RUnlock()
 
 	// Cache miss or expired - use singleflight to prevent duplicate API calls
-	result, err, _ := rulesetFlight.Do(cacheKey, func() (interface{}, error) {
+	result, err, _ := requiredCheckFlight.Do(cacheKey, func() (interface{}, error) {
 		// Make the API call
 		start := time.Now()
-		rules, response, err := bp.client.Repositories.GetRulesForBranch(ctx, owner, name, branch)
+		rules, response, err := rc.client.Repositories.GetRulesForBranch(ctx, owner, name, branch)
 
 		// Record metrics first (even on error)
 		if response != nil {
 			duration := time.Since(start)
-			metrics.RecordSCMCall(repo, metrics.SCMAPIBranchProtection, metrics.SCMOperationGet,
+			metrics.RecordSCMCall(repo, metrics.SCMAPIRequiredCheck, metrics.SCMOperationGet,
 				response.StatusCode, duration, getRateLimitMetrics(response.Rate))
 
 			logger.Info("github rate limit",
@@ -142,7 +142,7 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 		}
 
 		// Extract required status checks from BranchRules
-		var requiredChecks []scms.BranchProtectionCheck
+		var requiredChecks []scms.RequiredCheck
 		if rules != nil && rules.RequiredStatusChecks != nil {
 			for _, ruleStatusCheck := range rules.RequiredStatusChecks {
 				if ruleStatusCheck.Parameters.RequiredStatusChecks != nil {
@@ -162,7 +162,7 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 								integrationID = &idStr
 							}
 
-							requiredChecks = append(requiredChecks, scms.BranchProtectionCheck{
+							requiredChecks = append(requiredChecks, scms.RequiredCheck{
 								Name:          check.Context,
 								IntegrationID: integrationID,
 							})
@@ -173,24 +173,24 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 		}
 
 		// Store in cache before returning (write lock)
-		rulesetCacheMutex.Lock()
+		requiredCheckCacheMutex.Lock()
 
-		rulesetCache[cacheKey] = &rulesetCacheEntry{
+		requiredCheckCache[cacheKey] = &requiredCheckCacheEntry{
 			checks:    requiredChecks,
-			expiresAt: time.Now().Add(rulesetCacheTTL),
+			expiresAt: time.Now().Add(requiredCheckCacheTTL),
 		}
 
 		// Check if we need to enforce cache size limit after insertion
 		// to avoid race condition where cache temporarily exceeds max size
-		if rulesetCacheMaxSize > 0 && len(rulesetCache) > rulesetCacheMaxSize {
+		if requiredCheckCacheMaxSize > 0 && len(requiredCheckCache) > requiredCheckCacheMaxSize {
 			evictExpiredOrOldestEntries(ctx)
 		}
-		rulesetCacheMutex.Unlock()
+		requiredCheckCacheMutex.Unlock()
 
-		logger.V(4).Info("Cached ruleset discovery",
+		logger.V(4).Info("Cached required check discovery",
 			"branch", branch,
 			"checks", len(requiredChecks),
-			"ttl", rulesetCacheTTL)
+			"ttl", requiredCheckCacheTTL)
 
 		return requiredChecks, nil
 	})
@@ -199,7 +199,7 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 		return nil, err
 	}
 
-	return result.([]scms.BranchProtectionCheck), nil
+	return result.([]scms.RequiredCheck), nil
 }
 
 // PollCheckStatus queries GitHub Checks API to get the status of a specific required check
@@ -207,7 +207,7 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 //
 // Returns (pending, nil) when no check runs exist yet for the commit.
 // Returns error for authentication failures, rate limits, network errors, or other API failures.
-func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv1alpha1.GitRepository, sha string, check scms.BranchProtectionCheck) (promoterv1alpha1.CommitStatusPhase, error) {
+func (rc *RequiredCheck) PollCheckStatus(ctx context.Context, repo *promoterv1alpha1.GitRepository, sha string, check scms.RequiredCheck) (promoterv1alpha1.CommitStatusPhase, error) {
 	logger := log.FromContext(ctx)
 
 	if repo.Spec.GitHub == nil {
@@ -247,12 +247,12 @@ func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv
 
 	// Paginate through all check runs
 	for {
-		checkRuns, response, err := bp.client.Checks.ListCheckRunsForRef(ctx, owner, name, sha, opts)
+		checkRuns, response, err := rc.client.Checks.ListCheckRunsForRef(ctx, owner, name, sha, opts)
 
 		// Record metrics for each page
 		if response != nil {
 			duration := time.Since(start)
-			metrics.RecordSCMCall(repo, metrics.SCMAPIBranchProtection, metrics.SCMOperationList,
+			metrics.RecordSCMCall(repo, metrics.SCMAPIRequiredCheck, metrics.SCMOperationList,
 				response.StatusCode, duration, getRateLimitMetrics(response.Rate))
 
 			logger.Info("github rate limit",
@@ -344,17 +344,17 @@ func mapGitHubCheckStatusToPhase(checkRun *github.CheckRun) promoterv1alpha1.Com
 }
 
 // evictExpiredOrOldestEntries removes expired entries and, if still over limit, evicts oldest entries.
-// Must be called with rulesetCacheMutex write lock held.
+// Must be called with requiredCheckCacheMutex write lock held.
 func evictExpiredOrOldestEntries(ctx context.Context) {
 	logger := log.FromContext(ctx)
 	now := time.Now()
-	initialSize := len(rulesetCache)
+	initialSize := len(requiredCheckCache)
 
 	// First pass: remove expired entries
 	expiredCount := 0
-	for key, entry := range rulesetCache {
+	for key, entry := range requiredCheckCache {
 		if now.After(entry.expiresAt) {
-			delete(rulesetCache, key)
+			delete(requiredCheckCache, key)
 			expiredCount++
 		}
 	}
@@ -362,21 +362,21 @@ func evictExpiredOrOldestEntries(ctx context.Context) {
 	if expiredCount > 0 {
 		logger.V(4).Info("Evicted expired cache entries",
 			"expiredCount", expiredCount,
-			"remainingEntries", len(rulesetCache),
-			"cacheMaxSize", rulesetCacheMaxSize)
+			"remainingEntries", len(requiredCheckCache),
+			"cacheMaxSize", requiredCheckCacheMaxSize)
 	}
 
 	// If still over limit, remove oldest entries
-	if len(rulesetCache) >= rulesetCacheMaxSize {
-		beforeLRU := len(rulesetCache)
+	if len(requiredCheckCache) >= requiredCheckCacheMaxSize {
+		beforeLRU := len(requiredCheckCache)
 
 		// Create slice of keys sorted by expiration time (oldest first)
 		type cacheItem struct {
 			key       string
 			expiresAt time.Time
 		}
-		items := make([]cacheItem, 0, len(rulesetCache))
-		for key, entry := range rulesetCache {
+		items := make([]cacheItem, 0, len(requiredCheckCache))
+		for key, entry := range requiredCheckCache {
 			items = append(items, cacheItem{key: key, expiresAt: entry.expiresAt})
 		}
 
@@ -387,10 +387,10 @@ func evictExpiredOrOldestEntries(ctx context.Context) {
 
 		// Remove oldest entries until we're under the limit
 		// Keep 10% headroom to avoid frequent evictions
-		targetSize := int(float64(rulesetCacheMaxSize) * 0.9)
+		targetSize := int(float64(requiredCheckCacheMaxSize) * 0.9)
 		lruEvictedCount := 0
-		for i := 0; i < len(items) && len(rulesetCache) > targetSize; i++ {
-			delete(rulesetCache, items[i].key)
+		for i := 0; i < len(items) && len(requiredCheckCache) > targetSize; i++ {
+			delete(requiredCheckCache, items[i].key)
 			lruEvictedCount++
 		}
 
@@ -398,18 +398,18 @@ func evictExpiredOrOldestEntries(ctx context.Context) {
 			logger.V(4).Info("Evicted oldest cache entries due to size limit",
 				"evictedCount", lruEvictedCount,
 				"beforeEviction", beforeLRU,
-				"afterEviction", len(rulesetCache),
-				"cacheMaxSize", rulesetCacheMaxSize,
+				"afterEviction", len(requiredCheckCache),
+				"cacheMaxSize", requiredCheckCacheMaxSize,
 				"targetSize", targetSize)
 		}
 	}
 
-	if expiredCount > 0 || len(rulesetCache) < initialSize {
+	if expiredCount > 0 || len(requiredCheckCache) < initialSize {
 		logger.V(4).Info("Cache eviction summary",
 			"initialSize", initialSize,
-			"finalSize", len(rulesetCache),
-			"totalEvicted", initialSize-len(rulesetCache),
+			"finalSize", len(requiredCheckCache),
+			"totalEvicted", initialSize-len(requiredCheckCache),
 			"expiredEvicted", expiredCount,
-			"lruEvicted", initialSize-len(rulesetCache)-expiredCount)
+			"lruEvicted", initialSize-len(requiredCheckCache)-expiredCount)
 	}
 }

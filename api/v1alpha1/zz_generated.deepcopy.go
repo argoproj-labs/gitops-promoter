@@ -1789,13 +1789,13 @@ func (in *RequiredStatusCheckCommitStatus) DeepCopyObject() runtime.Object {
 func (in *RequiredStatusCheckCommitStatusConfiguration) DeepCopyInto(out *RequiredStatusCheckCommitStatusConfiguration) {
 	*out = *in
 	in.WorkQueue.DeepCopyInto(&out.WorkQueue)
-	if in.RulesetCacheTTL != nil {
-		in, out := &in.RulesetCacheTTL, &out.RulesetCacheTTL
+	if in.RequiredCheckCacheTTL != nil {
+		in, out := &in.RequiredCheckCacheTTL, &out.RequiredCheckCacheTTL
 		*out = new(v1.Duration)
 		**out = **in
 	}
-	if in.RulesetCacheMaxSize != nil {
-		in, out := &in.RulesetCacheMaxSize, &out.RulesetCacheMaxSize
+	if in.RequiredCheckCacheMaxSize != nil {
+		in, out := &in.RequiredCheckCacheMaxSize, &out.RequiredCheckCacheMaxSize
 		*out = new(int)
 		**out = **in
 	}

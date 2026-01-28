@@ -48,11 +48,11 @@ import (
 )
 
 const (
-	DefaultRulesetCacheTTL       = 15 * time.Minute
-	DefaultRulesetCacheMaxSize   = 1000
-	DefaultPendingCheckInterval  = 1 * time.Minute
-	DefaultTerminalCheckInterval = 10 * time.Minute
-	DefaultSafetyNetInterval     = 1 * time.Hour
+	DefaultRequiredCheckCacheTTL       = 15 * time.Minute
+	DefaultRequiredCheckCacheMaxSize   = 1000
+	DefaultPendingCheckInterval        = 1 * time.Minute
+	DefaultTerminalCheckInterval       = 10 * time.Minute
+	DefaultSafetyNetInterval           = 1 * time.Hour
 
 	// Index field name for efficient lookup of RSCCS by PromotionStrategy
 	promotionStrategyRefIndex = "spec.promotionStrategyRef.name"
@@ -421,12 +421,12 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 	return commitStatuses, nil
 }
 
-// getBranchProtectionProvider creates the appropriate branch protection provider based on the SCM type.
-func (r *RequiredStatusCheckCommitStatusReconciler) getBranchProtectionProvider(
+// getRequiredCheckProvider creates the appropriate required check provider based on the SCM type.
+func (r *RequiredStatusCheckCommitStatusReconciler) getRequiredCheckProvider(
 	ctx context.Context,
 	repoRef promoterv1alpha1.ObjectReference,
 	namespace string,
-) (scms.BranchProtectionProvider, error) {
+) (scms.RequiredCheckProvider, error) {
 	logger := log.FromContext(ctx)
 
 	// Get GitRepository
@@ -449,33 +449,33 @@ func (r *RequiredStatusCheckCommitStatusReconciler) getBranchProtectionProvider(
 		return nil, fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
 	}
 
-	cacheTTL := DefaultRulesetCacheTTL
-	if config.RulesetCacheTTL != nil {
-		cacheTTL = config.RulesetCacheTTL.Duration
+	cacheTTL := DefaultRequiredCheckCacheTTL
+	if config.RequiredCheckCacheTTL != nil {
+		cacheTTL = config.RequiredCheckCacheTTL.Duration
 	}
 
-	cacheMaxSize := DefaultRulesetCacheMaxSize
-	if config.RulesetCacheMaxSize != nil && *config.RulesetCacheMaxSize > 0 {
-		cacheMaxSize = *config.RulesetCacheMaxSize
+	cacheMaxSize := DefaultRequiredCheckCacheMaxSize
+	if config.RequiredCheckCacheMaxSize != nil && *config.RequiredCheckCacheMaxSize > 0 {
+		cacheMaxSize = *config.RequiredCheckCacheMaxSize
 	}
 
 	// Create provider based on SCM type
 	if scmProvider.GetSpec().GitHub != nil {
-		provider, err := githubscm.NewGithubBranchProtectionProvider(ctx, r.Client, scmProvider, *secret, gitRepo.Spec.GitHub.Owner, cacheTTL, cacheMaxSize)
+		provider, err := githubscm.NewGithubRequiredCheckProvider(ctx, r.Client, scmProvider, *secret, gitRepo.Spec.GitHub.Owner, cacheTTL, cacheMaxSize)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create GitHub branch protection provider: %w", err)
+			return nil, fmt.Errorf("failed to create GitHub required check provider: %w", err)
 		}
 		return provider, nil
 	}
 
 	// For other SCM providers, we'll add support later
 	// For now, log that it's not supported and return nil
-	logger.V(4).Info("Branch protection not supported for this SCM provider", "scmProvider", scmProvider.GetName())
+	logger.V(4).Info("Required check discovery not supported for this SCM provider", "scmProvider", scmProvider.GetName())
 	return nil, scms.ErrNotSupported
 }
 
-// discoverRequiredChecksForEnvironment queries the SCM's branch protection to discover required checks
-func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, env promoterv1alpha1.Environment) ([]scms.BranchProtectionCheck, error) {
+// discoverRequiredChecksForEnvironment queries the SCM's protection rules to discover required checks
+func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, env promoterv1alpha1.Environment) ([]scms.RequiredCheck, error) {
 	logger := log.FromContext(ctx)
 
 	// Get GitRepository
@@ -487,22 +487,22 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	// Get branch protection provider
-	provider, err := r.getBranchProtectionProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
+	// Get required check provider
+	provider, err := r.getRequiredCheckProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
 	if err != nil {
 		if err == scms.ErrNotSupported {
-			logger.V(4).Info("Branch protection not supported for this SCM provider, skipping required checks discovery")
-			return []scms.BranchProtectionCheck{}, nil
+			logger.V(4).Info("Required check discovery not supported for this SCM provider, skipping")
+			return []scms.RequiredCheck{}, nil
 		}
-		return nil, fmt.Errorf("failed to get branch protection provider: %w", err)
+		return nil, fmt.Errorf("failed to get required check provider: %w", err)
 	}
 
 	// Discover required checks from the SCM
 	checks, err := provider.DiscoverRequiredChecks(ctx, gitRepo, env.Branch)
 	if err != nil {
 		if err == scms.ErrNoProtection {
-			logger.V(4).Info("No branch protection configured for branch", "branch", env.Branch)
-			return []scms.BranchProtectionCheck{}, nil
+			logger.V(4).Info("No protection rules configured for branch", "branch", env.Branch)
+			return []scms.RequiredCheck{}, nil
 		}
 		return nil, fmt.Errorf("failed to discover required checks: %w", err)
 	}
@@ -511,7 +511,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 }
 
 // pollCheckStatusForEnvironment polls the SCM to get the status of each required check
-func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, requiredChecks []scms.BranchProtectionCheck, sha string) (map[string]promoterv1alpha1.CommitStatusPhase, error) {
+func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, requiredChecks []scms.RequiredCheck, sha string) (map[string]promoterv1alpha1.CommitStatusPhase, error) {
 	logger := log.FromContext(ctx)
 
 	if len(requiredChecks) == 0 {
@@ -527,13 +527,13 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
-	// Get branch protection provider
-	provider, err := r.getBranchProtectionProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
+	// Get required check provider
+	provider, err := r.getRequiredCheckProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
 	if err != nil {
 		if err == scms.ErrNotSupported {
 			return map[string]promoterv1alpha1.CommitStatusPhase{}, nil
 		}
-		return nil, fmt.Errorf("failed to get branch protection provider: %w", err)
+		return nil, fmt.Errorf("failed to get required check provider: %w", err)
 	}
 
 	// Query check status for each required check
@@ -566,7 +566,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 }
 
 // updateCommitStatusForCheck creates or updates a CommitStatus resource for a required check
-func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ctp *promoterv1alpha1.ChangeTransferPolicy, branch string, check scms.BranchProtectionCheck, sha string, phase promoterv1alpha1.CommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
+func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ctp *promoterv1alpha1.ChangeTransferPolicy, branch string, check scms.RequiredCheck, sha string, phase promoterv1alpha1.CommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate CommitStatus name: required-status-check-{name}-{hash}
 	// Include integration ID in hash to support multiple checks with same name
 	name := generateCommitStatusName(check.Name, branch, check.IntegrationID)
@@ -881,25 +881,25 @@ func validateRequiredStatusCheckConfig(config *promoterv1alpha1.RequiredStatusCh
 		}
 	}
 
-	// Validate RulesetCacheTTL
-	if config.RulesetCacheTTL != nil {
-		cacheTTL := config.RulesetCacheTTL.Duration
+	// Validate RequiredCheckCacheTTL
+	if config.RequiredCheckCacheTTL != nil {
+		cacheTTL := config.RequiredCheckCacheTTL.Duration
 		if cacheTTL < minCacheTTL {
-			errs = append(errs, fmt.Errorf("rulesetCacheTTL must not be negative, got: %v", cacheTTL))
+			errs = append(errs, fmt.Errorf("requiredCheckCacheTTL must not be negative, got: %v", cacheTTL))
 		}
 
 		// Warn if cache TTL is unreasonably short (defeats caching purpose and may cause excessive API calls)
 		if cacheTTL > 0 && cacheTTL < minInterval {
-			errs = append(errs, fmt.Errorf("rulesetCacheTTL (%v) is very short; recommended: >= %v to avoid excessive API calls",
+			errs = append(errs, fmt.Errorf("requiredCheckCacheTTL (%v) is very short; recommended: >= %v to avoid excessive API calls",
 				cacheTTL, minInterval))
 		}
 	}
 
-	// Validate RulesetCacheMaxSize
-	if config.RulesetCacheMaxSize != nil {
-		maxSize := *config.RulesetCacheMaxSize
+	// Validate RequiredCheckCacheMaxSize
+	if config.RequiredCheckCacheMaxSize != nil {
+		maxSize := *config.RequiredCheckCacheMaxSize
 		if maxSize < 10 {
-			errs = append(errs, fmt.Errorf("rulesetCacheMaxSize is very small (%v), may cause frequent evictions; recommended: >= 100", maxSize))
+			errs = append(errs, fmt.Errorf("requiredCheckCacheMaxSize is very small (%v), may cause frequent evictions; recommended: >= 100", maxSize))
 		}
 	}
 

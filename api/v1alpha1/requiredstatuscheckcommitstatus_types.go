@@ -29,7 +29,7 @@ type RequiredStatusCheckCommitStatusSpec struct {
 
 // RequiredStatusCheckCommitStatusStatus defines the observed state of RequiredStatusCheckCommitStatus
 type RequiredStatusCheckCommitStatusStatus struct {
-	// Environments contains status for each environment's branch protection checks
+	// Environments contains status for each environment's required checks
 	// +listType=map
 	// +listMapKey=branch
 	// +optional
@@ -52,7 +52,7 @@ type RequiredStatusCheckEnvironmentStatus struct {
 	// +required
 	Sha string `json:"sha"`
 
-	// RequiredChecks lists all required checks discovered from SCM branch protection rules
+	// RequiredChecks lists all required checks discovered from SCM protection rules
 	// Multiple checks can have the same name but different integration IDs
 	// +listType=atomic
 	// +optional

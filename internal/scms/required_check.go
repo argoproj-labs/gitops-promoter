@@ -7,17 +7,17 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-// BranchProtectionProvider discovers and monitors branch protection rules.
+// RequiredCheckProvider discovers and monitors required checks from SCM protection rules.
 // This interface allows different SCM providers (GitHub, GitLab, etc.) to implement
-// branch protection discovery and status polling in their own way.
-type BranchProtectionProvider interface {
-	// DiscoverRequiredChecks queries the SCM's branch protection configuration
+// required check discovery and status polling in their own way.
+type RequiredCheckProvider interface {
+	// DiscoverRequiredChecks queries the SCM's protection configuration
 	// to find all required status checks for the given repository and branch.
-	// Returns a list of check names that are required by branch protection rules.
+	// Returns a list of check names that are required by protection rules.
 	//
-	// Returns ErrNotSupported if the SCM provider does not support branch protection.
+	// Returns ErrNotSupported if the SCM provider does not support required checks discovery.
 	// Returns ErrNoProtection if the branch exists but has no protection rules configured.
-	DiscoverRequiredChecks(ctx context.Context, repo *v1alpha1.GitRepository, branch string) ([]BranchProtectionCheck, error)
+	DiscoverRequiredChecks(ctx context.Context, repo *v1alpha1.GitRepository, branch string) ([]RequiredCheck, error)
 
 	// PollCheckStatus queries the current status of a specific required check
 	// for a given commit SHA in the repository.
@@ -31,11 +31,11 @@ type BranchProtectionProvider interface {
 	// Returns the current phase (Success, Failure, Pending) of the check.
 	// Returns CommitPhasePending if the check has not yet been reported.
 	// Returns ErrNotSupported if the SCM provider does not support status checks.
-	PollCheckStatus(ctx context.Context, repo *v1alpha1.GitRepository, sha string, check BranchProtectionCheck) (v1alpha1.CommitStatusPhase, error)
+	PollCheckStatus(ctx context.Context, repo *v1alpha1.GitRepository, sha string, check RequiredCheck) (v1alpha1.CommitStatusPhase, error)
 }
 
-// BranchProtectionCheck represents a required status check discovered from branch protection rules.
-type BranchProtectionCheck struct {
+// RequiredCheck represents a required status check discovered from protection rules.
+type RequiredCheck struct {
 	// Name is the check identifier (e.g., "ci-tests", "security-scan", "build/linux")
 	Name string
 
@@ -51,11 +51,11 @@ type BranchProtectionCheck struct {
 	IntegrationID *string
 }
 
-// Error constants for branch protection operations
+// Error constants for required check operations
 var (
-	// ErrNotSupported indicates that the SCM provider does not support branch protection operations
-	ErrNotSupported = errors.New("branch protection not supported by this SCM provider")
+	// ErrNotSupported indicates that the SCM provider does not support required check operations
+	ErrNotSupported = errors.New("required checks not supported by this SCM provider")
 
 	// ErrNoProtection indicates that the branch exists but has no protection rules configured
-	ErrNoProtection = errors.New("no branch protection configured for this branch")
+	ErrNoProtection = errors.New("no protection rules configured for this branch")
 )

@@ -1297,7 +1297,7 @@ spec:
                     description: |-
                       Enabled controls whether the RequiredStatusCheckCommitStatus controller is active.
                       When enabled, the controller discovers required status checks from the SCM provider's
-                      branch protection rules and creates CommitStatus resources for each, providing
+                      protection rules and creates CommitStatus resources for each, providing
                       visibility into what checks are blocking PR merges.
                       Defaults to false.
                     type: boolean
@@ -1309,21 +1309,21 @@ spec:
                       Minimum: 10s (to avoid rate limiting), Recommended: >= 1m
                     pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
                     type: string
-                  rulesetCacheMaxSize:
+                  requiredCheckCacheMaxSize:
                     default: 1000
                     description: |-
-                      RulesetCacheMaxSize is the maximum number of entries to store in the ruleset cache.
+                      RequiredCheckCacheMaxSize is the maximum number of entries to store in the required check cache.
                       When the cache exceeds this size, expired entries are removed. If still over limit,
                       the oldest entries are evicted to maintain the size limit.
                       Set to 0 for unlimited cache size (not recommended for production).
                       Minimum: 0 (unlimited), Recommended: >= 100
                     minimum: 0
                     type: integer
-                  rulesetCacheTTL:
+                  requiredCheckCacheTTL:
                     default: 15m
                     description: |-
-                      RulesetCacheTTL is how long to cache branch protection ruleset discovery results.
-                      Rulesets change infrequently, so caching reduces API calls significantly.
+                      RequiredCheckCacheTTL is how long to cache required check discovery results.
+                      Required checks change infrequently, so caching reduces API calls significantly.
                       Set to "0s" to disable caching (not recommended).
                       Minimum: 0s (disables caching), Recommended: >= 15m
                     pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
