@@ -600,6 +600,7 @@ type ResponseInfo struct {
 	StatusCode *int `json:"statusCode,omitempty"`
 }
 
+// +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Strategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`

@@ -157,6 +157,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	startTime := time.Now()
 
 	var wrcs promoterv1alpha1.WebRequestCommitStatus
+	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
 	defer utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &wrcs, &client.GetOptions{})
@@ -196,12 +197,6 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 
 	// Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&wrcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
-
-	// Update status
-	err = r.Status().Update(ctx, &wrcs)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update WebRequestCommitStatus status: %w", err)
-	}
 
 	// If any validations transitioned to success, touch the corresponding ChangeTransferPolicies
 	if len(transitionedEnvironments) > 0 {
