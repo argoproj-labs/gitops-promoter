@@ -194,7 +194,7 @@ To enable multi-cluster support, you need to configure two components:
    ```
 
 #### Helper Script
-  Use this [helper script](https://github.com/FourFifthsCode/gitops-promoter/blob/multi-cluster-support/hack/create-kubeconfig-secret-rbac.sh) to automate the secret creation and RBAC setup process
+  Use this [helper script](https://github.com/argoproj-labs/gitops-promoter/blob/main/hack/create-kubeconfig-secret-rbac.sh) to automate the secret creation and RBAC setup process
   ```
     Usage: ./create-kubeconfig-secret-rbac.sh [options]
     --secret-name NAME      Name for the secret (defaults to target context name)
