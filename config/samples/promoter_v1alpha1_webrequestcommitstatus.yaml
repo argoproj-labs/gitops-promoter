@@ -1,0 +1,59 @@
+# Example WebRequestCommitStatus with polling expression
+#
+# This example demonstrates using a polling expression to dynamically control
+# when the controller should continue polling based on PromotionStrategy state.
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: deployment-health-check
+  namespace: default
+spec:
+  # Reference to the PromotionStrategy this applies to
+  promotionStrategyRef:
+    name: my-strategy
+
+  # Key must match an entry in PromotionStrategy's proposedCommitStatuses or activeCommitStatuses
+  key: deployment-health
+
+  # Human-readable description shown in SCM provider (supports Go templates)
+  descriptionTemplate: "Deployment health check for {{ .Branch }}"
+
+  # URL shown in SCM provider (supports Go templates)
+  urlTemplate: "https://dashboard.example.com/deployments/{{ .ReportedSha | trunc 7 }}"
+
+  # Which SHA to report on: "proposed" (default) or "active"
+  reportOn: proposed
+
+  # HTTP request configuration
+  httpRequest:
+    urlTemplate: "https://api.example.com/health/{{ .ReportedSha }}"
+    method: GET
+    timeout: 30s
+    # Optional headers (support Go templates)
+    headerTemplates:
+      Content-Type: application/json
+      X-Environment: "{{ .Branch }}"
+
+  # Expression to evaluate against the HTTP response (must return boolean)
+  expression: "Response.StatusCode == 200 && Response.Body.healthy == true"
+
+  # Polling configuration
+  polling:
+    # How often to poll
+    interval: 30s
+
+    # Optional: Dynamic polling control expression
+    # This expression determines whether to continue polling after each request.
+    # Returns boolean or object with 'polling' field.
+    #
+    # Example 1: Simple boolean - stop after success
+    # expression: 'Phase != "success"'
+    #
+    # Example 2: Object with state tracking - track SHA changes
+    expression: |
+      {
+        polling: len(PromotionStrategy.Status.Environments) > 0 &&
+                 PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != "" &&
+                 PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != ExpressionData["trackedSha"],
+        trackedSha: PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha
+      }
