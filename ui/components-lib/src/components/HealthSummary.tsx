@@ -1,6 +1,7 @@
 import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState } from 'react';
+import { Tooltip } from './Tooltip';
 import './HealthSummary.scss';
 
 export interface HealthSummaryProps {
@@ -42,21 +43,28 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
       {isExpanded && (
         <div className="health-details">
           {checks.map((check, index) => (
-            <div key={index} className="health-check-item">
-              <StatusIcon phase={check.status as StatusType} type="status" />
-              <span className="health-check-name">{check.name}</span>
-              {check.url && (
-                <a 
-                  href={check.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="health-check-link"
-                  title="View details"
-                >
-                  View Details
-                </a>
-              )}
-            </div>
+            <Tooltip key={index} content={check.description}>
+              <div className="health-check-item">
+                <StatusIcon phase={check.status as StatusType} type="status" />
+                <span className="health-check-name">
+                  <span className="check-name-text">{check.name}</span>
+                  {check.description && (
+                    <span className="check-description-preview">&nbsp;—&nbsp;{check.description}</span>
+                  )}
+                </span>
+                {check.url && (
+                  <a 
+                    href={check.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="health-check-link"
+                    title="View details"
+                  >
+                    View Details
+                  </a>
+                )}
+              </div>
+            </Tooltip>
           ))}
         </div>
       )}

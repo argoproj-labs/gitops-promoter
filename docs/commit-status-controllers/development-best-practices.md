@@ -109,6 +109,84 @@ commitStatus.Labels["my-controller.example.com/custom-info"] = "value"
 4. **Consistency**: Standard labels create a predictable API across all commit status controllers
 5. **Integration**: Other controllers and tools can rely on these labels for their logic
 
+## Designing Good Commit Status Descriptions
+
+The `Description` field in a CommitStatus is displayed to users in their SCM provider (GitHub, GitLab, etc.). Well-crafted descriptions improve user experience by clearly communicating what's happening and reducing confusion.
+
+### Use Action-Oriented Language
+
+Use active, present-tense language to convey the current state of the system. This creates a sense that the system is continuously monitoring and reporting status, not just recording historical events.
+
+**Philosophy:** Commit statuses should describe "what is happening now" rather than "what happened." This applies to all phases:
+- **Pending:** Use progressive verbs (-ing) to show active work
+- **Success:** Use present tense to describe the current healthy state  
+- **Failure:** Use present tense to describe the current problem
+
+### Guidelines by Phase
+
+#### Pending Phase
+
+Use present participles (verbs ending with -ing) to indicate active monitoring or processing:
+
+- ✅ **Use:** "Waiting for approval"
+  - ❌ **Avoid:** "Approval pending"
+- ✅ **Use:** "Checking application health"
+  - ❌ **Avoid:** "Health check in progress"
+- ✅ **Use:** "Syncing to environment"
+  - ❌ **Avoid:** "Sync scheduled"
+- ✅ **Use:** "Monitoring deployment status"
+  - ❌ **Avoid:** "Deployment queued"
+
+#### Success Phase
+
+Use present tense to describe the current state:
+
+- ✅ **Use:** "All applications are healthy"
+  - ❌ **Avoid:** "Health checks passed"
+- ✅ **Use:** "Approval is granted"
+  - ❌ **Avoid:** "Approved successfully"
+- ✅ **Use:** "Time requirement is met"
+  - ❌ **Avoid:** "Timer completed"
+- ✅ **Use:** "Environment is synced"
+  - ❌ **Avoid:** "Sync finished"
+
+#### Failure Phase
+
+Use present tense to describe the current problem:
+
+- ✅ **Use:** "Applications are degraded"
+  - ❌ **Avoid:** "Health check failed"
+- ✅ **Use:** "Approval is denied"
+  - ❌ **Avoid:** "Approval was rejected"
+- ✅ **Use:** "Deployment is unhealthy: pods not ready"
+  - ❌ **Avoid:** "Deployment failed"
+- ✅ **Use:** "Sync is timing out"
+  - ❌ **Avoid:** "Sync timed out"
+
+### Additional Tips
+
+1. **Be specific**: Include relevant details when failures occur (e.g., "Failed health check: 2/5 replicas ready")
+2. **Stay concise**: Keep descriptions under 100 characters when possible
+3. **Avoid jargon**: Use terminology that's clear to all users, not just Kubernetes experts
+4. **Be consistent**: Use similar phrasing across your controller for related states
+5. **Include context**: When helpful, mention the environment or application name
+
+### Example Implementation
+
+```go
+// Pending phase - active monitoring
+commitStatus.Spec.Phase = promoterv1alpha1.CommitPhasePending
+commitStatus.Spec.Description = fmt.Sprintf("Waiting for %d/%d applications to sync", synced, total)
+
+// Success phase - current state
+commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+commitStatus.Spec.Description = fmt.Sprintf("All %d applications are healthy", total)
+
+// Failure phase - current problem
+commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseFailure
+commitStatus.Spec.Description = fmt.Sprintf("Applications are degraded: %s", errorDetail)
+```
+
 ## Triggering Reconciliation of ChangeTransferPolicies
 
 When your commit status controller detects important state transitions (e.g., a gate transitioning from pending to success), you may want to trigger immediate reconciliation of the affected ChangeTransferPolicy to minimize promotion latency.

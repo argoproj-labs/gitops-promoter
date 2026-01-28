@@ -34,7 +34,10 @@ type CommitStatusSpecApplyConfiguration struct {
 	Sha *string `json:"sha,omitempty"`
 	// Name is the name of the commit status.
 	Name *string `json:"name,omitempty"`
-	// Description is a short description of the commit status.
+	// Description is a human-readable description of the commit status.
+	// This is shown in the SCM provider (GitHub, GitLab, etc.) as the commit status description.
+	// Use an action-oriented message to convey that the system is actively working. For example,
+	// "Waiting for approval" instead of "Approval pending."
 	Description *string `json:"description,omitempty"`
 	// Phase is the state of the commit status. This will be mapped to the appropriate equivalent in the SCM.
 	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
