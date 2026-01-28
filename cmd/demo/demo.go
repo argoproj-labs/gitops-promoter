@@ -33,7 +33,6 @@ type Config struct {
 // NewDemoCommand creates a new demo command for setting up a gitops-promoter demo repository
 func NewDemoCommand() *cobra.Command {
 	var repoName string
-	var public bool
 
 	cmd := &cobra.Command{
 		Use:          "demo",
@@ -79,7 +78,7 @@ func NewDemoCommand() *cobra.Command {
 			repo, _, err := client.Repositories.Create(ctx, "", &github.Repository{
 				Name:        github.Ptr(repoName),
 				Description: github.Ptr("GitOps Promoter demo repository"),
-				Private:     github.Ptr(public),
+				Private:     github.Ptr(true),
 				AutoInit:    github.Ptr(true), // Creates with README
 			})
 			if err != nil {
@@ -168,7 +167,6 @@ func NewDemoCommand() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&repoName, "name", "gitops-promoter-examples", "Name of the repository to create")
-	cmd.Flags().BoolVar(&public, "public", false, "Create a public repository")
 
 	return cmd
 }
