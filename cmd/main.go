@@ -306,7 +306,7 @@ func runController(
 	if err := (&controller.RequiredStatusCheckCommitStatusReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
-		Recorder:    localManager.GetEventRecorderFor("RequiredStatusCheckCommitStatus"),
+		Recorder:    localManager.GetEventRecorder("RequiredStatusCheckCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {

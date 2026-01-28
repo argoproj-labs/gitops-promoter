@@ -30,7 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -87,7 +87,7 @@ type requiredCheckCacheEntry struct {
 type RequiredStatusCheckCommitStatusReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
-	Recorder    record.EventRecorder
+	Recorder    events.EventRecorder
 	SettingsMgr *settings.Manager
 	EnqueueCTP  CTPEnqueueFunc
 }
@@ -699,7 +699,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 		return nil, fmt.Errorf("failed to create or update CommitStatus: %w", err)
 	}
 
-	r.Recorder.Eventf(cs, "Normal", constants.CommitStatusSetReason, "Required check %s status set to %s for hash %s", check.Name, phase, sha)
+	r.Recorder.Eventf(cs, nil, "Normal", constants.CommitStatusSetReason, "SettingStatus", "Required check %s status set to %s for hash %s", check.Name, string(phase), sha)
 
 	return cs, nil
 }
@@ -792,7 +792,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) cleanupOrphanedCommitStatuse
 				// Continue to try deleting other orphaned resources
 				continue
 			}
-			r.Recorder.Eventf(rsccs, "Normal", "CommitStatusDeleted", "Deleted orphaned CommitStatus %s", cs.Name)
+			r.Recorder.Eventf(rsccs, nil, "Normal", "CommitStatusDeleted", "DeletingOrphanedResource", "Deleted orphaned CommitStatus %s", cs.Name)
 		}
 	}
 
