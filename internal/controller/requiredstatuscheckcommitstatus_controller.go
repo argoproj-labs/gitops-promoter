@@ -96,7 +96,18 @@ func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Contex
 	// Remove any existing Ready condition. We want to start fresh.
 	meta.RemoveStatusCondition(rsccs.GetConditions(), string(promoterConditions.Ready))
 
-	// 2. Fetch the referenced PromotionStrategy
+	// 2. Check if the controller is enabled in controller configuration
+	config, err := settings.GetRequiredStatusCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
+	}
+
+	if !config.Enabled {
+		logger.Info("RequiredStatusCheckCommitStatus controller is disabled, skipping reconciliation")
+		return ctrl.Result{}, nil
+	}
+
+	// 3. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
 	psKey := client.ObjectKey{
 		Namespace: rsccs.Namespace,
@@ -110,12 +121,6 @@ func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Contex
 		}
 		logger.Error(err, "failed to get PromotionStrategy")
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", rsccs.Spec.PromotionStrategyRef.Name, err)
-	}
-
-	// 3. Check if showRequiredStatusChecks is enabled
-	if !ps.GetShowRequiredStatusChecks() {
-		logger.Info("showRequiredStatusChecks is disabled, skipping reconciliation")
-		return ctrl.Result{}, nil
 	}
 
 	// 4. Get all ChangeTransferPolicies for this PromotionStrategy

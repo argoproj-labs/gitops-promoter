@@ -172,14 +172,6 @@ spec:
                 x-kubernetes-list-map-keys:
                 - key
                 x-kubernetes-list-type: map
-              showRequiredStatusChecks:
-                description: |-
-                  ShowRequiredStatusChecks enables automatic discovery and visibility of required
-                  status checks from the SCM provider's branch protection rules. When enabled, the
-                  controller discovers required checks and creates CommitStatus resources for each,
-                  providing visibility into what checks are blocking PR merges.
-                  Defaults to false.
-                type: boolean
             required:
             - environments
             - gitRepositoryRef

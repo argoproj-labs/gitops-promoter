@@ -22,7 +22,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,7 +49,6 @@ var _ = Describe("RequiredStatusCheckCommitStatus Controller", func() {
 					RepositoryReference: promoterv1alpha1.ObjectReference{
 						Name: "test-repo",
 					},
-					ShowRequiredStatusChecks: ptr.To(true),
 					Environments: []promoterv1alpha1.Environment{
 						{
 							Branch: "environment/dev",
@@ -100,8 +98,8 @@ var _ = Describe("RequiredStatusCheckCommitStatus Controller", func() {
 			// 5. Verifying dynamic requeue behavior (1 min for pending, configured for success)
 		})
 
-		It("should not create RequiredStatusCheckCommitStatus when showRequiredStatusChecks is false", func() {
-			// This test would verify that when showRequiredStatusChecks is false,
+		It("should not create RequiredStatusCheckCommitStatus when the controller is disabled", func() {
+			// This test would verify that when the controller is disabled,
 			// no RequiredStatusCheckCommitStatus is created by the PromotionStrategy controller
 		})
 

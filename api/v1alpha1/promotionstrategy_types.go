@@ -53,14 +53,6 @@ type PromotionStrategySpec struct {
 	// +listMapKey=key
 	ProposedCommitStatuses []CommitStatusSelector `json:"proposedCommitStatuses"`
 
-	// ShowRequiredStatusChecks enables automatic discovery and visibility of required
-	// status checks from the SCM provider's branch protection rules. When enabled, the
-	// controller discovers required checks and creates CommitStatus resources for each,
-	// providing visibility into what checks are blocking PR merges.
-	// Defaults to false.
-	// +kubebuilder:validation:Optional
-	ShowRequiredStatusChecks *bool `json:"showRequiredStatusChecks,omitempty"`
-
 	// Environments is the sequence of environments that a dry commit will be promoted through.
 	// +kubebuilder:validation:MinItems:=1
 	// +listType:=map
@@ -134,14 +126,6 @@ type PromotionStrategyStatus struct {
 // GetConditions returns the conditions of the PromotionStrategy.
 func (ps *PromotionStrategy) GetConditions() *[]metav1.Condition {
 	return &ps.Status.Conditions
-}
-
-// GetShowRequiredStatusChecks returns the value of the ShowRequiredStatusChecks field, defaulting to false if the field is nil.
-func (ps *PromotionStrategy) GetShowRequiredStatusChecks() bool {
-	if ps.Spec.ShowRequiredStatusChecks == nil {
-		return false
-	}
-	return *ps.Spec.ShowRequiredStatusChecks
 }
 
 // EnvironmentStatus defines the observed state of an environment in a PromotionStrategy.

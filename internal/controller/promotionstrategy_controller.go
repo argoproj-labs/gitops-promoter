@@ -121,7 +121,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned ChangeTransferPolicies: %w", err)
 	}
 
-	// Upsert RequiredStatusCheckCommitStatus if showRequiredStatusChecks is enabled
+	// Upsert RequiredStatusCheckCommitStatus if the controller is enabled
 	err = r.upsertRequiredStatusCheckCommitStatus(ctx, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to upsert RequiredStatusCheckCommitStatus: %w", err)
@@ -243,7 +243,11 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		}
 
 		// Automatically add required status checks if the feature is enabled
-		if ps.GetShowRequiredStatusChecks() {
+		config, configErr := settings.GetRequiredStatusCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
+		if configErr != nil {
+			return fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", configErr)
+		}
+		if config.Enabled {
 			logger.Info("Processing required status checks for CTP",
 				"branch", environment.Branch,
 				"ctpName", ctp.Name)
@@ -807,9 +811,15 @@ func isPreviousEnvironmentPending(previousEnvironmentStatus, currentEnvironmentS
 	return false, ""
 }
 
-// upsertRequiredStatusCheckCommitStatus creates or deletes the RequiredStatusCheckCommitStatus based on the showRequiredStatusChecks field.
+// upsertRequiredStatusCheckCommitStatus creates or deletes the RequiredStatusCheckCommitStatus based on the controller enabled field.
 func (r *PromotionStrategyReconciler) upsertRequiredStatusCheckCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy) error {
 	logger := log.FromContext(ctx)
+
+	// Get configuration to check if the controller is enabled
+	config, err := settings.GetRequiredStatusCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
+	}
 
 	// Generate RSCCS name from PromotionStrategy name
 	rsccsName := ps.Name
@@ -820,11 +830,11 @@ func (r *PromotionStrategyReconciler) upsertRequiredStatusCheckCommitStatus(ctx 
 		Namespace: ps.Namespace,
 		Name:      rsccsName,
 	}
-	err := r.Get(ctx, rsccsKey, &rsccs)
+	err = r.Get(ctx, rsccsKey, &rsccs)
 	rsccsExists := err == nil
 
-	// If showRequiredStatusChecks is enabled, create or update RSCCS
-	if ps.GetShowRequiredStatusChecks() {
+	// If the controller is enabled, create or update RSCCS
+	if config.Enabled {
 		rsccs = promoterv1alpha1.RequiredStatusCheckCommitStatus{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      rsccsName,
@@ -856,9 +866,9 @@ func (r *PromotionStrategyReconciler) upsertRequiredStatusCheckCommitStatus(ctx 
 		return nil
 	}
 
-	// If showRequiredStatusChecks is disabled and RSCCS exists, delete it
+	// If the controller is disabled and RSCCS exists, delete it
 	if rsccsExists {
-		logger.Info("Deleting RequiredStatusCheckCommitStatus as showRequiredStatusChecks is disabled", "name", rsccsName)
+		logger.Info("Deleting RequiredStatusCheckCommitStatus as the controller is disabled", "name", rsccsName)
 		err := r.Delete(ctx, &rsccs)
 		if err != nil && !k8serrors.IsNotFound(err) {
 			return fmt.Errorf("failed to delete RequiredStatusCheckCommitStatus: %w", err)

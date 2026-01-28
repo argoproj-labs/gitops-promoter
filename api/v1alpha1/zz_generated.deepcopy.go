@@ -1479,11 +1479,6 @@ func (in *PromotionStrategySpec) DeepCopyInto(out *PromotionStrategySpec) {
 		*out = make([]CommitStatusSelector, len(*in))
 		copy(*out, *in)
 	}
-	if in.ShowRequiredStatusChecks != nil {
-		in, out := &in.ShowRequiredStatusChecks, &out.ShowRequiredStatusChecks
-		*out = new(bool)
-		**out = **in
-	}
 	if in.Environments != nil {
 		in, out := &in.Environments, &out.Environments
 		*out = make([]Environment, len(*in))

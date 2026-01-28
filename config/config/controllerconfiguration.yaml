@@ -103,6 +103,7 @@ spec:
               slowDelay: "5m"
               maxFastAttempts: 3
   requiredStatusCheckCommitStatus:
+    enabled: false
     rulesetCacheTTL: "15m"
     rulesetCacheMaxSize: 1000
     pendingCheckInterval: "1m"

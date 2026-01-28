@@ -1292,6 +1292,15 @@ spec:
                   RequiredStatusCheckCommitStatus contains the configuration for the RequiredStatusCheckCommitStatus controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
+                  enabled:
+                    default: false
+                    description: |-
+                      Enabled controls whether the RequiredStatusCheckCommitStatus controller is active.
+                      When enabled, the controller discovers required status checks from the SCM provider's
+                      branch protection rules and creates CommitStatus resources for each, providing
+                      visibility into what checks are blocking PR merges.
+                      Defaults to false.
+                    type: boolean
                   pendingCheckInterval:
                     default: 1m
                     description: |-
