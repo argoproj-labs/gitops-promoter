@@ -3,13 +3,10 @@ package github
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/google/go-github/v71/github"
-	"golang.org/x/sync/singleflight"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -19,28 +16,6 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 )
 
-var (
-	// requiredCheckCache stores required check discovery results
-	requiredCheckCache = make(map[string]*requiredCheckCacheEntry)
-
-	// requiredCheckCacheMutex protects access to requiredCheckCache and cache configuration
-	requiredCheckCacheMutex sync.RWMutex
-
-	// requiredCheckCacheTTL is how long to cache required check discovery results
-	requiredCheckCacheTTL = 15 * time.Minute // Default, updated from config
-
-	// requiredCheckCacheMaxSize is the maximum number of entries in the cache
-	requiredCheckCacheMaxSize = 1000 // Default, updated from config
-
-	// requiredCheckFlight prevents duplicate concurrent API calls for the same cache key
-	requiredCheckFlight singleflight.Group
-)
-
-type requiredCheckCacheEntry struct {
-	checks    []scms.RequiredCheck
-	expiresAt time.Time
-}
-
 // Compile-time check to ensure RequiredCheck implements scms.RequiredCheckProvider
 var _ scms.RequiredCheckProvider = &RequiredCheck{}
 
@@ -49,38 +24,19 @@ var _ scms.RequiredCheckProvider = &RequiredCheck{}
 type RequiredCheck struct {
 	client    *github.Client
 	k8sClient client.Client
-
-	// GitHub instance domain (empty for github.com, custom domain for Enterprise)
-	domain string
 }
 
 // NewGithubRequiredCheckProvider creates a new instance of RequiredCheck for GitHub.
 // It initializes the GitHub client using the provided SCM provider configuration and secret.
-// cacheTTL specifies how long to cache required check discovery results (0 disables caching).
-// cacheMaxSize specifies the maximum number of cache entries (0 for unlimited).
-func NewGithubRequiredCheckProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string, cacheTTL time.Duration, cacheMaxSize int) (*RequiredCheck, error) {
+func NewGithubRequiredCheckProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string) (*RequiredCheck, error) {
 	githubClient, _, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GitHub client: %w", err)
 	}
 
-	// Store domain to distinguish between different GitHub instances in cache
-	domain := scmProvider.GetSpec().GitHub.Domain
-	if domain == "" {
-		domain = "github.com" // Normalize empty domain to explicit github.com
-	}
-
-	// Update package-level cache configuration (thread-safe)
-	// This ensures all provider instances use the latest configuration
-	requiredCheckCacheMutex.Lock()
-	requiredCheckCacheTTL = cacheTTL
-	requiredCheckCacheMaxSize = cacheMaxSize
-	requiredCheckCacheMutex.Unlock()
-
 	return &RequiredCheck{
 		client:    githubClient,
 		k8sClient: k8sClient,
-		domain:    domain,
 	}, nil
 }
 
@@ -98,108 +54,67 @@ func (rc *RequiredCheck) DiscoverRequiredChecks(ctx context.Context, repo *promo
 
 	owner := repo.Spec.GitHub.Owner
 	name := repo.Spec.GitHub.Name
-	cacheKey := fmt.Sprintf("%s|%s|%s|%s", rc.domain, owner, name, branch)
 
-	// Fast path: check cache with read lock first
-	requiredCheckCacheMutex.RLock()
-	if entry, found := requiredCheckCache[cacheKey]; found {
-		if time.Now().Before(entry.expiresAt) {
-			// Cache hit with valid entry
-			requiredCheckCacheMutex.RUnlock()
-			logger.V(4).Info("Using cached required check discovery",
-				"branch", branch,
-				"checks", len(entry.checks),
-				"expiresIn", time.Until(entry.expiresAt).Round(time.Second))
-			return entry.checks, nil
-		}
+	// Make the API call
+	start := time.Now()
+	rules, response, err := rc.client.Repositories.GetRulesForBranch(ctx, owner, name, branch)
+
+	// Record metrics first (even on error)
+	if response != nil {
+		duration := time.Since(start)
+		metrics.RecordSCMCall(repo, metrics.SCMAPIRequiredCheck, metrics.SCMOperationGet,
+			response.StatusCode, duration, getRateLimitMetrics(response.Rate))
+
+		logger.Info("github rate limit",
+			"limit", response.Rate.Limit,
+			"remaining", response.Rate.Remaining,
+			"reset", response.Rate.Reset,
+			"url", response.Request.URL)
+
+		logger.V(4).Info("github response status", "status", response.Status)
 	}
-	requiredCheckCacheMutex.RUnlock()
 
-	// Cache miss or expired - use singleflight to prevent duplicate API calls
-	result, err, _ := requiredCheckFlight.Do(cacheKey, func() (interface{}, error) {
-		// Make the API call
-		start := time.Now()
-		rules, response, err := rc.client.Repositories.GetRulesForBranch(ctx, owner, name, branch)
+	if err != nil {
+		// Note: GitHub returns 200 OK with empty array when no rulesets configured (not 404)
+		return nil, fmt.Errorf("failed to get branch rules: %w", err)
+	}
 
-		// Record metrics first (even on error)
-		if response != nil {
-			duration := time.Since(start)
-			metrics.RecordSCMCall(repo, metrics.SCMAPIRequiredCheck, metrics.SCMOperationGet,
-				response.StatusCode, duration, getRateLimitMetrics(response.Rate))
+	// Extract required status checks from BranchRules
+	var requiredChecks []scms.RequiredCheck
+	if rules != nil && rules.RequiredStatusChecks != nil {
+		for _, ruleStatusCheck := range rules.RequiredStatusChecks {
+			if ruleStatusCheck.Parameters.RequiredStatusChecks != nil {
+				for _, check := range ruleStatusCheck.Parameters.RequiredStatusChecks {
+					if check.Context != "" {
+						// Note: GitHub Rulesets API uses "context" (from older Commit Status API)
+						// while Check Runs API uses "name". Both refer to the same check identifier.
+						// We map it to "Name" in our generic interface.
 
-			logger.Info("github rate limit",
-				"limit", response.Rate.Limit,
-				"remaining", response.Rate.Remaining,
-				"reset", response.Rate.Reset,
-				"url", response.Request.URL)
-
-			logger.V(4).Info("github response status", "status", response.Status)
-		}
-
-		if err != nil {
-			// Note: GitHub returns 200 OK with empty array when no rulesets configured (not 404)
-			return nil, fmt.Errorf("failed to get branch rules: %w", err)
-		}
-
-		// Extract required status checks from BranchRules
-		var requiredChecks []scms.RequiredCheck
-		if rules != nil && rules.RequiredStatusChecks != nil {
-			for _, ruleStatusCheck := range rules.RequiredStatusChecks {
-				if ruleStatusCheck.Parameters.RequiredStatusChecks != nil {
-					for _, check := range ruleStatusCheck.Parameters.RequiredStatusChecks {
-						if check.Context != "" {
-							// Note: GitHub Rulesets API uses "context" (from older Commit Status API)
-							// while Check Runs API uses "name". Both refer to the same check identifier.
-							// We map it to "Name" in our generic interface.
-
-							// Convert GitHub's int64 IntegrationID to string
-							// Note: GitHub Rulesets API uses "integration_id" (legacy name from when
-							// GitHub Apps were called "GitHub Integrations"). The Check Runs API uses
-							// "app_id". Both refer to the same GitHub App numeric identifier.
-							var integrationID *string
-							if check.IntegrationID != nil {
-								idStr := strconv.FormatInt(*check.IntegrationID, 10)
-								integrationID = &idStr
-							}
-
-							requiredChecks = append(requiredChecks, scms.RequiredCheck{
-								Name:          check.Context,
-								IntegrationID: integrationID,
-							})
+						// Convert GitHub's int64 IntegrationID to string
+						// Note: GitHub Rulesets API uses "integration_id" (legacy name from when
+						// GitHub Apps were called "GitHub Integrations"). The Check Runs API uses
+						// "app_id". Both refer to the same GitHub App numeric identifier.
+						var integrationID *string
+						if check.IntegrationID != nil {
+							idStr := strconv.FormatInt(*check.IntegrationID, 10)
+							integrationID = &idStr
 						}
+
+						requiredChecks = append(requiredChecks, scms.RequiredCheck{
+							Name:          check.Context,
+							IntegrationID: integrationID,
+						})
 					}
 				}
 			}
 		}
-
-		// Store in cache before returning (write lock)
-		requiredCheckCacheMutex.Lock()
-
-		requiredCheckCache[cacheKey] = &requiredCheckCacheEntry{
-			checks:    requiredChecks,
-			expiresAt: time.Now().Add(requiredCheckCacheTTL),
-		}
-
-		// Check if we need to enforce cache size limit after insertion
-		// to avoid race condition where cache temporarily exceeds max size
-		if requiredCheckCacheMaxSize > 0 && len(requiredCheckCache) > requiredCheckCacheMaxSize {
-			evictExpiredOrOldestEntries(ctx)
-		}
-		requiredCheckCacheMutex.Unlock()
-
-		logger.V(4).Info("Cached required check discovery",
-			"branch", branch,
-			"checks", len(requiredChecks),
-			"ttl", requiredCheckCacheTTL)
-
-		return requiredChecks, nil
-	})
-
-	if err != nil {
-		return nil, err
 	}
 
-	return result.([]scms.RequiredCheck), nil
+	logger.V(4).Info("Discovered required checks",
+		"branch", branch,
+		"checks", len(requiredChecks))
+
+	return requiredChecks, nil
 }
 
 // PollCheckStatus queries GitHub Checks API to get the status of a specific required check
@@ -341,75 +256,4 @@ func mapGitHubCheckStatusToPhase(checkRun *github.CheckRun) promoterv1alpha1.Com
 
 	// Status is queued or in_progress
 	return promoterv1alpha1.CommitPhasePending
-}
-
-// evictExpiredOrOldestEntries removes expired entries and, if still over limit, evicts oldest entries.
-// Must be called with requiredCheckCacheMutex write lock held.
-func evictExpiredOrOldestEntries(ctx context.Context) {
-	logger := log.FromContext(ctx)
-	now := time.Now()
-	initialSize := len(requiredCheckCache)
-
-	// First pass: remove expired entries
-	expiredCount := 0
-	for key, entry := range requiredCheckCache {
-		if now.After(entry.expiresAt) {
-			delete(requiredCheckCache, key)
-			expiredCount++
-		}
-	}
-
-	if expiredCount > 0 {
-		logger.V(4).Info("Evicted expired cache entries",
-			"expiredCount", expiredCount,
-			"remainingEntries", len(requiredCheckCache),
-			"cacheMaxSize", requiredCheckCacheMaxSize)
-	}
-
-	// If still over limit, remove oldest entries
-	if len(requiredCheckCache) >= requiredCheckCacheMaxSize {
-		beforeLRU := len(requiredCheckCache)
-
-		// Create slice of keys sorted by expiration time (oldest first)
-		type cacheItem struct {
-			key       string
-			expiresAt time.Time
-		}
-		items := make([]cacheItem, 0, len(requiredCheckCache))
-		for key, entry := range requiredCheckCache {
-			items = append(items, cacheItem{key: key, expiresAt: entry.expiresAt})
-		}
-
-		// Sort by expiration time (oldest first)
-		sort.Slice(items, func(i, j int) bool {
-			return items[i].expiresAt.Before(items[j].expiresAt)
-		})
-
-		// Remove oldest entries until we're under the limit
-		// Keep 10% headroom to avoid frequent evictions
-		targetSize := int(float64(requiredCheckCacheMaxSize) * 0.9)
-		lruEvictedCount := 0
-		for i := 0; i < len(items) && len(requiredCheckCache) > targetSize; i++ {
-			delete(requiredCheckCache, items[i].key)
-			lruEvictedCount++
-		}
-
-		if lruEvictedCount > 0 {
-			logger.V(4).Info("Evicted oldest cache entries due to size limit",
-				"evictedCount", lruEvictedCount,
-				"beforeEviction", beforeLRU,
-				"afterEviction", len(requiredCheckCache),
-				"cacheMaxSize", requiredCheckCacheMaxSize,
-				"targetSize", targetSize)
-		}
-	}
-
-	if expiredCount > 0 || len(requiredCheckCache) < initialSize {
-		logger.V(4).Info("Cache eviction summary",
-			"initialSize", initialSize,
-			"finalSize", len(requiredCheckCache),
-			"totalEvicted", initialSize-len(requiredCheckCache),
-			"expiredEvicted", expiredCount,
-			"lruEvicted", initialSize-len(requiredCheckCache)-expiredCount)
-	}
 }

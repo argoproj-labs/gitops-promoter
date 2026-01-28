@@ -20,9 +20,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,15 +51,37 @@ import (
 )
 
 const (
-	DefaultRequiredCheckCacheTTL       = 15 * time.Minute
-	DefaultRequiredCheckCacheMaxSize   = 1000
-	DefaultPendingCheckInterval        = 1 * time.Minute
-	DefaultTerminalCheckInterval       = 10 * time.Minute
-	DefaultSafetyNetInterval           = 1 * time.Hour
+	DefaultRequiredCheckCacheTTL     = 15 * time.Minute
+	DefaultRequiredCheckCacheMaxSize = 1000
+	DefaultPendingCheckInterval      = 1 * time.Minute
+	DefaultTerminalCheckInterval     = 10 * time.Minute
+	DefaultSafetyNetInterval         = 1 * time.Hour
 
 	// Index field name for efficient lookup of RSCCS by PromotionStrategy
 	promotionStrategyRefIndex = "spec.promotionStrategyRef.name"
 )
+
+var (
+	// requiredCheckCache stores required check discovery results
+	requiredCheckCache = make(map[string]*requiredCheckCacheEntry)
+
+	// requiredCheckCacheMutex protects access to requiredCheckCache and cache configuration
+	requiredCheckCacheMutex sync.RWMutex
+
+	// requiredCheckCacheTTL is how long to cache required check discovery results
+	requiredCheckCacheTTL = DefaultRequiredCheckCacheTTL
+
+	// requiredCheckCacheMaxSize is the maximum number of entries in the cache
+	requiredCheckCacheMaxSize = DefaultRequiredCheckCacheMaxSize
+
+	// requiredCheckFlight prevents duplicate concurrent API calls for the same cache key
+	requiredCheckFlight singleflight.Group
+)
+
+type requiredCheckCacheEntry struct {
+	checks    []scms.RequiredCheck
+	expiresAt time.Time
+}
 
 // RequiredStatusCheckCommitStatusReconciler reconciles a RequiredStatusCheckCommitStatus object
 type RequiredStatusCheckCommitStatusReconciler struct {
@@ -190,6 +215,16 @@ func (r *RequiredStatusCheckCommitStatusReconciler) SetupWithManager(ctx context
 	if err := validateRequiredStatusCheckConfig(&config); err != nil {
 		return fmt.Errorf("invalid RequiredStatusCheckCommitStatus configuration: %w", err)
 	}
+
+	// Initialize cache configuration from settings
+	requiredCheckCacheMutex.Lock()
+	if config.RequiredCheckCacheTTL != nil {
+		requiredCheckCacheTTL = config.RequiredCheckCacheTTL.Duration
+	}
+	if config.RequiredCheckCacheMaxSize != nil && *config.RequiredCheckCacheMaxSize > 0 {
+		requiredCheckCacheMaxSize = *config.RequiredCheckCacheMaxSize
+	}
+	requiredCheckCacheMutex.Unlock()
 
 	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
 	if err != nil {
@@ -355,21 +390,28 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 	for _, env := range ps.Spec.Environments {
 		ctp, found := ctpByBranch[env.Branch]
 		if !found {
-			logger.Info("ChangeTransferPolicy not found for environment", "branch", env.Branch)
+			logger.Info("ChangeTransferPolicy not found for environment",
+				"promotionStrategy", ps.Name,
+				"branch", env.Branch)
 			continue
 		}
 
 		// Get proposed SHA from CTP status
 		proposedSha := ctp.Status.Proposed.Hydrated.Sha
 		if proposedSha == "" {
-			logger.Info("No proposed SHA found for environment", "branch", env.Branch)
+			logger.Info("No proposed SHA found for environment",
+				"promotionStrategy", ps.Name,
+				"branch", env.Branch)
 			continue
 		}
 
 		// Discover required checks for this environment
 		requiredChecks, err := r.discoverRequiredChecksForEnvironment(ctx, ps, ctp, env)
 		if err != nil {
-			logger.Error(err, "failed to discover required checks", "branch", env.Branch)
+			logger.Error(err, "failed to discover required checks",
+				"promotionStrategy", ps.Name,
+				"repository", ps.Spec.RepositoryReference.Name,
+				"branch", env.Branch)
 			// Continue to process other environments
 			continue
 		}
@@ -377,7 +419,11 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 		// Poll check status for each required check
 		checkStatuses, err := r.pollCheckStatusForEnvironment(ctx, ps, ctp, requiredChecks, proposedSha)
 		if err != nil {
-			logger.Error(err, "failed to poll check status", "branch", env.Branch)
+			logger.Error(err, "failed to poll check status",
+				"promotionStrategy", ps.Name,
+				"repository", ps.Spec.RepositoryReference.Name,
+				"branch", env.Branch,
+				"sha", proposedSha)
 			// Continue to process other environments
 			continue
 		}
@@ -393,7 +439,11 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 
 			cs, err := r.updateCommitStatusForCheck(ctx, rsccs, ctp, env.Branch, check, proposedSha, phase)
 			if err != nil {
-				logger.Error(err, "failed to update CommitStatus", "check", check.Name)
+				logger.Error(err, "failed to update CommitStatus",
+					"check", check.Name,
+					"repository", ps.Spec.RepositoryReference.Name,
+					"branch", env.Branch,
+					"sha", proposedSha)
 				// Continue to process other checks
 				continue
 			}
@@ -444,24 +494,9 @@ func (r *RequiredStatusCheckCommitStatusReconciler) getRequiredCheckProvider(
 		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
 	}
 
-	config, err := settings.GetRequiredStatusCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
-	}
-
-	cacheTTL := DefaultRequiredCheckCacheTTL
-	if config.RequiredCheckCacheTTL != nil {
-		cacheTTL = config.RequiredCheckCacheTTL.Duration
-	}
-
-	cacheMaxSize := DefaultRequiredCheckCacheMaxSize
-	if config.RequiredCheckCacheMaxSize != nil && *config.RequiredCheckCacheMaxSize > 0 {
-		cacheMaxSize = *config.RequiredCheckCacheMaxSize
-	}
-
 	// Create provider based on SCM type
 	if scmProvider.GetSpec().GitHub != nil {
-		provider, err := githubscm.NewGithubRequiredCheckProvider(ctx, r.Client, scmProvider, *secret, gitRepo.Spec.GitHub.Owner, cacheTTL, cacheMaxSize)
+		provider, err := githubscm.NewGithubRequiredCheckProvider(ctx, r.Client, scmProvider, *secret, gitRepo.Spec.GitHub.Owner)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create GitHub required check provider: %w", err)
 		}
@@ -474,7 +509,8 @@ func (r *RequiredStatusCheckCommitStatusReconciler) getRequiredCheckProvider(
 	return nil, scms.ErrNotSupported
 }
 
-// discoverRequiredChecksForEnvironment queries the SCM's protection rules to discover required checks
+// discoverRequiredChecksForEnvironment queries the SCM's protection rules to discover required checks.
+// Results are cached to reduce API calls to the SCM provider.
 func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, env promoterv1alpha1.Environment) ([]scms.RequiredCheck, error) {
 	logger := log.FromContext(ctx)
 
@@ -491,23 +527,79 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 	provider, err := r.getRequiredCheckProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
 	if err != nil {
 		if err == scms.ErrNotSupported {
-			logger.V(4).Info("Required check discovery not supported for this SCM provider, skipping")
+			logger.V(4).Info("Required check discovery not supported for this SCM provider, skipping",
+				"repository", gitRepo.Name,
+				"branch", env.Branch)
 			return []scms.RequiredCheck{}, nil
 		}
 		return nil, fmt.Errorf("failed to get required check provider: %w", err)
 	}
 
-	// Discover required checks from the SCM
-	checks, err := provider.DiscoverRequiredChecks(ctx, gitRepo, env.Branch)
-	if err != nil {
-		if err == scms.ErrNoProtection {
-			logger.V(4).Info("No protection rules configured for branch", "branch", env.Branch)
-			return []scms.RequiredCheck{}, nil
+	// Build cache key: include repository identity and branch
+	// For GitHub: domain|owner|name|branch
+	cacheKey := r.buildCacheKey(gitRepo, env.Branch)
+
+	// Fast path: check cache with read lock first
+	requiredCheckCacheMutex.RLock()
+	if entry, found := requiredCheckCache[cacheKey]; found {
+		if time.Now().Before(entry.expiresAt) {
+			// Cache hit with valid entry
+			requiredCheckCacheMutex.RUnlock()
+			logger.V(4).Info("Using cached required check discovery",
+				"repository", gitRepo.Name,
+				"branch", env.Branch,
+				"checks", len(entry.checks),
+				"expiresIn", time.Until(entry.expiresAt).Round(time.Second))
+			return entry.checks, nil
 		}
-		return nil, fmt.Errorf("failed to discover required checks: %w", err)
+	}
+	requiredCheckCacheMutex.RUnlock()
+
+	// Cache miss or expired - use singleflight to prevent duplicate API calls
+	result, err, _ := requiredCheckFlight.Do(cacheKey, func() (interface{}, error) {
+		// Call provider to discover checks
+		checks, err := provider.DiscoverRequiredChecks(ctx, gitRepo, env.Branch)
+		if err != nil {
+			if err == scms.ErrNoProtection {
+				logger.V(4).Info("No protection rules configured for branch",
+					"repository", gitRepo.Name,
+					"branch", env.Branch)
+				// Cache empty result for branches with no protection
+				checks = []scms.RequiredCheck{}
+			} else {
+				return nil, fmt.Errorf("failed to discover required checks: %w", err)
+			}
+		}
+
+		// Store in cache before returning (write lock)
+		requiredCheckCacheMutex.Lock()
+
+		requiredCheckCache[cacheKey] = &requiredCheckCacheEntry{
+			checks:    checks,
+			expiresAt: time.Now().Add(requiredCheckCacheTTL),
+		}
+
+		// Check if we need to enforce cache size limit after insertion
+		// to avoid race condition where cache temporarily exceeds max size
+		if requiredCheckCacheMaxSize > 0 && len(requiredCheckCache) > requiredCheckCacheMaxSize {
+			evictExpiredOrOldestEntries(ctx)
+		}
+		requiredCheckCacheMutex.Unlock()
+
+		logger.V(4).Info("Cached required check discovery",
+			"repository", gitRepo.Name,
+			"branch", env.Branch,
+			"checks", len(checks),
+			"ttl", requiredCheckCacheTTL)
+
+		return checks, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	return checks, nil
+	return result.([]scms.RequiredCheck), nil
 }
 
 // pollCheckStatusForEnvironment polls the SCM to get the status of each required check
@@ -551,7 +643,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 			// This provides graceful degradation during transient failures (network issues, partial outages)
 			logger.Error(err, "Failed to poll check status, marking as pending for graceful degradation",
 				"check", check.Name,
-				"repo", fmt.Sprintf("%s/%s", gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name),
+				"repository", gitRepo.Name,
 				"sha", sha)
 
 			// Mark as pending so we maintain visibility into other working checks
@@ -821,6 +913,65 @@ func (r *RequiredStatusCheckCommitStatusReconciler) triggerCTPReconciliation(ctx
 	}
 
 	return nil
+}
+
+// buildCacheKey builds a unique cache key for required check discovery results.
+// The key uses the GitRepository resource identity (namespace/name) and branch.
+// This ensures proper cache isolation - each GitRepository resource represents a unique
+// repository configuration, even if the underlying SCM repository is the same.
+func (r *RequiredStatusCheckCommitStatusReconciler) buildCacheKey(gitRepo *promoterv1alpha1.GitRepository, branch string) string {
+	return fmt.Sprintf("%s|%s|%s", gitRepo.Namespace, gitRepo.Name, branch)
+}
+
+// evictExpiredOrOldestEntries removes expired entries and, if still over limit, evicts oldest entries.
+// Must be called with requiredCheckCacheMutex write lock held.
+func evictExpiredOrOldestEntries(ctx context.Context) {
+	logger := log.FromContext(ctx)
+	now := time.Now()
+	initialSize := len(requiredCheckCache)
+
+	// First pass: remove expired entries
+	expiredCount := 0
+	for key, entry := range requiredCheckCache {
+		if now.After(entry.expiresAt) {
+			delete(requiredCheckCache, key)
+			expiredCount++
+		}
+	}
+
+	// If still over limit, remove oldest entries
+	if len(requiredCheckCache) >= requiredCheckCacheMaxSize {
+		// Create slice of keys sorted by expiration time (oldest first)
+		type cacheItem struct {
+			key       string
+			expiresAt time.Time
+		}
+		items := make([]cacheItem, 0, len(requiredCheckCache))
+		for key, entry := range requiredCheckCache {
+			items = append(items, cacheItem{key: key, expiresAt: entry.expiresAt})
+		}
+
+		// Sort by expiration time (oldest first)
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].expiresAt.Before(items[j].expiresAt)
+		})
+
+		// Remove oldest entries until we're under the limit
+		// Keep 10% headroom to avoid frequent evictions
+		targetSize := int(float64(requiredCheckCacheMaxSize) * 0.9)
+		for i := 0; i < len(items) && len(requiredCheckCache) > targetSize; i++ {
+			delete(requiredCheckCache, items[i].key)
+		}
+	}
+
+	if expiredCount > 0 || len(requiredCheckCache) < initialSize {
+		logger.V(4).Info("Cache eviction summary",
+			"initialSize", initialSize,
+			"finalSize", len(requiredCheckCache),
+			"totalEvicted", initialSize-len(requiredCheckCache),
+			"expiredEvicted", expiredCount,
+			"lruEvicted", initialSize-len(requiredCheckCache)-expiredCount)
+	}
 }
 
 // validateRequiredStatusCheckConfig validates the RequiredStatusCheckCommitStatus configuration
