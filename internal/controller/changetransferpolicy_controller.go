@@ -659,7 +659,6 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 	logger := log.FromContext(ctx)
 
 	commitStatusesState := []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{}
-	var tooManyMatchingShaError error
 	for _, status := range commitStatuses {
 		var csList promoterv1alpha1.CommitStatusList
 		// Find all the replicasets that match the commit status configured name and the sha of the hydrated commit
@@ -675,41 +674,55 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 			return fmt.Errorf("failed to list CommitStatuses for key %q and SHA %q: %w", status.Key, targetCommitBranchState.Hydrated.Sha, err)
 		}
 
-		found := false
-		phase := promoterv1alpha1.CommitPhasePending
 		if len(csList.Items) == 1 {
+			// Single match: use base key
+			phase := string(csList.Items[0].Status.Phase)
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:   status.Key,
-				Phase: string(csList.Items[0].Status.Phase),
+				Phase: phase,
 				Url:   csList.Items[0].Spec.Url,
 			})
-			found = true
-			phase = csList.Items[0].Status.Phase
+			logger.Info("CommitStatus State",
+				"key", status.Key,
+				"sha", targetCommitBranchState.Hydrated.Sha,
+				"phase", phase,
+				"found", true,
+				"foundCount", 1)
 		} else if len(csList.Items) > 1 {
-			// TODO: decided how to bubble up errors
+			// Multiple matches: use full resource name as key for uniqueness
+			// This handles cases like multiple required checks with the same external name
+			// Example: required-status-check-lint-4106c0da, required-status-check-lint-a5fde8a8
+			for _, cs := range csList.Items {
+				phase := string(cs.Status.Phase)
+				commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
+					Key:   cs.Name,
+					Phase: phase,
+					Url:   cs.Spec.Url,
+				})
+				logger.Info("CommitStatus State",
+					"key", cs.Name,
+					"baseKey", status.Key,
+					"sha", targetCommitBranchState.Hydrated.Sha,
+					"phase", phase,
+					"found", true)
+			}
+			logger.Info("CommitStatus State - Multiple matches handled",
+				"baseKey", status.Key,
+				"foundCount", len(csList.Items))
+		} else {
+			// No matches: add pending entry with base key
+			phase := string(promoterv1alpha1.CommitPhasePending)
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:   status.Key,
-				Phase: string(promoterv1alpha1.CommitPhasePending),
+				Phase: phase,
 			})
-			tooManyMatchingShaError = NewTooManyMatchingShaError(status.Key, csList.Items)
-			phase = promoterv1alpha1.CommitPhasePending
-		} else if len(csList.Items) == 0 {
-			// TODO: decided how to bubble up errors
-			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
-				Key:   status.Key,
-				Phase: string(promoterv1alpha1.CommitPhasePending),
-			})
-			found = false
-			phase = promoterv1alpha1.CommitPhasePending
-			// We might not want to event here because of the potential for a lot of events, when say ArgoCD is slow at updating the status
+			logger.Info("CommitStatus State",
+				"key", status.Key,
+				"sha", targetCommitBranchState.Hydrated.Sha,
+				"phase", phase,
+				"found", false,
+				"foundCount", 0)
 		}
-		logger.Info("CommitStatus State",
-			"key", status.Key,
-			"sha", targetCommitBranchState.Hydrated.Sha,
-			"phase", phase,
-			"found", found,
-			"toManyMatchingSha", tooManyMatchingShaError != nil,
-			"foundCount", len(csList.Items))
 	}
 
 	// Keep the URL from previous reconciliation where the phase was a success, if the commit status was not found, likely due to a sha mismatch.
@@ -725,7 +738,7 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 	//}
 	targetCommitBranchState.CommitStatuses = commitStatusesState
 
-	return tooManyMatchingShaError
+	return nil
 }
 
 func (r *ChangeTransferPolicyReconciler) setPullRequestState(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) error {

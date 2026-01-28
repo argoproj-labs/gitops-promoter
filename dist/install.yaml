@@ -3167,6 +3167,61 @@ spec:
                   RequiredStatusCheckCommitStatus contains the configuration for the RequiredStatusCheckCommitStatus controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
+                  enabled:
+                    default: false
+                    description: |-
+                      Enabled controls whether the RequiredStatusCheckCommitStatus controller is active.
+                      When enabled, the controller discovers required status checks from the SCM provider's
+                      protection rules and creates CommitStatus resources for each, providing
+                      visibility into what checks are blocking PR merges.
+                      Defaults to false.
+                    type: boolean
+                  pendingCheckInterval:
+                    default: 1m
+                    description: |-
+                      PendingCheckInterval is how frequently to poll when checks are pending.
+                      Lower values provide faster updates but consume more API quota.
+                      Minimum: 10s (to avoid rate limiting), Recommended: >= 1m
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
+                  requiredCheckCacheMaxSize:
+                    default: 1000
+                    description: |-
+                      RequiredCheckCacheMaxSize is the maximum number of entries to store in the required check cache.
+                      When the cache exceeds this size, expired entries are removed. If still over limit,
+                      the oldest entries are evicted to maintain the size limit.
+                      Set to 0 for unlimited cache size (not recommended for production).
+                      Minimum: 0 (unlimited), Recommended: >= 100
+                    minimum: 0
+                    type: integer
+                  requiredCheckCacheTTL:
+                    default: 15m
+                    description: |-
+                      RequiredCheckCacheTTL is how long to cache required check discovery results.
+                      Required checks change infrequently, so caching reduces API calls significantly.
+                      Set to "0s" to disable caching (not recommended).
+                      Minimum: 0s (disables caching), Recommended: >= 15m
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
+                  safetyNetInterval:
+                    default: 1h
+                    description: |-
+                      SafetyNetInterval is the minimum requeue duration when there are no checks to monitor.
+                      This provides a safety net to ensure the controller reconciles periodically even if
+                      watch events are missed due to network issues, API server restarts, or other failures.
+                      Without this, resources could become stuck indefinitely if watches fail.
+                      Set to "0s" to disable (not recommended - relies entirely on watches).
+                      Recommended: >= 1h for production safety
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
+                  terminalCheckInterval:
+                    default: 10m
+                    description: |-
+                      TerminalCheckInterval is how frequently to poll when all checks are in terminal state.
+                      Checks in terminal state rarely change, so longer intervals are appropriate.
+                      Minimum: 10s (to avoid rate limiting), Recommended: >= 10m
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
                   workQueue:
                     description: |-
                       WorkQueue contains the work queue configuration for the RequiredStatusCheckCommitStatus controller.
@@ -4257,15 +4312,6 @@ spec:
                       description: Branch is the name of the active branch for the
                         environment.
                       type: string
-                    excludedRequiredStatusChecks:
-                      description: |-
-                        ExcludedRequiredStatusChecks lists GitHub check contexts to exclude from
-                        visibility when showRequiredStatusChecks is enabled. These checks will still
-                        be enforced by GitHub, but won't be surfaced as CommitStatus resources.
-                        Example: ["ci-tests", "security-scan"]
-                      items:
-                        type: string
-                      type: array
                     proposedCommitStatuses:
                       description: |-
                         ProposedCommitStatuses are commit statuses describing a proposed dry commit, i.e. one that is not yet running
@@ -4332,15 +4378,6 @@ spec:
                 x-kubernetes-list-map-keys:
                 - key
                 x-kubernetes-list-type: map
-              showRequiredStatusChecks:
-                description: |-
-                  ShowRequiredStatusChecks enables automatic discovery and visibility of GitHub required
-                  status checks. When enabled, the controller queries GitHub Rulesets API to discover
-                  required checks and creates CommitStatus resources for each, providing visibility into
-                  what checks are blocking PR merges. This keeps the PromotionStrategy in "progressing"
-                  state while waiting on checks, rather than "degraded" from failed merge attempts.
-                  Defaults to false.
-                type: boolean
             required:
             - environments
             - gitRepositoryRef
@@ -7033,6 +7070,12 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   requiredStatusCheckCommitStatus:
+    enabled: false
+    pendingCheckInterval: 1m
+    requiredCheckCacheMaxSize: 1000
+    requiredCheckCacheTTL: 15m
+    safetyNetInterval: 1h
+    terminalCheckInterval: 10m
     workQueue:
       maxConcurrentReconciles: 5
       rateLimiter:
