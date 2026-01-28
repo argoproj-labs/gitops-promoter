@@ -187,6 +187,48 @@ func GetRequeueDuration[T ControllerConfigurationTypes](ctx context.Context, m *
 	return workQueue.RequeueDuration.Duration, nil
 }
 
+// GetRequiredStatusCheckCommitStatusConfiguration retrieves the full RequiredStatusCheckCommitStatus configuration.
+//
+// This function queries the global ControllerConfiguration and returns the complete
+// RequiredStatusCheckCommitStatusConfiguration which includes WorkQueue, cache settings, and polling intervals.
+//
+// Important: This method requires the manager's cache to be started.
+//
+// Parameters:
+//   - ctx: Context for the request, used for cancellation and deadlines
+//   - m: Manager instance with access to the cluster client
+//
+// Returns the RequiredStatusCheckCommitStatusConfiguration, or an error if the configuration cannot be retrieved.
+func GetRequiredStatusCheckCommitStatusConfiguration(ctx context.Context, m *Manager) (promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration, error) {
+	config, err := m.getControllerConfiguration(ctx)
+	if err != nil {
+		return promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration{}, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	return config.Spec.RequiredStatusCheckCommitStatus, nil
+}
+
+// GetRequiredStatusCheckCommitStatusConfigurationDirect retrieves the full RequiredStatusCheckCommitStatus configuration using a non-cached read.
+//
+// This function bypasses the cache and reads directly from the API server, making it safe to call
+// during SetupWithManager before the cache has started. Use this to validate configuration at startup.
+//
+// For normal reconciliation operations, prefer GetRequiredStatusCheckCommitStatusConfiguration which uses the cache.
+//
+// Parameters:
+//   - ctx: Context for the request, used for cancellation and deadlines
+//   - m: Manager instance with access to the cluster client
+//
+// Returns the RequiredStatusCheckCommitStatusConfiguration, or an error if the configuration cannot be retrieved.
+func GetRequiredStatusCheckCommitStatusConfigurationDirect(ctx context.Context, m *Manager) (promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration, error) {
+	config, err := m.getControllerConfigurationDirect(ctx)
+	if err != nil {
+		return promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration{}, fmt.Errorf("failed to get controller configuration: %w", err)
+	}
+
+	return config.Spec.RequiredStatusCheckCommitStatus, nil
+}
+
 // GetMaxConcurrentReconcilesDirect retrieves the maximum number of concurrent reconciles for a specific controller type using a non-cached read.
 // The type parameter T must satisfy the ControllerConfigurationTypes constraint.
 //

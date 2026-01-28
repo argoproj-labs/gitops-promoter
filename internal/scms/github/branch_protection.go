@@ -3,16 +3,43 @@ package github
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/google/go-github/v71/github"
+	"golang.org/x/sync/singleflight"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/metrics"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 )
+
+var (
+	// rulesetCache stores branch protection ruleset discovery results
+	rulesetCache = make(map[string]*rulesetCacheEntry)
+
+	// rulesetCacheMutex protects access to rulesetCache and cache configuration
+	rulesetCacheMutex sync.RWMutex
+
+	// rulesetCacheTTL is how long to cache ruleset discovery results
+	rulesetCacheTTL = 15 * time.Minute // Default, updated from config
+
+	// rulesetCacheMaxSize is the maximum number of entries in the cache
+	rulesetCacheMaxSize = 1000 // Default, updated from config
+
+	// rulesetFlight prevents duplicate concurrent API calls for the same cache key
+	rulesetFlight singleflight.Group
+)
+
+type rulesetCacheEntry struct {
+	checks    []scms.BranchProtectionCheck
+	expiresAt time.Time
+}
 
 // Compile-time check to ensure BranchProtection implements scms.BranchProtectionProvider
 var _ scms.BranchProtectionProvider = &BranchProtection{}
@@ -22,24 +49,46 @@ var _ scms.BranchProtectionProvider = &BranchProtection{}
 type BranchProtection struct {
 	client    *github.Client
 	k8sClient client.Client
+
+	// GitHub instance domain (empty for github.com, custom domain for Enterprise)
+	domain string
 }
 
 // NewGithubBranchProtectionProvider creates a new instance of BranchProtection for GitHub.
 // It initializes the GitHub client using the provided SCM provider configuration and secret.
-func NewGithubBranchProtectionProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string) (*BranchProtection, error) {
+// cacheTTL specifies how long to cache ruleset discovery results (0 disables caching).
+// cacheMaxSize specifies the maximum number of cache entries (0 for unlimited).
+func NewGithubBranchProtectionProvider(ctx context.Context, k8sClient client.Client, scmProvider promoterv1alpha1.GenericScmProvider, secret v1.Secret, org string, cacheTTL time.Duration, cacheMaxSize int) (*BranchProtection, error) {
 	githubClient, _, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GitHub client: %w", err)
 	}
 
+	// Store domain to distinguish between different GitHub instances in cache
+	domain := scmProvider.GetSpec().GitHub.Domain
+	if domain == "" {
+		domain = "github.com" // Normalize empty domain to explicit github.com
+	}
+
+	// Update package-level cache configuration (thread-safe)
+	// This ensures all provider instances use the latest configuration
+	rulesetCacheMutex.Lock()
+	rulesetCacheTTL = cacheTTL
+	rulesetCacheMaxSize = cacheMaxSize
+	rulesetCacheMutex.Unlock()
+
 	return &BranchProtection{
 		client:    githubClient,
 		k8sClient: k8sClient,
+		domain:    domain,
 	}, nil
 }
 
 // DiscoverRequiredChecks queries GitHub Rulesets API to discover required status checks
 // for the given repository and branch.
+//
+// Returns empty slice when no rulesets are configured for the branch.
+// Returns error for auth failures, rate limits, repository not found, or network errors.
 func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *promoterv1alpha1.GitRepository, branch string) ([]scms.BranchProtectionCheck, error) {
 	logger := log.FromContext(ctx)
 
@@ -49,51 +98,115 @@ func (bp *BranchProtection) DiscoverRequiredChecks(ctx context.Context, repo *pr
 
 	owner := repo.Spec.GitHub.Owner
 	name := repo.Spec.GitHub.Name
+	cacheKey := fmt.Sprintf("%s|%s|%s|%s", bp.domain, owner, name, branch)
 
-	// Query GetRulesForBranch API
-	rules, _, err := bp.client.Repositories.GetRulesForBranch(ctx, owner, name, branch)
-	if err != nil {
-		// If the branch doesn't have rulesets, return empty list
-		logger.V(4).Info("No rulesets found for branch", "branch", branch, "error", err)
-		return []scms.BranchProtectionCheck{}, nil
+	// Fast path: check cache with read lock first
+	rulesetCacheMutex.RLock()
+	if entry, found := rulesetCache[cacheKey]; found {
+		if time.Now().Before(entry.expiresAt) {
+			// Cache hit with valid entry
+			rulesetCacheMutex.RUnlock()
+			logger.V(4).Info("Using cached ruleset discovery",
+				"branch", branch,
+				"checks", len(entry.checks),
+				"expiresIn", time.Until(entry.expiresAt).Round(time.Second))
+			return entry.checks, nil
+		}
 	}
+	rulesetCacheMutex.RUnlock()
 
-	// Extract required status checks from BranchRules
-	var requiredChecks []scms.BranchProtectionCheck
-	if rules != nil && rules.RequiredStatusChecks != nil {
-		for _, ruleStatusCheck := range rules.RequiredStatusChecks {
-			if ruleStatusCheck.Parameters.RequiredStatusChecks != nil {
-				for _, check := range ruleStatusCheck.Parameters.RequiredStatusChecks {
-					if check.Context != "" {
-						// Note: GitHub Rulesets API uses "context" (from older Commit Status API)
-						// while Check Runs API uses "name". Both refer to the same check identifier.
-						// We map it to "Name" in our generic interface.
+	// Cache miss or expired - use singleflight to prevent duplicate API calls
+	result, err, _ := rulesetFlight.Do(cacheKey, func() (interface{}, error) {
+		// Make the API call
+		start := time.Now()
+		rules, response, err := bp.client.Repositories.GetRulesForBranch(ctx, owner, name, branch)
 
-						// Convert GitHub's int64 IntegrationID to string
-						// Note: GitHub Rulesets API uses "integration_id" (legacy name from when
-						// GitHub Apps were called "GitHub Integrations"). The Check Runs API uses
-						// "app_id". Both refer to the same GitHub App numeric identifier.
-						var integrationID *string
-						if check.IntegrationID != nil {
-							idStr := strconv.FormatInt(*check.IntegrationID, 10)
-							integrationID = &idStr
+		// Record metrics first (even on error)
+		if response != nil {
+			duration := time.Since(start)
+			metrics.RecordSCMCall(repo, metrics.SCMAPIBranchProtection, metrics.SCMOperationGet,
+				response.StatusCode, duration, getRateLimitMetrics(response.Rate))
+
+			logger.Info("github rate limit",
+				"limit", response.Rate.Limit,
+				"remaining", response.Rate.Remaining,
+				"reset", response.Rate.Reset,
+				"url", response.Request.URL)
+
+			logger.V(4).Info("github response status", "status", response.Status)
+		}
+
+		if err != nil {
+			// Note: GitHub returns 200 OK with empty array when no rulesets configured (not 404)
+			return nil, fmt.Errorf("failed to get branch rules: %w", err)
+		}
+
+		// Extract required status checks from BranchRules
+		var requiredChecks []scms.BranchProtectionCheck
+		if rules != nil && rules.RequiredStatusChecks != nil {
+			for _, ruleStatusCheck := range rules.RequiredStatusChecks {
+				if ruleStatusCheck.Parameters.RequiredStatusChecks != nil {
+					for _, check := range ruleStatusCheck.Parameters.RequiredStatusChecks {
+						if check.Context != "" {
+							// Note: GitHub Rulesets API uses "context" (from older Commit Status API)
+							// while Check Runs API uses "name". Both refer to the same check identifier.
+							// We map it to "Name" in our generic interface.
+
+							// Convert GitHub's int64 IntegrationID to string
+							// Note: GitHub Rulesets API uses "integration_id" (legacy name from when
+							// GitHub Apps were called "GitHub Integrations"). The Check Runs API uses
+							// "app_id". Both refer to the same GitHub App numeric identifier.
+							var integrationID *string
+							if check.IntegrationID != nil {
+								idStr := strconv.FormatInt(*check.IntegrationID, 10)
+								integrationID = &idStr
+							}
+
+							requiredChecks = append(requiredChecks, scms.BranchProtectionCheck{
+								Name:          check.Context,
+								IntegrationID: integrationID,
+							})
 						}
-
-						requiredChecks = append(requiredChecks, scms.BranchProtectionCheck{
-							Name:          check.Context,
-							IntegrationID: integrationID,
-						})
 					}
 				}
 			}
 		}
+
+		// Store in cache before returning (write lock)
+		rulesetCacheMutex.Lock()
+
+		rulesetCache[cacheKey] = &rulesetCacheEntry{
+			checks:    requiredChecks,
+			expiresAt: time.Now().Add(rulesetCacheTTL),
+		}
+
+		// Check if we need to enforce cache size limit after insertion
+		// to avoid race condition where cache temporarily exceeds max size
+		if rulesetCacheMaxSize > 0 && len(rulesetCache) > rulesetCacheMaxSize {
+			evictExpiredOrOldestEntries(ctx)
+		}
+		rulesetCacheMutex.Unlock()
+
+		logger.V(4).Info("Cached ruleset discovery",
+			"branch", branch,
+			"checks", len(requiredChecks),
+			"ttl", rulesetCacheTTL)
+
+		return requiredChecks, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
-	return requiredChecks, nil
+	return result.([]scms.BranchProtectionCheck), nil
 }
 
 // PollCheckStatus queries GitHub Checks API to get the status of a specific required check
 // for the given commit SHA.
+//
+// Returns (pending, nil) when no check runs exist yet for the commit.
+// Returns error for authentication failures, rate limits, network errors, or other API failures.
 func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv1alpha1.GitRepository, sha string, check scms.BranchProtectionCheck) (promoterv1alpha1.CommitStatusPhase, error) {
 	logger := log.FromContext(ctx)
 
@@ -124,25 +237,75 @@ func (bp *BranchProtection) PollCheckStatus(ctx context.Context, repo *promoterv
 	opts := &github.ListCheckRunsOptions{
 		CheckName: github.Ptr(check.Name),
 		AppID:     appID,
+		ListOptions: github.ListOptions{
+			PerPage: 100, // Maximum per page
+		},
 	}
 
-	checkRuns, _, err := bp.client.Checks.ListCheckRunsForRef(ctx, owner, name, sha, opts)
-	if err != nil {
-		logger.Error(err, "failed to list check runs", "check", check.Name, "sha", sha, "appID", appID)
-		// Default to pending if we can't get the status
-		return promoterv1alpha1.CommitPhasePending, nil
+	start := time.Now()
+	var allCheckRuns []*github.CheckRun
+
+	// Paginate through all check runs
+	for {
+		checkRuns, response, err := bp.client.Checks.ListCheckRunsForRef(ctx, owner, name, sha, opts)
+
+		// Record metrics for each page
+		if response != nil {
+			duration := time.Since(start)
+			metrics.RecordSCMCall(repo, metrics.SCMAPIBranchProtection, metrics.SCMOperationList,
+				response.StatusCode, duration, getRateLimitMetrics(response.Rate))
+
+			logger.Info("github rate limit",
+				"limit", response.Rate.Limit,
+				"remaining", response.Rate.Remaining,
+				"reset", response.Rate.Reset,
+				"url", response.Request.URL)
+
+			logger.V(4).Info("github response status", "status", response.Status)
+		}
+
+		if err != nil {
+			// Note: GitHub returns 200 OK with empty array when no runs exist yet (not 404)
+			return promoterv1alpha1.CommitPhasePending, fmt.Errorf("failed to list check runs for %s: %w", check.Name, err)
+		}
+
+		if checkRuns != nil && len(checkRuns.CheckRuns) > 0 {
+			allCheckRuns = append(allCheckRuns, checkRuns.CheckRuns...)
+		}
+
+		// Check if there are more pages
+		if response == nil || response.NextPage == 0 {
+			break
+		}
+
+		opts.Page = response.NextPage
+		start = time.Now() // Reset timer for next page
 	}
 
 	// If no check runs found, status is pending
-	if checkRuns == nil || len(checkRuns.CheckRuns) == 0 {
+	if len(allCheckRuns) == 0 {
 		return promoterv1alpha1.CommitPhasePending, nil
 	}
 
-	// Get the latest check run
-	checkRun := checkRuns.CheckRuns[0]
+	// Get the LATEST check run (most recently started)
+	// This ensures we use the status of reruns/retries, not old completed runs
+	var latestCheckRun *github.CheckRun
+	for _, run := range allCheckRuns {
+		if latestCheckRun == nil {
+			latestCheckRun = run
+			continue
+		}
 
-	// Map GitHub check status to CommitStatusPhase
-	phase := mapGitHubCheckStatusToPhase(checkRun)
+		// Use the run with the most recent StartedAt time
+		// If StartedAt is equal or nil, keep the current latestCheckRun
+		if run.StartedAt != nil {
+			if latestCheckRun.StartedAt == nil || run.StartedAt.After(latestCheckRun.StartedAt.Time) {
+				latestCheckRun = run
+			}
+		}
+	}
+
+	phase := mapGitHubCheckStatusToPhase(latestCheckRun)
 	return phase, nil
 }
 
@@ -178,4 +341,75 @@ func mapGitHubCheckStatusToPhase(checkRun *github.CheckRun) promoterv1alpha1.Com
 
 	// Status is queued or in_progress
 	return promoterv1alpha1.CommitPhasePending
+}
+
+// evictExpiredOrOldestEntries removes expired entries and, if still over limit, evicts oldest entries.
+// Must be called with rulesetCacheMutex write lock held.
+func evictExpiredOrOldestEntries(ctx context.Context) {
+	logger := log.FromContext(ctx)
+	now := time.Now()
+	initialSize := len(rulesetCache)
+
+	// First pass: remove expired entries
+	expiredCount := 0
+	for key, entry := range rulesetCache {
+		if now.After(entry.expiresAt) {
+			delete(rulesetCache, key)
+			expiredCount++
+		}
+	}
+
+	if expiredCount > 0 {
+		logger.V(4).Info("Evicted expired cache entries",
+			"expiredCount", expiredCount,
+			"remainingEntries", len(rulesetCache),
+			"cacheMaxSize", rulesetCacheMaxSize)
+	}
+
+	// If still over limit, remove oldest entries
+	if len(rulesetCache) >= rulesetCacheMaxSize {
+		beforeLRU := len(rulesetCache)
+
+		// Create slice of keys sorted by expiration time (oldest first)
+		type cacheItem struct {
+			key       string
+			expiresAt time.Time
+		}
+		items := make([]cacheItem, 0, len(rulesetCache))
+		for key, entry := range rulesetCache {
+			items = append(items, cacheItem{key: key, expiresAt: entry.expiresAt})
+		}
+
+		// Sort by expiration time (oldest first)
+		sort.Slice(items, func(i, j int) bool {
+			return items[i].expiresAt.Before(items[j].expiresAt)
+		})
+
+		// Remove oldest entries until we're under the limit
+		// Keep 10% headroom to avoid frequent evictions
+		targetSize := int(float64(rulesetCacheMaxSize) * 0.9)
+		lruEvictedCount := 0
+		for i := 0; i < len(items) && len(rulesetCache) > targetSize; i++ {
+			delete(rulesetCache, items[i].key)
+			lruEvictedCount++
+		}
+
+		if lruEvictedCount > 0 {
+			logger.V(4).Info("Evicted oldest cache entries due to size limit",
+				"evictedCount", lruEvictedCount,
+				"beforeEviction", beforeLRU,
+				"afterEviction", len(rulesetCache),
+				"cacheMaxSize", rulesetCacheMaxSize,
+				"targetSize", targetSize)
+		}
+	}
+
+	if expiredCount > 0 || len(rulesetCache) < initialSize {
+		logger.V(4).Info("Cache eviction summary",
+			"initialSize", initialSize,
+			"finalSize", len(rulesetCache),
+			"totalEvicted", initialSize-len(rulesetCache),
+			"expiredEvicted", expiredCount,
+			"lruEvicted", initialSize-len(rulesetCache)-expiredCount)
+	}
 }

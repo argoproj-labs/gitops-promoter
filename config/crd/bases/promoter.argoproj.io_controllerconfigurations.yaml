@@ -1292,6 +1292,52 @@ spec:
                   RequiredStatusCheckCommitStatus contains the configuration for the RequiredStatusCheckCommitStatus controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
+                  pendingCheckInterval:
+                    default: 1m
+                    description: |-
+                      PendingCheckInterval is how frequently to poll when checks are pending.
+                      Lower values provide faster updates but consume more API quota.
+                      Minimum: 10s (to avoid rate limiting), Recommended: >= 1m
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
+                  rulesetCacheMaxSize:
+                    default: 1000
+                    description: |-
+                      RulesetCacheMaxSize is the maximum number of entries to store in the ruleset cache.
+                      When the cache exceeds this size, expired entries are removed. If still over limit,
+                      the oldest entries are evicted to maintain the size limit.
+                      Set to 0 for unlimited cache size (not recommended for production).
+                      Minimum: 0 (unlimited), Recommended: >= 100
+                    minimum: 0
+                    type: integer
+                  rulesetCacheTTL:
+                    default: 15m
+                    description: |-
+                      RulesetCacheTTL is how long to cache branch protection ruleset discovery results.
+                      Rulesets change infrequently, so caching reduces API calls significantly.
+                      Set to "0s" to disable caching (not recommended).
+                      Minimum: 0s (disables caching), Recommended: >= 15m
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
+                  safetyNetInterval:
+                    default: 1h
+                    description: |-
+                      SafetyNetInterval is the minimum requeue duration when there are no checks to monitor.
+                      This provides a safety net to ensure the controller reconciles periodically even if
+                      watch events are missed due to network issues, API server restarts, or other failures.
+                      Without this, resources could become stuck indefinitely if watches fail.
+                      Set to "0s" to disable (not recommended - relies entirely on watches).
+                      Recommended: >= 1h for production safety
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
+                  terminalCheckInterval:
+                    default: 10m
+                    description: |-
+                      TerminalCheckInterval is how frequently to poll when all checks are in terminal state.
+                      Checks in terminal state rarely change, so longer intervals are appropriate.
+                      Minimum: 10s (to avoid rate limiting), Recommended: >= 10m
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
                   workQueue:
                     description: |-
                       WorkQueue contains the work queue configuration for the RequiredStatusCheckCommitStatus controller.

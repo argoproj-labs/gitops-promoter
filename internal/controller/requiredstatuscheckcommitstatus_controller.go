@@ -23,13 +23,6 @@ import (
 	"strings"
 	"time"
 
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms"
-	githubscm "github.com/argoproj-labs/gitops-promoter/internal/scms/github"
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
-	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
-	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,9 +33,29 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	githubscm "github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+)
+
+const (
+	DefaultRulesetCacheTTL       = 15 * time.Minute
+	DefaultRulesetCacheMaxSize   = 1000
+	DefaultPendingCheckInterval  = 1 * time.Minute
+	DefaultTerminalCheckInterval = 10 * time.Minute
+	DefaultSafetyNetInterval     = 1 * time.Hour
+
+	// Index field name for efficient lookup of RSCCS by PromotionStrategy
+	promotionStrategyRefIndex = "spec.promotionStrategyRef.name"
 )
 
 // RequiredStatusCheckCommitStatusReconciler reconciles a RequiredStatusCheckCommitStatus object
@@ -150,7 +163,10 @@ func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Contex
 	}
 
 	// 9. Calculate dynamic requeue duration
-	requeueDuration := r.calculateRequeueDuration(ctx, &rsccs)
+	requeueDuration, err := r.calculateRequeueDuration(ctx, &rsccs)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to calculate requeue duration: %w", err)
+	}
 
 	return ctrl.Result{
 		RequeueAfter: requeueDuration,
@@ -160,6 +176,16 @@ func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Contex
 // SetupWithManager sets up the controller with the Manager.
 func (r *RequiredStatusCheckCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Use Direct methods to read configuration from the API server without cache during setup.
+
+	// Validate configuration at startup - fail fast if config is invalid
+	config, err := settings.GetRequiredStatusCheckCommitStatusConfigurationDirect(ctx, r.SettingsMgr)
+	if err != nil {
+		return fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
+	}
+	if err := validateRequiredStatusCheckConfig(&config); err != nil {
+		return fmt.Errorf("invalid RequiredStatusCheckCommitStatus configuration: %w", err)
+	}
+
 	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
 	if err != nil {
 		return fmt.Errorf("failed to get RequiredStatusCheckCommitStatus rate limiter: %w", err)
@@ -170,9 +196,18 @@ func (r *RequiredStatusCheckCommitStatusReconciler) SetupWithManager(ctx context
 		return fmt.Errorf("failed to get RequiredStatusCheckCommitStatus max concurrent reconciles: %w", err)
 	}
 
+	// Set up field index for efficient lookup of RSCCS by PromotionStrategy name
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.RequiredStatusCheckCommitStatus{}, promotionStrategyRefIndex, func(obj client.Object) []string {
+		rsccs := obj.(*promoterv1alpha1.RequiredStatusCheckCommitStatus)
+		return []string{rsccs.Spec.PromotionStrategyRef.Name}
+	}); err != nil {
+		return fmt.Errorf("failed to create field index for PromotionStrategyRef: %w", err)
+	}
+
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.RequiredStatusCheckCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueRSCCSForPromotionStrategy()).
+		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, r.enqueueRSCCSForCTP(), builder.WithPredicates(r.ctpProposedShaChangedPredicate())).
 		Watches(&promoterv1alpha1.CommitStatus{}, handler.EnqueueRequestForOwner(
 			mgr.GetScheme(),
 			mgr.GetRESTMapper(),
@@ -196,26 +231,102 @@ func (r *RequiredStatusCheckCommitStatusReconciler) enqueueRSCCSForPromotionStra
 		}
 
 		var rsccs promoterv1alpha1.RequiredStatusCheckCommitStatusList
-		err := r.List(ctx, &rsccs, &client.ListOptions{
-			Namespace: ps.Namespace,
-		})
+		err := r.List(ctx, &rsccs,
+			client.InNamespace(ps.Namespace),
+			client.MatchingFields{promotionStrategyRefIndex: ps.Name},
+		)
 		if err != nil {
+			ctrl.LoggerFrom(ctx).Error(err, "failed to list RequiredStatusCheckCommitStatus resources for PromotionStrategy watch",
+				"promotionStrategy", ps.Name, "namespace", ps.Namespace)
 			return nil
 		}
 
 		var requests []ctrl.Request
 		for _, item := range rsccs.Items {
-			if item.Spec.PromotionStrategyRef.Name == ps.Name {
-				requests = append(requests, ctrl.Request{
-					NamespacedName: client.ObjectKey{
-						Namespace: item.Namespace,
-						Name:      item.Name,
-					},
-				})
-			}
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKey{
+					Namespace: item.Namespace,
+					Name:      item.Name,
+				},
+			})
 		}
 		return requests
 	})
+}
+
+// enqueueRSCCSForCTP enqueues all RequiredStatusCheckCommitStatus resources affected by a ChangeTransferPolicy change
+func (r *RequiredStatusCheckCommitStatusReconciler) enqueueRSCCSForCTP() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
+		ctp, ok := obj.(*promoterv1alpha1.ChangeTransferPolicy)
+		if !ok {
+			return nil
+		}
+
+		// Get the PromotionStrategy name from the CTP label
+		psName, ok := ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]
+		if !ok {
+			// CTP not labeled with a PromotionStrategy, nothing to enqueue
+			return nil
+		}
+
+		// Find all RSCCS resources that reference this PromotionStrategy
+		var rsccs promoterv1alpha1.RequiredStatusCheckCommitStatusList
+		err := r.List(ctx, &rsccs,
+			client.InNamespace(ctp.Namespace),
+			client.MatchingFields{promotionStrategyRefIndex: psName},
+		)
+		if err != nil {
+			ctrl.LoggerFrom(ctx).Error(err, "failed to list RequiredStatusCheckCommitStatus resources for ChangeTransferPolicy watch",
+				"changeTransferPolicy", ctp.Name, "namespace", ctp.Namespace)
+			return nil
+		}
+
+		var requests []ctrl.Request
+		for _, item := range rsccs.Items {
+			requests = append(requests, ctrl.Request{
+				NamespacedName: client.ObjectKey{
+					Namespace: item.Namespace,
+					Name:      item.Name,
+				},
+			})
+		}
+		return requests
+	})
+}
+
+// ctpProposedShaChangedPredicate returns a predicate that filters CTP events to only trigger
+// when the proposed SHA changes, which is the field that RSCCS cares about
+func (r *RequiredStatusCheckCommitStatusReconciler) ctpProposedShaChangedPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy)
+			if !ok {
+				return false
+			}
+			// Trigger if CTP is created with a proposed SHA
+			return ctp.Status.Proposed.Hydrated.Sha != ""
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldCTP, ok := e.ObjectOld.(*promoterv1alpha1.ChangeTransferPolicy)
+			if !ok {
+				return false
+			}
+			newCTP, ok := e.ObjectNew.(*promoterv1alpha1.ChangeTransferPolicy)
+			if !ok {
+				return false
+			}
+			// Only trigger if proposed SHA changed (the field we care about)
+			return oldCTP.Status.Proposed.Hydrated.Sha != newCTP.Status.Proposed.Hydrated.Sha
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			// Don't trigger on delete - RSCCS will handle missing CTPs during reconciliation
+			return false
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			// Don't trigger on generic events
+			return false
+		},
+	}
 }
 
 // processEnvironments processes each environment and creates/updates CommitStatus resources
@@ -328,9 +439,24 @@ func (r *RequiredStatusCheckCommitStatusReconciler) getBranchProtectionProvider(
 		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
 	}
 
+	config, err := settings.GetRequiredStatusCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
+	}
+
+	cacheTTL := DefaultRulesetCacheTTL
+	if config.RulesetCacheTTL != nil {
+		cacheTTL = config.RulesetCacheTTL.Duration
+	}
+
+	cacheMaxSize := DefaultRulesetCacheMaxSize
+	if config.RulesetCacheMaxSize != nil && *config.RulesetCacheMaxSize > 0 {
+		cacheMaxSize = *config.RulesetCacheMaxSize
+	}
+
 	// Create provider based on SCM type
 	if scmProvider.GetSpec().GitHub != nil {
-		provider, err := githubscm.NewGithubBranchProtectionProvider(ctx, r.Client, scmProvider, *secret, gitRepo.Spec.GitHub.Owner)
+		provider, err := githubscm.NewGithubBranchProtectionProvider(ctx, r.Client, scmProvider, *secret, gitRepo.Spec.GitHub.Owner, cacheTTL, cacheMaxSize)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create GitHub branch protection provider: %w", err)
 		}
@@ -381,6 +507,8 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 
 // pollCheckStatusForEnvironment polls the SCM to get the status of each required check
 func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, requiredChecks []scms.BranchProtectionCheck, sha string) (map[string]promoterv1alpha1.CommitStatusPhase, error) {
+	logger := log.FromContext(ctx)
+
 	if len(requiredChecks) == 0 {
 		return map[string]promoterv1alpha1.CommitStatusPhase{}, nil
 	}
@@ -413,8 +541,16 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 				checkStatuses[check.Name] = promoterv1alpha1.CommitPhasePending
 				continue
 			}
-			// For other errors, log but continue with pending status
-			// This ensures we don't fail the entire reconciliation if one check fails
+
+			// Log the error but continue processing other checks
+			// This provides graceful degradation during transient failures (network issues, partial outages)
+			logger.Error(err, "Failed to poll check status, marking as pending for graceful degradation",
+				"check", check.Name,
+				"repo", fmt.Sprintf("%s/%s", gitRepo.Spec.GitHub.Owner, gitRepo.Spec.GitHub.Name),
+				"sha", sha)
+
+			// Mark as pending so we maintain visibility into other working checks
+			// The check will be retried on next reconciliation
 			checkStatuses[check.Name] = promoterv1alpha1.CommitPhasePending
 			continue
 		}
@@ -462,7 +598,6 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 
 		return nil
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to create or update CommitStatus: %w", err)
 	}
@@ -567,24 +702,65 @@ func (r *RequiredStatusCheckCommitStatusReconciler) cleanupOrphanedCommitStatuse
 	return nil
 }
 
-// calculateRequeueDuration calculates the dynamic requeue duration
-func (r *RequiredStatusCheckCommitStatusReconciler) calculateRequeueDuration(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus) time.Duration {
-	// Check if any environment has pending checks
+// calculateRequeueDuration calculates the dynamic requeue duration based on check status
+func (r *RequiredStatusCheckCommitStatusReconciler) calculateRequeueDuration(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus) (time.Duration, error) {
+	logger := log.FromContext(ctx)
+
+	// Get configuration (validated at startup)
+	config, err := settings.GetRequiredStatusCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
+	}
+
+	// Check the status of all environments
+	hasPendingChecks := false
+	hasAnyChecks := false
+
 	for _, env := range rsccs.Status.Environments {
+		hasAnyChecks = true
 		if env.Phase == promoterv1alpha1.CommitPhasePending {
-			// If any checks are pending, requeue after 1 minute
-			return 1 * time.Minute
+			hasPendingChecks = true
+			break
 		}
 	}
 
-	// Otherwise, use the configured polling interval
-	requeueDuration, err := settings.GetRequeueDuration[promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration](ctx, r.SettingsMgr)
-	if err != nil {
-		// Default to 5 minutes if we can't get the configuration
-		return 5 * time.Minute
+	// If no environments or checks, use safety net interval to protect against missed watch events
+	if !hasAnyChecks {
+		safetyNetInterval := DefaultSafetyNetInterval
+		if config.SafetyNetInterval != nil {
+			safetyNetInterval = config.SafetyNetInterval.Duration
+		}
+
+		if safetyNetInterval > 0 {
+			logger.V(4).Info("No checks to monitor, using safety net interval",
+				"interval", safetyNetInterval)
+			return safetyNetInterval, nil
+		}
+
+		// Safety net disabled (interval is 0) - rely entirely on watches
+		logger.Info("No checks to monitor and safety net disabled, relying on watches only")
+		return 0, nil
 	}
 
-	return requeueDuration
+	pendingInterval := DefaultPendingCheckInterval
+	if config.PendingCheckInterval != nil {
+		pendingInterval = config.PendingCheckInterval.Duration
+	}
+
+	terminalInterval := DefaultTerminalCheckInterval
+	if config.TerminalCheckInterval != nil {
+		terminalInterval = config.TerminalCheckInterval.Duration
+	}
+
+	// If any checks are pending, use aggressive polling
+	if hasPendingChecks {
+		return pendingInterval, nil
+	}
+
+	// All checks in terminal state (success/failure)
+	// Use longer interval - less likely to change
+	// Still poll to catch reruns or new check runs
+	return terminalInterval, nil
 }
 
 // triggerCTPReconciliation triggers CTP reconciliation if any environment phase changed
@@ -637,6 +813,101 @@ func (r *RequiredStatusCheckCommitStatusReconciler) triggerCTPReconciliation(ctx
 				logger.V(4).Info("Enqueued CTP for reconciliation", "ctp", ctp.Name, "branch", ctp.Spec.ActiveBranch)
 			}
 		}
+	}
+
+	return nil
+}
+
+// validateRequiredStatusCheckConfig validates the RequiredStatusCheckCommitStatus configuration
+// to prevent misconfiguration that could cause rate limiting or illogical behavior.
+func validateRequiredStatusCheckConfig(config *promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration) error {
+	const minInterval = 10 * time.Second
+	const minCacheTTL = 0 * time.Second // 0 is allowed (disables caching)
+
+	var errs []error
+
+	// Validate PendingCheckInterval
+	if config.PendingCheckInterval != nil {
+		interval := config.PendingCheckInterval.Duration
+		if interval < 0 {
+			errs = append(errs, fmt.Errorf("pendingCheckInterval must not be negative, got: %v", interval))
+		} else if interval > 0 && interval < minInterval {
+			errs = append(errs, fmt.Errorf("pendingCheckInterval must be >= %v to avoid rate limiting, got: %v", minInterval, interval))
+		}
+	}
+
+	// Validate TerminalCheckInterval
+	if config.TerminalCheckInterval != nil {
+		interval := config.TerminalCheckInterval.Duration
+		if interval < 0 {
+			errs = append(errs, fmt.Errorf("terminalCheckInterval must not be negative, got: %v", interval))
+		} else if interval > 0 && interval < minInterval {
+			errs = append(errs, fmt.Errorf("terminalCheckInterval must be >= %v to avoid rate limiting, got: %v", minInterval, interval))
+		}
+	}
+
+	// Validate interval relationships
+	if config.PendingCheckInterval != nil && config.TerminalCheckInterval != nil {
+		pendingInterval := config.PendingCheckInterval.Duration
+		terminalInterval := config.TerminalCheckInterval.Duration
+		if pendingInterval > 0 && terminalInterval > 0 && pendingInterval > terminalInterval {
+			errs = append(errs, fmt.Errorf("pendingCheckInterval (%v) should be <= terminalCheckInterval (%v) since pending checks need faster polling",
+				pendingInterval, terminalInterval))
+		}
+	}
+
+	if config.SafetyNetInterval != nil {
+		safetyNetInterval := config.SafetyNetInterval.Duration
+		if safetyNetInterval > 0 {
+			if config.PendingCheckInterval != nil {
+				pendingInterval := config.PendingCheckInterval.Duration
+				if pendingInterval > 0 && safetyNetInterval <= pendingInterval {
+					errs = append(errs, fmt.Errorf("safetyNetInterval (%v) should be > pendingCheckInterval (%v)",
+						safetyNetInterval, pendingInterval))
+				}
+			}
+			if config.TerminalCheckInterval != nil {
+				terminalInterval := config.TerminalCheckInterval.Duration
+				if terminalInterval > 0 && safetyNetInterval <= terminalInterval {
+					errs = append(errs, fmt.Errorf("safetyNetInterval (%v) should be > terminalCheckInterval (%v)",
+						safetyNetInterval, terminalInterval))
+				}
+			}
+		}
+	}
+
+	// Validate RulesetCacheTTL
+	if config.RulesetCacheTTL != nil {
+		cacheTTL := config.RulesetCacheTTL.Duration
+		if cacheTTL < minCacheTTL {
+			errs = append(errs, fmt.Errorf("rulesetCacheTTL must not be negative, got: %v", cacheTTL))
+		}
+
+		// Warn if cache TTL is unreasonably short (defeats caching purpose and may cause excessive API calls)
+		if cacheTTL > 0 && cacheTTL < minInterval {
+			errs = append(errs, fmt.Errorf("rulesetCacheTTL (%v) is very short; recommended: >= %v to avoid excessive API calls",
+				cacheTTL, minInterval))
+		}
+	}
+
+	// Validate RulesetCacheMaxSize
+	if config.RulesetCacheMaxSize != nil {
+		maxSize := *config.RulesetCacheMaxSize
+		if maxSize < 10 {
+			errs = append(errs, fmt.Errorf("rulesetCacheMaxSize is very small (%v), may cause frequent evictions; recommended: >= 100", maxSize))
+		}
+	}
+
+	if len(errs) > 0 {
+		// Combine all errors into one
+		var errMsg string
+		for i, err := range errs {
+			if i > 0 {
+				errMsg += "; "
+			}
+			errMsg += err.Error()
+		}
+		return fmt.Errorf("configuration validation failed: %s", errMsg)
 	}
 
 	return nil
