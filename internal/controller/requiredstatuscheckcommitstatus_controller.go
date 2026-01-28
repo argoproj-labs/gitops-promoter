@@ -684,12 +684,13 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 		cs.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
 		cs.Labels[promoterv1alpha1.RequiredStatusCheckCommitStatusLabel] = rsccs.Name
 
-		// Set spec
+		// Set spec with phase-appropriate description
+		description := generateRequiredCheckDescription(check.Name, phase)
 		cs.Spec = promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: ctp.Spec.RepositoryReference,
 			Sha:                 sha,
 			Name:                fmt.Sprintf("Required Check: %s", check.Name),
-			Description:         fmt.Sprintf("Required status check: %s", check.Name),
+			Description:         description,
 			Phase:               phase,
 		}
 
@@ -702,6 +703,25 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 	r.Recorder.Eventf(cs, nil, "Normal", constants.CommitStatusSetReason, "SettingStatus", "Required check %s status set to %s for hash %s", check.Name, string(phase), sha)
 
 	return cs, nil
+}
+
+// generateRequiredCheckDescription generates a phase-appropriate description for a required check
+// following the best practices for action-oriented, present-tense language
+func generateRequiredCheckDescription(checkName string, phase promoterv1alpha1.CommitStatusPhase) string {
+	switch phase {
+	case promoterv1alpha1.CommitPhasePending:
+		// Pending: Use progressive verbs (-ing) to show active monitoring
+		return fmt.Sprintf("Waiting for %s to pass", checkName)
+	case promoterv1alpha1.CommitPhaseSuccess:
+		// Success: Use present tense to describe current healthy state
+		return fmt.Sprintf("Check %s is passing", checkName)
+	case promoterv1alpha1.CommitPhaseFailure:
+		// Failure: Use present tense to describe current problem
+		return fmt.Sprintf("Check %s is failing", checkName)
+	default:
+		// Fallback for unknown phases
+		return fmt.Sprintf("Required status check: %s", checkName)
+	}
 }
 
 // generateCommitStatusName generates a unique name for a CommitStatus resource
