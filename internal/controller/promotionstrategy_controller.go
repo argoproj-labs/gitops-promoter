@@ -652,9 +652,24 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			continue
 		}
 
+		// Determine which dry SHA the current environment's hydrator has processed.
+		// The Note.DrySha (from git note) is the authoritative source because when manifests don't change
+		// between dry commits, the hydrator may only update the git note without creating a new commit.
+		// For legacy hydrators that don't use git notes, fall back to Proposed.Dry.Sha.
+		currentEnvHydratedForDrySha := getEffectiveHydratedDrySha(currentEnvironmentStatus)
+
 		// Pass all preceding environment statuses so we can look back past no-op hydrations
 		precedingEnvStatuses := ps.Status.Environments[:i]
-		isPending, pendingReason := isPreviousEnvironmentPending(precedingEnvStatuses, currentEnvironmentStatus)
+
+		// Recursively check ALL preceding environments to:
+		// 1. Check that each has been hydrated for the same dry SHA
+		// 2. Find the first environment that actually deployed this change (not a no-op)
+		// 3. Check that environment's commit statuses
+		//
+		// This handles cases like dev -> staging -> prod where:
+		// - A change affects dev and prod but staging is a no-op
+		// - We need to ensure dev has been hydrated, promoted, AND is healthy before prod can promote
+		isPending, pendingReason := isPreviousEnvironmentPending(precedingEnvStatuses, currentEnvHydratedForDrySha, currentEnvironmentStatus.Active.Dry.CommitTime)
 
 		commitStatusPhase := promoterv1alpha1.CommitPhaseSuccess
 		if isPending {
@@ -695,30 +710,6 @@ func getNoteDrySha(note *promoterv1alpha1.HydratorMetadata) string {
 	return note.DrySha
 }
 
-// isPreviousEnvironmentPending returns whether the previous environment is pending and a reason string if it is pending.
-// precedingEnvStatuses contains all environments before the current one, in order (index 0 is first env, last index is immediate previous).
-func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.EnvironmentStatus, currentEnvironmentStatus promoterv1alpha1.EnvironmentStatus) (isPending bool, reason string) {
-	if len(precedingEnvStatuses) == 0 {
-		return false, ""
-	}
-
-	// Determine which dry SHA the current environment's hydrator has processed.
-	// The Note.DrySha (from git note) is the authoritative source because when manifests don't change
-	// between dry commits, the hydrator may only update the git note without creating a new commit.
-	// For legacy hydrators that don't use git notes, fall back to Proposed.Dry.Sha.
-	currentEnvHydratedForDrySha := getEffectiveHydratedDrySha(currentEnvironmentStatus)
-
-	// Recursively check ALL preceding environments to:
-	// 1. Check that each has been hydrated for the same dry SHA
-	// 2. Find the first environment that actually deployed this change (not a no-op)
-	// 3. Check that environment's commit statuses
-	//
-	// This handles cases like dev -> staging -> prod where:
-	// - A change affects dev and prod but staging is a no-op
-	// - We need to ensure dev has been hydrated, promoted, AND is healthy before prod can promote
-	return checkPrecedingEnvironment(precedingEnvStatuses, currentEnvHydratedForDrySha, currentEnvironmentStatus.Active.Dry.CommitTime)
-}
-
 // getEffectiveHydratedDrySha returns the dry SHA that an environment's hydrator has processed.
 // Uses Note.DrySha if available (git note), otherwise falls back to Proposed.Dry.Sha (hydrator.metadata).
 func getEffectiveHydratedDrySha(envStatus promoterv1alpha1.EnvironmentStatus) string {
@@ -729,11 +720,11 @@ func getEffectiveHydratedDrySha(envStatus promoterv1alpha1.EnvironmentStatus) st
 	return envStatus.Proposed.Dry.Sha
 }
 
-// checkPrecedingEnvironment recursively checks preceding environments (from last to first) to verify:
+// isPreviousEnvironmentPending recursively checks preceding environments (from last to first) to verify:
 // 1. The environment has been hydrated for the target dry SHA
 // 2. If the environment has real changes (not a no-op), it has been promoted and is healthy
 // 3. If the environment is a no-op, recurse to check earlier environments
-func checkPrecedingEnvironment(precedingEnvStatuses []promoterv1alpha1.EnvironmentStatus, targetDrySha string, currentActiveCommitTime metav1.Time) (isPending bool, reason string) {
+func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.EnvironmentStatus, targetDrySha string, currentActiveCommitTime metav1.Time) (isPending bool, reason string) {
 	// Base case: no more environments to check - all were no-ops
 	// This is valid - e.g., a change that only affects production. Allow promotion.
 	if len(precedingEnvStatuses) == 0 {
@@ -778,7 +769,7 @@ func checkPrecedingEnvironment(precedingEnvStatuses []promoterv1alpha1.Environme
 	}
 
 	// This environment is a no-op - recurse to check earlier environments
-	return checkPrecedingEnvironment(precedingEnvStatuses[:len(precedingEnvStatuses)-1], targetDrySha, currentActiveCommitTime)
+	return isPreviousEnvironmentPending(precedingEnvStatuses[:len(precedingEnvStatuses)-1], targetDrySha, currentActiveCommitTime)
 }
 
 // checkCommitStatusesPassing checks if all commit statuses are passing and returns an appropriate

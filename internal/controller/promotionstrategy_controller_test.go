@@ -4114,7 +4114,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			return makeEnvStatusWithTime(activeDrySha, proposedDrySha, noteSha, olderTime)
 		}
 
-		// Truth table for checkPrecedingEnvironment (per environment):
+		// Truth table for isPreviousEnvironmentPending (per environment):
 		// | Hydrated | NoOp | Merged | Healthy | Result |
 		// |----------|------|--------|---------|--------|
 		// | N        | -    | -      | -       | BLOCK (hydrator) |
@@ -4129,7 +4129,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				prevEnvStatus := makeEnvStatus(prevActiveDry, prevProposedDry, prevNoteDry)
 				currEnvStatus := makeEnvStatus(currActiveDry, currProposedDry, currNoteSha)
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, currEnvStatus)
+				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
 
 				Expect(isPending).To(Equal(expectPending), "isPending mismatch")
 				if expectReasonContains != "" {
@@ -4183,7 +4183,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			}
 			currEnvStatus := makeEnvStatus("OLD", "ABC", "ABC")
 
-			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, currEnvStatus)
+			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
 
 			Expect(isPending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for previous environment's "health" commit status to be successful`))
@@ -4196,7 +4196,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 					prevEnvStatus := makeEnvStatus(prevActiveDry, prevProposedDry, "") // empty note
 					currEnvStatus := makeEnvStatus(currActiveDry, currProposedDry, "") // empty note
 
-					isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, currEnvStatus)
+					isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
 
 					Expect(isPending).To(Equal(expectPending))
 					if expectReasonContains != "" {
@@ -4245,7 +4245,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, env3)
+				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
 				Expect(reason).To(Equal("Waiting for the hydrator to finish processing the proposed dry commit"))
@@ -4256,7 +4256,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, env3)
+				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
 				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
@@ -4267,7 +4267,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, env3)
+				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
 				Expect(reason).To(Equal(`Waiting for "env1" environment's "health" commit status to be successful`))
@@ -4278,7 +4278,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, env3)
+				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeFalse())
 				Expect(reason).To(BeEmpty())
@@ -4289,7 +4289,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, env3)
+				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeFalse())
 				Expect(reason).To(BeEmpty())
@@ -4326,7 +4326,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // NOT merged (has real changes)
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, env3)
+				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
 				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
@@ -4337,7 +4337,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhasePending)) // merged, unhealthy
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, env3)
+				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeTrue())
 				Expect(reason).To(Equal(`Waiting for "env2" environment's "health" commit status to be successful`))
@@ -4348,7 +4348,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				env2 := makeEnv("env2", "ABC", "ABC", "ABC", newerTime, string(promoterv1alpha1.CommitPhaseSuccess)) // merged, healthy
 				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, env3)
+				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
 				Expect(isPending).To(BeFalse())
 				Expect(reason).To(BeEmpty())
@@ -4389,7 +4389,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 			}
 
-			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, currEnvStatus)
+			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
 
 			Expect(isPending).To(BeFalse())
 			Expect(reason).To(BeEmpty())
@@ -4427,7 +4427,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				},
 			}
 
-			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, currEnvStatus)
+			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{prevEnvStatus}, getEffectiveHydratedDrySha(currEnvStatus), currEnvStatus.Active.Dry.CommitTime)
 
 			Expect(isPending).To(BeTrue())
 			Expect(reason).To(Equal(`Waiting for "environment/staging" environment's "health" commit status to be successful`))
