@@ -15,7 +15,7 @@ function getChecks(commitStatuses: CommitStatus[]): Check[] {
   return commitStatuses.map((cs: CommitStatus) => ({
     name: cs.key,
     status: cs.phase || 'unknown',
-    details: cs.details,
+    description: cs.description,
     url: cs.url
   }));
 }
