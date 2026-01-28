@@ -29,14 +29,18 @@ import (
 // CommitStatusSpec defines the desired state of CommitStatus
 type CommitStatusSpecApplyConfiguration struct {
 	RepositoryReference *ObjectReferenceApplyConfiguration `json:"gitRepositoryRef,omitempty"`
-	Sha                 *string                            `json:"sha,omitempty"`
-	Name                *string                            `json:"name,omitempty"`
+	// SHA is the commit SHA to set the status on.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+	Sha *string `json:"sha,omitempty"`
+	// Name is the name of the commit status.
+	Name *string `json:"name,omitempty"`
 	// Description is a human-readable description of the commit status.
 	// This is shown in the SCM provider (GitHub, GitLab, etc.) as the commit status description.
 	// Use an action-oriented message to convey that the system is actively working. For example,
 	// "Waiting for approval" instead of "Approval pending."
-	Description *string                        `json:"description,omitempty"`
-	Phase       *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
+	Description *string `json:"description,omitempty"`
+	// Phase is the state of the commit status. This will be mapped to the appropriate equivalent in the SCM.
+	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
 	// Url is a URL that the user can follow to see more details about the status
 	Url *string `json:"url,omitempty"`
 }

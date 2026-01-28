@@ -25,7 +25,8 @@ import (
 // ApplicationsSelectedApplyConfiguration represents a declarative configuration of the ApplicationsSelected type for use
 // with apply.
 //
-// ApplicationsSelected represents the Argo CD applications that are selected by the commit status.
+// ApplicationsSelected represents the Argo CD applications that are selected by the commit status. The fields in this
+// struct are all required, since the controller should always fully construct this information.
 type ApplicationsSelectedApplyConfiguration struct {
 	// Namespace is the namespace of the Argo CD application.
 	Namespace *string `json:"namespace,omitempty"`
@@ -34,13 +35,14 @@ type ApplicationsSelectedApplyConfiguration struct {
 	// Phase is the current phase of the commit status.
 	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
 	// Sha is the commit SHA that this status is associated with.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	Sha *string `json:"sha,omitempty"`
 	// LastTransitionTime is the last time the phase transitioned.
 	LastTransitionTime *v1.Time `json:"lastTransitionTime,omitempty"`
 	// Environment is the syncSource.targetBranch of the Argo CD application (in effect, its environment).
 	Environment *string `json:"environment,omitempty"`
 	// ClusterName is the name of the cluster that the application manifest is deployed to. An empty string indicates
-	// the local cluster.
+	// the local cluster. There is no minimum length, since the local cluster is represented by an empty string.
 	ClusterName *string `json:"clusterName,omitempty"`
 }
 
