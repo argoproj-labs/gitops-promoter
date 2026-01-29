@@ -41,7 +41,7 @@ func NewDemoCommand() *cobra.Command {
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
-			installer, err := NewInstaller("cmd/demo/config/config.yaml")
+			installer, err := NewInstaller()
 			if err != nil {
 				return err
 			}

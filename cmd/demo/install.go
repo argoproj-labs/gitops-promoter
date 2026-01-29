@@ -15,8 +15,13 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/goccy/go-yaml"
 )
+
+// ARGOCDURL is the ArgoCD release URL template.
+const ARGOCDURL = "https://raw.githubusercontent.com/argoproj/argo-cd/%s/manifests/install-with-hydrator.yaml"
+
+// PROMOTERURL is the GitOps Promoter release URL template.
+const PROMOTERURL = "https://github.com/argoproj-labs/gitops-promoter/releases/download/%s/install.yaml"
 
 //go:embed app/app.yaml
 var appYAML []byte
@@ -24,27 +29,25 @@ var appYAML []byte
 //go:embed config/requeue-duration.yaml
 var controllerConfigYAML []byte
 
+//go:embed config/argocd_version
+var argocd_version string
+
+//go:embed config/promoter_version
+var promoter_version string
+
 // Installer handles cluster setup operations
 type Installer struct {
-	config     Config
-	configPath string
+	ArgoCDURL   string
+	PromoterURL string
 }
 
 // NewInstaller creates a new Installer with the given config path
-func NewInstaller(configPath string) (*Installer, error) {
-	content, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config: %w", err)
-	}
-
-	var config Config
-	if err := yaml.Unmarshal(content, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
-	}
-
+func NewInstaller() (*Installer, error) {
+	argoCDURL := fmt.Sprintf(ARGOCDURL, strings.TrimSpace(argocd_version))
+	promoterURL := fmt.Sprintf(PROMOTERURL, strings.TrimSpace(promoter_version))
 	return &Installer{
-		config:     config,
-		configPath: configPath,
+		ArgoCDURL:   argoCDURL,
+		PromoterURL: promoterURL,
 	}, nil
 }
 
@@ -75,8 +78,8 @@ func (i *Installer) InstallArgoCD(ctx context.Context) error {
 		return err
 	}
 
-	color.Green("Installing ArgoCD from %s...\n", i.config.ArgoCD.Upstream)
-	return i.kubectlApplyURL(ctx, i.config.ArgoCD.Upstream, "argocd", true, true)
+	color.Green("Installing ArgoCD from %s...\n", i.ArgoCDURL)
+	return i.kubectlApplyURL(ctx, i.ArgoCDURL, "argocd", true, true)
 }
 
 // InstallGitOpsPromoter installs the GitOps Promoter controller
@@ -87,12 +90,12 @@ func (i *Installer) InstallGitOpsPromoter(ctx context.Context) error {
 
 	// Download and extract CRDs first
 	color.Green("Installing GitOps Promoter CRDs...")
-	if err := i.installCRDsFromURL(ctx, i.config.GitOpsPromoter.Upstream); err != nil {
+	if err := i.installCRDsFromURL(ctx, i.PromoterURL); err != nil {
 		return fmt.Errorf("failed to install CRDs: %w", err)
 	}
 
-	color.Green("Installing GitOps Promoter from %s...\n", i.config.GitOpsPromoter.Upstream)
-	if err := i.kubectlApplyURL(ctx, i.config.GitOpsPromoter.Upstream, "", true, true); err != nil {
+	color.Green("Installing GitOps Promoter from %s...\n", i.PromoterURL)
+	if err := i.kubectlApplyURL(ctx, i.PromoterURL, "", true, true); err != nil {
 		return err
 	}
 
