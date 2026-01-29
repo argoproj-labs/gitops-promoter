@@ -50,10 +50,8 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		By("Setting up test git repository and resources")
 		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "timed-commit-status-test", "default")
 
-		// Configure ActiveCommitStatuses to check for timer commit status
-		promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "timer"},
-		}
+		// Note: No longer need to manually configure ActiveCommitStatuses for timer
+		// The TimedCommitStatus controller will auto-configure it
 
 		setupInitialTestGitRepoOnServer(ctx, name, name)
 
@@ -340,6 +338,25 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 		var timedCommitStatus *promoterv1alpha1.TimedCommitStatus
 
 		BeforeEach(func() {
+			By("Disabling auto-merge for staging to observe pending promotion state")
+			// Note: With auto-configuration, the timer commit status check isn't configured yet
+			// during BeforeEach (TimedCommitStatus resource doesn't exist yet), so PRs would
+			// auto-merge immediately. We explicitly disable auto-merge to ensure we can observe
+			// the pending promotion state (proposed != active) before the time gate transitions.
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				ps.Spec.Environments[1].AutoMerge = new(bool) // Set to false (zero value)
+				*ps.Spec.Environments[1].AutoMerge = false
+				err = k8sClient.Update(ctx, &ps)
+				g.Expect(err).NotTo(HaveOccurred(), "Should update PromotionStrategy (retries on conflict)")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			By("Creating a pending promotion in staging environment")
 			gitPath, err := os.MkdirTemp("", "*")
 			Expect(err).NotTo(HaveOccurred())
@@ -580,6 +597,188 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 					Namespace: "default",
 				}, oldCsProd)
 				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "Old production CommitStatus should be deleted")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Describe("Auto-Configuration of Timer Check", func() {
+		var timedCommitStatus *promoterv1alpha1.TimedCommitStatus
+
+		BeforeEach(func() {
+			By("Creating a TimedCommitStatus resource for development and staging")
+			timedCommitStatus = &promoterv1alpha1.TimedCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-autoconfig",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.TimedCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Environments: []promoterv1alpha1.TimedCommitStatusEnvironments{
+						{
+							Branch:   testBranchDevelopment,
+							Duration: metav1.Duration{Duration: 1 * time.Hour},
+						},
+						{
+							Branch:   testBranchStaging,
+							Duration: metav1.Duration{Duration: 2 * time.Hour},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, timedCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up TimedCommitStatus")
+			if timedCommitStatus != nil {
+				_ = k8sClient.Delete(ctx, timedCommitStatus)
+				// Wait for deletion to complete before next test
+				Eventually(func(g Gomega) {
+					var tcs promoterv1alpha1.TimedCommitStatus
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      timedCommitStatus.Name,
+						Namespace: "default",
+					}, &tcs)
+					g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "TimedCommitStatus should be deleted")
+				}, constants.EventuallyTimeout).Should(Succeed())
+			}
+		})
+
+		It("should auto-configure timer activeCommitStatus on PromotionStrategy environments", func() {
+			By("Waiting for the PromotionStrategy to have timer check auto-configured")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Verify the PromotionStrategy has environments configured
+				g.Expect(ps.Spec.Environments).To(HaveLen(3))
+
+				// Check that development environment has timer activeCommitStatus
+				found := false
+				for _, cs := range ps.Spec.Environments[0].ActiveCommitStatuses {
+					if cs.Key == promoterv1alpha1.TimerCommitStatusKey {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeTrue(), "Development environment should have timer activeCommitStatus")
+
+				// Check that staging environment has timer activeCommitStatus
+				found = false
+				for _, cs := range ps.Spec.Environments[1].ActiveCommitStatuses {
+					if cs.Key == promoterv1alpha1.TimerCommitStatusKey {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeTrue(), "Staging environment should have timer activeCommitStatus")
+
+				// Production should NOT have timer check (it's not in the TimedCommitStatus environments)
+				found = false
+				for _, cs := range ps.Spec.Environments[2].ActiveCommitStatuses {
+					if cs.Key == promoterv1alpha1.TimerCommitStatusKey {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeFalse(), "Production environment should NOT have timer activeCommitStatus")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the field is managed by the TimedCommitStatus controller")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Check that the managed fields include the TimedCommitStatus controller field owner
+				foundFieldOwner := false
+				for _, mf := range ps.ManagedFields {
+					if mf.Manager == constants.TimedCommitStatusControllerFieldOwner {
+						foundFieldOwner = true
+						break
+					}
+				}
+				g.Expect(foundFieldOwner).To(BeTrue(), "PromotionStrategy should have TimedCommitStatus controller as field owner")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should cleanup timer activeCommitStatus when TimedCommitStatus is deleted", func() {
+			By("Verifying finalizer was added during creation")
+			Eventually(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-autoconfig",
+					Namespace: "default",
+				}, &tcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(tcs.Finalizers).To(ContainElement(promoterv1alpha1.TimedCommitStatusFinalizer),
+					"TimedCommitStatus should have finalizer")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Deleting the TimedCommitStatus resource")
+			Expect(k8sClient.Delete(ctx, timedCommitStatus)).To(Succeed())
+
+			By("Verifying resource has DeletionTimestamp but is not immediately deleted (finalizer blocks it)")
+			Eventually(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-autoconfig",
+					Namespace: "default",
+				}, &tcs)
+				g.Expect(err).NotTo(HaveOccurred(), "Resource should still exist while finalizer is present")
+				g.Expect(tcs.DeletionTimestamp.IsZero()).To(BeFalse(), "DeletionTimestamp should be set")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Waiting for the PromotionStrategy to have timer check removed")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &ps)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Verify the PromotionStrategy has environments configured
+				g.Expect(ps.Spec.Environments).To(HaveLen(3))
+
+				// Check that development environment NO LONGER has timer activeCommitStatus
+				found := false
+				for _, cs := range ps.Spec.Environments[0].ActiveCommitStatuses {
+					if cs.Key == promoterv1alpha1.TimerCommitStatusKey {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeFalse(), "Development environment should NOT have timer activeCommitStatus after deletion")
+
+				// Check that staging environment NO LONGER has timer activeCommitStatus
+				found = false
+				for _, cs := range ps.Spec.Environments[1].ActiveCommitStatuses {
+					if cs.Key == promoterv1alpha1.TimerCommitStatusKey {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeFalse(), "Staging environment should NOT have timer activeCommitStatus after deletion")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the TimedCommitStatus resource is fully deleted after finalizer removal")
+			Eventually(func(g Gomega) {
+				var tcs promoterv1alpha1.TimedCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-autoconfig",
+					Namespace: "default",
+				}, &tcs)
+				g.Expect(k8serrors.IsNotFound(err)).To(BeTrue(), "TimedCommitStatus should be deleted after finalizer is removed")
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
