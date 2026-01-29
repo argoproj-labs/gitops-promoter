@@ -319,11 +319,19 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotio
 				return nil, fmt.Errorf("application %s/%s must have either spec.sourceHydrator.syncSource.targetBranch or spec.source.targetRevision configured", application.GetNamespace(), application.GetName())
 			}
 
+			// Only populate Sha when the application's sync status is Synced.
+			// When the sync status is OutOfSync or Unknown, Status.Sync.Revision may contain
+			// a branch name or other non-SHA value, so we leave it empty to avoid validation errors.
+			sha := ""
+			if application.Status.Sync.Status == argocd.SyncStatusCodeSynced {
+				sha = application.Status.Sync.Revision
+			}
+
 			argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.ApplicationsSelected{
 				Namespace:          application.GetNamespace(),
 				Name:               application.GetName(),
 				Phase:              calculateApplicationPhase(&application),
-				Sha:                application.Status.Sync.Revision,
+				Sha:                sha,
 				LastTransitionTime: application.Status.Health.LastTransitionTime,
 				Environment:        environment,
 				ClusterName:        clusterApps.ClusterName,
