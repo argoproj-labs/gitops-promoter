@@ -22,23 +22,10 @@ The Required Status Check Visibility Controller automatically discovers required
 
 ## Configuration
 
-### Enable the Feature
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: ControllerConfiguration
-metadata:
-  name: controller-configuration
-  namespace: gitops-promoter
-spec:
-  requiredStatusCheckCommitStatus:
-    enabled: true  # Global toggle for all PromotionStrategies
-```
-
-Once enabled, the feature automatically applies to all PromotionStrategies in the cluster.
-
 ### Configure Polling Intervals
 
+The controller is always enabled and automatically discovers required checks for all PromotionStrategies. You can tune the polling intervals and caching behavior:
+
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ControllerConfiguration
@@ -47,8 +34,6 @@ metadata:
   namespace: gitops-promoter
 spec:
   requiredStatusCheckCommitStatus:
-    enabled: true  # Enable the feature
-
     # Caching configuration (reduces API calls significantly)
     requiredCheckCacheTTL: "15m"        # Cache required check discovery (default: 15m)
     requiredCheckCacheMaxSize: 1000     # Max cache entries (default: 1000)
@@ -269,22 +254,10 @@ Changes to branch protection rules are detected within the cache TTL or when tri
 
 ### Feature Not Working
 
-**Problem**: Feature seems to be enabled but no CommitStatus resources are created.
+**Problem**: No CommitStatus resources are created for required checks.
 
 **Solutions**:
-1. **Verify feature is enabled globally**:
-   ```bash
-   kubectl get controllerconfiguration controller-configuration -o jsonpath='{.spec.requiredStatusCheckCommitStatus.enabled}'
-   # Should output: true
-   ```
-   If not enabled, update ControllerConfiguration:
-   ```yaml
-   spec:
-     requiredStatusCheckCommitStatus:
-       enabled: true
-   ```
-
-2. **Verify branch protection is configured** in your SCM provider:
+1. **Verify branch protection is configured** in your SCM provider:
    - **GitHub**: Verify Rulesets are configured (not classic branch protection)
    - **Other SCMs**: Verify the SCM provider is supported (currently only GitHub)
 

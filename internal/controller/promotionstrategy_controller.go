@@ -230,21 +230,16 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		}
 	}
 
-	// Add required status checks if the controller is enabled
-	config, configErr := settings.GetRequiredStatusCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
-	if configErr != nil {
-		return nil, fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", configErr)
-	}
-	if config.Enabled {
-		logger.V(4).Info("Processing required status checks for CTP",
-			"branch", environment.Branch,
-			"ctpName", ctpName)
-		// Get the RequiredStatusCheckCommitStatus for this PromotionStrategy
-		// Use ps.Name directly (not KubeSafeUniqueName) to match how RSCCS is created
-		rsccsName := ps.Name
-		rsccs := &promoterv1alpha1.RequiredStatusCheckCommitStatus{}
-		getErr := r.Get(ctx, client.ObjectKey{Name: rsccsName, Namespace: ps.Namespace}, rsccs)
-		if getErr == nil {
+	// Add required status checks automatically
+	logger.V(4).Info("Processing required status checks for CTP",
+		"branch", environment.Branch,
+		"ctpName", ctpName)
+	// Get the RequiredStatusCheckCommitStatus for this PromotionStrategy
+	// Use ps.Name directly (not KubeSafeUniqueName) to match how RSCCS is created
+	rsccsName := ps.Name
+	rsccs := &promoterv1alpha1.RequiredStatusCheckCommitStatus{}
+	getErr := r.Get(ctx, client.ObjectKey{Name: rsccsName, Namespace: ps.Namespace}, rsccs)
+	if getErr == nil {
 			logger.V(4).Info("Found RSCCS, checking environments",
 				"rsccsName", rsccsName,
 				"numEnvironments", len(rsccs.Status.Environments),
@@ -287,11 +282,10 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 			logger.Error(getErr, "Failed to get RequiredStatusCheckCommitStatus",
 				"name", rsccsName,
 				"namespace", ps.Namespace)
-		} else {
-			logger.V(4).Info("RSCCS not found",
-				"name", rsccsName,
-				"namespace", ps.Namespace)
-		}
+	} else {
+		logger.V(4).Info("RSCCS not found",
+			"name", rsccsName,
+			"namespace", ps.Namespace)
 	}
 
 	// Build the spec

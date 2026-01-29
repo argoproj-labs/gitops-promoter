@@ -121,18 +121,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Contex
 	// Remove any existing Ready condition. We want to start fresh.
 	meta.RemoveStatusCondition(rsccs.GetConditions(), string(promoterConditions.Ready))
 
-	// 2. Check if the controller is enabled in controller configuration
-	config, err := settings.GetRequiredStatusCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
-	}
-
-	if !config.Enabled {
-		logger.Info("RequiredStatusCheckCommitStatus controller is disabled, skipping reconciliation")
-		return ctrl.Result{}, nil
-	}
-
-	// 3. Fetch the referenced PromotionStrategy
+	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
 	psKey := client.ObjectKey{
 		Namespace: rsccs.Namespace,
@@ -148,7 +137,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Contex
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", rsccs.Spec.PromotionStrategyRef.Name, err)
 	}
 
-	// 4. Get all ChangeTransferPolicies for this PromotionStrategy
+	// 3. Get all ChangeTransferPolicies for this PromotionStrategy
 	var ctpList promoterv1alpha1.ChangeTransferPolicyList
 	err = r.List(ctx, &ctpList, &client.ListOptions{
 		Namespace: ps.Namespace,
@@ -171,28 +160,28 @@ func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Contex
 		previousStatus = &promoterv1alpha1.RequiredStatusCheckCommitStatusStatus{}
 	}
 
-	// 5. Process each environment and create/update CommitStatus resources
+	// 4. Process each environment and create/update CommitStatus resources
 	commitStatuses, err := r.processEnvironments(ctx, &rsccs, &ps, relevantCTPs)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
 
-	// 6. Clean up orphaned CommitStatus resources
+	// 5. Clean up orphaned CommitStatus resources
 	err = r.cleanupOrphanedCommitStatuses(ctx, &rsccs, commitStatuses)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
 	}
 
-	// 7. Inherit conditions from CommitStatus objects
+	// 6. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&rsccs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// 8. Trigger CTP reconciliation if any environment phase changed
+	// 7. Trigger CTP reconciliation if any environment phase changed
 	err = r.triggerCTPReconciliation(ctx, &ps, previousStatus, &rsccs.Status)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to trigger CTP reconciliation: %w", err)
 	}
 
-	// 9. Calculate dynamic requeue duration
+	// 8. Calculate dynamic requeue duration
 	requeueDuration, err := r.calculateRequeueDuration(ctx, &rsccs)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to calculate requeue duration: %w", err)

@@ -32,12 +32,6 @@ type RequiredStatusCheckCommitStatusConfigurationApplyConfiguration struct {
 	// WorkQueue contains the work queue configuration for the RequiredStatusCheckCommitStatus controller.
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	WorkQueue *WorkQueueApplyConfiguration `json:"workQueue,omitempty"`
-	// Enabled controls whether the RequiredStatusCheckCommitStatus controller is active.
-	// When enabled, the controller discovers required status checks from the SCM provider's
-	// protection rules and creates CommitStatus resources for each, providing
-	// visibility into what checks are blocking PR merges.
-	// Defaults to false.
-	Enabled *bool `json:"enabled,omitempty"`
 	// RequiredCheckCacheTTL is how long to cache required check discovery results.
 	// Required checks change infrequently, so caching reduces API calls significantly.
 	// Set to "0s" to disable caching (not recommended).
@@ -77,14 +71,6 @@ func RequiredStatusCheckCommitStatusConfiguration() *RequiredStatusCheckCommitSt
 // If called multiple times, the WorkQueue field is set to the value of the last call.
 func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration {
 	b.WorkQueue = value
-	return b
-}
-
-// WithEnabled sets the Enabled field in the declarative configuration to the given value
-// and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the Enabled field is set to the value of the last call.
-func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithEnabled(value bool) *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration {
-	b.Enabled = &value
 	return b
 }
 

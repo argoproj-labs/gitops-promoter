@@ -171,15 +171,6 @@ type RequiredStatusCheckCommitStatusConfiguration struct {
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
 
-	// Enabled controls whether the RequiredStatusCheckCommitStatus controller is active.
-	// When enabled, the controller discovers required status checks from the SCM provider's
-	// protection rules and creates CommitStatus resources for each, providing
-	// visibility into what checks are blocking PR merges.
-	// Defaults to false.
-	// +optional
-	// +kubebuilder:default=false
-	Enabled bool `json:"enabled,omitempty"`
-
 	// RequiredCheckCacheTTL is how long to cache required check discovery results.
 	// Required checks change infrequently, so caching reduces API calls significantly.
 	// Set to "0s" to disable caching (not recommended).
