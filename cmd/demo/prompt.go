@@ -234,6 +234,7 @@ Required Repository Permissions:
 After Creation:
   1. Copy the App ID from the top of the app settings page
   2. Generate a Private Key (downloads a .pem file)
+  3. Once the app is created. Go to Install app and install it in your account.
 
 Create at: https://github.com/settings/apps/new
 `)
