@@ -112,6 +112,9 @@ func (i *Installer) installCRDsFromURL(ctx context.Context, url string) error {
 	if err != nil {
 		return fmt.Errorf("failed to download manifest: %w", err)
 	}
+	if resp == nil {
+		return errors.New("received nil response from server")
+	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			setupLog.Error(closeErr, "failed to close response body")
