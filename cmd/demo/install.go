@@ -173,7 +173,7 @@ func (i *Installer) PatchArgoCD(ctx context.Context) error {
 		return fmt.Errorf("kubectl patch failed: %w", err)
 	}
 
-	color.Green("ArgoCD patched successfully ✓")
+	color.Green("Argo CD patched successfully ✓")
 	return nil
 }
 
