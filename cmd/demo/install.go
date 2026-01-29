@@ -82,12 +82,61 @@ func (i *Installer) InstallGitOpsPromoter(ctx context.Context) error {
 		return err
 	}
 
+	// Download and extract CRDs first
+	color.Green("Installing GitOps Promoter CRDs...")
+	if err := i.installCRDsFromURL(ctx, i.config.GitOpsPromoter.Upstream); err != nil {
+		return fmt.Errorf("failed to install CRDs: %w", err)
+	}
+
 	color.Green("Installing GitOps Promoter from %s...\n", i.config.GitOpsPromoter.Upstream)
-	if err := i.kubectlApplyURL(ctx, i.config.GitOpsPromoter.Upstream, "", false); err != nil {
+	if err := i.kubectlApplyURL(ctx, i.config.GitOpsPromoter.Upstream, "", true); err != nil {
 		return err
 	}
 
 	color.Green("GitOps Promoter installed ✓")
+	return nil
+}
+
+// installCRDsFromURL downloads a manifest URL and applies only CRD resources
+func (i *Installer) installCRDsFromURL(ctx context.Context, url string) error {
+	// Download the manifest
+	cmd := exec.CommandContext(ctx, "curl", "-sL", url)
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to download manifest: %w", err)
+	}
+
+	// Split into individual YAML documents and filter CRDs
+	var crds []string
+	docs := strings.Split(string(output), "\n---")
+	for _, doc := range docs {
+		doc = strings.TrimSpace(doc)
+		if doc == "" {
+			continue
+		}
+		// Check if this document is a CRD
+		if strings.Contains(doc, "kind: CustomResourceDefinition") {
+			crds = append(crds, doc)
+		}
+	}
+
+	if len(crds) == 0 {
+		return fmt.Errorf("no CRDs found in manifest")
+	}
+
+	// Apply CRDs with server-side apply
+	crdManifest := strings.Join(crds, "\n---\n")
+	args := []string{"apply", "--server-side", "-f", "-"}
+	kubectlCmd := exec.CommandContext(ctx, "kubectl", args...)
+	kubectlCmd.Stdin = strings.NewReader(crdManifest)
+	kubectlCmd.Stdout = os.Stdout
+	kubectlCmd.Stderr = os.Stderr
+
+	if err := kubectlCmd.Run(); err != nil {
+		return fmt.Errorf("kubectl apply CRDs failed: %w", err)
+	}
+
+	color.Green("CRDs installed ✓")
 	return nil
 }
 
