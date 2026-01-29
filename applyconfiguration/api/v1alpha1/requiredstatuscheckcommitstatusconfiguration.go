@@ -30,7 +30,14 @@ import (
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type RequiredStatusCheckCommitStatusConfigurationApplyConfiguration struct {
 	// WorkQueue contains the work queue configuration for the RequiredStatusCheckCommitStatus controller.
-	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	//
+	// IMPORTANT: The RequeueDuration field in WorkQueue is NOT used by this controller.
+	// This controller uses adaptive requeue intervals based on check status:
+	// - PendingCheckInterval: when checks are pending (default: 1m)
+	// - TerminalCheckInterval: when checks are in terminal state (default: 10m)
+	// - SafetyNetInterval: when no checks exist (default: 1h)
+	//
+	// Only MaxConcurrentReconciles and RateLimiter from WorkQueue are used.
 	WorkQueue *WorkQueueApplyConfiguration `json:"workQueue,omitempty"`
 	// RequiredCheckCacheTTL is how long to cache required check discovery results.
 	// Required checks change infrequently, so caching reduces API calls significantly.

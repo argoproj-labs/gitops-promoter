@@ -167,7 +167,14 @@ type GitCommitStatusConfiguration struct {
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
 type RequiredStatusCheckCommitStatusConfiguration struct {
 	// WorkQueue contains the work queue configuration for the RequiredStatusCheckCommitStatus controller.
-	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+	//
+	// IMPORTANT: The RequeueDuration field in WorkQueue is NOT used by this controller.
+	// This controller uses adaptive requeue intervals based on check status:
+	//   - PendingCheckInterval: when checks are pending (default: 1m)
+	//   - TerminalCheckInterval: when checks are in terminal state (default: 10m)
+	//   - SafetyNetInterval: when no checks exist (default: 1h)
+	//
+	// Only MaxConcurrentReconciles and RateLimiter from WorkQueue are used.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
 
