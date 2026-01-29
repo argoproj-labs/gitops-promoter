@@ -330,7 +330,8 @@ func HandleReconciliationResult(
 	// This can help when the failure is due to validation errors in other status fields.
 	logger.V(4).Info("Full status update failed, attempting fallback to update only status condition", "error", updateErr)
 
-	// Get a fresh copy of the object from the API server to avoid using tainted data
+	// Get a fresh copy of the object from the API server to avoid using data that caused the original update failure.
+	// (For example, a status field that didn't pass validation.)
 	//nolint:forcetypeassert // Type assertion is guaranteed to succeed for all CRDs in this codebase.
 	freshObj := obj.DeepCopyObject().(StatusConditionUpdater)
 	objectKey := types.NamespacedName{
@@ -370,10 +371,10 @@ func HandleReconciliationResult(
 	if fallbackErr != nil {
 		// Fallback also failed, report both errors
 		if *err == nil {
-			*err = fmt.Errorf("failed to update status (original error: %w), updating only the Ready condition also failed: %w", updateErr, fallbackErr)
+			*err = fmt.Errorf("failed to update status (original error: %w), and updating only the Ready condition also failed: %w", updateErr, fallbackErr)
 		} else {
 			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-			*err = fmt.Errorf("failed to update status with error condition with error %q (original status update error: %w), updating only the Ready condition also failed: %w", *err, updateErr, fallbackErr)
+			*err = fmt.Errorf("failed to update status with error condition regarding error %q (original status update error: %w), and updating only the Ready condition also failed: %w", *err, updateErr, fallbackErr)
 		}
 		return
 	}
@@ -381,10 +382,10 @@ func HandleReconciliationResult(
 	// Fallback succeeded, but report the original status update failure
 	logger.Info("Successfully updated only the Ready condition after full status update failed")
 	if *err == nil {
-		*err = fmt.Errorf("failed to update full status (updating only the Ready condition succeeded): %w", updateErr)
+		*err = fmt.Errorf("failed to update full status (but updating only the Ready condition succeeded): %w", updateErr)
 	} else {
 		//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-		*err = fmt.Errorf("failed to update status with error condition with error %q (updating only the Ready condition succeeded): %w", *err, updateErr)
+		*err = fmt.Errorf("failed to update status with error condition regarding error %q (but updating only the Ready condition succeeded): %w", *err, updateErr)
 	}
 }
 
