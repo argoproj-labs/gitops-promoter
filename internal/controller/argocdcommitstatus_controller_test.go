@@ -505,14 +505,15 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 			// Step 3: Simulate a new commit being detected
 			// Update the Application with OutOfSync status
-			// In real Argo CD, when a new commit is detected, the sync status changes to OutOfSync
-			// but the Revision field stays at the old SHA until the sync completes.
+			// In some cases, when the sync status changes to OutOfSync, Argo CD may set
+			// the Revision field to a branch name instead of a SHA (the original bug scenario).
 			// (Application CRD has no status subresource, so Argo CD patches the whole CR)
 			appToUpdate := &argocd.Application{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: "test-app-sync-bug", Namespace: "default"}, appToUpdate)
 			Expect(err).ToNot(HaveOccurred())
 
-			// Revision stays at old SHA, status changes to OutOfSync
+			// Set revision to branch name (the bug scenario), status changes to OutOfSync
+			appToUpdate.Status.Sync.Revision = testBranchStaging
 			appToUpdate.Status.Sync.Status = argocd.SyncStatusCodeOutOfSync
 			// Health status and LastTransitionTime remain unchanged (no health checks)
 			appToUpdate.Status.Health.Status = argocd.HealthStatusHealthy
@@ -522,7 +523,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			// Step 4: Verify OutOfSync state is recorded (Healthy + OutOfSync = Pending)
-			// Since sync status is OutOfSync, the SHA field should be empty
+			// Since sync status is OutOfSync (and revision is a branch name), the SHA field should be empty
 			Eventually(func(g Gomega) {
 				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, updated)
