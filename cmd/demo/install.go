@@ -76,7 +76,7 @@ func (i *Installer) InstallArgoCD(ctx context.Context) error {
 	}
 
 	color.Green("Installing ArgoCD from %s...\n", i.config.ArgoCD.Upstream)
-	return i.kubectlApplyURL(ctx, i.config.ArgoCD.Upstream, "argocd", true)
+	return i.kubectlApplyURL(ctx, i.config.ArgoCD.Upstream, "argocd", true, true)
 }
 
 // InstallGitOpsPromoter installs the GitOps Promoter controller
@@ -92,7 +92,7 @@ func (i *Installer) InstallGitOpsPromoter(ctx context.Context) error {
 	}
 
 	color.Green("Installing GitOps Promoter from %s...\n", i.config.GitOpsPromoter.Upstream)
-	if err := i.kubectlApplyURL(ctx, i.config.GitOpsPromoter.Upstream, "", true); err != nil {
+	if err := i.kubectlApplyURL(ctx, i.config.GitOpsPromoter.Upstream, "", true, true); err != nil {
 		return err
 	}
 
@@ -318,10 +318,13 @@ func (i *Installer) runKubectl(ctx context.Context, args ...string) error {
 	return nil
 }
 
-func (i *Installer) kubectlApplyURL(ctx context.Context, url, namespace string, serverSide bool) error {
+func (i *Installer) kubectlApplyURL(ctx context.Context, url, namespace string, serverSide bool, forceConflicts bool) error {
 	args := []string{"apply"}
 	if serverSide {
 		args = append(args, "--server-side")
+	}
+	if forceConflicts {
+		args = append(args, "--force-conflicts")
 	}
 	if namespace != "" {
 		args = append(args, "-n", namespace)
