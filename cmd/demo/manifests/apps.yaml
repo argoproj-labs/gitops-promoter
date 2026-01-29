@@ -18,7 +18,7 @@ spec:
       targetRevision: HEAD
       helm:
         valueFiles:
-          - dev-values.yaml
+          - values.yaml
     hydrateTo:
       targetBranch: environment/development-next
     syncSource:
@@ -52,6 +52,7 @@ spec:
       targetRevision: HEAD
       helm:
         valueFiles:
+          - values.yaml
           - staging-values.yaml
     hydrateTo:
       targetBranch: environment/staging-next
