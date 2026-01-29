@@ -104,11 +104,21 @@ For example:
 - GitHub check: `ci-tests` → CommitStatus: `github-ci-tests-abc12345`
 - GitHub check: `security/scan` → CommitStatus: `github-security-scan-def67890`
 
-The CommitStatus label (used in ChangeTransferPolicy selectors) follows the format `{provider}-{checkname}`:
+The CommitStatus label (used in ChangeTransferPolicy selectors) follows the format `{provider}-{checkname}` (or `{provider}-{checkname}-{appID}` when multiple checks have the same name):
 - GitHub check: `ci-tests` → Label: `github-ci-tests`
 - GitLab check: `build` → Label: `gitlab-build`
+- GitHub check: `smoke` from GitHub App 15368 → Label: `github-smoke-15368` (when duplicates exist)
 
-You can list them with:
+**Duplicate Detection:**
+
+When multiple required checks have the same name but must come from different GitHub Apps, the controller automatically appends the GitHub App ID to make them unique:
+- Check `smoke` from any app → `github-smoke` (if no duplicates)
+- Check `smoke` from GitHub App 15368 → `github-smoke-15368` (if duplicates exist)
+- Check `smoke` from GitHub App 98765 → `github-smoke-98765` (if duplicates exist)
+
+This allows you to require the same check name from different sources (e.g., `lint` from both GitHub Actions and a custom GitHub App).
+
+You can list all required check CommitStatus resources with:
 
 ```bash
 kubectl get commitstatus -l promoter.argoproj.io/required-status-check-commit-status
@@ -133,13 +143,18 @@ status:
       sha: abc123def456
       phase: pending
       requiredChecks:
-        - provider: github
-          name: ci-tests
+        - name: ci-tests
+          key: github-ci-tests
           phase: success
-        - provider: github
-          name: security-scan
+        - name: security-scan
+          key: github-security-scan
           phase: pending
+        - name: smoke
+          key: github-smoke-15368
+          phase: success
 ```
+
+**Note**: The `key` field shows the computed label used in ChangeTransferPolicy selectors. When multiple checks have the same name, the GitHub App ID is appended (e.g., `github-smoke-15368`).
 
 ### List All CommitStatus Resources for Required Checks
 

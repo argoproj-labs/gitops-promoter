@@ -26,7 +26,7 @@ type RequiredCheckProvider interface {
 	//   - ctx: Context for the request
 	//   - repo: The GitRepository to query
 	//   - sha: The commit SHA to check status for
-	//   - check: The check to poll (includes name and optional IntegrationID)
+	//   - check: The check to poll (includes name and computed key)
 	//
 	// Returns the current phase (Success, Failure, Pending) of the check.
 	// Returns CommitPhasePending if the check has not yet been reported.
@@ -36,24 +36,30 @@ type RequiredCheckProvider interface {
 
 // RequiredCheck represents a required status check discovered from protection rules.
 type RequiredCheck struct {
-	// Provider is the SCM provider name (e.g., "github", "gitlab", "bitbucket").
-	// This is used to generate user-friendly check labels in the format: {provider}-{name}.
-	// If not set, defaults to "required-status-check".
-	Provider string
-
-	// Name is the check identifier (e.g., "ci-tests", "security-scan", "build/linux")
+	// Name is the raw check identifier from the SCM (e.g., "smoke", "lint", "e2e-test").
+	// This is the check name as it appears in the SCM protection rules.
 	Name string
 
-	// IntegrationID is the SCM application/integration identifier that must provide this check.
-	// This is used to distinguish between multiple checks with the same name
-	// from different applications or integrations.
-	// A nil value means any application can provide the check.
+	// Key is the computed label key in the format "{provider}-{name}" or "{provider}-{name}-{appID}".
+	// This is the value that will be used as the CommitStatus label and selector key.
+	// The provider (e.g., "github") detects duplicates and adds the integration ID suffix only when needed.
 	//
-	// SCM provider-specific interpretations:
-	// - GitHub: GitHub App ID as string (e.g., "15368" for GitHub Actions)
-	// - GitLab: Context/name identifier (e.g., "bundler:audit", "test")
-	// - Bitbucket: Build key identifier (e.g., "BAMBOO-PLAN", "jenkins-build")
-	IntegrationID *string
+	// Examples:
+	//   - Single check: Name="smoke" → Key="github-smoke"
+	//   - Duplicate with integration ID: Name="smoke" → Key="github-smoke-15368"
+	//   - Duplicate without integration ID: Name="smoke" → Key="github-smoke"
+	Key string
+
+	// ExternalRef is an opaque, complete reference used by the SCM provider for API calls.
+	// This is an internal field that contains everything the provider needs to uniquely
+	// identify and query the check status. The format is provider-specific.
+	// This should never be exposed in Kubernetes API types.
+	//
+	// Examples:
+	//   - GitHub: "check-name" or "check-name:app-id" (e.g., "smoke", "smoke:15368")
+	//   - GitLab: "pipeline-id:check-name" or similar
+	//   - Bitbucket: "build-key:check-name" or similar
+	ExternalRef string
 }
 
 // Error constants for required check operations

@@ -52,9 +52,10 @@ type RequiredStatusCheckEnvironmentStatus struct {
 	// +required
 	Sha string `json:"sha"`
 
-	// RequiredChecks lists all required checks discovered from SCM protection rules
-	// Multiple checks can have the same name but different integration IDs
-	// +listType=atomic
+	// RequiredChecks lists all required checks discovered from SCM protection rules.
+	// Each check has a unique Key field that serves as the identifier.
+	// +listType=map
+	// +listMapKey=key
 	// +optional
 	RequiredChecks []RequiredCheckStatus `json:"requiredChecks,omitempty"`
 
@@ -66,20 +67,15 @@ type RequiredStatusCheckEnvironmentStatus struct {
 
 // RequiredCheckStatus defines the status of a single required check.
 type RequiredCheckStatus struct {
-	// Provider is the SCM provider name (e.g., "github", "gitlab", "bitbucket").
-	// Used to generate user-friendly check labels in the format: {provider}-{name}.
-	// If not set, defaults to "required-status-check".
-	// +optional
-	Provider string `json:"provider,omitempty"`
-
-	// Name is the check name
+	// Name is the raw check identifier from the SCM (e.g., "smoke", "lint", "e2e-test")
 	// +required
 	Name string `json:"name"`
 
-	// IntegrationID is the SCM application/integration identifier that must provide this check.
-	// A nil value means any application can provide the check.
-	// +optional
-	IntegrationID *string `json:"integrationId,omitempty"`
+	// Key is the computed label key in the format "{provider}-{name}" or "{provider}-{name}-{appID}".
+	// This is the value used as the CommitStatus label and selector key.
+	// Examples: "github-smoke", "github-smoke-15368", "github-lint"
+	// +required
+	Key string `json:"key"`
 
 	// Phase is the current phase of this check
 	// +kubebuilder:validation:Enum=pending;success;failure

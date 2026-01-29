@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/go-github/v71/github"
@@ -79,8 +80,13 @@ func (rc *RequiredCheck) DiscoverRequiredChecks(ctx context.Context, repo *promo
 		return nil, fmt.Errorf("failed to get branch rules: %w", err)
 	}
 
+	type checkRef struct {
+		name  string
+		appID *int64
+	}
+
 	// Extract required status checks from BranchRules
-	var requiredChecks []scms.RequiredCheck
+	var rawChecks []checkRef
 	if rules != nil && rules.RequiredStatusChecks != nil {
 		for _, ruleStatusCheck := range rules.RequiredStatusChecks {
 			if ruleStatusCheck.Parameters.RequiredStatusChecks != nil {
@@ -88,27 +94,50 @@ func (rc *RequiredCheck) DiscoverRequiredChecks(ctx context.Context, repo *promo
 					if check.Context != "" {
 						// Note: GitHub Rulesets API uses "context" (from older Commit Status API)
 						// while Check Runs API uses "name". Both refer to the same check identifier.
-						// We map it to "Name" in our generic interface.
 
-						// Convert GitHub's int64 IntegrationID to string
 						// Note: GitHub Rulesets API uses "integration_id" (legacy name from when
 						// GitHub Apps were called "GitHub Integrations"). The Check Runs API uses
 						// "app_id". Both refer to the same GitHub App numeric identifier.
-						var integrationID *string
-						if check.IntegrationID != nil {
-							idStr := strconv.FormatInt(*check.IntegrationID, 10)
-							integrationID = &idStr
-						}
-
-						requiredChecks = append(requiredChecks, scms.RequiredCheck{
-							Provider:      "github",
-							Name:          check.Context,
-							IntegrationID: integrationID,
+						rawChecks = append(rawChecks, checkRef{
+							name:  check.Context,
+							appID: check.IntegrationID,
 						})
 					}
 				}
 			}
 		}
+	}
+
+	// Detect duplicates and generate computed keys
+	// Group checks by name to detect duplicates
+	checksByName := make(map[string][]checkRef)
+	for _, check := range rawChecks {
+		checksByName[check.name] = append(checksByName[check.name], check)
+	}
+
+	// Generate the Key field based on whether duplicates exist
+	var requiredChecks []scms.RequiredCheck
+	for _, check := range rawChecks {
+		hasDuplicates := len(checksByName[check.name]) > 1
+		key := fmt.Sprintf("github-%s", check.name)
+
+		// If duplicates exist and this check has an integration ID, append it
+		if hasDuplicates && check.appID != nil {
+			key = fmt.Sprintf("%s-%d", key, *check.appID)
+		}
+
+		// Store complete reference in ExternalRef for API calls (used in PollCheckStatus)
+		// Format: "check-name" or "check-name:integration-id"
+		externalRef := check.name
+		if check.appID != nil {
+			externalRef = fmt.Sprintf("%s:%d", check.name, *check.appID)
+		}
+
+		requiredChecks = append(requiredChecks, scms.RequiredCheck{
+			Name:        check.name,
+			Key:         key,
+			ExternalRef: externalRef,
+		})
 	}
 
 	logger.V(4).Info("Discovered required checks",
@@ -133,15 +162,17 @@ func (rc *RequiredCheck) PollCheckStatus(ctx context.Context, repo *promoterv1al
 	owner := repo.Spec.GitHub.Owner
 	name := repo.Spec.GitHub.Name
 
-	// Convert string IntegrationID back to int64 for GitHub API
-	// Note: The Check Runs API parameter is called "app_id" while the Rulesets API
-	// returns "integration_id". Both refer to the same GitHub App numeric identifier.
-	// We store it as a string in the generic interface to support other SCM providers.
+	// Parse ExternalRef to extract check name and optional app ID
+	// Format: "check-name" or "check-name:app-id"
+	checkName := check.ExternalRef
 	var appID *int64
-	if check.IntegrationID != nil {
-		id, err := strconv.ParseInt(*check.IntegrationID, 10, 64)
-		if err != nil {
-			logger.Error(err, "failed to parse IntegrationID as int64", "integrationID", *check.IntegrationID)
+
+	if parts := strings.Split(check.ExternalRef, ":"); len(parts) == 2 {
+		checkName = parts[0]
+		if id, err := strconv.ParseInt(parts[1], 10, 64); err != nil {
+			logger.Error(err, "failed to parse app ID from ExternalRef",
+				"externalRef", check.ExternalRef,
+				"appIDPart", parts[1])
 		} else {
 			appID = &id
 		}
@@ -151,7 +182,7 @@ func (rc *RequiredCheck) PollCheckStatus(ctx context.Context, repo *promoterv1al
 	// Note: Check Runs API uses "check_name" parameter and "name" field, while
 	// Rulesets API uses "context". Both refer to the same check identifier.
 	opts := &github.ListCheckRunsOptions{
-		CheckName: github.Ptr(check.Name),
+		CheckName: github.Ptr(checkName),
 		AppID:     appID,
 		ListOptions: github.ListOptions{
 			PerPage: 100, // Maximum per page
@@ -182,7 +213,7 @@ func (rc *RequiredCheck) PollCheckStatus(ctx context.Context, repo *promoterv1al
 
 		if err != nil {
 			// Note: GitHub returns 200 OK with empty array when no runs exist yet (not 404)
-			return promoterv1alpha1.CommitPhasePending, fmt.Errorf("failed to list check runs for %s: %w", check.Name, err)
+			return promoterv1alpha1.CommitPhasePending, fmt.Errorf("failed to list check runs for %s: %w", checkName, err)
 		}
 
 		if checkRuns != nil && len(checkRuns.CheckRuns) > 0 {

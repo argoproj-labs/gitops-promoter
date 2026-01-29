@@ -253,8 +253,8 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 						"numRequiredChecks", len(envStatus.RequiredChecks))
 					// Add a CommitStatusSelector for each required check
 					for _, requiredCheck := range envStatus.RequiredChecks {
-						// The key matches the CommitStatus label that the RSCCS controller creates
-						checkKey := getRequiredCheckLabelKey(requiredCheck.Provider, requiredCheck.Name)
+						// Use the pre-computed key from the check (e.g., "github-smoke" or "github-smoke-15368")
+						checkKey := requiredCheck.Key
 						// Check if already present
 						alreadyPresent := false
 						for _, cs := range proposedCommitStatuses {
@@ -279,7 +279,6 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 				}
 			}
 		} else if !k8serrors.IsNotFound(getErr) {
-			// Log non-NotFound errors
 			logger.Error(getErr, "Failed to get RequiredStatusCheckCommitStatus",
 				"name", rsccsName,
 				"namespace", ps.Namespace)

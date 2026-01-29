@@ -433,7 +433,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 		// Create/update CommitStatus resources for each check
 		var envCheckStatuses []promoterv1alpha1.RequiredCheckStatus
 		for _, check := range requiredChecks {
-			phase, ok := checkStatuses[check.Name]
+			phase, ok := checkStatuses[check.Key]
 			if !ok {
 				// If we couldn't get the status, default to pending
 				phase = promoterv1alpha1.CommitPhasePending
@@ -442,7 +442,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 			cs, err := r.updateCommitStatusForCheck(ctx, rsccs, ctp, env.Branch, check, proposedSha, phase)
 			if err != nil {
 				logger.Error(err, "failed to update CommitStatus",
-					"check", check.Name,
+					"check", check.Key,
 					"repository", ps.Spec.RepositoryReference.Name,
 					"branch", env.Branch,
 					"sha", proposedSha)
@@ -452,10 +452,9 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 
 			commitStatuses = append(commitStatuses, cs)
 			envCheckStatuses = append(envCheckStatuses, promoterv1alpha1.RequiredCheckStatus{
-				Provider:      check.Provider,
-				Name:          check.Name,
-				IntegrationID: check.IntegrationID,
-				Phase:         phase,
+				Name:  check.Name,
+				Key:   check.Key,
+				Phase: phase,
 			})
 		}
 
@@ -638,7 +637,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 		if err != nil {
 			if err == scms.ErrNotSupported {
 				// If not supported, default to pending
-				checkStatuses[check.Name] = promoterv1alpha1.CommitPhasePending
+				checkStatuses[check.Key] = promoterv1alpha1.CommitPhasePending
 				continue
 			}
 
@@ -646,15 +645,16 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 			// This provides graceful degradation during transient failures (network issues, partial outages)
 			logger.Error(err, "Failed to poll check status, marking as pending for graceful degradation",
 				"check", check.Name,
+				"key", check.Key,
 				"repository", gitRepo.Name,
 				"sha", sha)
 
 			// Mark as pending so we maintain visibility into other working checks
 			// The check will be retried on next reconciliation
-			checkStatuses[check.Name] = promoterv1alpha1.CommitPhasePending
+			checkStatuses[check.Key] = promoterv1alpha1.CommitPhasePending
 			continue
 		}
-		checkStatuses[check.Name] = phase
+		checkStatuses[check.Key] = phase
 	}
 
 	return checkStatuses, nil
@@ -662,11 +662,11 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 
 // updateCommitStatusForCheck creates or updates a CommitStatus resource for a required check
 func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ctp *promoterv1alpha1.ChangeTransferPolicy, branch string, check scms.RequiredCheck, sha string, phase promoterv1alpha1.CommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
-	labelKey := getRequiredCheckLabelKey(check.Provider, check.Name)
+	// Use the pre-computed key from the check (e.g., "github-smoke" or "github-smoke-15368")
+	labelKey := check.Key
 
 	// Generate CommitStatus name with hash for uniqueness
-	// Include integration ID in hash to support multiple checks with same name
-	name := generateCommitStatusName(labelKey, branch, check.IntegrationID)
+	name := generateCommitStatusName(labelKey, branch)
 
 	cs := &promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
@@ -730,19 +730,16 @@ func generateRequiredCheckDescription(checkName string, phase promoterv1alpha1.C
 }
 
 // generateCommitStatusName generates a unique name for a CommitStatus resource
-// Includes integration ID in hash to support multiple checks with same name
-func generateCommitStatusName(checkName string, branch string, integrationID *string) string {
-	// Create a hash of the check name, branch, and integration ID to ensure uniqueness
+// The checkKey already includes integration ID suffix if needed (e.g., "github-smoke-15368")
+func generateCommitStatusName(checkKey string, branch string) string {
+	// Create a hash of the check key and branch to ensure uniqueness
 	h := sha256.New()
-	hashInput := checkName + "-" + branch
-	if integrationID != nil {
-		hashInput += "-" + *integrationID
-	}
+	hashInput := checkKey + "-" + branch
 	h.Write([]byte(hashInput))
 	hash := fmt.Sprintf("%x", h.Sum(nil))[:8]
 
-	// Normalize the check name to be a valid Kubernetes name
-	normalized := strings.ToLower(checkName)
+	// Normalize the check key to be a valid Kubernetes name
+	normalized := strings.ToLower(checkKey)
 	normalized = strings.ReplaceAll(normalized, "/", "-")
 	normalized = strings.ReplaceAll(normalized, "_", "-")
 	normalized = strings.ReplaceAll(normalized, ".", "-")

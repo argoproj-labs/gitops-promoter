@@ -146,19 +146,21 @@ spec:
                       type: string
                     requiredChecks:
                       description: |-
-                        RequiredChecks lists all required checks discovered from SCM protection rules
-                        Multiple checks can have the same name but different integration IDs
+                        RequiredChecks lists all required checks discovered from SCM protection rules.
+                        Each check has a unique Key field that serves as the identifier.
                       items:
                         description: RequiredCheckStatus defines the status of a single
                           required check.
                         properties:
-                          integrationId:
+                          key:
                             description: |-
-                              IntegrationID is the SCM application/integration identifier that must provide this check.
-                              A nil value means any application can provide the check.
+                              Key is the computed label key in the format "{provider}-{name}" or "{provider}-{name}-{appID}".
+                              This is the value used as the CommitStatus label and selector key.
+                              Examples: "github-smoke", "github-smoke-15368", "github-lint"
                             type: string
                           name:
-                            description: Name is the check name
+                            description: Name is the raw check identifier from the
+                              SCM (e.g., "smoke", "lint", "e2e-test")
                             type: string
                           phase:
                             description: Phase is the current phase of this check
@@ -167,18 +169,15 @@ spec:
                             - success
                             - failure
                             type: string
-                          provider:
-                            description: |-
-                              Provider is the SCM provider name (e.g., "github", "gitlab", "bitbucket").
-                              Used to generate user-friendly check labels in the format: {provider}-{name}.
-                              If not set, defaults to "required-status-check".
-                            type: string
                         required:
+                        - key
                         - name
                         - phase
                         type: object
                       type: array
-                      x-kubernetes-list-type: atomic
+                      x-kubernetes-list-map-keys:
+                      - key
+                      x-kubernetes-list-type: map
                     sha:
                       description: Sha is the commit SHA being checked
                       type: string
