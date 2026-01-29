@@ -1,0 +1,32 @@
+# argocd-server-extension-patch.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-server
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: extension-gitops-promoter
+          image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
+          env:
+            - name: EXTENSION_NAME
+              value: gitops-promoter
+            - name: EXTENSION_URL
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.20.2/gitops-promoter-argocd-extension.tar.gz
+            - name: EXTENSION_CHECKSUM_URL
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.20.2/gitops-promoter_0.20.2_checksums.txt
+          volumeMounts:
+            - name: extensions
+              mountPath: /tmp/extensions/
+          securityContext:
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+      containers:
+        - name: argocd-server
+          volumeMounts:
+            - name: extensions
+              mountPath: /tmp/extensions/
+      volumes:
+        - name: extensions
+          emptyDir: {}

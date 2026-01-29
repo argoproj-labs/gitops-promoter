@@ -1,0 +1,17 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: PromotionStrategy
+metadata:
+  name: demo-github
+spec:
+  activeCommitStatuses:
+  # The ArgoCDCommitStatus CR will maintain this commit status based on the application health.
+  - key: argocd-health
+  environments:
+    - autoMerge: true
+      branch: environment/development
+    - autoMerge: true
+      branch: environment/staging
+    - autoMerge: false
+      branch: environment/prod
+  gitRepositoryRef:
+    name: gitops-promoter-demo-repo

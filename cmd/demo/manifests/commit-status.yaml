@@ -1,0 +1,10 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ArgoCDCommitStatus
+metadata:
+  name: argocd-health
+spec:
+  promotionStrategyRef:
+    name: demo-github
+  applicationSelector:
+    matchLabels:
+      app-name: helm-guestbook

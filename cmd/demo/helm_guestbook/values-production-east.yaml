@@ -1,0 +1,6 @@
+service:
+  type: NodePort
+
+region: us-east-1
+
+replicaCount: 2

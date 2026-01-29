@@ -1,0 +1,10 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitRepository
+metadata:
+  name: gitops-promoter-demo-repo
+spec:
+  github:
+    name: <REPO_NAME>
+    owner: <GITHUB_ORG_USERNAME>
+  scmProviderRef:
+    name: gitops-promoter-demo-scm
