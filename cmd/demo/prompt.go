@@ -199,18 +199,11 @@ func printTokenInformation() {
 GitHub Token Requirements
 ========================
 This token is used to:
-  • Create and manage pull requests for promotions
-  • Read repository contents and branch information
-  • Set commit statuses for promotion tracking
+  • Create and populate the demo repository
 
 Required Permissions (Fine-Grained Token):
   • Repository access: Select the target repository
   • Contents: Read and Write
-  • Pull requests: Read and Write
-  • Commit statuses: Read and Write
-
-Or for a Classic Token:
-  • repo (Full control of private repositories)
 
 Create a token at: https://github.com/settings/tokens
 `)
