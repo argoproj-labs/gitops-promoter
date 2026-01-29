@@ -66,6 +66,12 @@ type RequiredStatusCheckEnvironmentStatus struct {
 
 // RequiredCheckStatus defines the status of a single required check.
 type RequiredCheckStatus struct {
+	// Provider is the SCM provider name (e.g., "github", "gitlab", "bitbucket").
+	// Used to generate user-friendly check labels in the format: {provider}-{name}.
+	// If not set, defaults to "required-status-check".
+	// +optional
+	Provider string `json:"provider,omitempty"`
+
 	// Name is the check name
 	// +required
 	Name string `json:"name"`

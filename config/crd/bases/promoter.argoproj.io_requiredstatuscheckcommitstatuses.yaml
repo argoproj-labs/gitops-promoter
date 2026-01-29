@@ -167,6 +167,12 @@ spec:
                             - success
                             - failure
                             type: string
+                          provider:
+                            description: |-
+                              Provider is the SCM provider name (e.g., "github", "gitlab", "bitbucket").
+                              Used to generate user-friendly check labels in the format: {provider}-{name}.
+                              If not set, defaults to "required-status-check".
+                            type: string
                         required:
                         - name
                         - phase

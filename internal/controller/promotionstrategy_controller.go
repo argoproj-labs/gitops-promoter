@@ -30,12 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
-	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
-	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,6 +38,13 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // ctpEnqueueState tracks rate limiting state for enqueuing out-of-sync CTPs.
@@ -253,7 +254,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 					// Add a CommitStatusSelector for each required check
 					for _, requiredCheck := range envStatus.RequiredChecks {
 						// The key matches the CommitStatus label that the RSCCS controller creates
-						checkKey := "required-status-check-" + requiredCheck.Name
+						checkKey := getRequiredCheckLabelKey(requiredCheck.Provider, requiredCheck.Name)
 						// Check if already present
 						alreadyPresent := false
 						for _, cs := range proposedCommitStatuses {

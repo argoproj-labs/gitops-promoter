@@ -36,6 +36,11 @@ type RequiredCheckProvider interface {
 
 // RequiredCheck represents a required status check discovered from protection rules.
 type RequiredCheck struct {
+	// Provider is the SCM provider name (e.g., "github", "gitlab", "bitbucket").
+	// This is used to generate user-friendly check labels in the format: {provider}-{name}.
+	// If not set, defaults to "required-status-check".
+	Provider string
+
 	// Name is the check identifier (e.g., "ci-tests", "security-scan", "build/linux")
 	Name string
 

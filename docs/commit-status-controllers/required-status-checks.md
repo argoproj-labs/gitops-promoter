@@ -16,7 +16,7 @@ The Required Status Check Visibility Controller automatically discovers required
 ## How It Works
 
 1. **Auto-discovery**: The controller queries your SCM provider's branch protection API to discover which status checks are required for each target branch
-2. **Visibility**: For each required check, it creates a CommitStatus resource with prefix `required-status-check-{checkname}`
+2. **Visibility**: For each required check, it creates a CommitStatus resource with the format `{provider}-{checkname}` (e.g., `github-e2e-test`)
 3. **Continuous polling**: The controller polls your SCM provider's status check API to monitor the status of each required check
 4. **State management**: By surfacing required checks as CommitStatus resources, the PromotionStrategy stays in "progressing" state while waiting, avoiding "degraded" from failed merge attempts
 
@@ -95,12 +95,18 @@ Support for additional SCM providers (GitLab, Bitbucket, Azure DevOps, Gitea, Fo
 Each required check gets its own CommitStatus resource with a predictable naming pattern:
 
 ```
-required-status-check-{normalized-name}-{hash}
+{provider}-{normalized-name}-{hash}
 ```
 
+The provider prefix identifies which SCM system the check comes from (e.g., `github`, `gitlab`, `bitbucket`).
+
 For example:
-- Required check: `ci-tests` → CommitStatus: `required-status-check-ci-tests-abc12345`
-- Required check: `security/scan` → CommitStatus: `required-status-check-security-scan-def67890`
+- GitHub check: `ci-tests` → CommitStatus: `github-ci-tests-abc12345`
+- GitHub check: `security/scan` → CommitStatus: `github-security-scan-def67890`
+
+The CommitStatus label (used in ChangeTransferPolicy selectors) follows the format `{provider}-{checkname}`:
+- GitHub check: `ci-tests` → Label: `github-ci-tests`
+- GitLab check: `build` → Label: `gitlab-build`
 
 You can list them with:
 
@@ -127,9 +133,11 @@ status:
       sha: abc123def456
       phase: pending
       requiredChecks:
-        - name: ci-tests
+        - provider: github
+          name: ci-tests
           phase: success
-        - name: security-scan
+        - provider: github
+          name: security-scan
           phase: pending
 ```
 
@@ -147,7 +155,7 @@ kubectl get commitstatus -l promoter.argoproj.io/environment=environment-dev \
 ### View Check Details
 
 ```bash
-kubectl describe commitstatus required-status-check-ci-tests-abc12345
+kubectl describe commitstatus github-ci-tests-abc12345
 ```
 
 ## Behavior

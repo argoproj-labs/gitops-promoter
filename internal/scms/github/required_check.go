@@ -101,6 +101,7 @@ func (rc *RequiredCheck) DiscoverRequiredChecks(ctx context.Context, repo *promo
 						}
 
 						requiredChecks = append(requiredChecks, scms.RequiredCheck{
+							Provider:      "github",
 							Name:          check.Context,
 							IntegrationID: integrationID,
 						})

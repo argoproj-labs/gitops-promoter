@@ -83,6 +83,19 @@ type requiredCheckCacheEntry struct {
 	expiresAt time.Time
 }
 
+// getRequiredCheckLabelKey returns the label key for a required check in the format {provider}-{name}.
+// If provider is empty, defaults to "required-status-check".
+//
+// Examples:
+//   - provider="github", name="e2e-test" → "github-e2e-test"
+//   - provider="", name="e2e-test" → "required-status-check-e2e-test"
+func getRequiredCheckLabelKey(provider, name string) string {
+	if provider == "" {
+		provider = "required-status-check"
+	}
+	return provider + "-" + name
+}
+
 // RequiredStatusCheckCommitStatusReconciler reconciles a RequiredStatusCheckCommitStatus object
 type RequiredStatusCheckCommitStatusReconciler struct {
 	client.Client
@@ -439,6 +452,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 
 			commitStatuses = append(commitStatuses, cs)
 			envCheckStatuses = append(envCheckStatuses, promoterv1alpha1.RequiredCheckStatus{
+				Provider:      check.Provider,
 				Name:          check.Name,
 				IntegrationID: check.IntegrationID,
 				Phase:         phase,
@@ -648,9 +662,11 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 
 // updateCommitStatusForCheck creates or updates a CommitStatus resource for a required check
 func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ctp *promoterv1alpha1.ChangeTransferPolicy, branch string, check scms.RequiredCheck, sha string, phase promoterv1alpha1.CommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
-	// Generate CommitStatus name: required-status-check-{name}-{hash}
+	labelKey := getRequiredCheckLabelKey(check.Provider, check.Name)
+
+	// Generate CommitStatus name with hash for uniqueness
 	// Include integration ID in hash to support multiple checks with same name
-	name := generateCommitStatusName(check.Name, branch, check.IntegrationID)
+	name := generateCommitStatusName(labelKey, branch, check.IntegrationID)
 
 	cs := &promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
@@ -669,7 +685,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 		if cs.Labels == nil {
 			cs.Labels = make(map[string]string)
 		}
-		cs.Labels[promoterv1alpha1.CommitStatusLabel] = fmt.Sprintf("required-status-check-%s", check.Name)
+		cs.Labels[promoterv1alpha1.CommitStatusLabel] = labelKey // e.g., "github-e2e-test"
 		cs.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
 		cs.Labels[promoterv1alpha1.RequiredStatusCheckCommitStatusLabel] = rsccs.Name
 
