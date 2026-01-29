@@ -52,14 +52,24 @@ spec:
           maxDelay: "1m"
 ```
 
-**Polling Interval Behavior:**
+**Per-Check Polling Optimization:**
 
-The controller dynamically adjusts polling frequency based on check states:
+The controller uses intelligent per-check polling to minimize API calls while maintaining responsiveness:
 
-1. **Pending checks exist**: Polls every `pendingCheckInterval` (default 1m) for timely updates
-2. **All checks terminal** (success/failure): Polls every `terminalCheckInterval` (default 10m) to detect changes
-3. **No checks to monitor**: Polls every `safetyNetInterval` (default 1h) as safety net for missed watch events
-4. **Cached discovery**: Requeue scheduled at cache expiry time (default 24h)
+- **Pending checks**: Polled every `pendingCheckInterval` (default 1m) for timely updates
+- **Terminal checks** (success/failure): Polled every `terminalCheckInterval` (default 10m) only if not recently checked
+- **Independent polling**: Each check is polled based on its own state, not the aggregate state of all checks
+
+This means if you have 5 terminal checks (success/failure) and 1 pending check, only the pending check is polled frequently. The terminal checks are polled every 10 minutes, **reducing API calls by ~83%** in typical scenarios.
+
+**Reconciliation Behavior:**
+
+The controller reconciliation loop runs based on:
+
+1. **Pending checks exist**: Reconciles every `pendingCheckInterval` (default 1m) to poll active checks
+2. **All checks terminal**: Reconciles every `terminalCheckInterval` (default 10m) to detect changes
+3. **No checks to monitor**: Reconciles every `safetyNetInterval` (default 1h) as safety net for missed watch events
+4. **Cached discovery**: Next reconciliation scheduled at cache expiry time (default 24h)
 
 
 ## SCM Provider Setup
@@ -146,15 +156,20 @@ status:
         - name: ci-tests
           key: github-ci-tests
           phase: success
+          lastPolledAt: "2026-01-29T22:48:49Z"
         - name: security-scan
           key: github-security-scan
           phase: pending
+          lastPolledAt: "2026-01-29T22:54:02Z"
         - name: smoke
           key: github-smoke-15368
           phase: success
+          lastPolledAt: "2026-01-29T22:48:49Z"
 ```
 
-**Note**: The `key` field shows the computed label used in ChangeTransferPolicy selectors. When multiple checks have the same name, the GitHub App ID is appended (e.g., `github-smoke-15368`).
+**Note**: 
+- The `key` field shows the computed label used in ChangeTransferPolicy selectors. When multiple checks have the same name, the GitHub App ID is appended (e.g., `github-smoke-15368`).
+- The `lastPolledAt` field shows when each check was last queried from the SCM provider. Terminal checks (success/failure) are polled less frequently than pending checks, reducing API usage.
 
 ### List All CommitStatus Resources for Required Checks
 
@@ -205,18 +220,75 @@ For each environment, the controller calculates an aggregated phase:
 - **pending**: If any required check is pending (and none failing)
 - **success**: If all required checks are successful
 
-### Dynamic Requeue
+### Per-Check Polling and Dynamic Requeue
 
-The controller uses dynamic requeuing based on check states:
+The controller implements two levels of optimization:
 
-1. **Pending checks exist**: Requeue in `pendingCheckInterval` (default 1 minute) for active monitoring
-2. **All checks terminal**: Requeue in `terminalCheckInterval` (default 10 minutes) to detect changes
-3. **No checks to monitor**: Requeue in `safetyNetInterval` (default 1 hour) as safety net
-4. **Cached discovery**: Next requeue scheduled at cache expiry time (default 24 hours)
+**1. Per-Check Polling (within reconciliation)**
 
-This provides fine-grained control over API usage while maintaining responsiveness.
+During each reconciliation, the controller intelligently decides whether to poll each check:
+
+- **Terminal checks** (success/failure): Only polled if `lastPolledAt` is older than `terminalCheckInterval` (default 10m)
+- **Pending checks**: Always polled for timely updates
+- **Recently polled terminal checks**: Skipped and previous status is reused
+
+This means if you have 10 checks where 9 are terminal and 1 is pending:
+- The 1 pending check is polled every reconciliation
+- The 9 terminal checks are only re-polled if they haven't been checked in the last 10 minutes
+
+**2. Dynamic Reconciliation Timing**
+
+The controller adjusts how often it reconciles:
+
+1. **Pending checks exist**: Reconcile every `pendingCheckInterval` (default 1m) for active monitoring
+2. **All checks terminal**: Reconcile every `terminalCheckInterval` (default 10m) to detect changes
+3. **No checks to monitor**: Reconcile every `safetyNetInterval` (default 1h) as safety net
+4. **Cached discovery**: Next reconciliation scheduled at cache expiry time (default 24h)
+
+Together, these optimizations provide fine-grained control over API usage while maintaining responsiveness for pending checks.
 
 ## Performance and Caching
+
+### Per-Check Polling Optimization
+
+The controller implements intelligent per-check polling to reduce API calls:
+
+**How it works:**
+
+Each check maintains a `lastPolledAt` timestamp. Before polling a check, the controller checks:
+- If the check is **terminal** (success/failure) AND was polled within `terminalCheckInterval`
+  - **Skip polling** and reuse the cached status
+- If the check is **pending** OR hasn't been polled recently
+  - **Poll the check** and update `lastPolledAt`
+
+**Benefits:**
+
+| Scenario | Before Optimization | After Optimization | Savings |
+|----------|--------------------|--------------------|---------|
+| 5 terminal checks, 1 pending | All 6 polled every 1m | 1 polled every 1m, 5 every 10m | 83% fewer API calls |
+| 10 terminal checks | All 10 polled every 1m | All 10 polled every 10m | 90% fewer API calls |
+| Mix of 20 checks (18 terminal, 2 pending) | All 20 every 1m | 2 every 1m, 18 every 10m | 90% fewer API calls |
+
+**Example:**
+
+```bash
+$ kubectl get requiredstatuscheckcommitstatuses my-app -o yaml
+status:
+  environments:
+    - branch: environment/staging
+      requiredChecks:
+        - name: lint
+          phase: success
+          lastPolledAt: "2026-01-29T22:48:49Z"  # Polled 5 min ago, skip for 5 more min
+        - name: test
+          phase: success
+          lastPolledAt: "2026-01-29T22:48:49Z"  # Polled 5 min ago, skip for 5 more min
+        - name: e2e
+          phase: pending
+          lastPolledAt: "2026-01-29T22:54:02Z"  # Polled 16 sec ago, poll every 1m
+```
+
+In this example, only `e2e` is polled on the next reconciliation. The terminal checks are skipped until 10 minutes have elapsed since their last poll.
 
 ### Controller-Level Caching
 
@@ -232,7 +304,10 @@ The cache stores the **list of required check names** discovered from your SCM p
 
 **What is NOT cached:**
 
-The actual **status** of those checks (pending/success/failure) is NOT cached - the controller polls the SCM provider's commit status API for current status at the intervals defined by `pendingCheckInterval` and `terminalCheckInterval`.
+The actual **status** of those checks (pending/success/failure) is NOT cached in the discovery cache. However, the controller uses per-check polling optimization to avoid unnecessary API calls:
+- Terminal checks (success/failure) are only re-polled if not queried within `terminalCheckInterval`
+- Pending checks are polled every `pendingCheckInterval`
+- Each check's `lastPolledAt` timestamp tracks when it was last queried
 
 **Cache behavior:**
 
@@ -344,7 +419,7 @@ Changes to branch protection rules are detected within the cache TTL or when tri
 **Problem**: SCM provider API rate limits are being hit.
 
 **Solutions**:
-1. Increase the `requeueDuration` in ControllerConfiguration to reduce polling frequency
+1. Increase the `terminalCheckInterval` in ControllerConfiguration to reduce polling frequency for stable checks
 2. Verify your SCM provider authentication has sufficient rate limits:
    - **GitHub**: Use a GitHub App (not a personal access token) for higher rate limits
 3. Monitor API usage in controller logs
@@ -352,3 +427,27 @@ Changes to branch protection rules are detected within the cache TTL or when tri
    ```bash
    kubectl get --raw /metrics | grep rate_limit
    ```
+
+### Terminal Check Not Updating Immediately
+
+**Problem**: A terminal check (success/failure) status doesn't update immediately when viewing the resource.
+
+**This is expected behavior** due to per-check polling optimization:
+
+Terminal checks are only re-polled if they haven't been queried within `terminalCheckInterval` (default 10 minutes). This is intentional to reduce API usage.
+
+**To verify the optimization is working:**
+```bash
+# Check the lastPolledAt timestamp
+kubectl get requiredstatuscheckcommitstatuses my-app -o yaml | grep -A4 "requiredChecks:"
+
+# Terminal checks should have older timestamps than pending checks
+```
+
+**Solutions**:
+1. **Wait for the next poll**: Terminal checks will be re-polled within `terminalCheckInterval`
+2. **Force immediate reconciliation**: Trigger a reconciliation to poll all checks:
+   ```bash
+   kubectl annotate requiredstatuscheckcommitstatuses my-app trigger="$(date +%s)" --overwrite
+   ```
+3. **Reduce polling interval**: Set a shorter `terminalCheckInterval` in ControllerConfiguration (not recommended for production)

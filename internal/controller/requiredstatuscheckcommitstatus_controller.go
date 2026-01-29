@@ -157,14 +157,14 @@ func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Contex
 		}
 	}
 
-	// Save previous status to detect transitions
+	// Save previous status to detect transitions and for per-check polling optimization
 	previousStatus := rsccs.Status.DeepCopy()
 	if previousStatus == nil {
 		previousStatus = &promoterv1alpha1.RequiredStatusCheckCommitStatusStatus{}
 	}
 
 	// 4. Process each environment and create/update CommitStatus resources
-	commitStatuses := r.processEnvironments(ctx, &rsccs, &ps, relevantCTPs)
+	commitStatuses := r.processEnvironments(ctx, &rsccs, &ps, relevantCTPs, previousStatus)
 
 	// 5. Clean up orphaned CommitStatus resources
 	err = r.cleanupOrphanedCommitStatuses(ctx, &rsccs, commitStatuses)
@@ -362,7 +362,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) ctpProposedShaChangedPredica
 }
 
 // processEnvironments processes each environment and creates/updates CommitStatus resources
-func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ps *promoterv1alpha1.PromotionStrategy, ctps []promoterv1alpha1.ChangeTransferPolicy) []*promoterv1alpha1.CommitStatus {
+func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ps *promoterv1alpha1.PromotionStrategy, ctps []promoterv1alpha1.ChangeTransferPolicy, previousStatus *promoterv1alpha1.RequiredStatusCheckCommitStatusStatus) []*promoterv1alpha1.CommitStatus {
 	logger := log.FromContext(ctx)
 
 	// Initialize environments status
@@ -376,6 +376,15 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 	for i := range ctps {
 		ctp := &ctps[i]
 		ctpByBranch[ctp.Spec.ActiveBranch] = ctp
+	}
+
+	// Build a map of previous environment status by branch for per-check polling optimization
+	previousEnvByBranch := make(map[string]*promoterv1alpha1.RequiredStatusCheckEnvironmentStatus)
+	if previousStatus != nil {
+		for i := range previousStatus.Environments {
+			env := &previousStatus.Environments[i]
+			previousEnvByBranch[env.Branch] = env
+		}
 	}
 
 	// Process each environment
@@ -408,8 +417,11 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 			continue
 		}
 
+		// Get previous environment status for per-check polling optimization
+		previousEnv := previousEnvByBranch[env.Branch]
+
 		// Poll check status for each required check
-		checkStatuses, err := r.pollCheckStatusForEnvironment(ctx, ps, requiredChecks, proposedSha)
+		checkStatuses, err := r.pollCheckStatusForEnvironment(ctx, ps, requiredChecks, proposedSha, previousEnv)
 		if err != nil {
 			logger.Error(err, "failed to poll check status",
 				"promotionStrategy", ps.Name,
@@ -423,13 +435,16 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 		// Create/update CommitStatus resources for each check
 		var envCheckStatuses []promoterv1alpha1.RequiredCheckStatus
 		for _, check := range requiredChecks {
-			phase, ok := checkStatuses[check.Key]
+			chkStatus, ok := checkStatuses[check.Key]
 			if !ok {
 				// If we couldn't get the status, default to pending
-				phase = promoterv1alpha1.CommitPhasePending
+				chkStatus = checkStatus{
+					phase:        promoterv1alpha1.CommitPhasePending,
+					lastPolledAt: nil,
+				}
 			}
 
-			cs, err := r.updateCommitStatusForCheck(ctx, rsccs, ctp, env.Branch, check, proposedSha, phase)
+			cs, err := r.updateCommitStatusForCheck(ctx, rsccs, ctp, env.Branch, check, proposedSha, chkStatus.phase)
 			if err != nil {
 				logger.Error(err, "failed to update CommitStatus",
 					"check", check.Key,
@@ -442,9 +457,10 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 
 			commitStatuses = append(commitStatuses, cs)
 			envCheckStatuses = append(envCheckStatuses, promoterv1alpha1.RequiredCheckStatus{
-				Name:  check.Name,
-				Key:   check.Key,
-				Phase: phase,
+				Name:         check.Name,
+				Key:          check.Key,
+				Phase:        chkStatus.phase,
+				LastPolledAt: chkStatus.lastPolledAt,
 			})
 		}
 
@@ -597,12 +613,36 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 	return checks, nil
 }
 
-// pollCheckStatusForEnvironment polls the SCM to get the status of each required check
-func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, requiredChecks []scms.RequiredCheck, sha string) (map[string]promoterv1alpha1.CommitStatusPhase, error) {
+// pollCheckStatusForEnvironment polls the SCM to get the status of each required check.
+// Uses per-check polling optimization: terminal checks (success/failure) are only polled
+// if they haven't been polled recently (based on terminalCheckInterval), while pending
+// checks are always polled.
+func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, requiredChecks []scms.RequiredCheck, sha string, previousEnv *promoterv1alpha1.RequiredStatusCheckEnvironmentStatus) (map[string]checkStatus, error) {
 	logger := log.FromContext(ctx)
 
 	if len(requiredChecks) == 0 {
-		return map[string]promoterv1alpha1.CommitStatusPhase{}, nil
+		return map[string]checkStatus{}, nil
+	}
+
+	// Get configuration for polling intervals
+	config, err := settings.GetRequiredStatusCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
+	}
+
+	terminalInterval := DefaultTerminalCheckInterval
+	if config.TerminalCheckInterval != nil {
+		terminalInterval = config.TerminalCheckInterval.Duration
+	}
+
+	// Build a map of previous check statuses by key
+	previousCheckByKey := make(map[string]*promoterv1alpha1.RequiredCheckStatus)
+	if previousEnv != nil && previousEnv.Sha == sha {
+		// Only use previous checks if SHA hasn't changed
+		for i := range previousEnv.RequiredChecks {
+			check := &previousEnv.RequiredChecks[i]
+			previousCheckByKey[check.Key] = check
+		}
 	}
 
 	// Get GitRepository
@@ -618,39 +658,88 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 	provider, err := r.getRequiredCheckProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
 	if err != nil {
 		if errors.Is(err, scms.ErrNotSupported) {
-			return map[string]promoterv1alpha1.CommitStatusPhase{}, nil
+			return map[string]checkStatus{}, nil
 		}
 		return nil, fmt.Errorf("failed to get required check provider: %w", err)
 	}
 
-	// Query check status for each required check
-	checkStatuses := make(map[string]promoterv1alpha1.CommitStatusPhase)
+	now := metav1.Now()
+	checkStatuses := make(map[string]checkStatus)
+
+	// Query check status for each required check (with per-check polling optimization)
 	for _, check := range requiredChecks {
-		phase, err := provider.PollCheckStatus(ctx, gitRepo, sha, check)
-		if err != nil {
-			if errors.Is(err, scms.ErrNotSupported) {
-				// If not supported, default to pending
-				checkStatuses[check.Key] = promoterv1alpha1.CommitPhasePending
-				continue
+		previousCheck := previousCheckByKey[check.Key]
+
+		// Determine if we should skip polling this check
+		shouldSkip := false
+		if previousCheck != nil {
+			isTerminal := previousCheck.Phase == promoterv1alpha1.CommitPhaseSuccess ||
+				previousCheck.Phase == promoterv1alpha1.CommitPhaseFailure
+
+			if isTerminal && previousCheck.LastPolledAt != nil {
+				timeSinceLastPoll := now.Time.Sub(previousCheck.LastPolledAt.Time)
+				if timeSinceLastPoll < terminalInterval {
+					// Terminal check was polled recently, skip and reuse previous status
+					shouldSkip = true
+					logger.V(4).Info("Skipping terminal check poll (recently checked)",
+						"check", check.Name,
+						"key", check.Key,
+						"phase", previousCheck.Phase,
+						"lastPolledAt", previousCheck.LastPolledAt.Time,
+						"timeSinceLastPoll", timeSinceLastPoll.Round(time.Second),
+						"terminalInterval", terminalInterval)
+				}
+			}
+		}
+
+		var phase promoterv1alpha1.CommitStatusPhase
+		var lastPolledAt *metav1.Time
+
+		if shouldSkip {
+			// Reuse previous phase and timestamp
+			phase = previousCheck.Phase
+			lastPolledAt = previousCheck.LastPolledAt
+		} else {
+			// Poll the check from SCM
+			polledPhase, err := provider.PollCheckStatus(ctx, gitRepo, sha, check)
+			if err != nil {
+				if errors.Is(err, scms.ErrNotSupported) {
+					// If not supported, default to pending
+					phase = promoterv1alpha1.CommitPhasePending
+				} else {
+					// Log the error but continue processing other checks
+					// This provides graceful degradation during transient failures (network issues, partial outages)
+					logger.Error(err, "Failed to poll check status, marking as pending for graceful degradation",
+						"check", check.Name,
+						"key", check.Key,
+						"repository", gitRepo.Name,
+						"sha", sha)
+
+					// Mark as pending so we maintain visibility into other working checks
+					// The check will be retried on next reconciliation
+					phase = promoterv1alpha1.CommitPhasePending
+				}
+			} else {
+				phase = polledPhase
 			}
 
-			// Log the error but continue processing other checks
-			// This provides graceful degradation during transient failures (network issues, partial outages)
-			logger.Error(err, "Failed to poll check status, marking as pending for graceful degradation",
-				"check", check.Name,
-				"key", check.Key,
-				"repository", gitRepo.Name,
-				"sha", sha)
-
-			// Mark as pending so we maintain visibility into other working checks
-			// The check will be retried on next reconciliation
-			checkStatuses[check.Key] = promoterv1alpha1.CommitPhasePending
-			continue
+			// Update lastPolledAt to current time since we just polled
+			lastPolledAt = &now
 		}
-		checkStatuses[check.Key] = phase
+
+		checkStatuses[check.Key] = checkStatus{
+			phase:        phase,
+			lastPolledAt: lastPolledAt,
+		}
 	}
 
 	return checkStatuses, nil
+}
+
+// checkStatus holds check status along with the timestamp when it was last polled
+type checkStatus struct {
+	phase        promoterv1alpha1.CommitStatusPhase
+	lastPolledAt *metav1.Time
 }
 
 // updateCommitStatusForCheck creates or updates a CommitStatus resource for a required check

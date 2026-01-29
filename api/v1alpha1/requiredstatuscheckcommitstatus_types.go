@@ -81,6 +81,11 @@ type RequiredCheckStatus struct {
 	// +kubebuilder:validation:Enum=pending;success;failure
 	// +required
 	Phase CommitStatusPhase `json:"phase"`
+
+	// LastPolledAt is the timestamp when this check was last queried from the SCM provider.
+	// Used to optimize polling - terminal checks (success/failure) are polled less frequently.
+	// +optional
+	LastPolledAt *metav1.Time `json:"lastPolledAt,omitempty"`
 }
 
 // +kubebuilder:object:root=true

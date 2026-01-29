@@ -158,6 +158,12 @@ spec:
                               This is the value used as the CommitStatus label and selector key.
                               Examples: "github-smoke", "github-smoke-15368", "github-lint"
                             type: string
+                          lastPolledAt:
+                            description: |-
+                              LastPolledAt is the timestamp when this check was last queried from the SCM provider.
+                              Used to optimize polling - terminal checks (success/failure) are polled less frequently.
+                            format: date-time
+                            type: string
                           name:
                             description: Name is the raw check identifier from the
                               SCM (e.g., "smoke", "lint", "e2e-test")
