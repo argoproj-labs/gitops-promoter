@@ -51,6 +51,8 @@ out/
 *.d.ts
 *.d.ts.map
 *.js.map
+# Allow eslint.config.js files
+!**/eslint.config.js
 
 # Node.js
 node_modules/

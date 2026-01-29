@@ -22,7 +22,7 @@ const HistoryNavigation: React.FC<HistoryNavigationProps> = ({
     const checks = commitStatuses.map(cs => ({
       name: cs.key,
       status: cs.phase || 'unknown',
-      details: cs.details,
+      description: cs.description,
       url: cs.url
     }));
 

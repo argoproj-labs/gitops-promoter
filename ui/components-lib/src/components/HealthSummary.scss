@@ -74,6 +74,7 @@
   padding: 3px 0;
   font-size: 12px;
   font-family: 'Heebo', sans-serif;
+  cursor: default;
   
   svg {
     width: 12px;
@@ -84,6 +85,29 @@
 .health-check-name {
   color: $argo-color-gray-7;
   flex: 1;
+  position: relative;
+  cursor: default;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: baseline;
+  min-width: 0; // Allow flex item to shrink below content size
+}
+
+.check-name-text {
+  font-weight: 500;
+  flex-shrink: 0; // Keep check name visible
+}
+
+.check-description-preview {
+  color: $argo-color-gray-5;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .health-check-link {

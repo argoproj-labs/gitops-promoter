@@ -431,6 +431,10 @@ spec:
                       description: ChangeRequestPolicyCommitStatusPhase defines the
                         phase of a commit status in a ChangeTransferPolicy.
                       properties:
+                        description:
+                          description: Description is the description of the commit
+                            status
+                          type: string
                         key:
                           description: Key staging hydrated branch
                           maxLength: 63
@@ -782,6 +786,10 @@ spec:
                             description: ChangeRequestPolicyCommitStatusPhase defines
                               the phase of a commit status in a ChangeTransferPolicy.
                             properties:
+                              description:
+                                description: Description is the description of the
+                                  commit status
+                                type: string
                               key:
                                 description: Key staging hydrated branch
                                 maxLength: 63
@@ -1070,6 +1078,10 @@ spec:
                             description: ChangeRequestPolicyCommitStatusPhase defines
                               the phase of a commit status in a ChangeTransferPolicy.
                             properties:
+                              description:
+                                description: Description is the description of the
+                                  commit status
+                                type: string
                               key:
                                 description: Key staging hydrated branch
                                 maxLength: 63
@@ -1235,6 +1247,10 @@ spec:
                       description: ChangeRequestPolicyCommitStatusPhase defines the
                         phase of a commit status in a ChangeTransferPolicy.
                       properties:
+                        description:
+                          description: Description is the description of the commit
+                            status
+                          type: string
                         key:
                           description: Key staging hydrated branch
                           maxLength: 63
@@ -1852,7 +1868,11 @@ spec:
             description: CommitStatusSpec defines the desired state of CommitStatus
             properties:
               description:
-                description: Description is a short description of the commit status.
+                description: |-
+                  Description is a human-readable description of the commit status.
+                  This is shown in the SCM provider (GitHub, GitLab, etc.) as the commit status description.
+                  Use an action-oriented message to convey that the system is actively working. For example,
+                  "Waiting for approval" instead of "Approval pending."
                 type: string
               gitRepositoryRef:
                 description: ObjectReference is a reference to an object by name.
@@ -4410,6 +4430,10 @@ spec:
                             description: ChangeRequestPolicyCommitStatusPhase defines
                               the phase of a commit status in a ChangeTransferPolicy.
                             properties:
+                              description:
+                                description: Description is the description of the
+                                  commit status
+                                type: string
                               key:
                                 description: Key staging hydrated branch
                                 maxLength: 63
@@ -4713,6 +4737,10 @@ spec:
                                   description: ChangeRequestPolicyCommitStatusPhase
                                     defines the phase of a commit status in a ChangeTransferPolicy.
                                   properties:
+                                    description:
+                                      description: Description is the description
+                                        of the commit status
+                                      type: string
                                     key:
                                       description: Key staging hydrated branch
                                       maxLength: 63
@@ -5018,6 +5046,10 @@ spec:
                                   description: ChangeRequestPolicyCommitStatusPhase
                                     defines the phase of a commit status in a ChangeTransferPolicy.
                                   properties:
+                                    description:
+                                      description: Description is the description
+                                        of the commit status
+                                      type: string
                                     key:
                                       description: Key staging hydrated branch
                                       maxLength: 63
@@ -5215,6 +5247,10 @@ spec:
                             description: ChangeRequestPolicyCommitStatusPhase defines
                               the phase of a commit status in a ChangeTransferPolicy.
                             properties:
+                              description:
+                                description: Description is the description of the
+                                  commit status
+                                type: string
                               key:
                                 description: Key staging hydrated branch
                                 maxLength: 63
@@ -6958,7 +6994,7 @@ spec:
         - --upstream=http://127.0.0.1:8080/
         - --logtostderr=true
         - --v=0
-        image: quay.io/brancz/kube-rbac-proxy:v0.17.0
+        image: quay.io/brancz/kube-rbac-proxy:v0.20.2
         name: kube-rbac-proxy
         ports:
         - containerPort: 8443
