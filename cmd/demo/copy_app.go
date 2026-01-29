@@ -10,7 +10,7 @@ import (
 	"github.com/google/go-github/v71/github"
 )
 
-//go:embed all:helm_guestbook
+//go:embed all:helm-guestbook
 var helmGuestbookFS embed.FS
 
 // CopyEmbeddedDirToRepo copies the embedded helm_guestbook directory to a GitHub repository
@@ -19,7 +19,7 @@ func CopyEmbeddedDirToRepo(
 	client *github.Client,
 	destOwner, destRepo, destPath string,
 ) error {
-	err := fs.WalkDir(helmGuestbookFS, "helm_guestbook", func(path string, d fs.DirEntry, walkErr error) error {
+	err := fs.WalkDir(helmGuestbookFS, "helm-guestbook", func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return fmt.Errorf("walk error at %s: %w", path, walkErr)
 		}
@@ -32,8 +32,7 @@ func CopyEmbeddedDirToRepo(
 			return fmt.Errorf("failed to read embedded file %s: %w", path, readErr)
 		}
 
-		// Convert path: "helm_guestbook/Chart.yaml" → "helm-guestbook/Chart.yaml"
-		relativePath := strings.TrimPrefix(path, "helm_guestbook/")
+		relativePath := strings.TrimPrefix(path, "helm-guestbook/")
 		destFilePath := destPath + "/" + relativePath
 
 		// Check if file already exists
