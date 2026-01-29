@@ -38,7 +38,7 @@ const AppViewExtension = ({ tree, application }: AppViewComponentProps) => {
         setIsLoading(false);
         throw new Error("Error fetching promotion strategy data: " + err);
       });
-  }, [promotionStrategyNodes]);
+  }, [promotionStrategyNodes, application.metadata.name, application.metadata.namespace]);
   if (isLoading && !promotionStrategy) {
     return <div>Loading...</div>;
   }
