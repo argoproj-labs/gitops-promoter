@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -50,6 +52,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
+// Default configuration values for RequiredStatusCheckCommitStatus controller
 const (
 	DefaultRequiredCheckCacheTTL     = 24 * time.Hour
 	DefaultRequiredCheckCacheMaxSize = 1000
@@ -79,21 +82,8 @@ var (
 )
 
 type requiredCheckCacheEntry struct {
-	checks    []scms.RequiredCheck
 	expiresAt time.Time
-}
-
-// getRequiredCheckLabelKey returns the label key for a required check in the format {provider}-{name}.
-// If provider is empty, defaults to "required-status-check".
-//
-// Examples:
-//   - provider="github", name="e2e-test" → "github-e2e-test"
-//   - provider="", name="e2e-test" → "required-status-check-e2e-test"
-func getRequiredCheckLabelKey(provider, name string) string {
-	if provider == "" {
-		provider = "required-status-check"
-	}
-	return provider + "-" + name
+	checks    []scms.RequiredCheck
 }
 
 // RequiredStatusCheckCommitStatusReconciler reconciles a RequiredStatusCheckCommitStatus object
@@ -174,10 +164,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Contex
 	}
 
 	// 4. Process each environment and create/update CommitStatus resources
-	commitStatuses, err := r.processEnvironments(ctx, &rsccs, &ps, relevantCTPs)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
-	}
+	commitStatuses := r.processEnvironments(ctx, &rsccs, &ps, relevantCTPs)
 
 	// 5. Clean up orphaned CommitStatus resources
 	err = r.cleanupOrphanedCommitStatuses(ctx, &rsccs, commitStatuses)
@@ -240,7 +227,10 @@ func (r *RequiredStatusCheckCommitStatusReconciler) SetupWithManager(ctx context
 
 	// Set up field index for efficient lookup of RSCCS by PromotionStrategy name
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.RequiredStatusCheckCommitStatus{}, promotionStrategyRefIndex, func(obj client.Object) []string {
-		rsccs := obj.(*promoterv1alpha1.RequiredStatusCheckCommitStatus)
+		rsccs, ok := obj.(*promoterv1alpha1.RequiredStatusCheckCommitStatus)
+		if !ok {
+			return nil
+		}
 		return []string{rsccs.Spec.PromotionStrategyRef.Name}
 	}); err != nil {
 		return fmt.Errorf("failed to create field index for PromotionStrategyRef: %w", err)
@@ -372,7 +362,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) ctpProposedShaChangedPredica
 }
 
 // processEnvironments processes each environment and creates/updates CommitStatus resources
-func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ps *promoterv1alpha1.PromotionStrategy, ctps []promoterv1alpha1.ChangeTransferPolicy) ([]*promoterv1alpha1.CommitStatus, error) {
+func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ps *promoterv1alpha1.PromotionStrategy, ctps []promoterv1alpha1.ChangeTransferPolicy) []*promoterv1alpha1.CommitStatus {
 	logger := log.FromContext(ctx)
 
 	// Initialize environments status
@@ -408,7 +398,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 		}
 
 		// Discover required checks for this environment
-		requiredChecks, err := r.discoverRequiredChecksForEnvironment(ctx, ps, ctp, env)
+		requiredChecks, err := r.discoverRequiredChecksForEnvironment(ctx, ps, env)
 		if err != nil {
 			logger.Error(err, "failed to discover required checks",
 				"promotionStrategy", ps.Name,
@@ -419,7 +409,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 		}
 
 		// Poll check status for each required check
-		checkStatuses, err := r.pollCheckStatusForEnvironment(ctx, ps, ctp, requiredChecks, proposedSha)
+		checkStatuses, err := r.pollCheckStatusForEnvironment(ctx, ps, requiredChecks, proposedSha)
 		if err != nil {
 			logger.Error(err, "failed to poll check status",
 				"promotionStrategy", ps.Name,
@@ -470,7 +460,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 		})
 	}
 
-	return commitStatuses, nil
+	return commitStatuses
 }
 
 // getRequiredCheckProvider creates the appropriate required check provider based on the SCM type.
@@ -513,7 +503,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) getRequiredCheckProvider(
 
 // discoverRequiredChecksForEnvironment queries the SCM's protection rules to discover required checks.
 // Results are cached to reduce API calls to the SCM provider.
-func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, env promoterv1alpha1.Environment) ([]scms.RequiredCheck, error) {
+func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, env promoterv1alpha1.Environment) ([]scms.RequiredCheck, error) {
 	logger := log.FromContext(ctx)
 
 	// Get GitRepository
@@ -528,7 +518,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 	// Get required check provider
 	provider, err := r.getRequiredCheckProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
 	if err != nil {
-		if err == scms.ErrNotSupported {
+		if errors.Is(err, scms.ErrNotSupported) {
 			logger.V(4).Info("Required check discovery not supported for this SCM provider, skipping",
 				"repository", gitRepo.Name,
 				"branch", env.Branch)
@@ -558,19 +548,18 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 	requiredCheckCacheMutex.RUnlock()
 
 	// Cache miss or expired - use singleflight to prevent duplicate API calls
-	result, err, _ := requiredCheckFlight.Do(cacheKey, func() (interface{}, error) {
+	result, err, _ := requiredCheckFlight.Do(cacheKey, func() (any, error) {
 		// Call provider to discover checks
 		checks, err := provider.DiscoverRequiredChecks(ctx, gitRepo, env.Branch)
 		if err != nil {
-			if err == scms.ErrNoProtection {
-				logger.V(4).Info("No protection rules configured for branch",
-					"repository", gitRepo.Name,
-					"branch", env.Branch)
-				// Cache empty result for branches with no protection
-				checks = []scms.RequiredCheck{}
-			} else {
+			if !errors.Is(err, scms.ErrNoProtection) {
 				return nil, fmt.Errorf("failed to discover required checks: %w", err)
 			}
+			logger.V(4).Info("No protection rules configured for branch",
+				"repository", gitRepo.Name,
+				"branch", env.Branch)
+			// Cache empty result for branches with no protection
+			checks = []scms.RequiredCheck{}
 		}
 
 		// Store in cache before returning (write lock)
@@ -598,14 +587,18 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to discover required checks: %w", err)
 	}
 
-	return result.([]scms.RequiredCheck), nil
+	checks, ok := result.([]scms.RequiredCheck)
+	if !ok {
+		return nil, errors.New("unexpected type from singleflight result")
+	}
+	return checks, nil
 }
 
 // pollCheckStatusForEnvironment polls the SCM to get the status of each required check
-func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, requiredChecks []scms.RequiredCheck, sha string) (map[string]promoterv1alpha1.CommitStatusPhase, error) {
+func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, requiredChecks []scms.RequiredCheck, sha string) (map[string]promoterv1alpha1.CommitStatusPhase, error) {
 	logger := log.FromContext(ctx)
 
 	if len(requiredChecks) == 0 {
@@ -624,7 +617,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 	// Get required check provider
 	provider, err := r.getRequiredCheckProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
 	if err != nil {
-		if err == scms.ErrNotSupported {
+		if errors.Is(err, scms.ErrNotSupported) {
 			return map[string]promoterv1alpha1.CommitStatusPhase{}, nil
 		}
 		return nil, fmt.Errorf("failed to get required check provider: %w", err)
@@ -635,7 +628,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 	for _, check := range requiredChecks {
 		phase, err := provider.PollCheckStatus(ctx, gitRepo, sha, check)
 		if err != nil {
-			if err == scms.ErrNotSupported {
+			if errors.Is(err, scms.ErrNotSupported) {
 				// If not supported, default to pending
 				checkStatuses[check.Key] = promoterv1alpha1.CommitPhasePending
 				continue
@@ -678,7 +671,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, cs, func() error {
 		// Set owner reference
 		if err := controllerutil.SetControllerReference(rsccs, cs, r.Scheme); err != nil {
-			return err
+			return fmt.Errorf("failed to set controller reference: %w", err)
 		}
 
 		// Set labels
@@ -694,7 +687,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 		cs.Spec = promoterv1alpha1.CommitStatusSpec{
 			RepositoryReference: ctp.Spec.RepositoryReference,
 			Sha:                 sha,
-			Name:                fmt.Sprintf("Required Check: %s", check.Name),
+			Name:                "Required Check: " + check.Name,
 			Description:         description,
 			Phase:               phase,
 		}
@@ -716,16 +709,16 @@ func generateRequiredCheckDescription(checkName string, phase promoterv1alpha1.C
 	switch phase {
 	case promoterv1alpha1.CommitPhasePending:
 		// Pending: Use progressive verbs (-ing) to show active monitoring
-		return fmt.Sprintf("Waiting for %s to pass", checkName)
+		return "Waiting for " + checkName + " to pass"
 	case promoterv1alpha1.CommitPhaseSuccess:
 		// Success: Use present tense to describe current healthy state
-		return fmt.Sprintf("Check %s is passing", checkName)
+		return "Check " + checkName + " is passing"
 	case promoterv1alpha1.CommitPhaseFailure:
 		// Failure: Use present tense to describe current problem
-		return fmt.Sprintf("Check %s is failing", checkName)
+		return "Check " + checkName + " is failing"
 	default:
 		// Fallback for unknown phases
-		return fmt.Sprintf("Required status check: %s", checkName)
+		return "Required status check: " + checkName
 	}
 }
 
@@ -736,7 +729,7 @@ func generateCommitStatusName(checkKey string, branch string) string {
 	h := sha256.New()
 	hashInput := checkKey + "-" + branch
 	h.Write([]byte(hashInput))
-	hash := fmt.Sprintf("%x", h.Sum(nil))[:8]
+	hash := hex.EncodeToString(h.Sum(nil))[:8]
 
 	// Normalize the check key to be a valid Kubernetes name
 	normalized := strings.ToLower(checkKey)
@@ -965,12 +958,12 @@ func evictExpiredOrOldestEntries(ctx context.Context) {
 	if len(requiredCheckCache) >= requiredCheckCacheMaxSize {
 		// Create slice of keys sorted by expiration time (oldest first)
 		type cacheItem struct {
-			key       string
 			expiresAt time.Time
+			key       string
 		}
 		items := make([]cacheItem, 0, len(requiredCheckCache))
 		for key, entry := range requiredCheckCache {
-			items = append(items, cacheItem{key: key, expiresAt: entry.expiresAt})
+			items = append(items, cacheItem{expiresAt: entry.expiresAt, key: key})
 		}
 
 		// Sort by expiration time (oldest first)
@@ -1034,25 +1027,8 @@ func validateRequiredStatusCheckConfig(config *promoterv1alpha1.RequiredStatusCh
 		}
 	}
 
-	if config.SafetyNetInterval != nil {
-		safetyNetInterval := config.SafetyNetInterval.Duration
-		if safetyNetInterval > 0 {
-			if config.PendingCheckInterval != nil {
-				pendingInterval := config.PendingCheckInterval.Duration
-				if pendingInterval > 0 && safetyNetInterval <= pendingInterval {
-					errs = append(errs, fmt.Errorf("safetyNetInterval (%v) should be > pendingCheckInterval (%v)",
-						safetyNetInterval, pendingInterval))
-				}
-			}
-			if config.TerminalCheckInterval != nil {
-				terminalInterval := config.TerminalCheckInterval.Duration
-				if terminalInterval > 0 && safetyNetInterval <= terminalInterval {
-					errs = append(errs, fmt.Errorf("safetyNetInterval (%v) should be > terminalCheckInterval (%v)",
-						safetyNetInterval, terminalInterval))
-				}
-			}
-		}
-	}
+	// Validate SafetyNetInterval relationships
+	errs = append(errs, validateSafetyNetInterval(config)...)
 
 	// Validate RequiredCheckCacheTTL
 	if config.RequiredCheckCacheTTL != nil {
@@ -1078,15 +1054,48 @@ func validateRequiredStatusCheckConfig(config *promoterv1alpha1.RequiredStatusCh
 
 	if len(errs) > 0 {
 		// Combine all errors into one
-		var errMsg string
-		for i, err := range errs {
-			if i > 0 {
-				errMsg += "; "
-			}
-			errMsg += err.Error()
+		errMsgs := make([]string, 0, len(errs))
+		for _, err := range errs {
+			errMsgs = append(errMsgs, err.Error())
 		}
+		errMsg := strings.Join(errMsgs, "; ")
 		return fmt.Errorf("configuration validation failed: %s", errMsg)
 	}
 
 	return nil
+}
+
+// validateSafetyNetInterval validates the SafetyNetInterval configuration and its relationships.
+func validateSafetyNetInterval(config *promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration) []error {
+	var errs []error
+
+	if config.SafetyNetInterval == nil {
+		return errs
+	}
+
+	safetyNetInterval := config.SafetyNetInterval.Duration
+	if safetyNetInterval <= 0 {
+		// Safety net disabled, no validation needed
+		return errs
+	}
+
+	// Check relationship with PendingCheckInterval
+	if config.PendingCheckInterval != nil {
+		pendingInterval := config.PendingCheckInterval.Duration
+		if pendingInterval > 0 && safetyNetInterval <= pendingInterval {
+			errs = append(errs, fmt.Errorf("safetyNetInterval (%v) should be > pendingCheckInterval (%v)",
+				safetyNetInterval, pendingInterval))
+		}
+	}
+
+	// Check relationship with TerminalCheckInterval
+	if config.TerminalCheckInterval != nil {
+		terminalInterval := config.TerminalCheckInterval.Duration
+		if terminalInterval > 0 && safetyNetInterval <= terminalInterval {
+			errs = append(errs, fmt.Errorf("safetyNetInterval (%v) should be > terminalCheckInterval (%v)",
+				safetyNetInterval, terminalInterval))
+		}
+	}
+
+	return errs
 }

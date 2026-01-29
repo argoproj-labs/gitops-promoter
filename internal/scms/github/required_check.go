@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -50,7 +51,7 @@ func (rc *RequiredCheck) DiscoverRequiredChecks(ctx context.Context, repo *promo
 	logger := log.FromContext(ctx)
 
 	if repo.Spec.GitHub == nil {
-		return nil, fmt.Errorf("GitRepository does not have GitHub configuration")
+		return nil, errors.New("GitRepository does not have GitHub configuration")
 	}
 
 	owner := repo.Spec.GitHub.Owner
@@ -81,8 +82,8 @@ func (rc *RequiredCheck) DiscoverRequiredChecks(ctx context.Context, repo *promo
 	}
 
 	type checkRef struct {
-		name  string
 		appID *int64
+		name  string
 	}
 
 	// Extract required status checks from BranchRules
@@ -119,7 +120,7 @@ func (rc *RequiredCheck) DiscoverRequiredChecks(ctx context.Context, repo *promo
 	var requiredChecks []scms.RequiredCheck
 	for _, check := range rawChecks {
 		hasDuplicates := len(checksByName[check.name]) > 1
-		key := fmt.Sprintf("github-%s", check.name)
+		key := "github-" + check.name
 
 		// If duplicates exist and this check has an integration ID, append it
 		if hasDuplicates && check.appID != nil {
@@ -156,7 +157,7 @@ func (rc *RequiredCheck) PollCheckStatus(ctx context.Context, repo *promoterv1al
 	logger := log.FromContext(ctx)
 
 	if repo.Spec.GitHub == nil {
-		return promoterv1alpha1.CommitPhasePending, fmt.Errorf("GitRepository does not have GitHub configuration")
+		return promoterv1alpha1.CommitPhasePending, errors.New("GitRepository does not have GitHub configuration")
 	}
 
 	owner := repo.Spec.GitHub.Owner
@@ -275,13 +276,11 @@ func mapGitHubCheckStatusToPhase(checkRun *github.CheckRun) promoterv1alpha1.Com
 			return promoterv1alpha1.CommitPhaseSuccess
 		case "failure", "cancelled", "timed_out":
 			return promoterv1alpha1.CommitPhaseFailure
-		case "action_required":
-			// Note: "action_required" means the check requires manual user action
+		default:
+			// Note: "action_required" and other conclusions mean the check requires manual user action
 			// (e.g., approval, acknowledgment) before proceeding. While it blocks merging,
 			// it's semantically a waiting state (similar to autoMerge: false) rather than
 			// a failure state. We treat it as CommitPhasePending for consistency.
-			return promoterv1alpha1.CommitPhasePending
-		default:
 			return promoterv1alpha1.CommitPhasePending
 		}
 	}

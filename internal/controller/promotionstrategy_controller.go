@@ -235,58 +235,7 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	logger.V(4).Info("Processing required status checks for CTP",
 		"branch", environment.Branch,
 		"ctpName", ctpName)
-	// Get the RequiredStatusCheckCommitStatus for this PromotionStrategy
-	// Use ps.Name directly (not KubeSafeUniqueName) to match how RSCCS is created
-	rsccsName := ps.Name
-	rsccs := &promoterv1alpha1.RequiredStatusCheckCommitStatus{}
-	getErr := r.Get(ctx, client.ObjectKey{Name: rsccsName, Namespace: ps.Namespace}, rsccs)
-	if getErr == nil {
-			logger.V(4).Info("Found RSCCS, checking environments",
-				"rsccsName", rsccsName,
-				"numEnvironments", len(rsccs.Status.Environments),
-				"targetBranch", environment.Branch)
-			// Find the environment status for this CTP's branch
-			for _, envStatus := range rsccs.Status.Environments {
-				if envStatus.Branch == environment.Branch {
-					logger.V(4).Info("Found matching environment",
-						"branch", environment.Branch,
-						"numRequiredChecks", len(envStatus.RequiredChecks))
-					// Add a CommitStatusSelector for each required check
-					for _, requiredCheck := range envStatus.RequiredChecks {
-						// Use the pre-computed key from the check (e.g., "github-smoke" or "github-smoke-15368")
-						checkKey := requiredCheck.Key
-						// Check if already present
-						alreadyPresent := false
-						for _, cs := range proposedCommitStatuses {
-							if cs.Key != nil && *cs.Key == checkKey {
-								alreadyPresent = true
-								break
-							}
-						}
-						if !alreadyPresent {
-							proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(checkKey))
-							logger.V(4).Info("Added required status check to ProposedCommitStatuses",
-								"checkKey", checkKey,
-								"branch", environment.Branch,
-								"name", requiredCheck.Name)
-						} else {
-							logger.V(4).Info("Required status check already in ProposedCommitStatuses",
-								"checkKey", checkKey,
-								"branch", environment.Branch)
-						}
-					}
-					break
-				}
-			}
-		} else if !k8serrors.IsNotFound(getErr) {
-			logger.Error(getErr, "Failed to get RequiredStatusCheckCommitStatus",
-				"name", rsccsName,
-				"namespace", ps.Namespace)
-	} else {
-		logger.V(4).Info("RSCCS not found",
-			"name", rsccsName,
-			"namespace", ps.Namespace)
-	}
+	r.addRequiredStatusChecksToProposedStatuses(ctx, ps, environment, &proposedCommitStatuses)
 
 	// Build the spec
 	ctpSpec := acv1alpha1.ChangeTransferPolicySpec().
@@ -326,6 +275,88 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	logger.V(4).Info("Applied ChangeTransferPolicy")
 
 	return ctp, nil
+}
+
+// addRequiredStatusChecksToProposedStatuses adds required status checks from RSCCS to the proposed commit statuses.
+// This function extracts the logic for better readability and reduced nesting.
+func (r *PromotionStrategyReconciler) addRequiredStatusChecksToProposedStatuses(
+	ctx context.Context,
+	ps *promoterv1alpha1.PromotionStrategy,
+	environment promoterv1alpha1.Environment,
+	proposedCommitStatuses *[]*acv1alpha1.CommitStatusSelectorApplyConfiguration,
+) {
+	logger := log.FromContext(ctx)
+
+	// Get the RequiredStatusCheckCommitStatus for this PromotionStrategy
+	// Use ps.Name directly (not KubeSafeUniqueName) to match how RSCCS is created
+	rsccsName := ps.Name
+	rsccs := &promoterv1alpha1.RequiredStatusCheckCommitStatus{}
+	getErr := r.Get(ctx, client.ObjectKey{Name: rsccsName, Namespace: ps.Namespace}, rsccs)
+
+	if getErr != nil {
+		if !k8serrors.IsNotFound(getErr) {
+			logger.Error(getErr, "Failed to get RequiredStatusCheckCommitStatus",
+				"name", rsccsName,
+				"namespace", ps.Namespace)
+		} else {
+			logger.V(4).Info("RSCCS not found",
+				"name", rsccsName,
+				"namespace", ps.Namespace)
+		}
+		return
+	}
+
+	logger.V(4).Info("Found RSCCS, checking environments",
+		"rsccsName", rsccsName,
+		"numEnvironments", len(rsccs.Status.Environments),
+		"targetBranch", environment.Branch)
+
+	// Find the environment status for this CTP's branch
+	var envStatus *promoterv1alpha1.RequiredStatusCheckEnvironmentStatus
+	for i := range rsccs.Status.Environments {
+		if rsccs.Status.Environments[i].Branch == environment.Branch {
+			envStatus = &rsccs.Status.Environments[i]
+			break
+		}
+	}
+
+	if envStatus == nil {
+		return
+	}
+
+	logger.V(4).Info("Found matching environment",
+		"branch", environment.Branch,
+		"numRequiredChecks", len(envStatus.RequiredChecks))
+
+	// Add a CommitStatusSelector for each required check
+	for _, requiredCheck := range envStatus.RequiredChecks {
+		checkKey := requiredCheck.Key
+		if r.isCheckAlreadyPresent(*proposedCommitStatuses, checkKey) {
+			logger.V(4).Info("Required status check already in ProposedCommitStatuses",
+				"checkKey", checkKey,
+				"branch", environment.Branch)
+			continue
+		}
+
+		*proposedCommitStatuses = append(*proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(checkKey))
+		logger.V(4).Info("Added required status check to ProposedCommitStatuses",
+			"checkKey", checkKey,
+			"branch", environment.Branch,
+			"name", requiredCheck.Name)
+	}
+}
+
+// isCheckAlreadyPresent checks if a check key is already present in the commit statuses.
+func (r *PromotionStrategyReconciler) isCheckAlreadyPresent(
+	commitStatuses []*acv1alpha1.CommitStatusSelectorApplyConfiguration,
+	checkKey string,
+) bool {
+	for _, cs := range commitStatuses {
+		if cs.Key != nil && *cs.Key == checkKey {
+			return true
+		}
+	}
+	return false
 }
 
 // cleanupOrphanedChangeTransferPolicies deletes ChangeTransferPolicies that are owned by this PromotionStrategy

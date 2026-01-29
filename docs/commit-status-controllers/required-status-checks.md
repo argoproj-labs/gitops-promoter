@@ -250,7 +250,7 @@ The cache is stored in controller memory and expires automatically after the TTL
 
 2. **Restart the controller** (immediate, but disruptive):
    ```bash
-   kubectl rollout restart deployment gitops-promoter -n gitops-promoter
+   kubectl rollout restart deployment promoter-controller-manager -n promoter-system
    ```
    - This clears all in-memory cache and forces fresh discovery
    - Note: This will briefly interrupt all controller operations
