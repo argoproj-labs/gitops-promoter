@@ -183,7 +183,7 @@ type RequiredStatusCheckCommitStatusConfiguration struct {
 	// Set to "0s" to disable caching (not recommended).
 	// Minimum: 0s (disables caching), Recommended: >= 15m
 	// +optional
-	// +kubebuilder:default="15m"
+	// +kubebuilder:default="24h"
 	// +kubebuilder:validation:Type=string
 	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
 	RequiredCheckCacheTTL *metav1.Duration `json:"requiredCheckCacheTTL,omitempty"`

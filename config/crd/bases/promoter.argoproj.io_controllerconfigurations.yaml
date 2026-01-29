@@ -1353,7 +1353,7 @@ spec:
                     minimum: 0
                     type: integer
                   requiredCheckCacheTTL:
-                    default: 15m
+                    default: 24h
                     description: |-
                       RequiredCheckCacheTTL is how long to cache required check discovery results.
                       Required checks change infrequently, so caching reduces API calls significantly.

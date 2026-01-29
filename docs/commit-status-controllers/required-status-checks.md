@@ -35,7 +35,7 @@ metadata:
 spec:
   requiredStatusCheckCommitStatus:
     # Caching configuration (reduces API calls significantly)
-    requiredCheckCacheTTL: "15m"        # Cache required check discovery (default: 15m)
+    requiredCheckCacheTTL: "24h"        # Cache required check discovery (default: 24h)
     requiredCheckCacheMaxSize: 1000     # Max cache entries (default: 1000)
 
     # Dynamic polling intervals based on check state
@@ -59,7 +59,7 @@ The controller dynamically adjusts polling frequency based on check states:
 1. **Pending checks exist**: Polls every `pendingCheckInterval` (default 1m) for timely updates
 2. **All checks terminal** (success/failure): Polls every `terminalCheckInterval` (default 10m) to detect changes
 3. **No checks to monitor**: Polls every `safetyNetInterval` (default 1h) as safety net for missed watch events
-4. **Cached discovery**: Requeue scheduled at cache expiry time (default 15m)
+4. **Cached discovery**: Requeue scheduled at cache expiry time (default 24h)
 
 
 ## SCM Provider Setup
@@ -212,7 +212,7 @@ The controller uses dynamic requeuing based on check states:
 1. **Pending checks exist**: Requeue in `pendingCheckInterval` (default 1 minute) for active monitoring
 2. **All checks terminal**: Requeue in `terminalCheckInterval` (default 10 minutes) to detect changes
 3. **No checks to monitor**: Requeue in `safetyNetInterval` (default 1 hour) as safety net
-4. **Cached discovery**: Next requeue scheduled at cache expiry time (default 15 minutes)
+4. **Cached discovery**: Next requeue scheduled at cache expiry time (default 24 hours)
 
 This provides fine-grained control over API usage while maintaining responsiveness.
 
@@ -220,20 +220,40 @@ This provides fine-grained control over API usage while maintaining responsivene
 
 ### Controller-Level Caching
 
-The controller implements caching to dramatically reduce SCM API calls:
+The controller implements caching to reduce SCM API calls.
 
-- **Shared cache**: Required check discovery results are cached at the controller level, shared across all PromotionStrategies
-- **TTL-based expiration**: Cache entries expire after `requiredCheckCacheTTL` (default 15 minutes)
+**What is cached:**
+
+The cache stores the **list of required check names** discovered from your SCM provider's branch protection rules (e.g., GitHub Rulesets). This is the answer to the question: "What checks are required for this branch?"
+
+- Cached data: Check names from branch protection API (e.g., `["ci-tests", "security-scan", "e2e-tests"]`)
+- Cache key: Repository (domain/owner/name) + branch name
+- Empty results are cached: If a branch has no protection rules, the empty result is cached
+
+**What is NOT cached:**
+
+The actual **status** of those checks (pending/success/failure) is NOT cached - the controller polls the SCM provider's commit status API for current status at the intervals defined by `pendingCheckInterval` and `terminalCheckInterval`.
+
+**Cache behavior:**
+
+- **Shared cache**: Cached at the controller level, shared across all PromotionStrategies
+- **TTL-based expiration**: Cache entries expire after `requiredCheckCacheTTL` (default 24 hours)
 - **Size-based eviction**: When cache exceeds `requiredCheckCacheMaxSize` (default 1000), oldest entries are evicted
 
 **Cache Invalidation:**
 
-The cache automatically expires after the TTL. To force immediate cache refresh:
-```bash
-# Delete and recreate the RSCCS resource
-kubectl delete requiredstatuscheckcommitstatus <name>
-# The PromotionStrategy controller will recreate it automatically
-```
+The cache is stored in controller memory and expires automatically after the TTL. There are two ways to invalidate the cache:
+
+1. **Wait for TTL expiration** (recommended):
+   - Cache entries automatically expire after `requiredCheckCacheTTL`
+   - This is the intended behavior and requires no manual intervention
+
+2. **Restart the controller** (immediate, but disruptive):
+   ```bash
+   kubectl rollout restart deployment gitops-promoter -n gitops-promoter
+   ```
+   - This clears all in-memory cache and forces fresh discovery
+   - Note: This will briefly interrupt all controller operations
 
 ### Recommended Settings
 
@@ -245,7 +265,7 @@ pendingCheckInterval: "30s"   # More frequent polling
 
 **For stable rulesets** (production):
 ```yaml
-requiredCheckCacheTTL: "30m"      # Longer TTL for better API efficiency
+requiredCheckCacheTTL: "24h"      # Longer TTL for better API efficiency
 terminalCheckInterval: "15m"      # Less frequent polling when stable
 ```
 
@@ -267,7 +287,7 @@ maxConcurrentReconciles: 10       # More concurrent reconciliations
 The controller uses a combination of watch-based reconciliation and cached discovery:
 
 - **Initial discovery**: Happens immediately when controller starts or RSCCS resource is created
-- **Cached results**: Reused for `requiredCheckCacheTTL` duration (default 15 minutes)
+- **Cached results**: Reused for `requiredCheckCacheTTL` duration (default 24 hours)
 - **Watch-triggered updates**: Changes to PromotionStrategy, CTP, or CommitStatus trigger reconciliation
 - **Periodic refresh**: Safety net ensures reconciliation every `safetyNetInterval` (default 1 hour)
 

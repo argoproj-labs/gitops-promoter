@@ -51,7 +51,7 @@ import (
 )
 
 const (
-	DefaultRequiredCheckCacheTTL     = 15 * time.Minute
+	DefaultRequiredCheckCacheTTL     = 24 * time.Hour
 	DefaultRequiredCheckCacheMaxSize = 1000
 	DefaultPendingCheckInterval      = 1 * time.Minute
 	DefaultTerminalCheckInterval     = 10 * time.Minute

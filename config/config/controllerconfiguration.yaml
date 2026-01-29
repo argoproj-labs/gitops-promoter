@@ -103,7 +103,7 @@ spec:
               slowDelay: "5m"
               maxFastAttempts: 3
   requiredStatusCheckCommitStatus:
-    requiredCheckCacheTTL: "15m"
+    requiredCheckCacheTTL: "24h"
     requiredCheckCacheMaxSize: 1000
     pendingCheckInterval: "1m"
     terminalCheckInterval: "10m"
