@@ -3,7 +3,10 @@ package demo
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -100,10 +103,28 @@ func (i *Installer) InstallGitOpsPromoter(ctx context.Context) error {
 // installCRDsFromURL downloads a manifest URL and applies only CRD resources
 func (i *Installer) installCRDsFromURL(ctx context.Context, url string) error {
 	// Download the manifest
-	cmd := exec.CommandContext(ctx, "curl", "-sL", url)
-	output, err := cmd.Output()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to download manifest: %w", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			setupLog.Error(closeErr, "failed to close response body")
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download manifest: status %s", resp.Status)
+	}
+
+	output, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read manifest: %w", err)
 	}
 
 	// Split into individual YAML documents and filter CRDs
@@ -121,7 +142,7 @@ func (i *Installer) installCRDsFromURL(ctx context.Context, url string) error {
 	}
 
 	if len(crds) == 0 {
-		return fmt.Errorf("no CRDs found in manifest")
+		return errors.New("no CRDs found in manifest")
 	}
 
 	// Apply CRDs with server-side apply
