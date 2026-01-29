@@ -20,40 +20,9 @@ The Required Status Check Visibility Controller automatically discovers required
 3. **Continuous polling**: The controller polls your SCM provider's status check API to monitor the status of each required check
 4. **State management**: By surfacing required checks as CommitStatus resources, the PromotionStrategy stays in "progressing" state while waiting, avoiding "degraded" from failed merge attempts
 
-## Features
-
-- **Global toggle**: Enable/disable via `showRequiredStatusChecks` on PromotionStrategy (disabled by default)
-- **Granular visibility**: One CommitStatus resource per required check (not per protection rule)
-- **Dynamic polling**: 1 minute intervals when checks are pending, configurable interval otherwise
-- **Automatic cleanup**: Removes orphaned CommitStatus resources when checks are removed from branch protection
-- **Multi-SCM ready**: Architecture supports multiple SCM providers (GitHub fully supported, others planned)
-
 ## Configuration
 
 ### Enable the Feature
-
-Add `showRequiredStatusChecks: true` to your PromotionStrategy:
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: PromotionStrategy
-metadata:
-  name: my-app
-spec:
-  showRequiredStatusChecks: true  # Enable the feature
-
-  repositoryReference:
-    name: my-git-repo
-
-  environments:
-    - branch: environment/dev
-    - branch: environment/staging
-    - branch: environment/prod
-```
-
-### Configure Polling Interval
-
-The default polling interval is 5 minutes when all checks are passing. You can configure this in ControllerConfiguration:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -63,16 +32,50 @@ metadata:
   namespace: gitops-promoter
 spec:
   requiredStatusCheckCommitStatus:
+    enabled: true  # Global toggle for all PromotionStrategies
+```
+
+Once enabled, the feature automatically applies to all PromotionStrategies in the cluster.
+
+### Configure Polling Intervals
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ControllerConfiguration
+metadata:
+  name: controller-configuration
+  namespace: gitops-promoter
+spec:
+  requiredStatusCheckCommitStatus:
+    enabled: true  # Enable the feature
+
+    # Caching configuration (reduces API calls significantly)
+    requiredCheckCacheTTL: "15m"        # Cache required check discovery (default: 15m)
+    requiredCheckCacheMaxSize: 1000     # Max cache entries (default: 1000)
+
+    # Dynamic polling intervals based on check state
+    pendingCheckInterval: "1m"          # Poll when checks are pending (default: 1m)
+    terminalCheckInterval: "10m"        # Poll when checks are terminal (default: 10m)
+    safetyNetInterval: "1h"             # Safety net reconciliation (default: 1h)
+
     workQueue:
-      requeueDuration: 5m  # Polling interval when all checks passing
+      requeueDuration: "5m"              # Base interval (overridden by above)
       maxConcurrentReconciles: 5
       rateLimiter:
         exponentialFailure:
-          baseDelay: 1s
-          maxDelay: 1m
+          baseDelay: "1s"
+          maxDelay: "1m"
 ```
 
-**Note:** When any checks are pending, the controller automatically uses a 1 minute polling interval regardless of this configuration.
+**Polling Interval Behavior:**
+
+The controller dynamically adjusts polling frequency based on check states:
+
+1. **Pending checks exist**: Polls every `pendingCheckInterval` (default 1m) for timely updates
+2. **All checks terminal** (success/failure): Polls every `terminalCheckInterval` (default 10m) to detect changes
+3. **No checks to monitor**: Polls every `safetyNetInterval` (default 1h) as safety net for missed watch events
+4. **Cached discovery**: Requeue scheduled at cache expiry time (default 15m)
+
 
 ## SCM Provider Setup
 
@@ -98,13 +101,9 @@ Repeat for each environment branch.
 
 **Note:** Classic branch protection is not supported. You must use GitHub Rulesets for required checks to be discovered.
 
-### GitLab Setup (Planned)
-
-For GitLab repositories (when support is added), configure protected branches with pipeline status requirements.
-
 ### Other SCM Providers (Planned)
 
-Support for additional SCM providers (Bitbucket, Azure DevOps, Gitea, Forgejo) is planned. Each will integrate with their respective branch protection mechanisms.
+Support for additional SCM providers (GitLab, Bitbucket, Azure DevOps, Gitea, Forgejo) is planned. Each will integrate with their respective branch protection mechanisms.
 
 ## How CommitStatus Resources are Named
 
@@ -174,16 +173,17 @@ The controller maps SCM provider check statuses to CommitStatus phases. The exac
 
 #### GitHub Phase Mapping
 
-| GitHub Status | GitHub Conclusion | CommitStatus Phase |
-|--------------|-------------------|-------------------|
-| `completed` | `success` | `success` |
-| `completed` | `neutral` | `success` |
-| `completed` | `skipped` | `success` |
-| `completed` | `failure` | `failure` |
-| `completed` | `cancelled` | `failure` |
-| `completed` | `timed_out` | `failure` |
-| `queued` | - | `pending` |
-| `in_progress` | - | `pending` |
+| GitHub Status | GitHub Conclusion | CommitStatus Phase | Notes |
+|--------------|-------------------|-------------------|-------|
+| `completed` | `success` | `success` | Check passed |
+| `completed` | `neutral` | `success` | Check passed (neutral) |
+| `completed` | `skipped` | `success` | Check skipped |
+| `completed` | `action_required` | `pending` | Waiting for manual action |
+| `completed` | `failure` | `failure` | Check failed |
+| `completed` | `cancelled` | `failure` | Check cancelled |
+| `completed` | `timed_out` | `failure` | Check timed out |
+| `queued` | - | `pending` | Check queued |
+| `in_progress` | - | `pending` | Check running |
 
 #### Other SCM Providers
 
@@ -199,52 +199,103 @@ For each environment, the controller calculates an aggregated phase:
 
 ### Dynamic Requeue
 
-The controller uses dynamic requeue intervals:
+The controller uses dynamic requeuing based on check states:
 
-- **1 minute**: When any checks are pending in any environment
-- **Configured interval** (default 5 minutes): When all checks are passing in all environments
+1. **Pending checks exist**: Requeue in `pendingCheckInterval` (default 1 minute) for active monitoring
+2. **All checks terminal**: Requeue in `terminalCheckInterval` (default 10 minutes) to detect changes
+3. **No checks to monitor**: Requeue in `safetyNetInterval` (default 1 hour) as safety net
+4. **Cached discovery**: Next requeue scheduled at cache expiry time (default 15 minutes)
 
-This ensures timely updates when checks are actively running while reducing API load when stable.
+This provides fine-grained control over API usage while maintaining responsiveness.
+
+## Performance and Caching
+
+### Controller-Level Caching
+
+The controller implements caching to dramatically reduce SCM API calls:
+
+- **Shared cache**: Required check discovery results are cached at the controller level, shared across all PromotionStrategies
+- **TTL-based expiration**: Cache entries expire after `requiredCheckCacheTTL` (default 15 minutes)
+- **Size-based eviction**: When cache exceeds `requiredCheckCacheMaxSize` (default 1000), oldest entries are evicted
+
+**Cache Invalidation:**
+
+The cache automatically expires after the TTL. To force immediate cache refresh:
+```bash
+# Delete and recreate the RSCCS resource
+kubectl delete requiredstatuscheckcommitstatus <name>
+# The PromotionStrategy controller will recreate it automatically
+```
+
+### Recommended Settings
+
+**For frequently changing rulesets** (development/testing):
+```yaml
+requiredCheckCacheTTL: "5m"   # Shorter TTL for faster discovery
+pendingCheckInterval: "30s"   # More frequent polling
+```
+
+**For stable rulesets** (production):
+```yaml
+requiredCheckCacheTTL: "30m"      # Longer TTL for better API efficiency
+terminalCheckInterval: "15m"      # Less frequent polling when stable
+```
+
+**For high-volume deployments** (100+ PromotionStrategies):
+```yaml
+requiredCheckCacheMaxSize: 5000   # Larger cache to accommodate all environments
+maxConcurrentReconciles: 10       # More concurrent reconciliations
+```
 
 ## Limitations
-
-### SCM Provider Support
-
-Currently, this feature only works with GitHub repositories using GitHub Rulesets. Support for additional SCM providers is planned:
-
-- **GitHub**: ✅ Fully supported via Rulesets API (classic branch protection not supported)
-- **GitLab**: 🚧 Planned (protected branches with pipeline requirements)
-- **Bitbucket**: 🚧 Planned (branch restrictions and required checks)
-- **Azure DevOps**: 🚧 Planned (branch policies with status checks)
-- **Gitea/Forgejo**: 🚧 Planned (branch protection rules)
-
-The controller is architected to support multiple SCM providers through the `BranchProtectionProvider` interface.
 
 ### GitHub-Specific Limitations
 
 - **Rulesets Only**: GitHub classic branch protection is not supported. You must migrate to GitHub Rulesets.
-- **Repository Admin Permission Required**: The GitHub App needs "Administration: Read" permission to query rulesets.
+- **Required Permissions**: The GitHub App needs "Metadata: Read" repository permission to query rulesets and "Checks: Read" to monitor check status.
 
 ### Check Discovery Timing
 
-The controller queries branch protection rules on every reconcile loop. Changes to protection rules are detected within the polling interval (1 minute when pending, configured interval otherwise).
+The controller uses a combination of watch-based reconciliation and cached discovery:
+
+- **Initial discovery**: Happens immediately when controller starts or RSCCS resource is created
+- **Cached results**: Reused for `requiredCheckCacheTTL` duration (default 15 minutes)
+- **Watch-triggered updates**: Changes to PromotionStrategy, CTP, or CommitStatus trigger reconciliation
+- **Periodic refresh**: Safety net ensures reconciliation every `safetyNetInterval` (default 1 hour)
+
+Changes to branch protection rules are detected within the cache TTL or when triggered by watches.
 
 ## Troubleshooting
 
-### No CommitStatus Resources Created
+### Feature Not Working
 
-**Problem**: `showRequiredStatusChecks` is enabled but no CommitStatus resources are created.
+**Problem**: Feature seems to be enabled but no CommitStatus resources are created.
 
 **Solutions**:
-1. Verify branch protection is configured in your SCM provider:
+1. **Verify feature is enabled globally**:
+   ```bash
+   kubectl get controllerconfiguration controller-configuration -o jsonpath='{.spec.requiredStatusCheckCommitStatus.enabled}'
+   # Should output: true
+   ```
+   If not enabled, update ControllerConfiguration:
+   ```yaml
+   spec:
+     requiredStatusCheckCommitStatus:
+       enabled: true
+   ```
+
+2. **Verify branch protection is configured** in your SCM provider:
    - **GitHub**: Verify Rulesets are configured (not classic branch protection)
    - **Other SCMs**: Verify the SCM provider is supported (currently only GitHub)
-2. Check RequiredStatusCheckCommitStatus status for errors:
+
+3. **Check RequiredStatusCheckCommitStatus status** for errors:
    ```bash
    kubectl get requiredstatuscheckcommitstatus my-app -o yaml
    ```
-3. Verify the PromotionStrategy references a valid GitRepository with a supported SCM provider
-4. Check controller logs:
+
+4. **Verify the PromotionStrategy references a valid GitRepository** with a supported SCM provider
+
+5. **Check controller logs**:
    ```bash
    kubectl logs -n gitops-promoter -l app.kubernetes.io/name=gitops-promoter | grep RequiredStatusCheckCommitStatus
    ```
@@ -256,7 +307,6 @@ The controller queries branch protection rules on every reconcile loop. Changes 
 **Solutions**:
 1. Check if the status check actually exists and is running in your SCM provider:
    - **GitHub**: Go to the PR → "Checks" tab
-   - **GitLab**: Go to the MR → "Pipelines" tab
    - Verify the check/pipeline is actually running
 2. Verify the check name matches exactly (case-sensitive)
 3. Check if the check is excluded in environment configuration
@@ -269,7 +319,6 @@ The controller queries branch protection rules on every reconcile loop. Changes 
 **Solutions**:
 1. Verify branch protection configuration in your SCM provider:
    - **GitHub**: Settings → Rules → Rulesets (check which rulesets apply to the branch)
-   - **GitLab**: Settings → Repository → Protected branches
    - Ensure protection rules target the correct branches
 2. Verify the branch name matches exactly (case-sensitive)
 3. Check for inherited organization/group-level protection rules
@@ -282,105 +331,8 @@ The controller queries branch protection rules on every reconcile loop. Changes 
 1. Increase the `requeueDuration` in ControllerConfiguration to reduce polling frequency
 2. Verify your SCM provider authentication has sufficient rate limits:
    - **GitHub**: Use a GitHub App (not a personal access token) for higher rate limits
-   - **GitLab**: Verify your token/app has adequate rate limits
 3. Monitor API usage in controller logs
 4. Check metrics for rate limit information (if available):
    ```bash
    kubectl get --raw /metrics | grep rate_limit
    ```
-
-## Examples
-
-### Basic Setup
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: ScmProvider
-metadata:
-  name: github
-spec:
-  secretRef:
-    name: github-secret
-  github:
-    domain: github.com
-    appID: 123456
-    installationID: 789012
----
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: GitRepository
-metadata:
-  name: my-app-repo
-spec:
-  github:
-    owner: my-org
-    name: my-app
-  scmProviderRef:
-    name: github
----
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: PromotionStrategy
-metadata:
-  name: my-app
-spec:
-  showRequiredStatusChecks: true
-  repositoryReference:
-    name: my-app-repo
-  environments:
-    - branch: environment/dev
-    - branch: environment/staging
-    - branch: environment/prod
-```
-
-## Architecture
-
-### CRD Hierarchy
-
-```
-PromotionStrategy
-  ↓ (creates when showRequiredStatusChecks: true)
-RequiredStatusCheckCommitStatus
-  ↓ (creates one per required check per environment)
-CommitStatus (multiple)
-```
-
-### Controller Flow
-
-1. **Reconcile RequiredStatusCheckCommitStatus**
-   - Check if `showRequiredStatusChecks` is enabled
-   - Get all ChangeTransferPolicies for the PromotionStrategy
-   - For each environment:
-     - Call `BranchProtectionProvider.DiscoverRequiredChecks()` to discover required checks from branch protection rules
-     - For each required check:
-       - Call `BranchProtectionProvider.PollCheckStatus()` to get check status
-       - Create/update CommitStatus resource
-     - Calculate aggregated phase
-   - Cleanup orphaned CommitStatus resources
-   - Trigger CTP reconciliation on phase transitions
-   - Calculate dynamic requeue duration
-
-2. **PromotionStrategy Controller Integration**
-   - When `showRequiredStatusChecks` is true: create RequiredStatusCheckCommitStatus
-   - When `showRequiredStatusChecks` is false: delete RequiredStatusCheckCommitStatus
-   - RequiredStatusCheckCommitStatus is owned by PromotionStrategy (cascade delete)
-
-### SCM Provider Interface
-
-The controller uses the `BranchProtectionProvider` interface to support multiple SCM providers:
-
-```go
-type BranchProtectionProvider interface {
-    // Discover required checks from branch protection rules
-    DiscoverRequiredChecks(ctx context.Context, repo *GitRepository, branch string) ([]BranchProtectionCheck, error)
-
-    // Poll current status of a specific check
-    PollCheckStatus(ctx context.Context, repo *GitRepository, sha string, checkName string) (CommitStatusPhase, error)
-}
-```
-
-This abstraction enables support for different SCM providers without changing controller logic.
-
-## See Also
-
-- [Gating Promotions](../gating-promotions.md) - Overview of commit status gating
-- [ArgoCD Commit Status Controller](argocd-commit-status.md) - Health-based commit statuses
-- [Timed Commit Status Controller](timed-commit-status.md) - Time-based commit statuses
