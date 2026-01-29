@@ -98,7 +98,7 @@ func (p *InteractivePrompter) PrintCLIInformation() {
 	color.Cyan(`
 GitOps Promoter Demo CLI
 ========================
-This CLI will set up a demonstration of the GitOps Promoter with Github in your cluster.
+This CLI will set up a demonstration of the GitOps Promoter with Github in your local cluster.
 
 It will:
   • Configure SCM provider credentials (GitHub App + Personal Access Token)
