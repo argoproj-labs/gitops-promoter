@@ -2,7 +2,7 @@ export interface CommitStatus {
   key: string;
   phase: string;
   url?: string;
-  details?: string;
+  description?: string;
 }
 
 export interface Commit {
@@ -94,7 +94,7 @@ export interface PromotionStrategy {
 export interface Check {
   name: string;
   status: string;
-  details?: string;
+  description?: string;
   url?: string;
 }
 

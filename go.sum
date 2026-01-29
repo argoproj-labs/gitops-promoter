@@ -224,10 +224,8 @@ github.com/ugorji/go/codec v1.3.0 h1:Qd2W2sQawAfG8XSvzwhBeoGq71zXOC/Q1E9y/wUcsUA
 github.com/ugorji/go/codec v1.3.0/go.mod h1:pRBVtBSKl77K30Bv8R2P+cLSGaTtex6fsA2Wjqmfxj4=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
-github.com/zachaller/multicluster-runtime v0.0.0-20260120182227-1a0a8dc087b1 h1:ZrCi6pMee+RG3sVoVa+0LbwYCIu+7rsf7dqDPuWm2Js=
-github.com/zachaller/multicluster-runtime v0.0.0-20260120182227-1a0a8dc087b1/go.mod h1:OM3c2Ec5TYfTqwvt1T2aJA5SsnFPLkpEs21GqIbOyi4=
-gitlab.com/gitlab-org/api/client-go v1.19.0 h1:6gRiXuoVeXbX2ijhpHtgYPWrrmNq0i2eG111O8L7+N4=
-gitlab.com/gitlab-org/api/client-go v1.19.0/go.mod h1:ctGKgv9bErQHO0NOrfhoyFtKMAkBhUE7y53F2xHFAkE=
+gitlab.com/gitlab-org/api/client-go v1.23.0 h1:EluTYNh/Y8OGzJ9vS03BLOlN6F69MPf/AEPTpkgi780=
+gitlab.com/gitlab-org/api/client-go v1.23.0/go.mod h1:ctGKgv9bErQHO0NOrfhoyFtKMAkBhUE7y53F2xHFAkE=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
 go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
 go.uber.org/mock v0.6.0 h1:hyF9dfmbgIX5EfOdasqLsWD6xqpNZlXblLB/Dbnwv3Y=
@@ -307,6 +305,8 @@ sigs.k8s.io/controller-runtime v0.23.0 h1:Ubi7klJWiwEWqDY+odSVZiFA0aDSevOCXpa38y
 sigs.k8s.io/controller-runtime v0.23.0/go.mod h1:DBOIr9NsprUqCZ1ZhsuJ0wAnQSIxY/C6VjZbmLgw0j0=
 sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 h1:IpInykpT6ceI+QxKBbEflcR5EXP7sU1kvOlxwZh5txg=
 sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730/go.mod h1:mdzfpAEoE6DHQEN0uh9ZbOCuHbLK5wOm7dK4ctXE9Tg=
+sigs.k8s.io/multicluster-runtime v0.22.4-beta.1.0.20260127083348-51b058b118c5 h1:sDVzzAOOmxGLTS71DRMYctF5PirV5ZqQEbZAlCVvaAo=
+sigs.k8s.io/multicluster-runtime v0.22.4-beta.1.0.20260127083348-51b058b118c5/go.mod h1:OM3c2Ec5TYfTqwvt1T2aJA5SsnFPLkpEs21GqIbOyi4=
 sigs.k8s.io/randfill v1.0.0 h1:JfjMILfT8A6RbawdsK2JXGBR5AQVfd+9TbzrlneTyrU=
 sigs.k8s.io/randfill v1.0.0/go.mod h1:XeLlZ/jmk4i1HRopwe7/aU3H5n1zNUcX6TM94b3QxOY=
 sigs.k8s.io/structured-merge-diff/v6 v6.3.1 h1:JrhdFMqOd/+3ByqlP2I45kTOZmTRLBUm5pvRjeheg7E=

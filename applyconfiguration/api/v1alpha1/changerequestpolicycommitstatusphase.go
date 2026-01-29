@@ -28,6 +28,8 @@ type ChangeRequestPolicyCommitStatusPhaseApplyConfiguration struct {
 	Phase *string `json:"phase,omitempty"`
 	// Url is the URL of the commit status
 	Url *string `json:"url,omitempty"`
+	// Description is the description of the commit status
+	Description *string `json:"description,omitempty"`
 }
 
 // ChangeRequestPolicyCommitStatusPhaseApplyConfiguration constructs a declarative configuration of the ChangeRequestPolicyCommitStatusPhase type for use with
@@ -57,5 +59,13 @@ func (b *ChangeRequestPolicyCommitStatusPhaseApplyConfiguration) WithPhase(value
 // If called multiple times, the Url field is set to the value of the last call.
 func (b *ChangeRequestPolicyCommitStatusPhaseApplyConfiguration) WithUrl(value string) *ChangeRequestPolicyCommitStatusPhaseApplyConfiguration {
 	b.Url = &value
+	return b
+}
+
+// WithDescription sets the Description field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Description field is set to the value of the last call.
+func (b *ChangeRequestPolicyCommitStatusPhaseApplyConfiguration) WithDescription(value string) *ChangeRequestPolicyCommitStatusPhaseApplyConfiguration {
+	b.Description = &value
 	return b
 }

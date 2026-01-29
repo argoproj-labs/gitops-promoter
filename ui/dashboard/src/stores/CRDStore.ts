@@ -14,8 +14,8 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
         loading: boolean;
         error: string | null;
         connectionStatus?: 'connecting' | 'open' | 'error';
-        fetchItems: (namespace: string) => Promise<void>;
-        subscribe: (namespace: string) => void;
+        fetchItems: (_ns: string) => Promise<void>;
+        subscribe: (_ns: string) => void;
         unsubscribe: () => void;
         reset: () => void;
     }>
@@ -72,7 +72,7 @@ export function createCRDStore<T extends CRDItem>(kind: string, eventName: strin
                         }
                         return { items: newItems };
                     });
-                } catch (err) {
+                } catch {
                     set({ error: 'Failed to parse real-time update' });
                 }
             });
