@@ -2,6 +2,7 @@
   "name": "argocd-extension-prcard",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "main": "dist/extension-prcard.js",
   "scripts": {
     "build": "webpack --config webpack.config.mjs",
