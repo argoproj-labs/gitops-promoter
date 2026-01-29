@@ -19,6 +19,9 @@ const ChangeTransferPolicyLabel = "promoter.argoproj.io/change-transfer-policy"
 // TimedCommitStatusLabel the timed commit status which the commit status is associated with.
 const TimedCommitStatusLabel = "promoter.argoproj.io/timed-commit-status"
 
+// RequiredStatusCheckCommitStatusLabel identifies required status check commit statuses
+const RequiredStatusCheckCommitStatusLabel = "promoter.argoproj.io/required-status-check-commit-status"
+
 // PreviousEnvironmentCommitStatusKey the commit status key name used to indicate the previous environment health
 const PreviousEnvironmentCommitStatusKey = "promoter-previous-environment"
 

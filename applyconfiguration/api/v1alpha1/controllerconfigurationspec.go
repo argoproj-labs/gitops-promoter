@@ -50,6 +50,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// GitCommitStatus contains the configuration for the GitCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	GitCommitStatus *GitCommitStatusConfigurationApplyConfiguration `json:"gitCommitStatus,omitempty"`
+	// RequiredStatusCheckCommitStatus contains the configuration for the RequiredStatusCheckCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	RequiredStatusCheckCommitStatus *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration `json:"requiredStatusCheckCommitStatus,omitempty"`
 }
 
 // ControllerConfigurationSpecApplyConfiguration constructs a declarative configuration of the ControllerConfigurationSpec type for use with
@@ -111,5 +114,13 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithTimedCommitStatus(va
 // If called multiple times, the GitCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithGitCommitStatus(value *GitCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.GitCommitStatus = value
+	return b
+}
+
+// WithRequiredStatusCheckCommitStatus sets the RequiredStatusCheckCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RequiredStatusCheckCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithRequiredStatusCheckCommitStatus(value *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.RequiredStatusCheckCommitStatus = value
 	return b
 }

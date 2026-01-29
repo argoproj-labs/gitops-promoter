@@ -30,12 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
-	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
-	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,6 +38,13 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // ctpEnqueueState tracks rate limiting state for enqueuing out-of-sync CTPs.
@@ -228,6 +229,64 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		if !found {
 			proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(promoterv1alpha1.PreviousEnvironmentCommitStatusKey))
 		}
+	}
+
+	// Add required status checks automatically
+	logger.V(4).Info("Processing required status checks for CTP",
+		"branch", environment.Branch,
+		"ctpName", ctpName)
+	// Get the RequiredStatusCheckCommitStatus for this PromotionStrategy
+	// Use ps.Name directly (not KubeSafeUniqueName) to match how RSCCS is created
+	rsccsName := ps.Name
+	rsccs := &promoterv1alpha1.RequiredStatusCheckCommitStatus{}
+	getErr := r.Get(ctx, client.ObjectKey{Name: rsccsName, Namespace: ps.Namespace}, rsccs)
+	if getErr == nil {
+			logger.V(4).Info("Found RSCCS, checking environments",
+				"rsccsName", rsccsName,
+				"numEnvironments", len(rsccs.Status.Environments),
+				"targetBranch", environment.Branch)
+			// Find the environment status for this CTP's branch
+			for _, envStatus := range rsccs.Status.Environments {
+				if envStatus.Branch == environment.Branch {
+					logger.V(4).Info("Found matching environment",
+						"branch", environment.Branch,
+						"numRequiredChecks", len(envStatus.RequiredChecks))
+					// Add a CommitStatusSelector for each required check
+					for _, requiredCheck := range envStatus.RequiredChecks {
+						// The key matches the CommitStatus label that the RSCCS controller creates
+						checkKey := getRequiredCheckLabelKey(requiredCheck.Provider, requiredCheck.Name)
+						// Check if already present
+						alreadyPresent := false
+						for _, cs := range proposedCommitStatuses {
+							if cs.Key != nil && *cs.Key == checkKey {
+								alreadyPresent = true
+								break
+							}
+						}
+						if !alreadyPresent {
+							proposedCommitStatuses = append(proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(checkKey))
+							logger.V(4).Info("Added required status check to ProposedCommitStatuses",
+								"checkKey", checkKey,
+								"branch", environment.Branch,
+								"name", requiredCheck.Name)
+						} else {
+							logger.V(4).Info("Required status check already in ProposedCommitStatuses",
+								"checkKey", checkKey,
+								"branch", environment.Branch)
+						}
+					}
+					break
+				}
+			}
+		} else if !k8serrors.IsNotFound(getErr) {
+			// Log non-NotFound errors
+			logger.Error(getErr, "Failed to get RequiredStatusCheckCommitStatus",
+				"name", rsccsName,
+				"namespace", ps.Namespace)
+	} else {
+		logger.V(4).Info("RSCCS not found",
+			"name", rsccsName,
+			"namespace", ps.Namespace)
 	}
 
 	// Build the spec
