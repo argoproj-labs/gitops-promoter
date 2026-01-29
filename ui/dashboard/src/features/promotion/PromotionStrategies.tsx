@@ -6,8 +6,8 @@ import PromotionStrategiesTiles from '../../components/PromotionStrategySummary/
 interface NamespaceStore {
   namespace: string;
   namespaces: string[];
-  setNamespace: (namespace: string) => void;
-  setNamespaces: (namespaces: string[]) => void;
+  setNamespace: (_ns: string) => void;
+  setNamespaces: (_nsList: string[]) => void;
 }
 
 export function PromotionStrategies() {
@@ -21,7 +21,7 @@ export function PromotionStrategies() {
         fetchItems(namespace);
         subscribe(namespace);
         return () => unsubscribe();
-    }, [namespace]);
+    }, [namespace, fetchItems, subscribe, unsubscribe]);
 
     if (!namespace) return null;
     if (loading) return <div>Loading...</div>;

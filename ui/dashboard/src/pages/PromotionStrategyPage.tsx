@@ -12,9 +12,7 @@ import './PromotionStrategyPage.scss';
 
 interface NamespaceStore {
   namespace: string;
-  namespaces: string[];
-  setNamespace: (namespace: string) => void;
-  setNamespaces: (namespaces: string[]) => void;
+  setNamespace: (_ns: string) => void;
 }
 
 interface PromotionStrategyPageProps {
