@@ -321,7 +321,9 @@ func (i *Installer) runKubectl(ctx context.Context, args ...string) error {
 	return nil
 }
 
-func (i *Installer) kubectlApplyURL(ctx context.Context, url, namespace string, serverSide bool, forceConflicts bool) error {
+func (i *Installer) kubectlApplyURL(
+	ctx context.Context, url, namespace string, serverSide, forceConflicts bool,
+) error {
 	args := []string{"apply"}
 	if serverSide {
 		args = append(args, "--server-side")
