@@ -34,7 +34,10 @@ type ApplicationsSelectedApplyConfiguration struct {
 	Name *string `json:"name,omitempty"`
 	// Phase is the current phase of the commit status.
 	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
-	// Sha is the commit SHA that this status is associated with.
+	// Sha is the commit SHA that the application is synced to.
+	// This field is only populated when the application's sync status is Synced.
+	// When the sync status is OutOfSync or Unknown, this field will be empty because
+	// Status.Sync.Revision may contain a branch name instead of a SHA.
 	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	Sha *string `json:"sha,omitempty"`
 	// LastTransitionTime is the last time the phase transitioned.
