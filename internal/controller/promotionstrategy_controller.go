@@ -762,24 +762,20 @@ func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.Enviro
 	// to a newer dry SHA, but hydrator.metadata still has the old value because no new commit was created.
 	envIsNoOp := envHydratedForDrySha != envProposedDrySha
 
-	// If this environment is NOT a no-op (i.e., it has real changes to deploy),
-	// but it hasn't merged yet, we need to wait for it.
-	if !envIsNoOp {
-		return true, "Waiting for previous environment to be promoted"
-	}
-
-	// Even if the current commit is a no-op for this environment, we still need to check
-	// if there are pending changes from a previous commit that haven't been merged yet.
-	// This handles the case where:
-	// - Commit 1 changed env A (autoMerge=false, PR not merged)
-	// - Commit 2 did NOT change env A (no-op for commit 2)
-	// - Env B should still wait for env A's PR from commit 1 to be merged
+	// Check if this environment has pending changes (PR not yet merged).
+	// This catches the case where:
+	// - Commit 1 changed this env (autoMerge=false, PR not merged)
+	// - Commit 2 did NOT change this env (no-op for commit 2)
+	// - Downstream envs should still wait for commit 1's PR to be merged
 	envHasPendingChanges := envStatus.Active.Dry.Sha != envProposedDrySha
-	if envHasPendingChanges {
+
+	// Only recurse (skip this environment) if it's a no-op AND has no pending changes.
+	// If it's not a no-op OR has pending changes, we need to wait for it.
+	if !envIsNoOp || envHasPendingChanges {
 		return true, "Waiting for previous environment to be promoted"
 	}
 
-	// This environment is a no-op AND has no pending changes - recurse to check earlier environments
+	// This environment is a no-op with no pending changes - recurse to check earlier environments
 	return isPreviousEnvironmentPending(precedingEnvStatuses[:len(precedingEnvStatuses)-1], targetDrySha, currentActiveCommitTime)
 }
 
