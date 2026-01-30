@@ -1,0 +1,532 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: webrequestcommitstatuses.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: WebRequestCommitStatus
+    listKind: WebRequestCommitStatusList
+    plural: webrequestcommitstatuses
+    singular: webrequestcommitstatus
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.key
+      name: Key
+      type: string
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: PromotionStrategy
+      type: string
+    - jsonPath: .spec.reportOn
+      name: ReportOn
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: WebRequestCommitStatus is the Schema for the webrequestcommitstatuses
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of WebRequestCommitStatus
+            properties:
+              descriptionTemplate:
+                description: |-
+                  DescriptionTemplate is a human-readable description of this validation that will be shown in the SCM provider
+                  (GitHub, GitLab, etc.) as the commit status description.
+                  Supports Go templates with environment-specific variables.
+
+                  Available template variables:
+                    - {{ .ReportedSha }}: the commit SHA being reported on
+                    - {{ .LastSuccessfulSha }}: last SHA that achieved success for this environment
+                    - {{ .Phase }}: current phase (success/pending/failure)
+                    - {{ .PromotionStrategy }}: full PromotionStrategy object
+                    - {{ .Environment }}: current environment status from PromotionStrategy
+                    - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
+                    - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
+
+                  Examples:
+                    - "External approval for {{ .Environment.Branch }}"
+                    - "Checking deployment {{ .ReportedSha | trunc 7 }}"
+                    - "{{ .Phase }} - waiting for external approval"
+
+                  If not specified, defaults to empty string.
+                type: string
+              expression:
+                description: |-
+                  Expression is evaluated using the expr library (github.com/expr-lang/expr) against the HTTP response.
+                  The expression must return a boolean value where true indicates the validation passed.
+
+                  Available variables in the expression context:
+                    - Response.StatusCode (int): the HTTP response status code
+                    - Response.Body (any): parsed JSON as map[string]any, or raw string if not JSON
+                    - Response.Headers (map[string][]string): HTTP response headers
+
+                  Examples:
+                    - Response.StatusCode == 200
+                    - Response.StatusCode == 200 && Response.Body.approved == true
+                    - Response.StatusCode == 200 && Response.Body.status == "approved"
+                    - len(Response.Headers["X-Approval"]) > 0
+                type: string
+              httpRequest:
+                description: |-
+                  HTTPRequest defines the HTTP request configuration.
+                  Supports Go templates in URL, Headers, and Body fields.
+                properties:
+                  authentication:
+                    description: |-
+                      Authentication specifies authentication configuration for the HTTP request.
+
+                      Supports multiple authentication methods:
+                      - Basic Auth: HTTP Basic Authentication with username/password
+                      - Bearer Token: Bearer token authentication (e.g., API keys, JWTs)
+                      - OAuth2: OAuth2 client credentials flow for obtaining access tokens
+                      - TLS: Mutual TLS (mTLS) with client certificates
+
+                      All credentials must be stored in Kubernetes secrets and referenced via secretRef fields.
+
+                      Examples:
+                        # Basic Auth
+                        authentication:
+                          basic:
+                            secretRef:
+                              name: my-creds
+
+                        # Bearer Token
+                        authentication:
+                          bearer:
+                            secretRef:
+                              name: api-token
+
+                        # OAuth2 Client Credentials
+                        authentication:
+                          oauth2:
+                            tokenURL: "https://auth.example.com/oauth/token"
+                            secretRef:
+                              name: oauth-creds
+
+                        # TLS Client Certificate
+                        authentication:
+                          tls:
+                            secretRef:
+                              name: my-tls-cert
+                    properties:
+                      basic:
+                        description: |-
+                          Basic specifies HTTP Basic Authentication.
+                          Credentials can be provided inline (with secret references) or via secretRef.
+                        properties:
+                          secretRef:
+                            description: SecretRef references a secret containing
+                              username and password.
+                            properties:
+                              name:
+                                description: Name of the secret.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                      bearer:
+                        description: |-
+                          Bearer specifies Bearer token authentication.
+                          Token can be provided inline (with secret reference) or via secretRef.
+                        properties:
+                          secretRef:
+                            description: SecretRef references a secret containing
+                              the bearer token.
+                            properties:
+                              name:
+                                description: Name of the secret.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                      oauth2:
+                        description: |-
+                          OAuth2 specifies OAuth2 client credentials authentication.
+                          The controller will automatically obtain access tokens from the specified tokenURL.
+                        properties:
+                          scopes:
+                            description: |-
+                              Scopes to request from the OAuth2 provider.
+                              Optional - some providers don't require scopes for client credentials.
+                              Example: ["read:api", "write:api"]
+                            items:
+                              type: string
+                            type: array
+                          secretRef:
+                            description: SecretRef references a secret containing
+                              clientID and clientSecret.
+                            properties:
+                              name:
+                                description: Name of the secret.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          tokenURL:
+                            description: |-
+                              TokenURL is the OAuth2 token endpoint where access tokens are obtained.
+                              Example: "https://auth.example.com/oauth/token"
+                            type: string
+                        required:
+                        - secretRef
+                        - tokenURL
+                        type: object
+                      tls:
+                        description: |-
+                          TLS specifies TLS client certificate authentication (mutual TLS).
+                          Requires a secret containing the client certificate and private key.
+                        properties:
+                          secretRef:
+                            description: |-
+                              SecretRef references a secret containing TLS certificate and key.
+                              The secret should be of type kubernetes.io/tls or contain the required keys.
+                            properties:
+                              name:
+                                description: Name of the secret.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                    type: object
+                  bodyTemplate:
+                    description: |-
+                      BodyTemplate is the request body to send.
+                      Supports Go templates (see HTTPRequestSpec for available variables).
+                    type: string
+                  headerTemplates:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      HeaderTemplates are additional HTTP headers to include in the request.
+                      The map key is the header name and the value is the header value (supports Go templates).
+                      See HTTPRequestSpec for available template variables.
+                    type: object
+                  method:
+                    description: Method is the HTTP method to use.
+                    enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    type: string
+                  timeout:
+                    default: 30s
+                    description: Timeout is the maximum time to wait for the HTTP
+                      request to complete.
+                    type: string
+                  urlTemplate:
+                    description: |-
+                      URLTemplate is the HTTP endpoint to request.
+                      Supports Go templates (see HTTPRequestSpec for available variables).
+                    type: string
+                required:
+                - method
+                - urlTemplate
+                type: object
+              key:
+                description: |-
+                  Key is the unique identifier for this validation rule.
+                  It is used as the commit status key and in status messages.
+                  This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses
+                  to determine which environments this validation applies to.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              mode:
+                description: |-
+                  Mode controls how the controller polls or triggers HTTP requests.
+                  Exactly one of Polling or Trigger must be specified.
+                properties:
+                  polling:
+                    description: |-
+                      Polling enables interval-based polling mode.
+                      The controller will poll the HTTP endpoint at the specified interval.
+                    properties:
+                      interval:
+                        default: 1m
+                        description: |-
+                          Interval controls how often to retry the HTTP request while in pending state.
+                          When reportOn is "proposed": stops polling after success for a given SHA.
+                          When reportOn is "active": always polls at this interval.
+                        type: string
+                    type: object
+                  trigger:
+                    description: |-
+                      Trigger enables expression-based triggering mode.
+                      The controller will evaluate the expression to determine when to make HTTP requests.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is an expr expression that dynamically controls whether the HTTP request should be made.
+                          When specified, this expression is evaluated BEFORE each HTTP request to determine if the controller should
+                          make the request at all.
+
+                          The expression can return:
+                           1. Boolean: true/false to control whether to make the HTTP request
+                           2. Object with 'trigger' field: {trigger: true/false, ...customData}
+                              - The 'trigger' field controls whether to make the HTTP request
+                              - Any additional fields are stored and available in the next reconcile as 'ExpressionData'
+
+                          Available variables in the expression context:
+                            - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
+                            - Environment (EnvironmentStatus): current environment's status from PromotionStrategy
+                            - Phase (string): current phase (success/pending/failure)
+                            - ReportedSha (string): the SHA being validated
+                            - LastSuccessfulSha (string): last SHA that achieved success for this environment
+                            - ExpressionData (map[string]any): custom data from previous trigger expression evaluation
+
+                          Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
+                          Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
+                          Changes flow through the array in order. To access the previous environment, use array indexing:
+                            currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Environment.Branch})
+                            previousEnv = currentIdx > 0 ? PromotionStrategy.Status.Environments[currentIdx-1] : nil
+
+                          Examples (Boolean return):
+                            # Always trigger (equivalent to polling mode)
+                            - "true"
+
+                            # Only trigger when SHA changes from what we last tracked
+                            - "ReportedSha != ExpressionData['lastCheckedSha']"
+
+                            # Only trigger when previous environment is healthy
+                            - "len(filter(PromotionStrategy.Status.Environments, {.Branch == 'environment/staging'})[0].LastHealthyDryShas) > 0"
+
+                          Examples (Object return with state tracking):
+                            # Track SHA and only trigger when it changes
+                            - |
+                              {
+                                trigger: ReportedSha != ExpressionData["trackedSha"],
+                                trackedSha: ReportedSha
+                              }
+                        type: string
+                      requeueDuration:
+                        default: 1m
+                        description: RequeueDuration specifies how long to wait before
+                          requeuing to re-evaluate the trigger expression.
+                        type: string
+                    required:
+                    - expression
+                    type: object
+                type: object
+              promotionStrategyRef:
+                description: |-
+                  PromotionStrategyRef references the PromotionStrategy this applies to.
+                  The controller will check commits from ALL environments in the referenced PromotionStrategy
+                  where this WebRequestCommitStatus.Spec.Key matches an entry in either:
+                    - PromotionStrategy.Spec.ProposedCommitStatuses (applies to all environments), OR
+                    - PromotionStrategy.Spec.ActiveCommitStatuses (applies to all environments), OR
+                    - Environment.ProposedCommitStatuses (applies to specific environment), OR
+                    - Environment.ActiveCommitStatuses (applies to specific environment)
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              reportOn:
+                default: proposed
+                description: |-
+                  ReportOn specifies which commit SHA to report the CommitStatus on.
+                  - "proposed": Reports on the proposed hydrated commit SHA (default)
+                  - "active": Reports on the active hydrated commit SHA
+
+                  When "proposed": Polls until success, then stops polling for that SHA.
+                  When "active": Polls forever, even after success (active state can change).
+                enum:
+                - proposed
+                - active
+                type: string
+              urlTemplate:
+                description: |-
+                  UrlTemplate is a link to more details about this validation that will be shown in the SCM provider
+                  (GitHub, GitLab, etc.) as the commit status target URL.
+                  Supports Go templates with the same variables as DescriptionTemplate.
+
+                  This can link to:
+                    - External approval system UI
+                    - Monitoring dashboard
+                    - API endpoint being checked
+                    - Documentation or runbook
+
+                  Examples:
+                    - "https://approvals.example.com/{{ .ReportedSha }}"
+                    - "https://dashboard.example.com/{{ .Environment.Branch }}/status"
+                    - "https://change-api.example.com/changes?asset={{ index .NamespaceMetadata.Labels \"asset-id\" }}"
+
+                  If not specified, defaults to empty string (no URL shown).
+                type: string
+            required:
+            - expression
+            - httpRequest
+            - key
+            - mode
+            - promotionStrategyRef
+            type: object
+          status:
+            description: status defines the observed state of WebRequestCommitStatus
+            properties:
+              conditions:
+                description: Conditions represent the latest available observations
+                  of an object's state
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              environments:
+                description: Environments holds the status of each environment being
+                  tracked.
+                items:
+                  description: WebRequestCommitStatusEnvironmentStatus defines the
+                    observed status for a specific environment.
+                  properties:
+                    branch:
+                      description: Branch is the name of the branch/environment.
+                      minLength: 1
+                      type: string
+                    expressionData:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        ExpressionData stores custom data returned from the trigger expression.
+                        This data is passed to the next trigger expression evaluation.
+                      type: object
+                    lastRequestTime:
+                      description: LastRequestTime is when the last HTTP request was
+                        made.
+                      format: date-time
+                      type: string
+                    lastResponseStatusCode:
+                      description: LastResponseStatusCode is the HTTP status code
+                        from the last request.
+                      type: integer
+                    lastSuccessfulSha:
+                      description: |-
+                        LastSuccessfulSha is the last commit SHA that achieved success status for this environment.
+                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                      maxLength: 64
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                      type: string
+                    phase:
+                      description: Phase represents the current phase of the validation.
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      type: string
+                    reportedSha:
+                      description: |-
+                        ReportedSha is the commit SHA being reported on for this environment.
+                        This is determined by the reportOn field (proposed or active).
+                        Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+                      maxLength: 64
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                      type: string
+                  required:
+                  - branch
+                  - phase
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
