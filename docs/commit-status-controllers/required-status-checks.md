@@ -82,17 +82,27 @@ This feature requires configuring branch protection rules in your SCM provider t
 
 For GitHub repositories, this feature uses GitHub Rulesets (not classic branch protection):
 
-1. Go to your repository on GitHub
-2. Navigate to **Settings → Rules → Rulesets**
-3. Click **New ruleset** → **New branch ruleset**
-4. Configure the ruleset:
-   - **Name**: e.g., "Dev Environment Protection"
-   - **Target branches**: e.g., `environment/dev`
-   - **Branch protections**: Enable "Require status checks to pass"
-   - **Required checks**: Add the check names (e.g., `ci-tests`, `security-scan`)
-5. Save the ruleset
+1. **Configure GitHub App Permissions** (required first):
+   - Go to your GitHub App settings
+   - Under "Repository permissions", ensure these are set to "Read-only":
+     - **Metadata** - To query rulesets
+     - **Checks** - To monitor modern checks (Check Runs API)
+     - **Commit statuses** - To monitor legacy checks (Commit Status API)
+   - Save changes and accept the permission update
+   - **Important**: Without "Commit statuses: Read", you'll get 403 errors when the controller tries to fallback to the legacy API
 
-Repeat for each environment branch.
+2. **Create Branch Protection Ruleset**:
+   - Go to your repository on GitHub
+   - Navigate to **Settings → Rules → Rulesets**
+   - Click **New ruleset** → **New branch ruleset**
+   - Configure the ruleset:
+     - **Name**: e.g., "Dev Environment Protection"
+     - **Target branches**: e.g., `environment/dev`
+     - **Branch protections**: Enable "Require status checks to pass"
+     - **Required checks**: Add the check names (e.g., `ci-tests`, `security-scan`)
+   - Save the ruleset
+
+3. **Repeat for each environment branch**
 
 **Note:** Classic branch protection is not supported. You must use GitHub Rulesets for required checks to be discovered.
 
@@ -196,6 +206,10 @@ The controller maps SCM provider check statuses to CommitStatus phases. The exac
 
 #### GitHub Phase Mapping
 
+GitHub uses two APIs for status checks: the modern **Check Runs API** and the legacy **Commit Status API**. The controller queries both APIs with intelligent fallback.
+
+**Check Runs API (Modern):**
+
 | GitHub Status | GitHub Conclusion | CommitStatus Phase | Notes |
 |--------------|-------------------|-------------------|-------|
 | `completed` | `success` | `success` | Check passed |
@@ -207,6 +221,29 @@ The controller maps SCM provider check statuses to CommitStatus phases. The exac
 | `completed` | `timed_out` | `failure` | Check timed out |
 | `queued` | - | `pending` | Check queued |
 | `in_progress` | - | `pending` | Check running |
+
+**Commit Status API (Legacy):**
+
+| Commit Status State | CommitStatus Phase | Notes |
+|--------------------|-------------------|-------|
+| `success` | `success` | Check passed |
+| `failure` | `failure` | Check failed |
+| `error` | `failure` | Check errored |
+| `pending` | `pending` | Check pending |
+
+**API Fallback Behavior:**
+
+When a required check has **no integration ID** specified in the ruleset (meaning it can accept status from any GitHub App or action), the controller uses sequential fallback:
+
+1. **First**: Query Check Runs API (modern)
+2. **If no check runs found**: Query Commit Status API (legacy)
+3. **Check Runs take precedence**: If both exist, use check run status
+
+This ensures compatibility with both modern GitHub Actions/Apps (Check Runs API) and legacy CI systems (Commit Status API) while minimizing API calls.
+
+**When fallback occurs:**
+- Ruleset check has **no `integration_id`** → Checks both APIs
+- Ruleset check has **specific `integration_id`** → Only checks Check Runs API
 
 #### Other SCM Providers
 
@@ -355,7 +392,12 @@ maxConcurrentReconciles: 10       # More concurrent reconciliations
 ### GitHub-Specific Limitations
 
 - **Rulesets Only**: GitHub classic branch protection is not supported. You must migrate to GitHub Rulesets.
-- **Required Permissions**: The GitHub App needs "Metadata: Read" repository permission to query rulesets and "Checks: Read" to monitor check status.
+- **Required Permissions**: The GitHub App needs the following repository permissions:
+  - **"Metadata: Read"** - Required to query rulesets and branch protection rules
+  - **"Checks: Read"** - Required to monitor Check Runs API status (modern checks)
+  - **"Commit statuses: Read"** - Required to monitor Commit Status API (legacy checks)
+
+- **API Compatibility**: The controller supports both Check Runs API (modern) and Commit Status API (legacy) with automatic fallback for maximum compatibility.
 
 ### Check Discovery Timing
 
@@ -451,3 +493,88 @@ kubectl get requiredstatuscheckcommitstatuses my-app -o yaml | grep -A4 "require
    kubectl annotate requiredstatuscheckcommitstatuses my-app trigger="$(date +%s)" --overwrite
    ```
 3. **Reduce polling interval**: Set a shorter `terminalCheckInterval` in ControllerConfiguration (not recommended for production)
+
+### Permission Error: 403 Resource Not Accessible
+
+**Problem**: Logs show error: `403 Resource not accessible by integration` when polling commit status.
+
+**Full error message**:
+```
+failed to poll commit status, defaulting to pending
+error: failed to get combined status: GET https://api.github.com/repos/.../commits/.../status: 403 Resource not accessible by integration
+```
+
+**Root cause**: The GitHub App is missing the "Commit statuses: Read" permission.
+
+**Solution**:
+
+1. **Go to your GitHub App settings**:
+   - Navigate to https://github.com/settings/apps (for personal apps)
+   - Or Settings → Developer settings → GitHub Apps (for your user/org)
+   - Click on your GitHub App
+
+2. **Update repository permissions**:
+   - Scroll to "Repository permissions"
+   - Find **"Commit statuses"**
+   - Change from "No access" to **"Read-only"**
+   - Click "Save changes"
+
+3. **Accept the permission change**:
+   - GitHub will ask you to accept the new permissions
+   - For organization apps, an org owner must approve
+
+4. **Verify the fix**:
+   - Wait for the next reconciliation (usually within 1 minute)
+   - Check controller logs - the 403 error should be gone
+   - Verify checks are now being detected:
+     ```bash
+     kubectl get requiredstatuscheckcommitstatus -o yaml
+     ```
+
+**Note**: This permission is only needed if your CI/CD system uses the legacy Commit Status API. Most modern GitHub Actions and Apps use the Check Runs API, which only requires "Checks: Read" permission. However, for maximum compatibility (supporting both modern and legacy CI systems), it's recommended to enable both permissions.
+
+### Check Not Found Despite Passing in GitHub
+
+**Problem**: A required check shows as `pending` in the controller but shows as passed in GitHub's UI.
+
+**This may be due to API differences**:
+
+GitHub has two APIs for reporting check status:
+- **Check Runs API** (modern) - Used by GitHub Actions and most modern GitHub Apps
+- **Commit Status API** (legacy) - Used by older CI systems and some integrations
+
+**Diagnosis**:
+
+1. **Check which API your CI system uses**:
+   - View your commit on GitHub
+   - Open browser DevTools → Network tab
+   - Look for API calls to either:
+     - `/repos/.../commits/.../check-runs` (Check Runs API)
+     - `/repos/.../commits/.../status` (Commit Status API)
+
+2. **Check if ruleset has integration_id**:
+   - Go to repository Settings → Rules → Rulesets
+   - View the ruleset for your branch
+   - Check if the required check specifies a GitHub App (integration_id)
+   - If **no integration_id**: Controller checks both APIs ✅
+   - If **has integration_id**: Controller only checks Check Runs API
+
+**Solutions**:
+
+1. **If your CI uses Commit Status API but ruleset specifies integration_id**:
+   - Remove the integration_id from the ruleset
+   - This allows the controller to check both APIs
+   - Note: This also allows any app/action to report the check
+
+2. **If your CI should use Check Runs API but uses Commit Status API**:
+   - Update your CI configuration to use Check Runs API
+   - Most modern CI systems support this
+
+3. **Verify the check name matches exactly** (case-sensitive)
+   - The check name in the ruleset must match the check name reported by your CI
+
+4. **Check controller logs** for fallback behavior:
+   ```bash
+   kubectl logs -n gitops-promoter -l app.kubernetes.io/name=gitops-promoter | grep "commit status"
+   # Look for: "no check runs found, trying commit status API"
+   ```

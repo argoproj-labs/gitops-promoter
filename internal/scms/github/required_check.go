@@ -122,13 +122,13 @@ func (rc *RequiredCheck) DiscoverRequiredChecks(ctx context.Context, repo *promo
 		hasDuplicates := len(checksByName[check.name]) > 1
 		key := "github-" + check.name
 
-		// If duplicates exist and this check has an integration ID, append it
+		// If duplicates exist and this check has an app ID, append it
 		if hasDuplicates && check.appID != nil {
 			key = fmt.Sprintf("%s-%d", key, *check.appID)
 		}
 
 		// Store complete reference in ExternalRef for API calls (used in PollCheckStatus)
-		// Format: "check-name" or "check-name:integration-id"
+		// Format: "check-name" or "check-name:app-id"
 		externalRef := check.name
 		if check.appID != nil {
 			externalRef = fmt.Sprintf("%s:%d", check.name, *check.appID)
@@ -179,6 +179,65 @@ func (rc *RequiredCheck) PollCheckStatus(ctx context.Context, repo *promoterv1al
 		}
 	}
 
+	// List all check runs for this check
+	allCheckRuns, err := rc.listCheckRuns(ctx, repo, owner, name, sha, checkName, appID)
+	if err != nil {
+		return promoterv1alpha1.CommitPhasePending, err
+	}
+
+	if len(allCheckRuns) == 0 {
+		// Only check commit status API when no app id specified
+		if appID == nil {
+			logger.V(4).Info("no check runs found, trying commit status API",
+				"check", checkName, "sha", sha)
+
+			phase, found, err := rc.pollCommitStatus(ctx, repo, sha, checkName)
+			if err != nil {
+				logger.Error(err, "failed to poll commit status, defaulting to pending",
+					"check", checkName, "sha", sha)
+				return promoterv1alpha1.CommitPhasePending, nil
+			}
+
+			if found {
+				return phase, nil
+			}
+		}
+
+		return promoterv1alpha1.CommitPhasePending, nil
+	}
+
+	// Get the LATEST check run (most recently started)
+	// This ensures we use the status of reruns/retries, not old completed runs
+	var latestCheckRun *github.CheckRun
+	for _, run := range allCheckRuns {
+		if latestCheckRun == nil {
+			latestCheckRun = run
+			continue
+		}
+
+		// Use the run with the most recent StartedAt time
+		// If StartedAt is equal or nil, keep the current latestCheckRun
+		if run.StartedAt != nil {
+			if latestCheckRun.StartedAt == nil || run.StartedAt.After(latestCheckRun.StartedAt.Time) {
+				latestCheckRun = run
+			}
+		}
+	}
+
+	phase := mapGitHubCheckStatusToPhase(latestCheckRun)
+	return phase, nil
+}
+
+// listCheckRuns queries GitHub Checks API and returns all check runs for a specific
+// check name and commit SHA, handling pagination automatically.
+func (rc *RequiredCheck) listCheckRuns(
+	ctx context.Context,
+	repo *promoterv1alpha1.GitRepository,
+	owner, name, sha, checkName string,
+	appID *int64,
+) ([]*github.CheckRun, error) {
+	logger := log.FromContext(ctx)
+
 	// Query check runs for the specific check name, filtering by AppID if specified
 	// Note: Check Runs API uses "check_name" parameter and "name" field, while
 	// Rulesets API uses "context". Both refer to the same check identifier.
@@ -214,7 +273,7 @@ func (rc *RequiredCheck) PollCheckStatus(ctx context.Context, repo *promoterv1al
 
 		if err != nil {
 			// Note: GitHub returns 200 OK with empty array when no runs exist yet (not 404)
-			return promoterv1alpha1.CommitPhasePending, fmt.Errorf("failed to list check runs for %s: %w", checkName, err)
+			return nil, fmt.Errorf("failed to list check runs for %s: %w", checkName, err)
 		}
 
 		if checkRuns != nil && len(checkRuns.CheckRuns) > 0 {
@@ -230,31 +289,68 @@ func (rc *RequiredCheck) PollCheckStatus(ctx context.Context, repo *promoterv1al
 		start = time.Now() // Reset timer for next page
 	}
 
-	// If no check runs found, status is pending
-	if len(allCheckRuns) == 0 {
-		return promoterv1alpha1.CommitPhasePending, nil
+	return allCheckRuns, nil
+}
+
+// pollCommitStatus queries GitHub Commit Status API for a specific check.
+//
+// The Combined Status API returns status for ALL contexts on the commit.
+// We filter the statuses array to find the matching check name (context).
+func (rc *RequiredCheck) pollCommitStatus(
+	ctx context.Context,
+	repo *promoterv1alpha1.GitRepository,
+	sha, checkName string,
+) (promoterv1alpha1.CommitStatusPhase, bool, error) {
+	logger := log.FromContext(ctx)
+
+	owner := repo.Spec.GitHub.Owner
+	name := repo.Spec.GitHub.Name
+
+	// Query combined status for the commit
+	start := time.Now()
+	combinedStatus, response, err := rc.client.Repositories.GetCombinedStatus(ctx, owner, name, sha, nil)
+
+	// Record metrics first (even on error)
+	if response != nil {
+		duration := time.Since(start)
+		metrics.RecordSCMCall(repo, metrics.SCMAPIRequiredCheck, metrics.SCMOperationGet,
+			response.StatusCode, duration, getRateLimitMetrics(response.Rate))
+
+		logger.Info("github rate limit",
+			"limit", response.Rate.Limit,
+			"remaining", response.Rate.Remaining,
+			"reset", response.Rate.Reset,
+			"url", response.Request.URL)
+
+		logger.V(4).Info("github response status", "status", response.Status)
 	}
 
-	// Get the LATEST check run (most recently started)
-	// This ensures we use the status of reruns/retries, not old completed runs
-	var latestCheckRun *github.CheckRun
-	for _, run := range allCheckRuns {
-		if latestCheckRun == nil {
-			latestCheckRun = run
-			continue
-		}
+	if err != nil {
+		return promoterv1alpha1.CommitPhasePending, false, fmt.Errorf("failed to get combined status: %w", err)
+	}
 
-		// Use the run with the most recent StartedAt time
-		// If StartedAt is equal or nil, keep the current latestCheckRun
-		if run.StartedAt != nil {
-			if latestCheckRun.StartedAt == nil || run.StartedAt.After(latestCheckRun.StartedAt.Time) {
-				latestCheckRun = run
+	// Filter statuses array to find matching context
+	if combinedStatus != nil && combinedStatus.Statuses != nil {
+		for _, status := range combinedStatus.Statuses {
+			if status.Context != nil && *status.Context == checkName {
+				if status.State != nil {
+					phase := mapGitHubCommitStatusStateToPhase(*status.State)
+					logger.V(4).Info("found commit status",
+						"check", checkName,
+						"sha", sha,
+						"state", *status.State,
+						"phase", phase)
+					return phase, true, nil
+				}
 			}
 		}
 	}
 
-	phase := mapGitHubCheckStatusToPhase(latestCheckRun)
-	return phase, nil
+	// No matching context found
+	logger.V(4).Info("no commit status found for check",
+		"check", checkName,
+		"sha", sha)
+	return promoterv1alpha1.CommitPhasePending, false, nil
 }
 
 // mapGitHubCheckStatusToPhase maps GitHub check run status to CommitStatusPhase.
@@ -287,4 +383,19 @@ func mapGitHubCheckStatusToPhase(checkRun *github.CheckRun) promoterv1alpha1.Com
 
 	// Status is queued or in_progress
 	return promoterv1alpha1.CommitPhasePending
+}
+
+// mapGitHubCommitStatusStateToPhase maps GitHub commit status state to CommitStatusPhase.
+// The Commit Status API (legacy) uses simpler states than Check Runs API.
+func mapGitHubCommitStatusStateToPhase(state string) promoterv1alpha1.CommitStatusPhase {
+	switch state {
+	case "success":
+		return promoterv1alpha1.CommitPhaseSuccess
+	case "error", "failure":
+		return promoterv1alpha1.CommitPhaseFailure
+	case "pending":
+		return promoterv1alpha1.CommitPhasePending
+	default:
+		return promoterv1alpha1.CommitPhasePending
+	}
 }
