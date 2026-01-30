@@ -522,6 +522,15 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			err = k8sClient.Update(ctx, appToUpdate)
 			Expect(err).ToNot(HaveOccurred())
 
+			// Verify the application status was actually updated to OutOfSync
+			Eventually(func(g Gomega) {
+				verifyApp := &argocd.Application{}
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: "test-app-sync-bug", Namespace: "default"}, verifyApp)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(verifyApp.Status.Sync.Status).To(Equal(argocd.SyncStatusCodeOutOfSync))
+				g.Expect(verifyApp.Status.Sync.Revision).To(Equal(testBranchStaging))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			// Step 4: Verify OutOfSync state is recorded (Healthy + OutOfSync = Pending)
 			// Since sync status is OutOfSync (and revision is a branch name), the SHA field should be empty
 			Eventually(func(g Gomega) {
