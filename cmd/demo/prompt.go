@@ -202,7 +202,8 @@ This token is used to:
   • Create and populate the demo repository
 
 Required Permissions (Fine-Grained Token):
-  • Repository access: Select the target repository
+  • All repositories
+  • Administration: Read and Write
   • Contents: Read and Write
 
 Create a token at: https://github.com/settings/tokens
