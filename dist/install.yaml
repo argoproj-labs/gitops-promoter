@@ -220,7 +220,7 @@ spec:
                         Status.Sync.Revision may contain a branch name instead of a SHA.
                         Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
                       maxLength: 64
-                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      pattern: ^(|[a-f0-9]{40}|[a-f0-9]{64})$
                       type: string
                   required:
                   - clusterName
