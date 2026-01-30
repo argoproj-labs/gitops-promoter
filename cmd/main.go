@@ -291,7 +291,18 @@ func runController(
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic("unable to create TimedCommitStatus controller")
+		setupLog.Error(err, "unable to create controller", "controller", "TimedCommitStatus")
+		panic(fmt.Errorf("unable to create TimedCommitStatus controller: %w", err))
+	}
+	if err := (&controller.WebRequestCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("WebRequestCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "WebRequestCommitStatus")
+		panic(fmt.Errorf("unable to create WebRequestCommitStatus controller: %w", err))
 	}
 	if err := (&controller.GitCommitStatusReconciler{
 		Client:      localManager.GetClient(),

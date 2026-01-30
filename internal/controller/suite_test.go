@@ -322,6 +322,28 @@ var _ = BeforeSuite(func() {
 					},
 				},
 			},
+			WebRequestCommitStatus: promoterv1alpha1.WebRequestCommitStatusConfiguration{
+				WorkQueue: promoterv1alpha1.WorkQueue{
+					RequeueDuration:         metav1.Duration{Duration: time.Second * 1},
+					MaxConcurrentReconciles: 10,
+					RateLimiter: promoterv1alpha1.RateLimiter{
+						MaxOf: []promoterv1alpha1.RateLimiterTypes{
+							{
+								Bucket: &promoterv1alpha1.Bucket{
+									Qps:    10,
+									Bucket: 100,
+								},
+							},
+							{
+								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
+								},
+							},
+						},
+					},
+				},
+			},
 			GitCommitStatus: promoterv1alpha1.GitCommitStatusConfiguration{
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
@@ -381,6 +403,14 @@ var _ = BeforeSuite(func() {
 		Recorder:    k8sManager.GetEventRecorder("TimedCommitStatus"),
 		SettingsMgr: settingsMgr,
 		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(ctx, k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&WebRequestCommitStatusReconciler{
+		Client:      k8sManager.GetClient(),
+		Scheme:      k8sManager.GetScheme(),
+		Recorder:    k8sManager.GetEventRecorder("WebRequestCommitStatus"),
+		SettingsMgr: settingsMgr,
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

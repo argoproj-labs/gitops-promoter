@@ -3557,6 +3557,215 @@ spec:
                 required:
                 - workQueue
                 type: object
+              webRequestCommitStatus:
+                description: |-
+                  WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
+                  including WorkQueue settings that control reconciliation behavior.
+                properties:
+                  workQueue:
+                    description: |-
+                      WorkQueue contains the work queue configuration for the WebRequestCommitStatus controller.
+                      This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
+                    properties:
+                      maxConcurrentReconciles:
+                        description: |-
+                          MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
+                          that can run for this controller. Higher values increase throughput but consume more
+                          resources.
+                        minimum: 1
+                        type: integer
+                      rateLimiter:
+                        description: |-
+                          RateLimiter defines the rate limiting strategy for the controller's work queue.
+                          Rate limiting controls how quickly failed reconciliations are retried and helps
+                          prevent overwhelming external APIs or systems.
+                        properties:
+                          bucket:
+                            description: |-
+                              Bucket rate limiter uses a token bucket algorithm to control request rate.
+                              Allows bursts while maintaining an average rate limit.
+                            properties:
+                              bucket:
+                                description: |-
+                                  Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                  This defines the maximum burst size - how many operations can occur in rapid
+                                  succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                              qps:
+                                description: |-
+                                  Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                  This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                            required:
+                            - bucket
+                            - qps
+                            type: object
+                          exponentialFailure:
+                            description: |-
+                              ExponentialFailure rate limiter increases delay exponentially with each failure.
+                              Standard approach for backing off when operations fail repeatedly.
+                            properties:
+                              baseDelay:
+                                description: |-
+                                  BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                  increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                  Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                type: string
+                              maxDelay:
+                                description: |-
+                                  MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                  this value, all subsequent retries will use this delay.
+                                  Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                type: string
+                            required:
+                            - baseDelay
+                            - maxDelay
+                            type: object
+                          fastSlow:
+                            description: |-
+                              FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                              Useful for quickly retrying transient errors while backing off for persistent failures.
+                            properties:
+                              fastDelay:
+                                description: |-
+                                  FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                  Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                type: string
+                              maxFastAttempts:
+                                description: |-
+                                  MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                  Must be at least 1.
+                                minimum: 1
+                                type: integer
+                              slowDelay:
+                                description: |-
+                                  SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                  Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                type: string
+                            required:
+                            - fastDelay
+                            - maxFastAttempts
+                            - slowDelay
+                            type: object
+                          maxOf:
+                            description: |-
+                              MaxOf allows combining multiple rate limiters, where the maximum delay from all
+                              limiters is used. This enables sophisticated rate limiting that respects multiple
+                              constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
+                            items:
+                              description: |-
+                                RateLimiterTypes defines the different algorithms available for rate limiting.
+
+                                Exactly one of the three rate limiter types must be specified:
+                                  - FastSlow: Quick retry for transient errors, then slower retry for persistent failures
+                                  - ExponentialFailure: Standard exponential backoff for repeated failures
+                                  - Bucket: Token bucket algorithm for controlling overall request rate
+
+                                See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
+                              properties:
+                                bucket:
+                                  description: |-
+                                    Bucket rate limiter uses a token bucket algorithm to control request rate.
+                                    Allows bursts while maintaining an average rate limit.
+                                  properties:
+                                    bucket:
+                                      description: |-
+                                        Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                        This defines the maximum burst size - how many operations can occur in rapid
+                                        succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                    qps:
+                                      description: |-
+                                        Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                        This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                  required:
+                                  - bucket
+                                  - qps
+                                  type: object
+                                exponentialFailure:
+                                  description: |-
+                                    ExponentialFailure rate limiter increases delay exponentially with each failure.
+                                    Standard approach for backing off when operations fail repeatedly.
+                                  properties:
+                                    baseDelay:
+                                      description: |-
+                                        BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                        increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                        Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                      type: string
+                                    maxDelay:
+                                      description: |-
+                                        MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                        this value, all subsequent retries will use this delay.
+                                        Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                      type: string
+                                  required:
+                                  - baseDelay
+                                  - maxDelay
+                                  type: object
+                                fastSlow:
+                                  description: |-
+                                    FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                                    Useful for quickly retrying transient errors while backing off for persistent failures.
+                                  properties:
+                                    fastDelay:
+                                      description: |-
+                                        FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                        Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                      type: string
+                                    maxFastAttempts:
+                                      description: |-
+                                        MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                        Must be at least 1.
+                                      minimum: 1
+                                      type: integer
+                                    slowDelay:
+                                      description: |-
+                                        SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                        Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                      type: string
+                                  required:
+                                  - fastDelay
+                                  - maxFastAttempts
+                                  - slowDelay
+                                  type: object
+                              type: object
+                              x-kubernetes-validations:
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
+                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
+                                  <= 1'
+                            maxItems: 3
+                            type: array
+                        type: object
+                        x-kubernetes-validations:
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
+                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
+                            <= 1'
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
+                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
+                            <= 1'
+                      requeueDuration:
+                        description: |-
+                          RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
+                          This creates a periodic reconciliation loop that ensures the desired state is maintained even
+                          without external triggers. Format follows Go's time.Duration syntax (e.g., "5m" for 5 minutes).
+                        type: string
+                    required:
+                    - maxConcurrentReconciles
+                    - rateLimiter
+                    - requeueDuration
+                    type: object
+                required:
+                - workQueue
+                type: object
             required:
             - argocdCommitStatus
             - changeTransferPolicy
@@ -3565,6 +3774,7 @@ spec:
             - promotionStrategy
             - pullRequest
             - timedCommitStatus
+            - webRequestCommitStatus
             type: object
           status:
             description: |-
@@ -6332,6 +6542,629 @@ spec:
     subresources:
       status: {}
 ---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: webrequestcommitstatuses.promoter.argoproj.io
+spec:
+  group: promoter.argoproj.io
+  names:
+    kind: WebRequestCommitStatus
+    listKind: WebRequestCommitStatusList
+    plural: webrequestcommitstatuses
+    singular: webrequestcommitstatus
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.promotionStrategyRef.name
+      name: Strategy
+      type: string
+    - jsonPath: .spec.key
+      name: Key
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          WebRequestCommitStatus is the Schema for the webrequestcommitstatuses API.
+
+          It makes HTTP requests to external endpoints and evaluates the response using expressions
+          to create CommitStatus resources with the validation results.
+
+          The controller polls the configured URL at the specified Polling.Interval.
+          When reportOn is "proposed", polling stops after success for a given SHA.
+          When reportOn is "active", polling continues forever.
+
+          Workflow:
+           1. Controller reads PromotionStrategy to get ProposedHydratedSha and ActiveHydratedSha
+           2. Controller renders URL, Headers, and Body templates with SHA context
+           3. Controller makes HTTP request with optional authentication
+           4. Controller evaluates expression against response
+           5. Controller creates/updates CommitStatus with result attached to the SHA specified by reportOn
+           6. Controller requeues based on Polling.Interval and success state
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of WebRequestCommitStatus
+            properties:
+              descriptionTemplate:
+                description: |-
+                  DescriptionTemplate is a human-readable description of this validation that will be shown in the SCM provider
+                  (GitHub, GitLab, etc.) as the commit status description.
+                  Supports Go templates with environment-specific variables.
+
+                  Available template variables:
+                    - {{ .Branch }}: the environment branch name (e.g., "environment/staging")
+                    - {{ .ProposedHydratedSha }}: proposed commit SHA for this environment
+                    - {{ .ActiveHydratedSha }}: active/deployed commit SHA for this environment
+                    - {{ .ReportedSha }}: the commit SHA being reported on
+                    - {{ .LastSuccessfulSha }}: last SHA that achieved success for this environment
+                    - {{ .Phase }}: current phase (success/pending/failure)
+                    - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
+                    - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
+
+                  Examples:
+                    - "External approval for {{ .Branch }}"
+                    - "Checking deployment {{ .ReportedSha | trunc 7 }}"
+                    - "{{ .Phase }} - waiting for external approval"
+
+                  If not specified, defaults to empty string.
+                type: string
+              expression:
+                description: |-
+                  Expression is evaluated using the expr library (github.com/expr-lang/expr) against the HTTP response.
+                  The expression must return a boolean value where true indicates the validation passed.
+
+                  Available variables in the expression context:
+                    - Response.StatusCode (int): the HTTP response status code
+                    - Response.Body (any): parsed JSON as map[string]any, or raw string if not JSON
+                    - Response.Headers (map[string][]string): HTTP response headers
+
+                  Examples:
+                    - Response.StatusCode == 200
+                    - Response.StatusCode == 200 && Response.Body.approved == true
+                    - Response.StatusCode == 200 && Response.Body.status == "approved"
+                    - len(Response.Headers["X-Approval"]) > 0
+                type: string
+              httpRequest:
+                description: |-
+                  HTTPRequest defines the HTTP request configuration.
+                  Supports Go templates in URL, Headers, and Body fields.
+                properties:
+                  authentication:
+                    description: |-
+                      Authentication specifies authentication configuration for the HTTP request.
+
+                      Supports multiple authentication methods:
+                      - Basic Auth: HTTP Basic Authentication with username/password
+                      - Bearer Token: Bearer token authentication (e.g., API keys, JWTs)
+                      - OAuth2: OAuth2 client credentials flow for obtaining access tokens
+                      - TLS: Mutual TLS (mTLS) with client certificates
+
+                      All credentials must be stored in Kubernetes secrets and referenced via secretRef fields.
+
+                      Examples:
+                        # Basic Auth
+                        authentication:
+                          basic:
+                            secretRef:
+                              name: my-creds
+
+                        # Bearer Token
+                        authentication:
+                          bearer:
+                            secretRef:
+                              name: api-token
+
+                        # OAuth2 Client Credentials
+                        authentication:
+                          oauth2:
+                            tokenURL: "https://auth.example.com/oauth/token"
+                            secretRef:
+                              name: oauth-creds
+
+                        # TLS Client Certificate
+                        authentication:
+                          tls:
+                            secretRef:
+                              name: my-tls-cert
+                    properties:
+                      basic:
+                        description: |-
+                          Basic specifies HTTP Basic Authentication.
+                          Credentials can be provided inline (with secret references) or via secretRef.
+                        properties:
+                          secretRef:
+                            description: SecretRef references a secret containing
+                              username and password.
+                            properties:
+                              name:
+                                description: Name of the secret.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                      bearer:
+                        description: |-
+                          Bearer specifies Bearer token authentication.
+                          Token can be provided inline (with secret reference) or via secretRef.
+                        properties:
+                          secretRef:
+                            description: SecretRef references a secret containing
+                              the bearer token.
+                            properties:
+                              name:
+                                description: Name of the secret.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                      oauth2:
+                        description: |-
+                          OAuth2 specifies OAuth2 client credentials authentication.
+                          The controller will automatically obtain access tokens from the specified tokenURL.
+                        properties:
+                          scopes:
+                            description: |-
+                              Scopes to request from the OAuth2 provider.
+                              Optional - some providers don't require scopes for client credentials.
+                              Example: ["read:api", "write:api"]
+                            items:
+                              type: string
+                            type: array
+                          secretRef:
+                            description: SecretRef references a secret containing
+                              clientID and clientSecret.
+                            properties:
+                              clientIDKey:
+                                description: |-
+                                  ClientIDKey is the key in the secret containing the client ID.
+                                  Defaults to "clientID".
+                                type: string
+                              clientSecretKey:
+                                description: |-
+                                  ClientSecretKey is the key in the secret containing the client secret.
+                                  Defaults to "clientSecret".
+                                type: string
+                              name:
+                                description: Name of the secret.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          tokenURL:
+                            description: |-
+                              TokenURL is the OAuth2 token endpoint where access tokens are obtained.
+                              Example: "https://auth.example.com/oauth/token"
+                            type: string
+                        required:
+                        - secretRef
+                        - tokenURL
+                        type: object
+                      tls:
+                        description: |-
+                          TLS specifies TLS client certificate authentication (mutual TLS).
+                          Requires a secret containing the client certificate and private key.
+                        properties:
+                          secretRef:
+                            description: |-
+                              SecretRef references a secret containing TLS certificate and key.
+                              The secret should be of type kubernetes.io/tls or contain the required keys.
+                            properties:
+                              caKey:
+                                description: |-
+                                  CAKey is the key in the secret containing the CA certificate (optional).
+                                  Defaults to "ca.crt".
+                                type: string
+                              certKey:
+                                description: |-
+                                  CertKey is the key in the secret containing the client certificate.
+                                  Defaults to "tls.crt".
+                                type: string
+                              keyKey:
+                                description: |-
+                                  KeyKey is the key in the secret containing the private key.
+                                  Defaults to "tls.key".
+                                type: string
+                              name:
+                                description: Name of the secret.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                        required:
+                        - secretRef
+                        type: object
+                    type: object
+                    x-kubernetes-validations:
+                    - message: at most one of the fields in [basic bearer oauth2 tls]
+                        may be set
+                      rule: '[has(self.basic),has(self.bearer),has(self.oauth2),has(self.tls)].filter(x,x==true).size()
+                        <= 1'
+                  bodyTemplate:
+                    description: |-
+                      BodyTemplate is the request body to send.
+                      Supports Go templates (see HTTPRequestSpec for available variables).
+                    type: string
+                  headerTemplates:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      HeaderTemplates are additional HTTP headers to include in the request.
+                      The map key is the header name (supports Go templates) and the value is the header value (supports Go templates).
+                      See HTTPRequestSpec for available template variables.
+                    type: object
+                  method:
+                    description: Method is the HTTP method to use.
+                    enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    type: string
+                  timeout:
+                    default: 30s
+                    description: Timeout is the maximum time to wait for the HTTP
+                      request to complete.
+                    type: string
+                  urlTemplate:
+                    description: |-
+                      URLTemplate is the HTTP endpoint to request.
+                      Supports Go templates (see HTTPRequestSpec for available variables).
+                    type: string
+                required:
+                - method
+                - urlTemplate
+                type: object
+              key:
+                description: |-
+                  Key is the unique identifier for this validation rule.
+                  It is used as the commit status key and in status messages.
+                  This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses
+                  to determine which environments this validation applies to.
+                maxLength: 63
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+              mode:
+                description: |-
+                  Mode controls how the controller polls or triggers HTTP requests.
+                  Exactly one of Polling or Trigger must be specified.
+                properties:
+                  polling:
+                    description: |-
+                      Polling enables interval-based polling mode.
+                      The controller will poll the HTTP endpoint at the specified interval.
+                    properties:
+                      interval:
+                        default: 1m
+                        description: |-
+                          Interval controls how often to retry the HTTP request while in pending state.
+                          When reportOn is "proposed": stops polling after success for a given SHA.
+                          When reportOn is "active": always polls at this interval.
+                        type: string
+                    type: object
+                  trigger:
+                    description: |-
+                      Trigger enables expression-based triggering mode.
+                      The controller will evaluate the expression to determine when to make HTTP requests.
+                    properties:
+                      expression:
+                        description: |-
+                          Expression is an expr expression that dynamically controls whether polling should continue.
+                          When specified, this expression is evaluated AFTER each HTTP request to determine if the controller should
+                          requeue and poll again.
+
+                          The expression can return:
+                           1. Boolean: true/false to control polling
+                           2. Object with 'polling' field: {polling: true/false, ...customData}
+                              - The 'polling' field controls whether to continue polling
+                              - Any additional fields are stored and available in the next reconcile as 'ExpressionData'
+
+                          Available variables in the expression context:
+                            - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
+                            - Environment (EnvironmentStatus): current environment's status from PromotionStrategy
+                            - Response.StatusCode (int): HTTP response status code from validation request
+                            - Response.Body (any): parsed response body (JSON as map[string]any, or raw string)
+                            - Response.Headers (map[string][]string): HTTP response headers
+                            - ValidationResult (bool): result of the main Expression evaluation
+                            - Phase (string): current phase (success/pending/failure)
+                            - ReportedSha (string): the SHA being validated
+                            - Branch (string): environment branch name
+                            - ExpressionData (map[string]any): custom data from previous polling expression evaluation
+
+                          Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
+                          Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
+                          Changes flow through the array in order. To access the previous environment, use array indexing:
+                            currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Branch})
+                            previousEnv = currentIdx > 0 ? PromotionStrategy.Status.Environments[currentIdx-1] : nil
+
+                          Examples (Boolean return):
+                            # Always poll (equivalent to reportOn: active)
+                            - "true"
+
+                            # Stop polling after success (equivalent to reportOn: proposed)
+                            - "Phase != 'success'"
+
+                            # Poll until this SHA appears in the healthy history (validates deployment stability)
+                            - "!any(Environment.LastHealthyDryShas, {.Sha == ReportedSha})"
+
+                            # Continue polling if PR is not merged yet (monitors promotion progress)
+                            - "Phase == 'success' && (Environment.PullRequest == nil || Environment.PullRequest.State != 'merged')"
+
+                          Examples (Object return with state tracking):
+                            # Track dry SHA changes and restart polling when it changes
+                            - |
+                              {
+                                polling: len(PromotionStrategy.Status.Environments) > 0 &&
+                                         PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != "" &&
+                                         PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha != ExpressionData["trackedSha"],
+                                trackedSha: PromotionStrategy.Status.Environments[0].Proposed.Dry.Sha
+                              }
+
+                            # Poll until validation succeeds AND store the success timestamp
+                            - |
+                              {
+                                polling: Phase != 'success',
+                                firstSuccessTime: Phase == 'success' && ExpressionData["firstSuccessTime"] == nil ? now() : ExpressionData["firstSuccessTime"]
+                              }
+
+                            # Track previous environment SHA and poll until it matches
+                            - |
+                              let prevEnv = filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"})[0];
+                              {
+                                polling: Phase != 'success' || prevEnv.Active.Hydrated.Sha != ExpressionData["targetSha"],
+                                targetSha: ReportedSha
+                              }
+                        type: string
+                      requeueDuration:
+                        default: 1m
+                        description: RequeueDuration specifies how long to wait before
+                          requeuing to re-evaluate the trigger expression.
+                        type: string
+                    required:
+                    - expression
+                    type: object
+                type: object
+                x-kubernetes-validations:
+                - message: exactly one of the fields in [polling trigger] must be
+                    set
+                  rule: '[has(self.polling),has(self.trigger)].filter(x,x==true).size()
+                    == 1'
+              promotionStrategyRef:
+                description: |-
+                  PromotionStrategyRef references the PromotionStrategy this applies to.
+                  The controller will check commits from ALL environments in the referenced PromotionStrategy
+                  where this WebRequestCommitStatus.Spec.Key matches an entry in either:
+                    - PromotionStrategy.Spec.ProposedCommitStatuses (applies to all environments), OR
+                    - PromotionStrategy.Spec.ActiveCommitStatuses (applies to all environments), OR
+                    - Environment.ProposedCommitStatuses (applies to specific environment), OR
+                    - Environment.ActiveCommitStatuses (applies to specific environment)
+                properties:
+                  name:
+                    description: Name is the name of the object to refer to.
+                    maxLength: 253
+                    minLength: 1
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    type: string
+                required:
+                - name
+                type: object
+              reportOn:
+                default: proposed
+                description: |-
+                  ReportOn specifies which commit SHA to report the CommitStatus on.
+                  - "proposed": Reports on the proposed hydrated commit SHA (default)
+                  - "active": Reports on the active hydrated commit SHA
+
+                  When "proposed": Polls until success, then stops polling for that SHA.
+                  When "active": Polls forever, even after success (active state can change).
+                enum:
+                - proposed
+                - active
+                type: string
+              urlTemplate:
+                description: |-
+                  UrlTemplate is a link to more details about this validation that will be shown in the SCM provider
+                  (GitHub, GitLab, etc.) as the commit status target URL.
+                  Supports Go templates with the same variables as DescriptionTemplate.
+
+                  This can link to:
+                    - External approval system UI
+                    - Monitoring dashboard
+                    - API endpoint being checked
+                    - Documentation or runbook
+
+                  Examples:
+                    - "https://approvals.example.com/{{ .ReportedSha }}"
+                    - "https://dashboard.example.com/{{ .Branch }}/status"
+                    - "https://change-api.example.com/changes?asset={{ index .NamespaceMetadata.Labels \"asset-id\" }}"
+
+                  If not specified, defaults to empty string (no URL shown).
+                type: string
+            required:
+            - expression
+            - httpRequest
+            - key
+            - mode
+            - promotionStrategyRef
+            type: object
+          status:
+            description: status defines the observed state of WebRequestCommitStatus
+            properties:
+              conditions:
+                description: |-
+                  Conditions represent the latest available observations of the WebRequestCommitStatus's state.
+                  Standard condition types include "Ready" which aggregates the status of all environments.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              environments:
+                description: |-
+                  Environments holds the validation results for each environment where this validation applies.
+                  Each entry corresponds to an environment from the PromotionStrategy where the Key matches
+                  either global or environment-specific proposedCommitStatuses/activeCommitStatuses.
+                items:
+                  description: WebRequestCommitStatusEnvironmentStatus defines the
+                    observed status for a specific environment.
+                  properties:
+                    activeHydratedSha:
+                      description: ActiveHydratedSha is the active hydrated commit
+                        SHA from the PromotionStrategy.
+                      type: string
+                    branch:
+                      description: Branch is the environment branch name being validated.
+                      type: string
+                    expressionData:
+                      description: |-
+                        ExpressionData contains custom data returned by the polling expression.
+                        When the polling expression returns an object with fields beyond 'polling',
+                        those fields are stored here and made available in the next reconcile.
+                        This enables stateful polling logic that can track changes over time.
+                      x-kubernetes-preserve-unknown-fields: true
+                    expressionResult:
+                      description: |-
+                        ExpressionResult contains the boolean result of the expression evaluation.
+                        Only set when the expression successfully evaluates to a boolean.
+                      type: boolean
+                    lastRequestTime:
+                      description: LastRequestTime is when the HTTP request was last
+                        made.
+                      format: date-time
+                      type: string
+                    lastSuccessfulSha:
+                      description: |-
+                        LastSuccessfulSha is the SHA that last achieved success.
+                        Used to detect SHA changes - when ReportedSha != LastSuccessfulSha, polling continues.
+                        When they match and phase is success, polling stops (for reportOn: proposed).
+                      type: string
+                    phase:
+                      description: |-
+                        Phase represents the current validation state of the commit.
+                        - "pending": validation has not completed, HTTP request pending, or expression returned false
+                        - "success": expression evaluated to true
+                        - "failure": expression compilation failed
+                      enum:
+                      - pending
+                      - success
+                      - failure
+                      type: string
+                    proposedHydratedSha:
+                      description: ProposedHydratedSha is the proposed hydrated commit
+                        SHA from the PromotionStrategy.
+                      type: string
+                    reportedSha:
+                      description: ReportedSha is the SHA where the CommitStatus was
+                        reported (based on reportOn field).
+                      type: string
+                    response:
+                      description: Response contains information about the HTTP response
+                        from the last request.
+                      properties:
+                        statusCode:
+                          description: StatusCode is the HTTP response status code.
+                          type: integer
+                      type: object
+                  required:
+                  - branch
+                  - phase
+                  - proposedHydratedSha
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - branch
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -6664,6 +7497,12 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - namespaces
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
   - secrets
   verbs:
   - get
@@ -6694,6 +7533,7 @@ rules:
   - revertcommits
   - scmproviders
   - timedcommitstatuses
+  - webrequestcommitstatuses
   verbs:
   - create
   - delete
@@ -6717,6 +7557,7 @@ rules:
   - revertcommits/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers
+  - webrequestcommitstatuses/finalizers
   verbs:
   - update
 - apiGroups:
@@ -6734,6 +7575,7 @@ rules:
   - revertcommits/status
   - scmproviders/status
   - timedcommitstatuses/status
+  - webrequestcommitstatuses/status
   verbs:
   - get
   - patch
@@ -7150,6 +7992,19 @@ spec:
             slowDelay: 5m
       requeueDuration: 5m
   timedCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      rateLimiter:
+        maxOf:
+        - bucket:
+            bucket: 100
+            qps: 10
+        - fastSlow:
+            fastDelay: 1s
+            maxFastAttempts: 3
+            slowDelay: 5m
+      requeueDuration: 5m
+  webRequestCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10
       rateLimiter:

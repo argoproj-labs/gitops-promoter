@@ -47,6 +47,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// TimedCommitStatus contains the configuration for the TimedCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	TimedCommitStatus *TimedCommitStatusConfigurationApplyConfiguration `json:"timedCommitStatus,omitempty"`
+	// WebRequestCommitStatus contains the configuration for the WebRequestCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	WebRequestCommitStatus *WebRequestCommitStatusConfigurationApplyConfiguration `json:"webRequestCommitStatus,omitempty"`
 	// GitCommitStatus contains the configuration for the GitCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	GitCommitStatus *GitCommitStatusConfigurationApplyConfiguration `json:"gitCommitStatus,omitempty"`
@@ -103,6 +106,14 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithArgoCDCommitStatus(v
 // If called multiple times, the TimedCommitStatus field is set to the value of the last call.
 func (b *ControllerConfigurationSpecApplyConfiguration) WithTimedCommitStatus(value *TimedCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
 	b.TimedCommitStatus = value
+	return b
+}
+
+// WithWebRequestCommitStatus sets the WebRequestCommitStatus field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the WebRequestCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithWebRequestCommitStatus(value *WebRequestCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.WebRequestCommitStatus = value
 	return b
 }
 
