@@ -21,15 +21,15 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// RequiredStatusCheckCommitStatusConfigurationApplyConfiguration represents a declarative configuration of the RequiredStatusCheckCommitStatusConfiguration type for use
+// RequiredCheckCommitStatusConfigurationApplyConfiguration represents a declarative configuration of the RequiredCheckCommitStatusConfiguration type for use
 // with apply.
 //
-// RequiredStatusCheckCommitStatusConfiguration defines the configuration for the RequiredStatusCheckCommitStatus controller.
+// RequiredCheckCommitStatusConfiguration defines the configuration for the RequiredCheckCommitStatus controller.
 //
-// This configuration controls how the RequiredStatusCheckCommitStatus controller processes reconciliation
+// This configuration controls how the RequiredCheckCommitStatus controller processes reconciliation
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
-type RequiredStatusCheckCommitStatusConfigurationApplyConfiguration struct {
-	// WorkQueue contains the work queue configuration for the RequiredStatusCheckCommitStatus controller.
+type RequiredCheckCommitStatusConfigurationApplyConfiguration struct {
+	// WorkQueue contains the work queue configuration for the RequiredCheckCommitStatus controller.
 	//
 	// IMPORTANT: The RequeueDuration field in WorkQueue is NOT used by this controller.
 	// This controller uses adaptive requeue intervals based on check status:
@@ -67,16 +67,16 @@ type RequiredStatusCheckCommitStatusConfigurationApplyConfiguration struct {
 	SafetyNetInterval *v1.Duration `json:"safetyNetInterval,omitempty"`
 }
 
-// RequiredStatusCheckCommitStatusConfigurationApplyConfiguration constructs a declarative configuration of the RequiredStatusCheckCommitStatusConfiguration type for use with
+// RequiredCheckCommitStatusConfigurationApplyConfiguration constructs a declarative configuration of the RequiredCheckCommitStatusConfiguration type for use with
 // apply.
-func RequiredStatusCheckCommitStatusConfiguration() *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration {
-	return &RequiredStatusCheckCommitStatusConfigurationApplyConfiguration{}
+func RequiredCheckCommitStatusConfiguration() *RequiredCheckCommitStatusConfigurationApplyConfiguration {
+	return &RequiredCheckCommitStatusConfigurationApplyConfiguration{}
 }
 
 // WithWorkQueue sets the WorkQueue field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the WorkQueue field is set to the value of the last call.
-func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration {
+func (b *RequiredCheckCommitStatusConfigurationApplyConfiguration) WithWorkQueue(value *WorkQueueApplyConfiguration) *RequiredCheckCommitStatusConfigurationApplyConfiguration {
 	b.WorkQueue = value
 	return b
 }
@@ -84,7 +84,7 @@ func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithWor
 // WithRequiredCheckCacheTTL sets the RequiredCheckCacheTTL field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the RequiredCheckCacheTTL field is set to the value of the last call.
-func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithRequiredCheckCacheTTL(value v1.Duration) *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration {
+func (b *RequiredCheckCommitStatusConfigurationApplyConfiguration) WithRequiredCheckCacheTTL(value v1.Duration) *RequiredCheckCommitStatusConfigurationApplyConfiguration {
 	b.RequiredCheckCacheTTL = &value
 	return b
 }
@@ -92,7 +92,7 @@ func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithReq
 // WithRequiredCheckCacheMaxSize sets the RequiredCheckCacheMaxSize field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the RequiredCheckCacheMaxSize field is set to the value of the last call.
-func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithRequiredCheckCacheMaxSize(value int) *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration {
+func (b *RequiredCheckCommitStatusConfigurationApplyConfiguration) WithRequiredCheckCacheMaxSize(value int) *RequiredCheckCommitStatusConfigurationApplyConfiguration {
 	b.RequiredCheckCacheMaxSize = &value
 	return b
 }
@@ -100,7 +100,7 @@ func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithReq
 // WithPendingCheckInterval sets the PendingCheckInterval field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the PendingCheckInterval field is set to the value of the last call.
-func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithPendingCheckInterval(value v1.Duration) *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration {
+func (b *RequiredCheckCommitStatusConfigurationApplyConfiguration) WithPendingCheckInterval(value v1.Duration) *RequiredCheckCommitStatusConfigurationApplyConfiguration {
 	b.PendingCheckInterval = &value
 	return b
 }
@@ -108,7 +108,7 @@ func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithPen
 // WithTerminalCheckInterval sets the TerminalCheckInterval field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the TerminalCheckInterval field is set to the value of the last call.
-func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithTerminalCheckInterval(value v1.Duration) *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration {
+func (b *RequiredCheckCommitStatusConfigurationApplyConfiguration) WithTerminalCheckInterval(value v1.Duration) *RequiredCheckCommitStatusConfigurationApplyConfiguration {
 	b.TerminalCheckInterval = &value
 	return b
 }
@@ -116,7 +116,7 @@ func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithTer
 // WithSafetyNetInterval sets the SafetyNetInterval field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SafetyNetInterval field is set to the value of the last call.
-func (b *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) WithSafetyNetInterval(value v1.Duration) *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration {
+func (b *RequiredCheckCommitStatusConfigurationApplyConfiguration) WithSafetyNetInterval(value v1.Duration) *RequiredCheckCommitStatusConfigurationApplyConfiguration {
 	b.SafetyNetInterval = &value
 	return b
 }

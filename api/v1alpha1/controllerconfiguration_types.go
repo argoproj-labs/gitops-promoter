@@ -65,10 +65,10 @@ type ControllerConfigurationSpec struct {
 	// +required
 	GitCommitStatus GitCommitStatusConfiguration `json:"gitCommitStatus"`
 
-	// RequiredStatusCheckCommitStatus contains the configuration for the RequiredStatusCheckCommitStatus controller,
+	// RequiredCheckCommitStatus contains the configuration for the RequiredCheckCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
-	RequiredStatusCheckCommitStatus RequiredStatusCheckCommitStatusConfiguration `json:"requiredStatusCheckCommitStatus"`
+	RequiredCheckCommitStatus RequiredCheckCommitStatusConfiguration `json:"requiredCheckCommitStatus"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -161,12 +161,12 @@ type GitCommitStatusConfiguration struct {
 	WorkQueue WorkQueue `json:"workQueue"`
 }
 
-// RequiredStatusCheckCommitStatusConfiguration defines the configuration for the RequiredStatusCheckCommitStatus controller.
+// RequiredCheckCommitStatusConfiguration defines the configuration for the RequiredCheckCommitStatus controller.
 //
-// This configuration controls how the RequiredStatusCheckCommitStatus controller processes reconciliation
+// This configuration controls how the RequiredCheckCommitStatus controller processes reconciliation
 // requests, including requeue intervals, concurrency limits, and rate limiting behavior.
-type RequiredStatusCheckCommitStatusConfiguration struct {
-	// WorkQueue contains the work queue configuration for the RequiredStatusCheckCommitStatus controller.
+type RequiredCheckCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the RequiredCheckCommitStatus controller.
 	//
 	// IMPORTANT: The RequeueDuration field in WorkQueue is NOT used by this controller.
 	// This controller uses adaptive requeue intervals based on check status:

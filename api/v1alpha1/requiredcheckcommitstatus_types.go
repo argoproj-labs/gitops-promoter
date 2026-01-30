@@ -20,20 +20,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// RequiredStatusCheckCommitStatusSpec defines the desired state of RequiredStatusCheckCommitStatus
-type RequiredStatusCheckCommitStatusSpec struct {
+// RequiredCheckCommitStatusSpec defines the desired state of RequiredCheckCommitStatus
+type RequiredCheckCommitStatusSpec struct {
 	// PromotionStrategyRef references the PromotionStrategy that owns this controller
 	// +required
 	PromotionStrategyRef ObjectReference `json:"promotionStrategyRef"`
 }
 
-// RequiredStatusCheckCommitStatusStatus defines the observed state of RequiredStatusCheckCommitStatus
-type RequiredStatusCheckCommitStatusStatus struct {
+// RequiredCheckCommitStatusStatus defines the observed state of RequiredCheckCommitStatus
+type RequiredCheckCommitStatusStatus struct {
 	// Environments contains status for each environment's required checks
 	// +listType=map
 	// +listMapKey=branch
 	// +optional
-	Environments []RequiredStatusCheckEnvironmentStatus `json:"environments,omitempty"`
+	Environments []RequiredCheckEnvironmentStatus `json:"environments,omitempty"`
 
 	// Conditions represent the latest available observations of the resource's state
 	// +listType=map
@@ -42,8 +42,8 @@ type RequiredStatusCheckCommitStatusStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// RequiredStatusCheckEnvironmentStatus defines the observed required check status for a specific environment.
-type RequiredStatusCheckEnvironmentStatus struct {
+// RequiredCheckEnvironmentStatus defines the observed required check status for a specific environment.
+type RequiredCheckEnvironmentStatus struct {
 	// Branch is the target branch being monitored
 	// +required
 	Branch string `json:"branch"`
@@ -91,39 +91,39 @@ type RequiredCheckStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// RequiredStatusCheckCommitStatus is the Schema for the requiredstatuscheckcommitstatuses API
+// RequiredCheckCommitStatus is the Schema for the requiredcheckcommitstatuses API
 // +kubebuilder:printcolumn:name="PromotionStrategy",type=string,JSONPath=`.spec.promotionStrategyRef.name`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-type RequiredStatusCheckCommitStatus struct {
+type RequiredCheckCommitStatus struct {
 	metav1.TypeMeta `json:",inline"`
 
 	// metadata is a standard object metadata
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// spec defines the desired state of RequiredStatusCheckCommitStatus
+	// spec defines the desired state of RequiredCheckCommitStatus
 	// +required
-	Spec RequiredStatusCheckCommitStatusSpec `json:"spec"`
+	Spec RequiredCheckCommitStatusSpec `json:"spec"`
 
-	// status defines the observed state of RequiredStatusCheckCommitStatus
+	// status defines the observed state of RequiredCheckCommitStatus
 	// +optional
-	Status RequiredStatusCheckCommitStatusStatus `json:"status,omitempty"`
+	Status RequiredCheckCommitStatusStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// RequiredStatusCheckCommitStatusList contains a list of RequiredStatusCheckCommitStatus
-type RequiredStatusCheckCommitStatusList struct {
+// RequiredCheckCommitStatusList contains a list of RequiredCheckCommitStatus
+type RequiredCheckCommitStatusList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []RequiredStatusCheckCommitStatus `json:"items"`
+	Items           []RequiredCheckCommitStatus `json:"items"`
 }
 
-// GetConditions returns the conditions of the RequiredStatusCheckCommitStatus.
-func (rsccs *RequiredStatusCheckCommitStatus) GetConditions() *[]metav1.Condition {
-	return &rsccs.Status.Conditions
+// GetConditions returns the conditions of the RequiredCheckCommitStatus.
+func (rccs *RequiredCheckCommitStatus) GetConditions() *[]metav1.Condition {
+	return &rccs.Status.Conditions
 }
 
 func init() {
-	SchemeBuilder.Register(&RequiredStatusCheckCommitStatus{}, &RequiredStatusCheckCommitStatusList{})
+	SchemeBuilder.Register(&RequiredCheckCommitStatus{}, &RequiredCheckCommitStatusList{})
 }

@@ -42,7 +42,7 @@ func NewGithubRequiredCheckProvider(ctx context.Context, k8sClient client.Client
 	}, nil
 }
 
-// DiscoverRequiredChecks queries GitHub Rulesets API to discover required status checks
+// DiscoverRequiredChecks queries GitHub Rulesets API to discover required checks
 // for the given repository and branch.
 //
 // Returns empty slice when no rulesets are configured for the branch.
@@ -86,7 +86,7 @@ func (rc *RequiredCheck) DiscoverRequiredChecks(ctx context.Context, repo *promo
 		name  string
 	}
 
-	// Extract required status checks from BranchRules
+	// Extract required checks from BranchRules
 	var rawChecks []checkRef
 	if rules != nil && rules.RequiredStatusChecks != nil {
 		for _, ruleStatusCheck := range rules.RequiredStatusChecks {

@@ -102,7 +102,7 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
-  requiredStatusCheckCommitStatus:
+  requiredCheckCommitStatus:
     requiredCheckCacheTTL: "24h"
     requiredCheckCacheMaxSize: 1000
     pendingCheckInterval: "1m"

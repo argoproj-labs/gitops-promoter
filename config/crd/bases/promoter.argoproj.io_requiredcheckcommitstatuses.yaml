@@ -4,14 +4,14 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: requiredstatuscheckcommitstatuses.promoter.argoproj.io
+  name: requiredcheckcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
   names:
-    kind: RequiredStatusCheckCommitStatus
-    listKind: RequiredStatusCheckCommitStatusList
-    plural: requiredstatuscheckcommitstatuses
-    singular: requiredstatuscheckcommitstatus
+    kind: RequiredCheckCommitStatus
+    listKind: RequiredCheckCommitStatusList
+    plural: requiredcheckcommitstatuses
+    singular: requiredcheckcommitstatus
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -24,7 +24,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: RequiredStatusCheckCommitStatus is the Schema for the requiredstatuscheckcommitstatuses
+        description: RequiredCheckCommitStatus is the Schema for the requiredcheckcommitstatuses
           API
         properties:
           apiVersion:
@@ -45,7 +45,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of RequiredStatusCheckCommitStatus
+            description: spec defines the desired state of RequiredCheckCommitStatus
             properties:
               promotionStrategyRef:
                 description: PromotionStrategyRef references the PromotionStrategy
@@ -64,7 +64,7 @@ spec:
             - promotionStrategyRef
             type: object
           status:
-            description: status defines the observed state of RequiredStatusCheckCommitStatus
+            description: status defines the observed state of RequiredCheckCommitStatus
             properties:
               conditions:
                 description: Conditions represent the latest available observations
@@ -131,7 +131,7 @@ spec:
                 description: Environments contains status for each environment's required
                   checks
                 items:
-                  description: RequiredStatusCheckEnvironmentStatus defines the observed
+                  description: RequiredCheckEnvironmentStatus defines the observed
                     required check status for a specific environment.
                   properties:
                     branch:

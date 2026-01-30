@@ -50,9 +50,9 @@ type ControllerConfigurationSpecApplyConfiguration struct {
 	// GitCommitStatus contains the configuration for the GitCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
 	GitCommitStatus *GitCommitStatusConfigurationApplyConfiguration `json:"gitCommitStatus,omitempty"`
-	// RequiredStatusCheckCommitStatus contains the configuration for the RequiredStatusCheckCommitStatus controller,
+	// RequiredCheckCommitStatus contains the configuration for the RequiredCheckCommitStatus controller,
 	// including WorkQueue settings that control reconciliation behavior.
-	RequiredStatusCheckCommitStatus *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration `json:"requiredStatusCheckCommitStatus,omitempty"`
+	RequiredCheckCommitStatus *RequiredCheckCommitStatusConfigurationApplyConfiguration `json:"requiredCheckCommitStatus,omitempty"`
 }
 
 // ControllerConfigurationSpecApplyConfiguration constructs a declarative configuration of the ControllerConfigurationSpec type for use with
@@ -117,10 +117,10 @@ func (b *ControllerConfigurationSpecApplyConfiguration) WithGitCommitStatus(valu
 	return b
 }
 
-// WithRequiredStatusCheckCommitStatus sets the RequiredStatusCheckCommitStatus field in the declarative configuration to the given value
+// WithRequiredCheckCommitStatus sets the RequiredCheckCommitStatus field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the RequiredStatusCheckCommitStatus field is set to the value of the last call.
-func (b *ControllerConfigurationSpecApplyConfiguration) WithRequiredStatusCheckCommitStatus(value *RequiredStatusCheckCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
-	b.RequiredStatusCheckCommitStatus = value
+// If called multiple times, the RequiredCheckCommitStatus field is set to the value of the last call.
+func (b *ControllerConfigurationSpecApplyConfiguration) WithRequiredCheckCommitStatus(value *RequiredCheckCommitStatusConfigurationApplyConfiguration) *ControllerConfigurationSpecApplyConfiguration {
+	b.RequiredCheckCommitStatus = value
 	return b
 }

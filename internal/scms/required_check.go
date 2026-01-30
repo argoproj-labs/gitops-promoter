@@ -12,7 +12,7 @@ import (
 // required check discovery and status polling in their own way.
 type RequiredCheckProvider interface {
 	// DiscoverRequiredChecks queries the SCM's protection configuration
-	// to find all required status checks for the given repository and branch.
+	// to find all required checks for the given repository and branch.
 	// Returns a list of check names that are required by protection rules.
 	//
 	// Returns ErrNotSupported if the SCM provider does not support required checks discovery.
@@ -34,7 +34,7 @@ type RequiredCheckProvider interface {
 	PollCheckStatus(ctx context.Context, repo *v1alpha1.GitRepository, sha string, check RequiredCheck) (v1alpha1.CommitStatusPhase, error)
 }
 
-// RequiredCheck represents a required status check discovered from protection rules.
+// RequiredCheck represents a required check discovered from protection rules.
 type RequiredCheck struct {
 	// Name is the raw check identifier from the SCM (e.g., "smoke", "lint", "e2e-test").
 	// This is the check name as it appears in the SCM protection rules.

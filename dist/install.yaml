@@ -3348,9 +3348,9 @@ spec:
                 - template
                 - workQueue
                 type: object
-              requiredStatusCheckCommitStatus:
+              requiredCheckCommitStatus:
                 description: |-
-                  RequiredStatusCheckCommitStatus contains the configuration for the RequiredStatusCheckCommitStatus controller,
+                  RequiredCheckCommitStatus contains the configuration for the RequiredCheckCommitStatus controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
                   pendingCheckInterval:
@@ -3401,7 +3401,7 @@ spec:
                     type: string
                   workQueue:
                     description: |-
-                      WorkQueue contains the work queue configuration for the RequiredStatusCheckCommitStatus controller.
+                      WorkQueue contains the work queue configuration for the RequiredCheckCommitStatus controller.
 
                       IMPORTANT: The RequeueDuration field in WorkQueue is NOT used by this controller.
                       This controller uses adaptive requeue intervals based on check status:
@@ -3826,7 +3826,7 @@ spec:
             - gitCommitStatus
             - promotionStrategy
             - pullRequest
-            - requiredStatusCheckCommitStatus
+            - requiredCheckCommitStatus
             - timedCommitStatus
             type: object
           status:
@@ -6954,7 +6954,7 @@ rules:
   - gitrepositories
   - promotionstrategies
   - pullrequests
-  - requiredstatuscheckcommitstatuses
+  - requiredcheckcommitstatuses
   - revertcommits
   - scmproviders
   - timedcommitstatuses
@@ -6978,7 +6978,7 @@ rules:
   - gitrepositories/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
-  - requiredstatuscheckcommitstatuses/finalizers
+  - requiredcheckcommitstatuses/finalizers
   - revertcommits/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers
@@ -6996,7 +6996,7 @@ rules:
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status
-  - requiredstatuscheckcommitstatuses/status
+  - requiredcheckcommitstatuses/status
   - revertcommits/status
   - scmproviders/status
   - timedcommitstatuses/status
@@ -7415,7 +7415,7 @@ spec:
             maxFastAttempts: 3
             slowDelay: 5m
       requeueDuration: 5m
-  requiredStatusCheckCommitStatus:
+  requiredCheckCommitStatus:
     pendingCheckInterval: 1m
     requiredCheckCacheMaxSize: 1000
     requiredCheckCacheTTL: 24h

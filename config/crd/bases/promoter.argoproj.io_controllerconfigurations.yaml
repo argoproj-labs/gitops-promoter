@@ -1329,9 +1329,9 @@ spec:
                 - template
                 - workQueue
                 type: object
-              requiredStatusCheckCommitStatus:
+              requiredCheckCommitStatus:
                 description: |-
-                  RequiredStatusCheckCommitStatus contains the configuration for the RequiredStatusCheckCommitStatus controller,
+                  RequiredCheckCommitStatus contains the configuration for the RequiredCheckCommitStatus controller,
                   including WorkQueue settings that control reconciliation behavior.
                 properties:
                   pendingCheckInterval:
@@ -1382,7 +1382,7 @@ spec:
                     type: string
                   workQueue:
                     description: |-
-                      WorkQueue contains the work queue configuration for the RequiredStatusCheckCommitStatus controller.
+                      WorkQueue contains the work queue configuration for the RequiredCheckCommitStatus controller.
 
                       IMPORTANT: The RequeueDuration field in WorkQueue is NOT used by this controller.
                       This controller uses adaptive requeue intervals based on check status:
@@ -1807,7 +1807,7 @@ spec:
             - gitCommitStatus
             - promotionStrategy
             - pullRequest
-            - requiredStatusCheckCommitStatus
+            - requiredCheckCommitStatus
             - timedCommitStatus
             type: object
           status:

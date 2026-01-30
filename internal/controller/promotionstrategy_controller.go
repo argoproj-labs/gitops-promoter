@@ -231,11 +231,11 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		}
 	}
 
-	// Add required status checks automatically
-	logger.V(4).Info("Processing required status checks for CTP",
+	// Add required checks automatically
+	logger.V(4).Info("Processing required checks for CTP",
 		"branch", environment.Branch,
 		"ctpName", ctpName)
-	r.addRequiredStatusChecksToProposedStatuses(ctx, ps, environment, &proposedCommitStatuses)
+	r.addRequiredChecksToProposedStatuses(ctx, ps, environment, &proposedCommitStatuses)
 
 	// Build the spec
 	ctpSpec := acv1alpha1.ChangeTransferPolicySpec().
@@ -277,9 +277,9 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	return ctp, nil
 }
 
-// addRequiredStatusChecksToProposedStatuses adds required status checks from RSCCS to the proposed commit statuses.
+// addRequiredChecksToProposedStatuses adds required checks from RCCS to the proposed commit statuses.
 // This function extracts the logic for better readability and reduced nesting.
-func (r *PromotionStrategyReconciler) addRequiredStatusChecksToProposedStatuses(
+func (r *PromotionStrategyReconciler) addRequiredChecksToProposedStatuses(
 	ctx context.Context,
 	ps *promoterv1alpha1.PromotionStrategy,
 	environment promoterv1alpha1.Environment,
@@ -287,35 +287,35 @@ func (r *PromotionStrategyReconciler) addRequiredStatusChecksToProposedStatuses(
 ) {
 	logger := log.FromContext(ctx)
 
-	// Get the RequiredStatusCheckCommitStatus for this PromotionStrategy
-	// Use ps.Name directly (not KubeSafeUniqueName) to match how RSCCS is created
-	rsccsName := ps.Name
-	rsccs := &promoterv1alpha1.RequiredStatusCheckCommitStatus{}
-	getErr := r.Get(ctx, client.ObjectKey{Name: rsccsName, Namespace: ps.Namespace}, rsccs)
+	// Get the RequiredCheckCommitStatus for this PromotionStrategy
+	// Use ps.Name directly (not KubeSafeUniqueName) to match how RCCS is created
+	rccsName := ps.Name
+	rccs := &promoterv1alpha1.RequiredCheckCommitStatus{}
+	getErr := r.Get(ctx, client.ObjectKey{Name: rccsName, Namespace: ps.Namespace}, rccs)
 
 	if getErr != nil {
 		if !k8serrors.IsNotFound(getErr) {
-			logger.Error(getErr, "Failed to get RequiredStatusCheckCommitStatus",
-				"name", rsccsName,
+			logger.Error(getErr, "Failed to get RequiredCheckCommitStatus",
+				"name", rccsName,
 				"namespace", ps.Namespace)
 		} else {
-			logger.V(4).Info("RSCCS not found",
-				"name", rsccsName,
+			logger.V(4).Info("RCCS not found",
+				"name", rccsName,
 				"namespace", ps.Namespace)
 		}
 		return
 	}
 
-	logger.V(4).Info("Found RSCCS, checking environments",
-		"rsccsName", rsccsName,
-		"numEnvironments", len(rsccs.Status.Environments),
+	logger.V(4).Info("Found RCCS, checking environments",
+		"rccsName", rccsName,
+		"numEnvironments", len(rccs.Status.Environments),
 		"targetBranch", environment.Branch)
 
 	// Find the environment status for this CTP's branch
-	var envStatus *promoterv1alpha1.RequiredStatusCheckEnvironmentStatus
-	for i := range rsccs.Status.Environments {
-		if rsccs.Status.Environments[i].Branch == environment.Branch {
-			envStatus = &rsccs.Status.Environments[i]
+	var envStatus *promoterv1alpha1.RequiredCheckEnvironmentStatus
+	for i := range rccs.Status.Environments {
+		if rccs.Status.Environments[i].Branch == environment.Branch {
+			envStatus = &rccs.Status.Environments[i]
 			break
 		}
 	}
@@ -332,14 +332,14 @@ func (r *PromotionStrategyReconciler) addRequiredStatusChecksToProposedStatuses(
 	for _, requiredCheck := range envStatus.RequiredChecks {
 		checkKey := requiredCheck.Key
 		if r.isCheckAlreadyPresent(*proposedCommitStatuses, checkKey) {
-			logger.V(4).Info("Required status check already in ProposedCommitStatuses",
+			logger.V(4).Info("Required check already in ProposedCommitStatuses",
 				"checkKey", checkKey,
 				"branch", environment.Branch)
 			continue
 		}
 
 		*proposedCommitStatuses = append(*proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(checkKey))
-		logger.V(4).Info("Added required status check to ProposedCommitStatuses",
+		logger.V(4).Info("Added required check to ProposedCommitStatuses",
 			"checkKey", checkKey,
 			"branch", environment.Branch,
 			"name", requiredCheck.Name)

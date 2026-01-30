@@ -344,7 +344,7 @@ var _ = BeforeSuite(func() {
 					},
 				},
 			},
-			RequiredStatusCheckCommitStatus: promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration{
+			RequiredCheckCommitStatus: promoterv1alpha1.RequiredCheckCommitStatusConfiguration{
 				WorkQueue: promoterv1alpha1.WorkQueue{
 					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
 					MaxConcurrentReconciles: 10,

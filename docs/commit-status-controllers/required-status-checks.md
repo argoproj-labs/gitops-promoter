@@ -1,8 +1,8 @@
-# Required Status Check Visibility Controller
+# Required Check Visibility Controller
 
 ## Overview
 
-The Required Status Check Visibility Controller automatically discovers required status checks from your SCM provider's branch protection rules and creates CommitStatus resources to provide visibility into what checks are blocking PR/MR merges. This prevents PromotionStrategy from showing "degraded" state (due to failed merge attempts) and instead shows "progressing" state while waiting for required checks to pass.
+The Required Check Visibility Controller automatically discovers required checks from your SCM provider's branch protection rules and creates CommitStatus resources to provide visibility into what checks are blocking PR/MR merges. This prevents PromotionStrategy from showing "degraded" state (due to failed merge attempts) and instead shows "progressing" state while waiting for required checks to pass.
 
 **Important:** Your SCM provider enforces the required checks via branch protection - this controller simply surfaces them as CommitStatus resources so users can see what GitOps Promoter is waiting on.
 
@@ -15,9 +15,9 @@ The Required Status Check Visibility Controller automatically discovers required
 
 ## How It Works
 
-1. **Auto-discovery**: The controller queries your SCM provider's branch protection API to discover which status checks are required for each target branch
+1. **Auto-discovery**: The controller queries your SCM provider's branch protection API to discover which checks are required for each target branch
 2. **Visibility**: For each required check, it creates a CommitStatus resource with the format `{provider}-{checkname}` (e.g., `github-e2e-test`)
-3. **Continuous polling**: The controller polls your SCM provider's status check API to monitor the status of each required check
+3. **Continuous polling**: The controller polls your SCM provider's check status API to monitor the status of each required check
 4. **State management**: By surfacing required checks as CommitStatus resources, the PromotionStrategy stays in "progressing" state while waiting, avoiding "degraded" from failed merge attempts
 
 ## Configuration
@@ -33,7 +33,7 @@ metadata:
   name: controller-configuration
   namespace: gitops-promoter
 spec:
-  requiredStatusCheckCommitStatus:
+  requiredCheckCommitStatus:
     # Caching configuration (reduces API calls significantly)
     requiredCheckCacheTTL: "24h"        # Cache required check discovery (default: 24h)
     requiredCheckCacheMaxSize: 1000     # Max cache entries (default: 1000)
@@ -76,7 +76,7 @@ The controller reconciliation loop runs based on:
 
 ### Branch Protection Configuration
 
-This feature requires configuring branch protection rules in your SCM provider to specify which status checks must pass before merging. The controller discovers these requirements automatically.
+This feature requires configuring branch protection rules in your SCM provider to specify which checks must pass before merging. The controller discovers these requirements automatically.
 
 ### GitHub Setup
 
@@ -98,7 +98,7 @@ For GitHub repositories, this feature uses GitHub Rulesets (not classic branch p
    - Configure the ruleset:
      - **Name**: e.g., "Dev Environment Protection"
      - **Target branches**: e.g., `environment/dev`
-     - **Branch protections**: Enable "Require status checks to pass"
+     - **Branch protections**: Enable "Require checks to pass"
      - **Required checks**: Add the check names (e.g., `ci-tests`, `security-scan`)
    - Save the ruleset
 
@@ -141,17 +141,17 @@ This allows you to require the same check name from different sources (e.g., `li
 You can list all required check CommitStatus resources with:
 
 ```bash
-kubectl get commitstatus -l promoter.argoproj.io/required-status-check-commit-status
+kubectl get commitstatus -l promoter.argoproj.io/required-check-commit-status
 ```
 
 ## Monitoring
 
 ### Check Status
 
-View the RequiredStatusCheckCommitStatus resource to see discovered checks and their status:
+View the RequiredCheckCommitStatus resource to see discovered checks and their status:
 
 ```bash
-kubectl get requiredstatuscheckcommitstatus my-app -o yaml
+kubectl get requiredcheckcommitstatus my-app -o yaml
 ```
 
 Example output:
@@ -185,11 +185,11 @@ status:
 
 ```bash
 # All required check commit statuses
-kubectl get commitstatus -l promoter.argoproj.io/required-status-check-commit-status
+kubectl get commitstatus -l promoter.argoproj.io/required-check-commit-status
 
 # For a specific environment
 kubectl get commitstatus -l promoter.argoproj.io/environment=environment-dev \
-  -l promoter.argoproj.io/required-status-check-commit-status
+  -l promoter.argoproj.io/required-check-commit-status
 ```
 
 ### View Check Details
@@ -202,11 +202,11 @@ kubectl describe commitstatus github-ci-tests-abc12345
 
 ### Phase Mapping
 
-The controller maps SCM provider check statuses to CommitStatus phases. The exact mapping depends on the SCM provider.
+The controller maps SCM provider check status to CommitStatus phases. The exact mapping depends on the SCM provider.
 
 #### GitHub Phase Mapping
 
-GitHub uses two APIs for status checks: the modern **Check Runs API** and the legacy **Commit Status API**. The controller queries both APIs with intelligent fallback.
+GitHub uses two APIs for check status: the modern **Check Runs API** and the legacy **Commit Status API**. The controller queries both APIs with intelligent fallback.
 
 **Check Runs API (Modern):**
 
@@ -309,7 +309,7 @@ Each check maintains a `lastPolledAt` timestamp. Before polling a check, the con
 **Example:**
 
 ```bash
-$ kubectl get requiredstatuscheckcommitstatuses my-app -o yaml
+$ kubectl get requiredcheckcommitstatuses my-app -o yaml
 status:
   environments:
     - branch: environment/staging
@@ -421,16 +421,16 @@ Changes to branch protection rules are detected within the cache TTL or when tri
    - **GitHub**: Verify Rulesets are configured (not classic branch protection)
    - **Other SCMs**: Verify the SCM provider is supported (currently only GitHub)
 
-3. **Check RequiredStatusCheckCommitStatus status** for errors:
+3. **Check RequiredCheckCommitStatus status** for errors:
    ```bash
-   kubectl get requiredstatuscheckcommitstatus my-app -o yaml
+   kubectl get requiredcheckcommitstatus my-app -o yaml
    ```
 
 4. **Verify the PromotionStrategy references a valid GitRepository** with a supported SCM provider
 
 5. **Check controller logs**:
    ```bash
-   kubectl logs -n gitops-promoter -l app.kubernetes.io/name=gitops-promoter | grep RequiredStatusCheckCommitStatus
+   kubectl logs -n gitops-promoter -l app.kubernetes.io/name=gitops-promoter | grep RequiredCheckCommitStatus
    ```
 
 ### CommitStatus Stuck in Pending
@@ -481,7 +481,7 @@ Terminal checks are only re-polled if they haven't been queried within `terminal
 **To verify the optimization is working:**
 ```bash
 # Check the lastPolledAt timestamp
-kubectl get requiredstatuscheckcommitstatuses my-app -o yaml | grep -A4 "requiredChecks:"
+kubectl get requiredcheckcommitstatuses my-app -o yaml | grep -A4 "requiredChecks:"
 
 # Terminal checks should have older timestamps than pending checks
 ```
@@ -490,7 +490,7 @@ kubectl get requiredstatuscheckcommitstatuses my-app -o yaml | grep -A4 "require
 1. **Wait for the next poll**: Terminal checks will be re-polled within `terminalCheckInterval`
 2. **Force immediate reconciliation**: Trigger a reconciliation to poll all checks:
    ```bash
-   kubectl annotate requiredstatuscheckcommitstatuses my-app trigger="$(date +%s)" --overwrite
+   kubectl annotate requiredcheckcommitstatuses my-app trigger="$(date +%s)" --overwrite
    ```
 3. **Reduce polling interval**: Set a shorter `terminalCheckInterval` in ControllerConfiguration (not recommended for production)
 
@@ -528,7 +528,7 @@ error: failed to get combined status: GET https://api.github.com/repos/.../commi
    - Check controller logs - the 403 error should be gone
    - Verify checks are now being detected:
      ```bash
-     kubectl get requiredstatuscheckcommitstatus -o yaml
+     kubectl get requiredcheckcommitstatus -o yaml
      ```
 
 **Note**: This permission is only needed if your CI/CD system uses the legacy Commit Status API. Most modern GitHub Actions and Apps use the Check Runs API, which only requires "Checks: Read" permission. However, for maximum compatibility (supporting both modern and legacy CI systems), it's recommended to enable both permissions.

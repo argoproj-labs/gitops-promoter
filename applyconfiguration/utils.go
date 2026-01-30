@@ -161,8 +161,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.RateLimiterApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RateLimiterTypes"):
 		return &apiv1alpha1.RateLimiterTypesApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("RequiredStatusCheckCommitStatusConfiguration"):
-		return &apiv1alpha1.RequiredStatusCheckCommitStatusConfigurationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("RequiredCheckCommitStatusConfiguration"):
+		return &apiv1alpha1.RequiredCheckCommitStatusConfigurationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommit"):
 		return &apiv1alpha1.RevertCommitApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommitSpec"):

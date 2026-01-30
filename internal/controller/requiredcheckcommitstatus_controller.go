@@ -52,7 +52,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
-// Default configuration values for RequiredStatusCheckCommitStatus controller
+// Default configuration values for RequiredCheckCommitStatus controller
 const (
 	DefaultRequiredCheckCacheTTL     = 24 * time.Hour
 	DefaultRequiredCheckCacheMaxSize = 1000
@@ -60,7 +60,7 @@ const (
 	DefaultTerminalCheckInterval     = 10 * time.Minute
 	DefaultSafetyNetInterval         = 1 * time.Hour
 
-	// Index field name for efficient lookup of RSCCS by PromotionStrategy
+	// Index field name for efficient lookup of RCCS by PromotionStrategy
 	promotionStrategyRefIndex = "spec.promotionStrategyRef.name"
 )
 
@@ -86,8 +86,8 @@ type requiredCheckCacheEntry struct {
 	checks    []scms.RequiredCheck
 }
 
-// RequiredStatusCheckCommitStatusReconciler reconciles a RequiredStatusCheckCommitStatus object
-type RequiredStatusCheckCommitStatusReconciler struct {
+// RequiredCheckCommitStatusReconciler reconciles a RequiredCheckCommitStatus object
+type RequiredCheckCommitStatusReconciler struct {
 	client.Client
 	Scheme      *runtime.Scheme
 	Recorder    events.EventRecorder
@@ -95,49 +95,49 @@ type RequiredStatusCheckCommitStatusReconciler struct {
 	EnqueueCTP  CTPEnqueueFunc
 }
 
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=requiredstatuscheckcommitstatuses,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=requiredstatuscheckcommitstatuses/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=requiredstatuscheckcommitstatuses/finalizers,verbs=update
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=requiredcheckcommitstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=requiredcheckcommitstatuses/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=promoter.argoproj.io,resources=requiredcheckcommitstatuses/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
+func (r *RequiredCheckCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Reconciling RequiredStatusCheckCommitStatus")
+	logger.Info("Reconciling RequiredCheckCommitStatus")
 	startTime := time.Now()
 
-	var rsccs promoterv1alpha1.RequiredStatusCheckCommitStatus
+	var rccs promoterv1alpha1.RequiredCheckCommitStatus
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &rsccs, r.Client, r.Recorder, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &rccs, r.Client, r.Recorder, &err)
 
-	// 1. Fetch the RequiredStatusCheckCommitStatus instance
-	err = r.Get(ctx, req.NamespacedName, &rsccs, &client.GetOptions{})
+	// 1. Fetch the RequiredCheckCommitStatus instance
+	err = r.Get(ctx, req.NamespacedName, &rccs, &client.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Info("RequiredStatusCheckCommitStatus not found")
+			logger.Info("RequiredCheckCommitStatus not found")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "failed to get RequiredStatusCheckCommitStatus")
-		return ctrl.Result{}, fmt.Errorf("failed to get RequiredStatusCheckCommitStatus %q: %w", req.Name, err)
+		logger.Error(err, "failed to get RequiredCheckCommitStatus")
+		return ctrl.Result{}, fmt.Errorf("failed to get RequiredCheckCommitStatus %q: %w", req.Name, err)
 	}
 
 	// Remove any existing Ready condition. We want to start fresh.
-	meta.RemoveStatusCondition(rsccs.GetConditions(), string(promoterConditions.Ready))
+	meta.RemoveStatusCondition(rccs.GetConditions(), string(promoterConditions.Ready))
 
 	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
 	psKey := client.ObjectKey{
-		Namespace: rsccs.Namespace,
-		Name:      rsccs.Spec.PromotionStrategyRef.Name,
+		Namespace: rccs.Namespace,
+		Name:      rccs.Spec.PromotionStrategyRef.Name,
 	}
 	err = r.Get(ctx, psKey, &ps)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			logger.Error(err, "referenced PromotionStrategy not found", "promotionStrategy", rsccs.Spec.PromotionStrategyRef.Name)
-			return ctrl.Result{}, fmt.Errorf("referenced PromotionStrategy %q not found: %w", rsccs.Spec.PromotionStrategyRef.Name, err)
+			logger.Error(err, "referenced PromotionStrategy not found", "promotionStrategy", rccs.Spec.PromotionStrategyRef.Name)
+			return ctrl.Result{}, fmt.Errorf("referenced PromotionStrategy %q not found: %w", rccs.Spec.PromotionStrategyRef.Name, err)
 		}
 		logger.Error(err, "failed to get PromotionStrategy")
-		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", rsccs.Spec.PromotionStrategyRef.Name, err)
+		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", rccs.Spec.PromotionStrategyRef.Name, err)
 	}
 
 	// 3. Get all ChangeTransferPolicies for this PromotionStrategy
@@ -158,31 +158,31 @@ func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Contex
 	}
 
 	// Save previous status to detect transitions and for per-check polling optimization
-	previousStatus := rsccs.Status.DeepCopy()
+	previousStatus := rccs.Status.DeepCopy()
 	if previousStatus == nil {
-		previousStatus = &promoterv1alpha1.RequiredStatusCheckCommitStatusStatus{}
+		previousStatus = &promoterv1alpha1.RequiredCheckCommitStatusStatus{}
 	}
 
 	// 4. Process each environment and create/update CommitStatus resources
-	commitStatuses := r.processEnvironments(ctx, &rsccs, &ps, relevantCTPs, previousStatus)
+	commitStatuses := r.processEnvironments(ctx, &rccs, &ps, relevantCTPs, previousStatus)
 
 	// 5. Clean up orphaned CommitStatus resources
-	err = r.cleanupOrphanedCommitStatuses(ctx, &rsccs, commitStatuses)
+	err = r.cleanupOrphanedCommitStatuses(ctx, &rccs, commitStatuses)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
 	}
 
 	// 6. Inherit conditions from CommitStatus objects
-	utils.InheritNotReadyConditionFromObjects(&rsccs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
+	utils.InheritNotReadyConditionFromObjects(&rccs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
 	// 7. Trigger CTP reconciliation if any environment phase changed
-	err = r.triggerCTPReconciliation(ctx, &ps, previousStatus, &rsccs.Status)
+	err = r.triggerCTPReconciliation(ctx, &ps, previousStatus, &rccs.Status)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to trigger CTP reconciliation: %w", err)
 	}
 
 	// 8. Calculate dynamic requeue duration
-	requeueDuration, err := r.calculateRequeueDuration(ctx, &rsccs)
+	requeueDuration, err := r.calculateRequeueDuration(ctx, &rccs)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to calculate requeue duration: %w", err)
 	}
@@ -193,16 +193,16 @@ func (r *RequiredStatusCheckCommitStatusReconciler) Reconcile(ctx context.Contex
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *RequiredStatusCheckCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+func (r *RequiredCheckCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Use Direct methods to read configuration from the API server without cache during setup.
 
 	// Validate configuration at startup - fail fast if config is invalid
-	config, err := settings.GetRequiredStatusCheckCommitStatusConfigurationDirect(ctx, r.SettingsMgr)
+	config, err := settings.GetRequiredCheckCommitStatusConfigurationDirect(ctx, r.SettingsMgr)
 	if err != nil {
-		return fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
+		return fmt.Errorf("failed to get RequiredCheckCommitStatus configuration: %w", err)
 	}
-	if err := validateRequiredStatusCheckConfig(&config); err != nil {
-		return fmt.Errorf("invalid RequiredStatusCheckCommitStatus configuration: %w", err)
+	if err := validateRequiredCheckConfig(&config); err != nil {
+		return fmt.Errorf("invalid RequiredCheckCommitStatus configuration: %w", err)
 	}
 
 	// Initialize cache configuration from settings
@@ -215,35 +215,35 @@ func (r *RequiredStatusCheckCommitStatusReconciler) SetupWithManager(ctx context
 	}
 	requiredCheckCacheMutex.Unlock()
 
-	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
+	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.RequiredCheckCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
 	if err != nil {
-		return fmt.Errorf("failed to get RequiredStatusCheckCommitStatus rate limiter: %w", err)
+		return fmt.Errorf("failed to get RequiredCheckCommitStatus rate limiter: %w", err)
 	}
 
-	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration](ctx, r.SettingsMgr)
+	maxConcurrentReconciles, err := settings.GetMaxConcurrentReconcilesDirect[promoterv1alpha1.RequiredCheckCommitStatusConfiguration](ctx, r.SettingsMgr)
 	if err != nil {
-		return fmt.Errorf("failed to get RequiredStatusCheckCommitStatus max concurrent reconciles: %w", err)
+		return fmt.Errorf("failed to get RequiredCheckCommitStatus max concurrent reconciles: %w", err)
 	}
 
-	// Set up field index for efficient lookup of RSCCS by PromotionStrategy name
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.RequiredStatusCheckCommitStatus{}, promotionStrategyRefIndex, func(obj client.Object) []string {
-		rsccs, ok := obj.(*promoterv1alpha1.RequiredStatusCheckCommitStatus)
+	// Set up field index for efficient lookup of RCCS by PromotionStrategy name
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.RequiredCheckCommitStatus{}, promotionStrategyRefIndex, func(obj client.Object) []string {
+		rccs, ok := obj.(*promoterv1alpha1.RequiredCheckCommitStatus)
 		if !ok {
 			return nil
 		}
-		return []string{rsccs.Spec.PromotionStrategyRef.Name}
+		return []string{rccs.Spec.PromotionStrategyRef.Name}
 	}); err != nil {
 		return fmt.Errorf("failed to create field index for PromotionStrategyRef: %w", err)
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
-		For(&promoterv1alpha1.RequiredStatusCheckCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueRSCCSForPromotionStrategy()).
-		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, r.enqueueRSCCSForCTP(), builder.WithPredicates(r.ctpProposedShaChangedPredicate())).
+		For(&promoterv1alpha1.RequiredCheckCommitStatus{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&promoterv1alpha1.PromotionStrategy{}, r.enqueueRCCSForPromotionStrategy()).
+		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, r.enqueueRCCSForCTP(), builder.WithPredicates(r.ctpProposedShaChangedPredicate())).
 		Watches(&promoterv1alpha1.CommitStatus{}, handler.EnqueueRequestForOwner(
 			mgr.GetScheme(),
 			mgr.GetRESTMapper(),
-			&promoterv1alpha1.RequiredStatusCheckCommitStatus{},
+			&promoterv1alpha1.RequiredCheckCommitStatus{},
 			handler.OnlyControllerOwner(),
 		)).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
@@ -254,27 +254,27 @@ func (r *RequiredStatusCheckCommitStatusReconciler) SetupWithManager(ctx context
 	return nil
 }
 
-// enqueueRSCCSForPromotionStrategy enqueues all RequiredStatusCheckCommitStatus resources for a PromotionStrategy
-func (r *RequiredStatusCheckCommitStatusReconciler) enqueueRSCCSForPromotionStrategy() handler.EventHandler {
+// enqueueRCCSForPromotionStrategy enqueues all RequiredCheckCommitStatus resources for a PromotionStrategy
+func (r *RequiredCheckCommitStatusReconciler) enqueueRCCSForPromotionStrategy() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
 		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
 		if !ok {
 			return nil
 		}
 
-		var rsccs promoterv1alpha1.RequiredStatusCheckCommitStatusList
-		err := r.List(ctx, &rsccs,
+		var rccs promoterv1alpha1.RequiredCheckCommitStatusList
+		err := r.List(ctx, &rccs,
 			client.InNamespace(ps.Namespace),
 			client.MatchingFields{promotionStrategyRefIndex: ps.Name},
 		)
 		if err != nil {
-			ctrl.LoggerFrom(ctx).Error(err, "failed to list RequiredStatusCheckCommitStatus resources for PromotionStrategy watch",
+			ctrl.LoggerFrom(ctx).Error(err, "failed to list RequiredCheckCommitStatus resources for PromotionStrategy watch",
 				"promotionStrategy", ps.Name, "namespace", ps.Namespace)
 			return nil
 		}
 
 		var requests []ctrl.Request
-		for _, item := range rsccs.Items {
+		for _, item := range rccs.Items {
 			requests = append(requests, ctrl.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: item.Namespace,
@@ -286,8 +286,8 @@ func (r *RequiredStatusCheckCommitStatusReconciler) enqueueRSCCSForPromotionStra
 	})
 }
 
-// enqueueRSCCSForCTP enqueues all RequiredStatusCheckCommitStatus resources affected by a ChangeTransferPolicy change
-func (r *RequiredStatusCheckCommitStatusReconciler) enqueueRSCCSForCTP() handler.EventHandler {
+// enqueueRCCSForCTP enqueues all RequiredCheckCommitStatus resources affected by a ChangeTransferPolicy change
+func (r *RequiredCheckCommitStatusReconciler) enqueueRCCSForCTP() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
 		ctp, ok := obj.(*promoterv1alpha1.ChangeTransferPolicy)
 		if !ok {
@@ -301,20 +301,20 @@ func (r *RequiredStatusCheckCommitStatusReconciler) enqueueRSCCSForCTP() handler
 			return nil
 		}
 
-		// Find all RSCCS resources that reference this PromotionStrategy
-		var rsccs promoterv1alpha1.RequiredStatusCheckCommitStatusList
-		err := r.List(ctx, &rsccs,
+		// Find all RCCS resources that reference this PromotionStrategy
+		var rccs promoterv1alpha1.RequiredCheckCommitStatusList
+		err := r.List(ctx, &rccs,
 			client.InNamespace(ctp.Namespace),
 			client.MatchingFields{promotionStrategyRefIndex: psName},
 		)
 		if err != nil {
-			ctrl.LoggerFrom(ctx).Error(err, "failed to list RequiredStatusCheckCommitStatus resources for ChangeTransferPolicy watch",
+			ctrl.LoggerFrom(ctx).Error(err, "failed to list RequiredCheckCommitStatus resources for ChangeTransferPolicy watch",
 				"changeTransferPolicy", ctp.Name, "namespace", ctp.Namespace)
 			return nil
 		}
 
 		var requests []ctrl.Request
-		for _, item := range rsccs.Items {
+		for _, item := range rccs.Items {
 			requests = append(requests, ctrl.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: item.Namespace,
@@ -327,8 +327,8 @@ func (r *RequiredStatusCheckCommitStatusReconciler) enqueueRSCCSForCTP() handler
 }
 
 // ctpProposedShaChangedPredicate returns a predicate that filters CTP events to only trigger
-// when the proposed SHA changes, which is the field that RSCCS cares about
-func (r *RequiredStatusCheckCommitStatusReconciler) ctpProposedShaChangedPredicate() predicate.Predicate {
+// when the proposed SHA changes, which is the field that RCCS cares about
+func (r *RequiredCheckCommitStatusReconciler) ctpProposedShaChangedPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy)
@@ -351,7 +351,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) ctpProposedShaChangedPredica
 			return oldCTP.Status.Proposed.Hydrated.Sha != newCTP.Status.Proposed.Hydrated.Sha
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			// Don't trigger on delete - RSCCS will handle missing CTPs during reconciliation
+			// Don't trigger on delete - RCCS will handle missing CTPs during reconciliation
 			return false
 		},
 		GenericFunc: func(e event.GenericEvent) bool {
@@ -362,11 +362,11 @@ func (r *RequiredStatusCheckCommitStatusReconciler) ctpProposedShaChangedPredica
 }
 
 // processEnvironments processes each environment and creates/updates CommitStatus resources
-func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ps *promoterv1alpha1.PromotionStrategy, ctps []promoterv1alpha1.ChangeTransferPolicy, previousStatus *promoterv1alpha1.RequiredStatusCheckCommitStatusStatus) []*promoterv1alpha1.CommitStatus {
+func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Context, rccs *promoterv1alpha1.RequiredCheckCommitStatus, ps *promoterv1alpha1.PromotionStrategy, ctps []promoterv1alpha1.ChangeTransferPolicy, previousStatus *promoterv1alpha1.RequiredCheckCommitStatusStatus) []*promoterv1alpha1.CommitStatus {
 	logger := log.FromContext(ctx)
 
 	// Initialize environments status
-	rsccs.Status.Environments = make([]promoterv1alpha1.RequiredStatusCheckEnvironmentStatus, 0)
+	rccs.Status.Environments = make([]promoterv1alpha1.RequiredCheckEnvironmentStatus, 0)
 
 	// Track all CommitStatus objects created/updated
 	var commitStatuses []*promoterv1alpha1.CommitStatus
@@ -379,7 +379,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 	}
 
 	// Build a map of previous environment status by branch for per-check polling optimization
-	previousEnvByBranch := make(map[string]*promoterv1alpha1.RequiredStatusCheckEnvironmentStatus)
+	previousEnvByBranch := make(map[string]*promoterv1alpha1.RequiredCheckEnvironmentStatus)
 	if previousStatus != nil {
 		for i := range previousStatus.Environments {
 			env := &previousStatus.Environments[i]
@@ -444,7 +444,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 				}
 			}
 
-			cs, err := r.updateCommitStatusForCheck(ctx, rsccs, ctp, env.Branch, check, proposedSha, chkStatus.phase)
+			cs, err := r.updateCommitStatusForCheck(ctx, rccs, ctp, env.Branch, check, proposedSha, chkStatus.phase)
 			if err != nil {
 				logger.Error(err, "failed to update CommitStatus",
 					"check", check.Key,
@@ -468,7 +468,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 		aggregatedPhase := r.calculateAggregatedPhase(envCheckStatuses)
 
 		// Update environment status
-		rsccs.Status.Environments = append(rsccs.Status.Environments, promoterv1alpha1.RequiredStatusCheckEnvironmentStatus{
+		rccs.Status.Environments = append(rccs.Status.Environments, promoterv1alpha1.RequiredCheckEnvironmentStatus{
 			Branch:         env.Branch,
 			Sha:            proposedSha,
 			RequiredChecks: envCheckStatuses,
@@ -480,7 +480,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) processEnvironments(ctx cont
 }
 
 // getRequiredCheckProvider creates the appropriate required check provider based on the SCM type.
-func (r *RequiredStatusCheckCommitStatusReconciler) getRequiredCheckProvider(
+func (r *RequiredCheckCommitStatusReconciler) getRequiredCheckProvider(
 	ctx context.Context,
 	repoRef promoterv1alpha1.ObjectReference,
 	namespace string,
@@ -519,7 +519,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) getRequiredCheckProvider(
 
 // discoverRequiredChecksForEnvironment queries the SCM's protection rules to discover required checks.
 // Results are cached to reduce API calls to the SCM provider.
-func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, env promoterv1alpha1.Environment) ([]scms.RequiredCheck, error) {
+func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, env promoterv1alpha1.Environment) ([]scms.RequiredCheck, error) {
 	logger := log.FromContext(ctx)
 
 	// Get GitRepository
@@ -617,7 +617,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) discoverRequiredChecksForEnv
 // Uses per-check polling optimization: terminal checks (success/failure) are only polled
 // if they haven't been polled recently (based on terminalCheckInterval), while pending
 // checks are always polled.
-func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, requiredChecks []scms.RequiredCheck, sha string, previousEnv *promoterv1alpha1.RequiredStatusCheckEnvironmentStatus) (map[string]checkStatus, error) {
+func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, requiredChecks []scms.RequiredCheck, sha string, previousEnv *promoterv1alpha1.RequiredCheckEnvironmentStatus) (map[string]checkStatus, error) {
 	logger := log.FromContext(ctx)
 
 	if len(requiredChecks) == 0 {
@@ -625,9 +625,9 @@ func (r *RequiredStatusCheckCommitStatusReconciler) pollCheckStatusForEnvironmen
 	}
 
 	// Get configuration for polling intervals
-	config, err := settings.GetRequiredStatusCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
+	config, err := settings.GetRequiredCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
+		return nil, fmt.Errorf("failed to get RequiredCheckCommitStatus configuration: %w", err)
 	}
 
 	terminalInterval := DefaultTerminalCheckInterval
@@ -743,7 +743,7 @@ type checkStatus struct {
 }
 
 // updateCommitStatusForCheck creates or updates a CommitStatus resource for a required check
-func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, ctp *promoterv1alpha1.ChangeTransferPolicy, branch string, check scms.RequiredCheck, sha string, phase promoterv1alpha1.CommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
+func (r *RequiredCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx context.Context, rccs *promoterv1alpha1.RequiredCheckCommitStatus, ctp *promoterv1alpha1.ChangeTransferPolicy, branch string, check scms.RequiredCheck, sha string, phase promoterv1alpha1.CommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
 	// Use the pre-computed key from the check (e.g., "github-smoke" or "github-smoke-15368")
 	labelKey := check.Key
 
@@ -753,13 +753,13 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 	cs := &promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: rsccs.Namespace,
+			Namespace: rccs.Namespace,
 		},
 	}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, cs, func() error {
 		// Set owner reference
-		if err := controllerutil.SetControllerReference(rsccs, cs, r.Scheme); err != nil {
+		if err := controllerutil.SetControllerReference(rccs, cs, r.Scheme); err != nil {
 			return fmt.Errorf("failed to set controller reference: %w", err)
 		}
 
@@ -769,7 +769,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) updateCommitStatusForCheck(c
 		}
 		cs.Labels[promoterv1alpha1.CommitStatusLabel] = labelKey // e.g., "github-e2e-test"
 		cs.Labels[promoterv1alpha1.EnvironmentLabel] = utils.KubeSafeLabel(branch)
-		cs.Labels[promoterv1alpha1.RequiredStatusCheckCommitStatusLabel] = rsccs.Name
+		cs.Labels[promoterv1alpha1.RequiredCheckCommitStatusLabel] = rccs.Name
 
 		// Set spec with phase-appropriate description
 		description := generateRequiredCheckDescription(check.Name, phase)
@@ -807,7 +807,7 @@ func generateRequiredCheckDescription(checkName string, phase promoterv1alpha1.C
 		return "Check " + checkName + " is failing"
 	default:
 		// Fallback for unknown phases
-		return "Required status check: " + checkName
+		return "Required check: " + checkName
 	}
 }
 
@@ -826,11 +826,11 @@ func generateCommitStatusName(checkKey string, branch string) string {
 	normalized = strings.ReplaceAll(normalized, "_", "-")
 	normalized = strings.ReplaceAll(normalized, ".", "-")
 
-	return fmt.Sprintf("required-status-check-%s-%s", normalized, hash)
+	return fmt.Sprintf("required-check-%s-%s", normalized, hash)
 }
 
 // calculateAggregatedPhase calculates the aggregated phase for an environment
-func (r *RequiredStatusCheckCommitStatusReconciler) calculateAggregatedPhase(checks []promoterv1alpha1.RequiredCheckStatus) promoterv1alpha1.CommitStatusPhase {
+func (r *RequiredCheckCommitStatusReconciler) calculateAggregatedPhase(checks []promoterv1alpha1.RequiredCheckStatus) promoterv1alpha1.CommitStatusPhase {
 	if len(checks) == 0 {
 		return promoterv1alpha1.CommitPhaseSuccess
 	}
@@ -854,13 +854,13 @@ func (r *RequiredStatusCheckCommitStatusReconciler) calculateAggregatedPhase(che
 }
 
 // cleanupOrphanedCommitStatuses removes CommitStatus resources that are no longer needed
-func (r *RequiredStatusCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
+func (r *RequiredCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, rccs *promoterv1alpha1.RequiredCheckCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
 	logger := log.FromContext(ctx)
 
-	// List all CommitStatus resources owned by this RSCCS
+	// List all CommitStatus resources owned by this RCCS
 	var csList promoterv1alpha1.CommitStatusList
 	err := r.List(ctx, &csList, &client.ListOptions{
-		Namespace: rsccs.Namespace,
+		Namespace: rccs.Namespace,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to list CommitStatus resources: %w", err)
@@ -874,10 +874,10 @@ func (r *RequiredStatusCheckCommitStatusReconciler) cleanupOrphanedCommitStatuse
 
 	// Delete orphaned CommitStatus resources
 	for _, cs := range csList.Items {
-		// Check if this CommitStatus is owned by this RSCCS
+		// Check if this CommitStatus is owned by this RCCS
 		isOwned := false
 		for _, ownerRef := range cs.OwnerReferences {
-			if ownerRef.UID == rsccs.UID {
+			if ownerRef.UID == rccs.UID {
 				isOwned = true
 				break
 			}
@@ -896,7 +896,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) cleanupOrphanedCommitStatuse
 				// Continue to try deleting other orphaned resources
 				continue
 			}
-			r.Recorder.Eventf(rsccs, nil, "Normal", "CommitStatusDeleted", "DeletingOrphanedResource", "Deleted orphaned CommitStatus %s", cs.Name)
+			r.Recorder.Eventf(rccs, nil, "Normal", "CommitStatusDeleted", "DeletingOrphanedResource", "Deleted orphaned CommitStatus %s", cs.Name)
 		}
 	}
 
@@ -904,20 +904,20 @@ func (r *RequiredStatusCheckCommitStatusReconciler) cleanupOrphanedCommitStatuse
 }
 
 // calculateRequeueDuration calculates the dynamic requeue duration based on check status
-func (r *RequiredStatusCheckCommitStatusReconciler) calculateRequeueDuration(ctx context.Context, rsccs *promoterv1alpha1.RequiredStatusCheckCommitStatus) (time.Duration, error) {
+func (r *RequiredCheckCommitStatusReconciler) calculateRequeueDuration(ctx context.Context, rccs *promoterv1alpha1.RequiredCheckCommitStatus) (time.Duration, error) {
 	logger := log.FromContext(ctx)
 
 	// Get configuration (validated at startup)
-	config, err := settings.GetRequiredStatusCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
+	config, err := settings.GetRequiredCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get RequiredStatusCheckCommitStatus configuration: %w", err)
+		return 0, fmt.Errorf("failed to get RequiredCheckCommitStatus configuration: %w", err)
 	}
 
 	// Check the status of all environments
 	hasPendingChecks := false
 	hasAnyChecks := false
 
-	for _, env := range rsccs.Status.Environments {
+	for _, env := range rccs.Status.Environments {
 		hasAnyChecks = true
 		if env.Phase == promoterv1alpha1.CommitPhasePending {
 			hasPendingChecks = true
@@ -965,7 +965,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) calculateRequeueDuration(ctx
 }
 
 // triggerCTPReconciliation triggers CTP reconciliation if any environment phase changed
-func (r *RequiredStatusCheckCommitStatusReconciler) triggerCTPReconciliation(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, previousStatus *promoterv1alpha1.RequiredStatusCheckCommitStatusStatus, currentStatus *promoterv1alpha1.RequiredStatusCheckCommitStatusStatus) error {
+func (r *RequiredCheckCommitStatusReconciler) triggerCTPReconciliation(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, previousStatus *promoterv1alpha1.RequiredCheckCommitStatusStatus, currentStatus *promoterv1alpha1.RequiredCheckCommitStatusStatus) error {
 	logger := log.FromContext(ctx)
 
 	// Build maps of environment phases
@@ -1023,7 +1023,7 @@ func (r *RequiredStatusCheckCommitStatusReconciler) triggerCTPReconciliation(ctx
 // The key uses the GitRepository resource identity (namespace/name) and branch.
 // This ensures proper cache isolation - each GitRepository resource represents a unique
 // repository configuration, even if the underlying SCM repository is the same.
-func (r *RequiredStatusCheckCommitStatusReconciler) buildCacheKey(gitRepo *promoterv1alpha1.GitRepository, branch string) string {
+func (r *RequiredCheckCommitStatusReconciler) buildCacheKey(gitRepo *promoterv1alpha1.GitRepository, branch string) string {
 	return fmt.Sprintf("%s|%s|%s", gitRepo.Namespace, gitRepo.Name, branch)
 }
 
@@ -1078,9 +1078,9 @@ func evictExpiredOrOldestEntries(ctx context.Context) {
 	}
 }
 
-// validateRequiredStatusCheckConfig validates the RequiredStatusCheckCommitStatus configuration
+// validateRequiredCheckConfig validates the RequiredCheckCommitStatus configuration
 // to prevent misconfiguration that could cause rate limiting or illogical behavior.
-func validateRequiredStatusCheckConfig(config *promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration) error {
+func validateRequiredCheckConfig(config *promoterv1alpha1.RequiredCheckCommitStatusConfiguration) error {
 	const minInterval = 10 * time.Second
 	const minCacheTTL = 0 * time.Second // 0 is allowed (disables caching)
 
@@ -1155,7 +1155,7 @@ func validateRequiredStatusCheckConfig(config *promoterv1alpha1.RequiredStatusCh
 }
 
 // validateSafetyNetInterval validates the SafetyNetInterval configuration and its relationships.
-func validateSafetyNetInterval(config *promoterv1alpha1.RequiredStatusCheckCommitStatusConfiguration) []error {
+func validateSafetyNetInterval(config *promoterv1alpha1.RequiredCheckCommitStatusConfiguration) []error {
 	var errs []error
 
 	if config.SafetyNetInterval == nil {
