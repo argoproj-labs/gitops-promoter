@@ -243,8 +243,14 @@ func (i *Installer) RefreshAllApps(ctx context.Context) error {
 func (i *Installer) PortForward(ctx context.Context) error {
 	color.Green("Starting port forwards...")
 	color.Yellow("ArgoCD UI:         https://localhost:8000")
-	color.Yellow("  kubectl -n argocd get secret argocd-initial-admin-secret -o go-template=" +
-		"'{{.data.password | base64decode}}'")
+
+	// Get and display the ArgoCD admin password
+	password, err := i.getArgoCDPassword(ctx)
+	if err != nil {
+		color.Red("Failed to get ArgoCD password: %v", err)
+	} else {
+		color.Yellow("ArgoCD Password:   %s", password)
+	}
 	color.Yellow("Press Ctrl+C to stop\n")
 
 	// Context for cancellation
@@ -356,4 +362,15 @@ func (i *Installer) kubectlApplyManifest(ctx context.Context, manifest, namespac
 		return fmt.Errorf("kubectl %v failed: %w", args, err)
 	}
 	return nil
+}
+
+// getArgoCDPassword retrieves the ArgoCD admin password from the cluster
+func (i *Installer) getArgoCDPassword(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "kubectl", "-n", "argocd", "get", "secret",
+		"argocd-initial-admin-secret", "-o", "go-template={{.data.password | base64decode}}")
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to get secret: %w", err)
+	}
+	return strings.TrimSpace(string(output)), nil
 }
