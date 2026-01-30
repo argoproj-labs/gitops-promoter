@@ -214,11 +214,13 @@ spec:
                       type: string
                     sha:
                       description: |-
-                        Sha is the commit SHA that this status is associated with.
+                        Sha is the commit SHA that the application is synced to.
+                        This field is only populated when the application's sync status is Synced.
+                        When the sync status is OutOfSync or Unknown, this field will be empty because
+                        Status.Sync.Revision may contain a branch name instead of a SHA.
                         Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
                       maxLength: 64
-                      minLength: 40
-                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      pattern: ^(|[a-f0-9]{40}|[a-f0-9]{64})$
                       type: string
                   required:
                   - clusterName
@@ -318,6 +320,9 @@ spec:
       type: string
     - jsonPath: .status.proposed.dry.sha
       name: Proposed Dry Sha
+      type: string
+    - jsonPath: .status.proposed.note.drySha
+      name: Proposed Note Dry Sha
       type: string
     - jsonPath: .status.pullRequest.state
       name: PR State

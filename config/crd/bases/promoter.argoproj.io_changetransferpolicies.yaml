@@ -21,6 +21,9 @@ spec:
     - jsonPath: .status.proposed.dry.sha
       name: Proposed Dry Sha
       type: string
+    - jsonPath: .status.proposed.note.drySha
+      name: Proposed Note Dry Sha
+      type: string
     - jsonPath: .status.pullRequest.state
       name: PR State
       type: string

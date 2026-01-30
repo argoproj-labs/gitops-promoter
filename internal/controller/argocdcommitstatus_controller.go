@@ -319,11 +319,19 @@ func (r *ArgoCDCommitStatusReconciler) groupArgoCDApplicationsWithPhase(promotio
 				return nil, fmt.Errorf("application %s/%s must have either spec.sourceHydrator.syncSource.targetBranch or spec.source.targetRevision configured", application.GetNamespace(), application.GetName())
 			}
 
+			// Only populate Sha when the application's sync status is Synced.
+			// When the sync status is OutOfSync or Unknown, Status.Sync.Revision may contain
+			// a branch name or other non-SHA value, so we leave it empty to avoid validation errors.
+			sha := ""
+			if application.Status.Sync.Status == argocd.SyncStatusCodeSynced {
+				sha = application.Status.Sync.Revision
+			}
+
 			argoCDCommitStatus.Status.ApplicationsSelected = append(argoCDCommitStatus.Status.ApplicationsSelected, promoterv1alpha1.ApplicationsSelected{
 				Namespace:          application.GetNamespace(),
 				Name:               application.GetName(),
 				Phase:              calculateApplicationPhase(&application),
-				Sha:                application.Status.Sync.Revision,
+				Sha:                sha,
 				LastTransitionTime: application.Status.Health.LastTransitionTime,
 				Environment:        environment,
 				ClusterName:        clusterApps.ClusterName,
@@ -618,25 +626,14 @@ func (r *ArgoCDCommitStatusReconciler) updateAggregatedCommitStatus(ctx context.
 	return commitStatus, nil
 }
 
-func (r *ArgoCDCommitStatusReconciler) getPromotionStrategy(ctx context.Context, namespace string, promotionStrategyRef promoterv1alpha1.ObjectReference) (*promoterv1alpha1.PromotionStrategy, error) {
-	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
-	err := r.localClient.Get(ctx, client.ObjectKey{Namespace: namespace, Name: promotionStrategyRef.Name}, &promotionStrategy)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get PromotionStrategy object: %w", err)
-	}
-	return &promotionStrategy, nil
-}
-
 func (r *ArgoCDCommitStatusReconciler) getGitAuthProvider(ctx context.Context, argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus) (scms.GitOperationsProvider, promoterv1alpha1.ObjectReference, error) {
-	ps, err := r.getPromotionStrategy(ctx, argoCDCommitStatus.GetNamespace(), argoCDCommitStatus.Spec.PromotionStrategyRef)
-	if ps == nil {
-		return nil, promoterv1alpha1.ObjectReference{}, fmt.Errorf("PromotionStrategy is nil for ArgoCDCommitStatus %s", argoCDCommitStatus.Name)
-	}
+	ps := promoterv1alpha1.PromotionStrategy{}
+	err := r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.GetNamespace(), Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &ps)
 	if err != nil {
-		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get PromotionStrategy from ArgoCDCommitStatus %s: %w", argoCDCommitStatus.Name, err)
+		return nil, promoterv1alpha1.ObjectReference{}, fmt.Errorf("failed to get PromotionStrategy from ArgoCDCommitStatus %s: %w", argoCDCommitStatus.Name, err)
 	}
 
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.localClient, r.SettingsMgr.GetControllerNamespace(), ps.Spec.RepositoryReference, ps)
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.localClient, r.SettingsMgr.GetControllerNamespace(), ps.Spec.RepositoryReference, &ps)
 	if err != nil {
 		return nil, ps.Spec.RepositoryReference, fmt.Errorf("failed to get ScmProvider and secret for PromotionStrategy %q: %w", ps.Name, err)
 	}

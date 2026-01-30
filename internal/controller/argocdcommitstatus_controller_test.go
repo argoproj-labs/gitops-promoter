@@ -520,13 +520,16 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			newSha = strings.TrimSpace(newSha)
 
 			// Step 3: Simulate a new commit being detected
-			// Update the Application with new revision and OutOfSync status
+			// Update the Application with OutOfSync status
+			// In some cases, when the sync status changes to OutOfSync, Argo CD may set
+			// the Revision field to a branch name instead of a SHA (the original bug scenario).
 			// (Application CRD has no status subresource, so Argo CD patches the whole CR)
 			appToUpdate := &argocd.Application{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: "test-app-sync-bug", Namespace: "default"}, appToUpdate)
 			Expect(err).ToNot(HaveOccurred())
 
-			appToUpdate.Status.Sync.Revision = newSha
+			// Set revision to branch name (the bug scenario), status changes to OutOfSync
+			appToUpdate.Status.Sync.Revision = testBranchStaging
 			appToUpdate.Status.Sync.Status = argocd.SyncStatusCodeOutOfSync
 			// Health status and LastTransitionTime remain unchanged (no health checks)
 			appToUpdate.Status.Health.Status = argocd.HealthStatusHealthy
@@ -535,26 +538,36 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			err = k8sClient.Update(ctx, appToUpdate)
 			Expect(err).ToNot(HaveOccurred())
 
+			// Verify the application status was actually updated to OutOfSync
+			Eventually(func(g Gomega) {
+				verifyApp := &argocd.Application{}
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: "test-app-sync-bug", Namespace: "default"}, verifyApp)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(verifyApp.Status.Sync.Status).To(Equal(argocd.SyncStatusCodeOutOfSync))
+				g.Expect(verifyApp.Status.Sync.Revision).To(Equal(testBranchStaging))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			// Step 4: Verify OutOfSync state is recorded (Healthy + OutOfSync = Pending)
+			// Since sync status is OutOfSync (and revision is a branch name), the SHA field should be empty
 			Eventually(func(g Gomega) {
 				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, updated)
 				g.Expect(err).ToNot(HaveOccurred())
 
-				// Verify that the application is updated with new revision and is in Pending phase
+				// Verify that the application shows OutOfSync with empty SHA
 				g.Expect(updated.Status.ApplicationsSelected).To(HaveLen(1))
-				g.Expect(updated.Status.ApplicationsSelected[0].Sha).To(Equal(newSha))
+				g.Expect(updated.Status.ApplicationsSelected[0].Sha).To(Equal(""))
 				g.Expect(updated.Status.ApplicationsSelected[0].Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			// Step 5: Simulate sync completing
-			// Update the Application: sync status goes to Synced (revision stays at newSha)
+			// Update the Application: sync status goes to Synced and revision is updated to newSha
 			appToUpdate = &argocd.Application{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: "test-app-sync-bug", Namespace: "default"}, appToUpdate)
 			Expect(err).ToNot(HaveOccurred())
 
 			appToUpdate.Status.Sync.Status = argocd.SyncStatusCodeSynced
-			// Revision stays the same (newSha)
+			appToUpdate.Status.Sync.Revision = newSha
 			// Health status and LastTransitionTime remain unchanged - KEY TO BUG
 			appToUpdate.Status.Health.Status = argocd.HealthStatusHealthy
 			appToUpdate.Status.Health.LastTransitionTime = nil
