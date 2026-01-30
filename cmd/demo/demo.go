@@ -166,7 +166,7 @@ func NewDemoCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&repoName, "name", "gitops-promoter-examples", "Name of the repository to create")
+	cmd.Flags().StringVar(&repoName, "repo-name", "gitops-promoter-examples", "Name of the repository to create")
 
 	return cmd
 }
