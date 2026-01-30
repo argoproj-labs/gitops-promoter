@@ -28,4 +28,4 @@ spec:
     domain: dev.azure.com # Optional
 
   gitea:
-    domain: gitea.com
+    domain: gitea.
