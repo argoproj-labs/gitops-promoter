@@ -4284,17 +4284,82 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 				Expect(reason).To(BeEmpty())
 			})
 
-			It("allows when all preceding envs are no-ops (base case)", func() {
-				env1 := makeEnv("env1", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
-				env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
-				env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
+		It("allows when all preceding envs are no-ops (base case)", func() {
+			env1 := makeEnv("env1", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
+			env2 := makeEnv("env2", "OLD", "OLD", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess)) // no-op
+			env3 := makeEnv("env3", "OLD", "ABC", "ABC", olderTime, string(promoterv1alpha1.CommitPhaseSuccess))
 
-				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
+			isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
-				Expect(isPending).To(BeFalse())
-				Expect(reason).To(BeEmpty())
-			})
+			Expect(isPending).To(BeFalse())
+			Expect(reason).To(BeEmpty())
 		})
+
+		// Edge case: no-op for current commit but has pending changes from previous commit
+		// Scenario:
+		// - Commit 1 (COMMIT1) changes env1 (autoMerge=false, PR not merged)
+		// - Commit 2 (COMMIT2) does NOT change env1 (no-op for commit 2)
+		// - env2 should still wait for env1's PR from commit 1 to be merged
+		//
+		// This tests the fix for the bug where a no-op environment with pending changes
+		// was incorrectly skipped, allowing downstream environments to promote prematurely.
+		It("blocks when no-op for current commit but has pending changes from previous commit", func() {
+			// env1: Commit 1 changed it, PR created but not merged (autoMerge=false)
+			//       Commit 2 is a no-op (note=COMMIT2, proposed=COMMIT1, active=OLD)
+			env1 := makeEnv("env1",
+				"OLD",     // active: still on OLD (PR not merged)
+				"COMMIT1", // proposed: has changes from commit 1
+				"COMMIT2", // note: hydrator processed commit 2 (no-op)
+				olderTime,
+				string(promoterv1alpha1.CommitPhaseSuccess))
+
+			// env2: Both commits changed it, trying to promote commit 2
+			env2 := makeEnv("env2",
+				"OLD",     // active: still on OLD
+				"COMMIT2", // proposed: has changes from commit 2
+				"COMMIT2", // note: hydrator processed commit 2
+				olderTime,
+				string(promoterv1alpha1.CommitPhaseSuccess))
+
+			isPending, reason := isPreviousEnvironmentPending(
+				[]promoterv1alpha1.EnvironmentStatus{env1},
+				getEffectiveHydratedDrySha(env2),
+				env2.Active.Dry.CommitTime)
+
+			// Should block because env1 has pending changes (active=OLD != proposed=COMMIT1)
+			// even though commit 2 is a no-op for env1
+			Expect(isPending).To(BeTrue())
+			Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+		})
+
+		// Same scenario but env1's PR has been merged - should allow
+		It("allows when no-op for current commit and previous changes have been merged", func() {
+			// env1: Commit 1 changed it and was merged, Commit 2 is a no-op
+			env1 := makeEnv("env1",
+				"COMMIT1", // active: merged commit 1
+				"COMMIT1", // proposed: same as active (no pending changes)
+				"COMMIT2", // note: hydrator processed commit 2 (no-op)
+				newerTime,
+				string(promoterv1alpha1.CommitPhaseSuccess))
+
+			// env2: Both commits changed it, trying to promote commit 2
+			env2 := makeEnv("env2",
+				"OLD",     // active: still on OLD
+				"COMMIT2", // proposed: has changes from commit 2
+				"COMMIT2", // note: hydrator processed commit 2
+				olderTime,
+				string(promoterv1alpha1.CommitPhaseSuccess))
+
+			isPending, reason := isPreviousEnvironmentPending(
+				[]promoterv1alpha1.EnvironmentStatus{env1},
+				getEffectiveHydratedDrySha(env2),
+				env2.Active.Dry.CommitTime)
+
+			// Should allow because env1 has no pending changes (active=proposed=COMMIT1)
+			Expect(isPending).To(BeFalse())
+			Expect(reason).To(BeEmpty())
+		})
+	})
 
 		// Tests for non-no-op predecessor blocking (doesn't recurse)
 		Context("immediate predecessor with real changes", func() {

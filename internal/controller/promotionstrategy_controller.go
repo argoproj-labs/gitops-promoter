@@ -768,7 +768,18 @@ func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.Enviro
 		return true, "Waiting for previous environment to be promoted"
 	}
 
-	// This environment is a no-op - recurse to check earlier environments
+	// Even if the current commit is a no-op for this environment, we still need to check
+	// if there are pending changes from a previous commit that haven't been merged yet.
+	// This handles the case where:
+	// - Commit 1 changed env A (autoMerge=false, PR not merged)
+	// - Commit 2 did NOT change env A (no-op for commit 2)
+	// - Env B should still wait for env A's PR from commit 1 to be merged
+	envHasPendingChanges := envStatus.Active.Dry.Sha != envProposedDrySha
+	if envHasPendingChanges {
+		return true, "Waiting for previous environment to be promoted"
+	}
+
+	// This environment is a no-op AND has no pending changes - recurse to check earlier environments
 	return isPreviousEnvironmentPending(precedingEnvStatuses[:len(precedingEnvStatuses)-1], targetDrySha, currentActiveCommitTime)
 }
 
