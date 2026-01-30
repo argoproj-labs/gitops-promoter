@@ -4115,13 +4115,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		}
 
 		// Truth table for isPreviousEnvironmentPending (per environment):
-		// | Hydrated | NoOp | Merged | Healthy | Result |
-		// |----------|------|--------|---------|--------|
-		// | N        | -    | -      | -       | BLOCK (hydrator) |
-		// | Y        | N    | N      | -       | BLOCK (waiting for promotion) |
-		// | Y        | N    | Y      | N       | BLOCK (commit status) |
-		// | Y        | N    | Y      | Y       | ALLOW |
-		// | Y        | Y    | -      | -       | RECURSE (or ALLOW if base case) |
+		// | Hydrated | NoOp | Pending | Merged | Healthy | Result |
+		// |----------|------|---------|--------|---------|--------|
+		// | N        | -    | -       | -      | -       | BLOCK (hydrator) |
+		// | Y        | N    | -       | N      | -       | BLOCK (waiting for promotion) |
+		// | Y        | N    | -       | Y      | N       | BLOCK (commit status) |
+		// | Y        | N    | -       | Y      | Y       | ALLOW |
+		// | Y        | Y    | Y       | -      | -       | BLOCK (pending changes from previous commit) |
+		// | Y        | Y    | N       | -      | -       | RECURSE (or ALLOW if base case) |
 
 		// Single preceding environment tests - covers the truth table
 		DescribeTable("single preceding environment - truth table coverage",
