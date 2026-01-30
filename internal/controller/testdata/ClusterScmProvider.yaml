@@ -26,3 +26,6 @@ spec:
   azureDevOps:
     organization: example-org
     domain: dev.azure.com # Optional
+
+  gitea:
+    domain: gitea.com
