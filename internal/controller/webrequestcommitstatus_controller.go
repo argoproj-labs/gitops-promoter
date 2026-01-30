@@ -262,14 +262,6 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 	// Initialize or clear the environments status
 	wrcs.Status.Environments = make([]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, 0, len(applicableEnvs))
 
-	// Determine requeue duration based on mode
-	var requeueAfter time.Duration
-	if wrcs.Spec.Mode.Polling != nil {
-		requeueAfter = wrcs.Spec.Mode.Polling.Interval.Duration
-	} else if wrcs.Spec.Mode.Trigger != nil {
-		requeueAfter = wrcs.Spec.Mode.Trigger.RequeueDuration.Duration
-	}
-
 	for _, env := range applicableEnvs {
 		branch := env.Branch
 
@@ -394,7 +386,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 				phase = promoterv1alpha1.CommitPhaseSuccess
 				lastSuccessfulSha = reportedSha
 			} else {
-				phase = promoterv1alpha1.CommitPhaseFailure
+				phase = promoterv1alpha1.CommitPhasePending
 			}
 		} else {
 			// Trigger expression returned false, keep previous phase or default to pending
@@ -455,6 +447,14 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			"reportedSha", reportedSha,
 			"phase", phase,
 			"triggered", shouldTrigger)
+	}
+
+	// Determine requeue duration based on mode
+	var requeueAfter time.Duration
+	if wrcs.Spec.Mode.Polling != nil {
+		requeueAfter = wrcs.Spec.Mode.Polling.Interval.Duration
+	} else if wrcs.Spec.Mode.Trigger != nil {
+		requeueAfter = wrcs.Spec.Mode.Trigger.RequeueDuration.Duration
 	}
 
 	return transitionedEnvironments, commitStatuses, requeueAfter, nil
