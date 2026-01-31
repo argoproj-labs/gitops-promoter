@@ -41,6 +41,7 @@ rules:
   - gitrepositories
   - promotionstrategies
   - pullrequests
+  - requiredcheckcommitstatuses
   - revertcommits
   - scmproviders
   - timedcommitstatuses
@@ -64,6 +65,7 @@ rules:
   - gitrepositories/finalizers
   - promotionstrategies/finalizers
   - pullrequests/finalizers
+  - requiredcheckcommitstatuses/finalizers
   - revertcommits/finalizers
   - scmproviders/finalizers
   - timedcommitstatuses/finalizers
@@ -81,6 +83,7 @@ rules:
   - gitrepositories/status
   - promotionstrategies/status
   - pullrequests/status
+  - requiredcheckcommitstatuses/status
   - revertcommits/status
   - scmproviders/status
   - timedcommitstatuses/status

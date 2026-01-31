@@ -102,3 +102,16 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
+  requiredCheckCommitStatus:
+    requiredCheckCacheTTL: "24h"
+    requiredCheckCacheMaxSize: 1000
+    pendingCheckInterval: "1m"
+    terminalCheckInterval: "10m"
+    safetyNetInterval: "1h"
+    workQueue:
+      maxConcurrentReconciles: 5
+      requeueDuration: "5m"
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "1s"
+          maxDelay: "1m"

@@ -54,6 +54,8 @@ const (
 	SCMAPICommitStatus SCMAPI = "CommitStatus"
 	// SCMAPIPullRequest is used for operations related to pull requests.
 	SCMAPIPullRequest SCMAPI = "PullRequest"
+	// SCMAPIRequiredCheck is used for operations related to required check discovery.
+	SCMAPIRequiredCheck SCMAPI = "RequiredCheck"
 )
 
 // SCMOperation represents the type of operation being performed on the SCM API.

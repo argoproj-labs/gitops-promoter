@@ -344,6 +344,28 @@ var _ = BeforeSuite(func() {
 					},
 				},
 			},
+			RequiredCheckCommitStatus: promoterv1alpha1.RequiredCheckCommitStatusConfiguration{
+				WorkQueue: promoterv1alpha1.WorkQueue{
+					RequeueDuration:         metav1.Duration{Duration: time.Minute * 5},
+					MaxConcurrentReconciles: 10,
+					RateLimiter: promoterv1alpha1.RateLimiter{
+						MaxOf: []promoterv1alpha1.RateLimiterTypes{
+							{
+								Bucket: &promoterv1alpha1.Bucket{
+									Qps:    10,
+									Bucket: 100,
+								},
+							},
+							{
+								ExponentialFailure: &promoterv1alpha1.ExponentialFailure{
+									BaseDelay: metav1.Duration{Duration: time.Millisecond * 5},
+									MaxDelay:  metav1.Duration{Duration: time.Minute * 1},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 	Expect(k8sClient.Create(ctx, controllerConfiguration)).To(Succeed())

@@ -30,12 +30,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/internal/settings"
-	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
-	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
-	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,6 +38,13 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/settings"
+	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
 // ctpEnqueueState tracks rate limiting state for enqueuing out-of-sync CTPs.
@@ -230,6 +231,12 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 		}
 	}
 
+	// Add required checks automatically
+	logger.V(4).Info("Processing required checks for CTP",
+		"branch", environment.Branch,
+		"ctpName", ctpName)
+	r.addRequiredChecksToProposedStatuses(ctx, ps, environment, &proposedCommitStatuses)
+
 	// Build the spec
 	ctpSpec := acv1alpha1.ChangeTransferPolicySpec().
 		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
@@ -268,6 +275,88 @@ func (r *PromotionStrategyReconciler) upsertChangeTransferPolicy(ctx context.Con
 	logger.V(4).Info("Applied ChangeTransferPolicy")
 
 	return ctp, nil
+}
+
+// addRequiredChecksToProposedStatuses adds required checks from RCCS to the proposed commit statuses.
+// This function extracts the logic for better readability and reduced nesting.
+func (r *PromotionStrategyReconciler) addRequiredChecksToProposedStatuses(
+	ctx context.Context,
+	ps *promoterv1alpha1.PromotionStrategy,
+	environment promoterv1alpha1.Environment,
+	proposedCommitStatuses *[]*acv1alpha1.CommitStatusSelectorApplyConfiguration,
+) {
+	logger := log.FromContext(ctx)
+
+	// Get the RequiredCheckCommitStatus for this PromotionStrategy
+	// Use ps.Name directly (not KubeSafeUniqueName) to match how RCCS is created
+	rccsName := ps.Name
+	rccs := &promoterv1alpha1.RequiredCheckCommitStatus{}
+	getErr := r.Get(ctx, client.ObjectKey{Name: rccsName, Namespace: ps.Namespace}, rccs)
+
+	if getErr != nil {
+		if !k8serrors.IsNotFound(getErr) {
+			logger.Error(getErr, "Failed to get RequiredCheckCommitStatus",
+				"name", rccsName,
+				"namespace", ps.Namespace)
+		} else {
+			logger.V(4).Info("RCCS not found",
+				"name", rccsName,
+				"namespace", ps.Namespace)
+		}
+		return
+	}
+
+	logger.V(4).Info("Found RCCS, checking environments",
+		"rccsName", rccsName,
+		"numEnvironments", len(rccs.Status.Environments),
+		"targetBranch", environment.Branch)
+
+	// Find the environment status for this CTP's branch
+	var envStatus *promoterv1alpha1.RequiredCheckEnvironmentStatus
+	for i := range rccs.Status.Environments {
+		if rccs.Status.Environments[i].Branch == environment.Branch {
+			envStatus = &rccs.Status.Environments[i]
+			break
+		}
+	}
+
+	if envStatus == nil {
+		return
+	}
+
+	logger.V(4).Info("Found matching environment",
+		"branch", environment.Branch,
+		"numRequiredChecks", len(envStatus.RequiredChecks))
+
+	// Add a CommitStatusSelector for each required check
+	for _, requiredCheck := range envStatus.RequiredChecks {
+		checkKey := requiredCheck.Key
+		if r.isCheckAlreadyPresent(*proposedCommitStatuses, checkKey) {
+			logger.V(4).Info("Required check already in ProposedCommitStatuses",
+				"checkKey", checkKey,
+				"branch", environment.Branch)
+			continue
+		}
+
+		*proposedCommitStatuses = append(*proposedCommitStatuses, acv1alpha1.CommitStatusSelector().WithKey(checkKey))
+		logger.V(4).Info("Added required check to ProposedCommitStatuses",
+			"checkKey", checkKey,
+			"branch", environment.Branch,
+			"name", requiredCheck.Name)
+	}
+}
+
+// isCheckAlreadyPresent checks if a check key is already present in the commit statuses.
+func (r *PromotionStrategyReconciler) isCheckAlreadyPresent(
+	commitStatuses []*acv1alpha1.CommitStatusSelectorApplyConfiguration,
+	checkKey string,
+) bool {
+	for _, cs := range commitStatuses {
+		if cs.Key != nil && *cs.Key == checkKey {
+			return true
+		}
+	}
+	return false
 }
 
 // cleanupOrphanedChangeTransferPolicies deletes ChangeTransferPolicies that are owned by this PromotionStrategy

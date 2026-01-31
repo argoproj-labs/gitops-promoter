@@ -64,6 +64,11 @@ type ControllerConfigurationSpec struct {
 	// including WorkQueue settings that control reconciliation behavior.
 	// +required
 	GitCommitStatus GitCommitStatusConfiguration `json:"gitCommitStatus"`
+
+	// RequiredCheckCommitStatus contains the configuration for the RequiredCheckCommitStatus controller,
+	// including WorkQueue settings that control reconciliation behavior.
+	// +required
+	RequiredCheckCommitStatus RequiredCheckCommitStatusConfiguration `json:"requiredCheckCommitStatus"`
 }
 
 // PromotionStrategyConfiguration defines the configuration for the PromotionStrategy controller.
@@ -154,6 +159,74 @@ type GitCommitStatusConfiguration struct {
 	// This includes requeue duration, maximum concurrent reconciles, and rate limiter settings.
 	// +required
 	WorkQueue WorkQueue `json:"workQueue"`
+}
+
+// RequiredCheckCommitStatusConfiguration defines the configuration for the RequiredCheckCommitStatus controller.
+//
+// This configuration controls how the RequiredCheckCommitStatus controller processes reconciliation
+// requests, including requeue intervals, concurrency limits, and rate limiting behavior.
+type RequiredCheckCommitStatusConfiguration struct {
+	// WorkQueue contains the work queue configuration for the RequiredCheckCommitStatus controller.
+	//
+	// IMPORTANT: The RequeueDuration field in WorkQueue is NOT used by this controller.
+	// This controller uses adaptive requeue intervals based on check status:
+	//   - PendingCheckInterval: when checks are pending (default: 1m)
+	//   - TerminalCheckInterval: when checks are in terminal state (default: 10m)
+	//   - SafetyNetInterval: when no checks exist (default: 1h)
+	//
+	// Only MaxConcurrentReconciles and RateLimiter from WorkQueue are used.
+	// +required
+	WorkQueue WorkQueue `json:"workQueue"`
+
+	// RequiredCheckCacheTTL is how long to cache required check discovery results.
+	// Required checks change infrequently, so caching reduces API calls significantly.
+	// Set to "0s" to disable caching (not recommended).
+	// Minimum: 0s (disables caching), Recommended: >= 15m
+	// +optional
+	// +kubebuilder:default="24h"
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+	RequiredCheckCacheTTL *metav1.Duration `json:"requiredCheckCacheTTL,omitempty"`
+
+	// RequiredCheckCacheMaxSize is the maximum number of entries to store in the required check cache.
+	// When the cache exceeds this size, expired entries are removed. If still over limit,
+	// the oldest entries are evicted to maintain the size limit.
+	// Set to 0 for unlimited cache size (not recommended for production).
+	// Minimum: 0 (unlimited), Recommended: >= 100
+	// +optional
+	// +kubebuilder:default=1000
+	// +kubebuilder:validation:Minimum=0
+	RequiredCheckCacheMaxSize *int `json:"requiredCheckCacheMaxSize,omitempty"`
+
+	// PendingCheckInterval is how frequently to poll when checks are pending.
+	// Lower values provide faster updates but consume more API quota.
+	// Minimum: 10s (to avoid rate limiting), Recommended: >= 1m
+	// +optional
+	// +kubebuilder:default="1m"
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+	PendingCheckInterval *metav1.Duration `json:"pendingCheckInterval,omitempty"`
+
+	// TerminalCheckInterval is how frequently to poll when all checks are in terminal state.
+	// Checks in terminal state rarely change, so longer intervals are appropriate.
+	// Minimum: 10s (to avoid rate limiting), Recommended: >= 10m
+	// +optional
+	// +kubebuilder:default="10m"
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+	TerminalCheckInterval *metav1.Duration `json:"terminalCheckInterval,omitempty"`
+
+	// SafetyNetInterval is the minimum requeue duration when there are no checks to monitor.
+	// This provides a safety net to ensure the controller reconciles periodically even if
+	// watch events are missed due to network issues, API server restarts, or other failures.
+	// Without this, resources could become stuck indefinitely if watches fail.
+	// Set to "0s" to disable (not recommended - relies entirely on watches).
+	// Recommended: >= 1h for production safety
+	// +optional
+	// +kubebuilder:default="1h"
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+	SafetyNetInterval *metav1.Duration `json:"safetyNetInterval,omitempty"`
 }
 
 // WorkQueue defines the work queue configuration for a controller.

@@ -304,6 +304,16 @@ func runController(
 		setupLog.Error(err, "unable to create controller", "controller", "GitCommitStatus")
 		panic(fmt.Errorf("unable to create GitCommitStatus controller: %w", err))
 	}
+	if err := (&controller.RequiredCheckCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorder("RequiredCheckCommitStatus"),
+		SettingsMgr: settingsMgr,
+		EnqueueCTP:  ctpReconciler.GetEnqueueFunc(),
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RequiredCheckCommitStatus")
+		panic(fmt.Errorf("unable to create RequiredCheckCommitStatus controller: %w", err))
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := localManager.AddHealthzCheck("healthz", healthz.Ping); err != nil {

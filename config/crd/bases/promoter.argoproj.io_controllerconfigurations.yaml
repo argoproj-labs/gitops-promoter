@@ -1329,6 +1329,268 @@ spec:
                 - template
                 - workQueue
                 type: object
+              requiredCheckCommitStatus:
+                description: |-
+                  RequiredCheckCommitStatus contains the configuration for the RequiredCheckCommitStatus controller,
+                  including WorkQueue settings that control reconciliation behavior.
+                properties:
+                  pendingCheckInterval:
+                    default: 1m
+                    description: |-
+                      PendingCheckInterval is how frequently to poll when checks are pending.
+                      Lower values provide faster updates but consume more API quota.
+                      Minimum: 10s (to avoid rate limiting), Recommended: >= 1m
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
+                  requiredCheckCacheMaxSize:
+                    default: 1000
+                    description: |-
+                      RequiredCheckCacheMaxSize is the maximum number of entries to store in the required check cache.
+                      When the cache exceeds this size, expired entries are removed. If still over limit,
+                      the oldest entries are evicted to maintain the size limit.
+                      Set to 0 for unlimited cache size (not recommended for production).
+                      Minimum: 0 (unlimited), Recommended: >= 100
+                    minimum: 0
+                    type: integer
+                  requiredCheckCacheTTL:
+                    default: 24h
+                    description: |-
+                      RequiredCheckCacheTTL is how long to cache required check discovery results.
+                      Required checks change infrequently, so caching reduces API calls significantly.
+                      Set to "0s" to disable caching (not recommended).
+                      Minimum: 0s (disables caching), Recommended: >= 15m
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
+                  safetyNetInterval:
+                    default: 1h
+                    description: |-
+                      SafetyNetInterval is the minimum requeue duration when there are no checks to monitor.
+                      This provides a safety net to ensure the controller reconciles periodically even if
+                      watch events are missed due to network issues, API server restarts, or other failures.
+                      Without this, resources could become stuck indefinitely if watches fail.
+                      Set to "0s" to disable (not recommended - relies entirely on watches).
+                      Recommended: >= 1h for production safety
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
+                  terminalCheckInterval:
+                    default: 10m
+                    description: |-
+                      TerminalCheckInterval is how frequently to poll when all checks are in terminal state.
+                      Checks in terminal state rarely change, so longer intervals are appropriate.
+                      Minimum: 10s (to avoid rate limiting), Recommended: >= 10m
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
+                  workQueue:
+                    description: |-
+                      WorkQueue contains the work queue configuration for the RequiredCheckCommitStatus controller.
+
+                      IMPORTANT: The RequeueDuration field in WorkQueue is NOT used by this controller.
+                      This controller uses adaptive requeue intervals based on check status:
+                        - PendingCheckInterval: when checks are pending (default: 1m)
+                        - TerminalCheckInterval: when checks are in terminal state (default: 10m)
+                        - SafetyNetInterval: when no checks exist (default: 1h)
+
+                      Only MaxConcurrentReconciles and RateLimiter from WorkQueue are used.
+                    properties:
+                      maxConcurrentReconciles:
+                        description: |-
+                          MaxConcurrentReconciles defines the maximum number of concurrent reconcile operations
+                          that can run for this controller. Higher values increase throughput but consume more
+                          resources.
+                        minimum: 1
+                        type: integer
+                      rateLimiter:
+                        description: |-
+                          RateLimiter defines the rate limiting strategy for the controller's work queue.
+                          Rate limiting controls how quickly failed reconciliations are retried and helps
+                          prevent overwhelming external APIs or systems.
+                        properties:
+                          bucket:
+                            description: |-
+                              Bucket rate limiter uses a token bucket algorithm to control request rate.
+                              Allows bursts while maintaining an average rate limit.
+                            properties:
+                              bucket:
+                                description: |-
+                                  Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                  This defines the maximum burst size - how many operations can occur in rapid
+                                  succession before rate limiting takes effect. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                              qps:
+                                description: |-
+                                  Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                  This defines the sustained rate limit for operations. Must be non-negative.
+                                minimum: 0
+                                type: integer
+                            required:
+                            - bucket
+                            - qps
+                            type: object
+                          exponentialFailure:
+                            description: |-
+                              ExponentialFailure rate limiter increases delay exponentially with each failure.
+                              Standard approach for backing off when operations fail repeatedly.
+                            properties:
+                              baseDelay:
+                                description: |-
+                                  BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                  increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                  Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                type: string
+                              maxDelay:
+                                description: |-
+                                  MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                  this value, all subsequent retries will use this delay.
+                                  Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                type: string
+                            required:
+                            - baseDelay
+                            - maxDelay
+                            type: object
+                          fastSlow:
+                            description: |-
+                              FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                              Useful for quickly retrying transient errors while backing off for persistent failures.
+                            properties:
+                              fastDelay:
+                                description: |-
+                                  FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                  Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                type: string
+                              maxFastAttempts:
+                                description: |-
+                                  MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                  Must be at least 1.
+                                minimum: 1
+                                type: integer
+                              slowDelay:
+                                description: |-
+                                  SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                  Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                type: string
+                            required:
+                            - fastDelay
+                            - maxFastAttempts
+                            - slowDelay
+                            type: object
+                          maxOf:
+                            description: |-
+                              MaxOf allows combining multiple rate limiters, where the maximum delay from all
+                              limiters is used. This enables sophisticated rate limiting that respects multiple
+                              constraints simultaneously (e.g., both per-item exponential backoff and global rate limits).
+                            items:
+                              description: |-
+                                RateLimiterTypes defines the different algorithms available for rate limiting.
+
+                                Exactly one of the three rate limiter types must be specified:
+                                  - FastSlow: Quick retry for transient errors, then slower retry for persistent failures
+                                  - ExponentialFailure: Standard exponential backoff for repeated failures
+                                  - Bucket: Token bucket algorithm for controlling overall request rate
+
+                                See https://pkg.go.dev/k8s.io/client-go/util/workqueue for implementation details.
+                              properties:
+                                bucket:
+                                  description: |-
+                                    Bucket rate limiter uses a token bucket algorithm to control request rate.
+                                    Allows bursts while maintaining an average rate limit.
+                                  properties:
+                                    bucket:
+                                      description: |-
+                                        Bucket is the maximum number of tokens that can be accumulated in the bucket.
+                                        This defines the maximum burst size - how many operations can occur in rapid
+                                        succession before rate limiting takes effect. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                    qps:
+                                      description: |-
+                                        Qps (queries per second) is the rate at which tokens are added to the bucket.
+                                        This defines the sustained rate limit for operations. Must be non-negative.
+                                      minimum: 0
+                                      type: integer
+                                  required:
+                                  - bucket
+                                  - qps
+                                  type: object
+                                exponentialFailure:
+                                  description: |-
+                                    ExponentialFailure rate limiter increases delay exponentially with each failure.
+                                    Standard approach for backing off when operations fail repeatedly.
+                                  properties:
+                                    baseDelay:
+                                      description: |-
+                                        BaseDelay is the initial delay after the first failure. Subsequent failures will exponentially
+                                        increase this delay (2x, 4x, 8x, etc.) until MaxDelay is reached.
+                                        Format follows Go's time.Duration syntax (e.g., "1s" for 1 second).
+                                      type: string
+                                    maxDelay:
+                                      description: |-
+                                        MaxDelay is the maximum delay between retry attempts. Once the exponential backoff reaches
+                                        this value, all subsequent retries will use this delay.
+                                        Format follows Go's time.Duration syntax (e.g., "1m" for 1 minute).
+                                      type: string
+                                  required:
+                                  - baseDelay
+                                  - maxDelay
+                                  type: object
+                                fastSlow:
+                                  description: |-
+                                    FastSlow rate limiter provides fast retries initially, then switches to slow retries.
+                                    Useful for quickly retrying transient errors while backing off for persistent failures.
+                                  properties:
+                                    fastDelay:
+                                      description: |-
+                                        FastDelay is the delay used for the first MaxFastAttempts retry attempts.
+                                        Format follows Go's time.Duration syntax (e.g., "100ms" for 100 milliseconds).
+                                      type: string
+                                    maxFastAttempts:
+                                      description: |-
+                                        MaxFastAttempts is the number of retry attempts that use FastDelay before switching to SlowDelay.
+                                        Must be at least 1.
+                                      minimum: 1
+                                      type: integer
+                                    slowDelay:
+                                      description: |-
+                                        SlowDelay is the delay used for retry attempts after MaxFastAttempts have been exhausted.
+                                        Format follows Go's time.Duration syntax (e.g., "10s" for 10 seconds).
+                                      type: string
+                                  required:
+                                  - fastDelay
+                                  - maxFastAttempts
+                                  - slowDelay
+                                  type: object
+                              type: object
+                              x-kubernetes-validations:
+                              - message: at most one of the fields in [fastSlow exponentialFailure
+                                  bucket] may be set
+                                rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
+                                  <= 1'
+                            maxItems: 3
+                            type: array
+                        type: object
+                        x-kubernetes-validations:
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket maxOf] may be set
+                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket),has(self.maxOf)].filter(x,x==true).size()
+                            <= 1'
+                        - message: at most one of the fields in [fastSlow exponentialFailure
+                            bucket] may be set
+                          rule: '[has(self.fastSlow),has(self.exponentialFailure),has(self.bucket)].filter(x,x==true).size()
+                            <= 1'
+                      requeueDuration:
+                        description: |-
+                          RequeueDuration specifies how frequently resources should be requeued for automatic reconciliation.
+                          This creates a periodic reconciliation loop that ensures the desired state is maintained even
+                          without external triggers. Format follows Go's time.Duration syntax (e.g., "5m" for 5 minutes).
+                        type: string
+                    required:
+                    - maxConcurrentReconciles
+                    - rateLimiter
+                    - requeueDuration
+                    type: object
+                required:
+                - workQueue
+                type: object
               timedCommitStatus:
                 description: |-
                   TimedCommitStatus contains the configuration for the TimedCommitStatus controller,
@@ -1545,6 +1807,7 @@ spec:
             - gitCommitStatus
             - promotionStrategy
             - pullRequest
+            - requiredCheckCommitStatus
             - timedCommitStatus
             type: object
           status:
