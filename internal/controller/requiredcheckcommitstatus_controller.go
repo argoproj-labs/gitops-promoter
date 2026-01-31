@@ -18,8 +18,6 @@ package controller
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -59,6 +57,7 @@ const (
 	DefaultPendingCheckInterval      = 1 * time.Minute
 	DefaultTerminalCheckInterval     = 10 * time.Minute
 	DefaultSafetyNetInterval         = 1 * time.Hour
+	DefaultSCMAPITimeout             = 30 * time.Second
 
 	// Index field name for efficient lookup of RCCS by PromotionStrategy
 	promotionStrategyRefIndex = "spec.promotionStrategyRef.name"
@@ -146,7 +145,7 @@ func (r *RequiredCheckCommitStatusReconciler) Reconcile(ctx context.Context, req
 		Namespace: ps.Namespace,
 	})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to list ChangeTransferPolicies: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to list ChangeTransferPolicies for RCCS %s/%s: %w", rccs.Namespace, rccs.Name, err)
 	}
 
 	// Filter CTPs that belong to this PromotionStrategy
@@ -169,7 +168,7 @@ func (r *RequiredCheckCommitStatusReconciler) Reconcile(ctx context.Context, req
 	// 5. Clean up orphaned CommitStatus resources
 	err = r.cleanupOrphanedCommitStatuses(ctx, &rccs, commitStatuses)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources for RCCS %s/%s: %w", rccs.Namespace, rccs.Name, err)
 	}
 
 	// 6. Inherit conditions from CommitStatus objects
@@ -178,13 +177,13 @@ func (r *RequiredCheckCommitStatusReconciler) Reconcile(ctx context.Context, req
 	// 7. Trigger CTP reconciliation if any environment phase changed
 	err = r.triggerCTPReconciliation(ctx, &ps, previousStatus, &rccs.Status)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to trigger CTP reconciliation: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to trigger CTP reconciliation for RCCS %s/%s: %w", rccs.Namespace, rccs.Name, err)
 	}
 
 	// 8. Calculate dynamic requeue duration
 	requeueDuration, err := r.calculateRequeueDuration(ctx, &rccs)
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to calculate requeue duration: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to calculate requeue duration for RCCS %s/%s: %w", rccs.Namespace, rccs.Name, err)
 	}
 
 	return ctrl.Result{
@@ -389,6 +388,13 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 
 	// Process each environment
 	for _, env := range ps.Spec.Environments {
+		// Check for context cancellation to support graceful shutdown
+		select {
+		case <-ctx.Done():
+			return commitStatuses
+		default:
+		}
+
 		ctp, found := ctpByBranch[env.Branch]
 		if !found {
 			logger.Info("ChangeTransferPolicy not found for environment",
@@ -435,6 +441,14 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 		// Create/update CommitStatus resources for each check
 		var envCheckStatuses []promoterv1alpha1.RequiredCheckStatus
 		for _, check := range requiredChecks {
+			// Check for context cancellation to support graceful shutdown
+			select {
+			case <-ctx.Done():
+				// Return what we've processed so far
+				return commitStatuses
+			default:
+			}
+
 			chkStatus, ok := checkStatuses[check.Key]
 			if !ok {
 				// If we couldn't get the status, default to pending
@@ -493,20 +507,20 @@ func (r *RequiredCheckCommitStatusReconciler) getRequiredCheckProvider(
 		Name:      repoRef.Name,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+		return nil, fmt.Errorf("failed to get GitRepository %s/%s for required check provider: %w", namespace, repoRef.Name, err)
 	}
 
 	// Get ScmProvider and Secret
 	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, r.Client, r.SettingsMgr.GetControllerNamespace(), repoRef, gitRepo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
+		return nil, fmt.Errorf("failed to get ScmProvider and secret for GitRepository %s/%s: %w", namespace, repoRef.Name, err)
 	}
 
 	// Create provider based on SCM type
 	if scmProvider.GetSpec().GitHub != nil {
 		provider, err := githubscm.NewGithubRequiredCheckProvider(ctx, r.Client, scmProvider, *secret, gitRepo.Spec.GitHub.Owner)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create GitHub required check provider: %w", err)
+			return nil, fmt.Errorf("failed to create GitHub required check provider for repo %s/%s (owner: %s): %w", namespace, repoRef.Name, gitRepo.Spec.GitHub.Owner, err)
 		}
 		return provider, nil
 	}
@@ -528,7 +542,7 @@ func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironme
 		Name:      ps.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+		return nil, fmt.Errorf("failed to get GitRepository %s/%s for required check discovery on branch %s: %w", ps.Namespace, ps.Spec.RepositoryReference.Name, env.Branch, err)
 	}
 
 	// Get required check provider
@@ -540,7 +554,7 @@ func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironme
 				"branch", env.Branch)
 			return []scms.RequiredCheck{}, nil
 		}
-		return nil, fmt.Errorf("failed to get required check provider: %w", err)
+		return nil, fmt.Errorf("failed to get required check provider for repo %s/%s, branch %s: %w", ps.Namespace, ps.Spec.RepositoryReference.Name, env.Branch, err)
 	}
 
 	// Build cache key: include repository identity and branch
@@ -565,11 +579,15 @@ func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironme
 
 	// Cache miss or expired - use singleflight to prevent duplicate API calls
 	result, err, _ := requiredCheckFlight.Do(cacheKey, func() (any, error) {
+		// Add timeout to prevent goroutine leaks from hanging API calls
+		ctx, cancel := context.WithTimeout(ctx, DefaultSCMAPITimeout)
+		defer cancel()
+
 		// Call provider to discover checks
 		checks, err := provider.DiscoverRequiredChecks(ctx, gitRepo, env.Branch)
 		if err != nil {
 			if !errors.Is(err, scms.ErrNoProtection) {
-				return nil, fmt.Errorf("failed to discover required checks: %w", err)
+				return nil, fmt.Errorf("failed to discover required checks for repo %s/%s, branch %s: %w", gitRepo.Namespace, gitRepo.Name, env.Branch, err)
 			}
 			logger.V(4).Info("No protection rules configured for branch",
 				"repository", gitRepo.Name,
@@ -581,14 +599,17 @@ func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironme
 		// Store in cache before returning (write lock)
 		requiredCheckCacheMutex.Lock()
 
+		// Read configuration values while holding lock to avoid race condition with configuration updates
+		maxSize := requiredCheckCacheMaxSize
+		cacheTTL := requiredCheckCacheTTL
+
 		requiredCheckCache[cacheKey] = &requiredCheckCacheEntry{
 			checks:    checks,
-			expiresAt: time.Now().Add(requiredCheckCacheTTL),
+			expiresAt: time.Now().Add(cacheTTL),
 		}
 
 		// Check if we need to enforce cache size limit after insertion
-		// to avoid race condition where cache temporarily exceeds max size
-		if requiredCheckCacheMaxSize > 0 && len(requiredCheckCache) > requiredCheckCacheMaxSize {
+		if maxSize > 0 && len(requiredCheckCache) > maxSize {
 			evictExpiredOrOldestEntries(ctx)
 		}
 		requiredCheckCacheMutex.Unlock()
@@ -597,13 +618,13 @@ func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironme
 			"repository", gitRepo.Name,
 			"branch", env.Branch,
 			"checks", len(checks),
-			"ttl", requiredCheckCacheTTL)
+			"ttl", cacheTTL)
 
 		return checks, nil
 	})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to discover required checks: %w", err)
+		return nil, fmt.Errorf("failed to discover required checks for repo %s/%s, branch %s: %w", gitRepo.Namespace, gitRepo.Name, env.Branch, err)
 	}
 
 	checks, ok := result.([]scms.RequiredCheck)
@@ -651,7 +672,7 @@ func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx 
 		Name:      ps.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+		return nil, fmt.Errorf("failed to get GitRepository %s/%s for check status polling on SHA %s: %w", ps.Namespace, ps.Spec.RepositoryReference.Name, sha, err)
 	}
 
 	// Get required check provider
@@ -660,7 +681,7 @@ func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx 
 		if errors.Is(err, scms.ErrNotSupported) {
 			return map[string]checkStatus{}, nil
 		}
-		return nil, fmt.Errorf("failed to get required check provider: %w", err)
+		return nil, fmt.Errorf("failed to get required check provider for repo %s/%s, SHA %s: %w", ps.Namespace, ps.Spec.RepositoryReference.Name, sha, err)
 	}
 
 	now := metav1.Now()
@@ -668,6 +689,13 @@ func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx 
 
 	// Query check status for each required check (with per-check polling optimization)
 	for _, check := range requiredChecks {
+		// Check for context cancellation to support graceful shutdown
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
 		previousCheck := previousCheckByKey[check.Key]
 
 		// Determine if we should skip polling this check
@@ -700,8 +728,10 @@ func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx 
 			phase = previousCheck.Phase
 			lastPolledAt = previousCheck.LastPolledAt
 		} else {
-			// Poll the check from SCM
-			polledPhase, err := provider.PollCheckStatus(ctx, gitRepo, sha, check)
+			// Poll the check from SCM with timeout to prevent goroutine leaks
+			pollCtx, pollCancel := context.WithTimeout(ctx, DefaultSCMAPITimeout)
+			polledPhase, err := provider.PollCheckStatus(pollCtx, gitRepo, sha, check)
+			pollCancel() // Release resources immediately after call
 			if err != nil {
 				if errors.Is(err, scms.ErrNotSupported) {
 					// If not supported, default to pending
@@ -747,8 +777,8 @@ func (r *RequiredCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx con
 	// Use the pre-computed key from the check (e.g., "github-smoke" or "github-smoke-15368")
 	labelKey := check.Key
 
-	// Generate CommitStatus name with hash for uniqueness
-	name := generateCommitStatusName(labelKey, branch)
+	// Generate CommitStatus name with hash for uniqueness using standard utility
+	name := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("required-check-%s-%s", labelKey, branch))
 
 	cs := &promoterv1alpha1.CommitStatus{
 		ObjectMeta: metav1.ObjectMeta{
@@ -784,7 +814,7 @@ func (r *RequiredCheckCommitStatusReconciler) updateCommitStatusForCheck(ctx con
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create or update CommitStatus: %w", err)
+		return nil, fmt.Errorf("failed to create or update CommitStatus for check %s on branch %s, SHA %s: %w", check.Name, branch, sha, err)
 	}
 
 	r.Recorder.Eventf(cs, nil, "Normal", constants.CommitStatusSetReason, "SettingStatus", "Required check %s status set to %s for hash %s", check.Name, string(phase), sha)
@@ -809,24 +839,6 @@ func generateRequiredCheckDescription(checkName string, phase promoterv1alpha1.C
 		// Fallback for unknown phases
 		return "Required check: " + checkName
 	}
-}
-
-// generateCommitStatusName generates a unique name for a CommitStatus resource
-// The checkKey already includes integration ID suffix if needed (e.g., "github-smoke-15368")
-func generateCommitStatusName(checkKey string, branch string) string {
-	// Create a hash of the check key and branch to ensure uniqueness
-	h := sha256.New()
-	hashInput := checkKey + "-" + branch
-	h.Write([]byte(hashInput))
-	hash := hex.EncodeToString(h.Sum(nil))[:8]
-
-	// Normalize the check key to be a valid Kubernetes name
-	normalized := strings.ToLower(checkKey)
-	normalized = strings.ReplaceAll(normalized, "/", "-")
-	normalized = strings.ReplaceAll(normalized, "_", "-")
-	normalized = strings.ReplaceAll(normalized, ".", "-")
-
-	return fmt.Sprintf("required-check-%s-%s", normalized, hash)
 }
 
 // calculateAggregatedPhase calculates the aggregated phase for an environment
@@ -857,13 +869,15 @@ func (r *RequiredCheckCommitStatusReconciler) calculateAggregatedPhase(checks []
 func (r *RequiredCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, rccs *promoterv1alpha1.RequiredCheckCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
 	logger := log.FromContext(ctx)
 
-	// List all CommitStatus resources owned by this RCCS
+	// List only CommitStatus resources owned by this RCCS using label selector
 	var csList promoterv1alpha1.CommitStatusList
 	err := r.List(ctx, &csList, &client.ListOptions{
 		Namespace: rccs.Namespace,
+	}, client.MatchingLabels{
+		promoterv1alpha1.RequiredCheckCommitStatusLabel: rccs.Name,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list CommitStatus resources: %w", err)
+		return fmt.Errorf("failed to list CommitStatus resources for RCCS %s/%s: %w", rccs.Namespace, rccs.Name, err)
 	}
 
 	// Build a set of valid CommitStatus names
@@ -874,17 +888,11 @@ func (r *RequiredCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx 
 
 	// Delete orphaned CommitStatus resources
 	for _, cs := range csList.Items {
-		// Check if this CommitStatus is owned by this RCCS
-		isOwned := false
-		for _, ownerRef := range cs.OwnerReferences {
-			if ownerRef.UID == rccs.UID {
-				isOwned = true
-				break
-			}
-		}
-
-		if !isOwned {
-			continue
+		// Check for context cancellation to support graceful shutdown
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
 
 		// If not in valid names, delete it
@@ -1044,7 +1052,8 @@ func evictExpiredOrOldestEntries(ctx context.Context) {
 	}
 
 	// If still over limit, remove oldest entries
-	if len(requiredCheckCache) >= requiredCheckCacheMaxSize {
+	// Skip LRU eviction if maxSize is 0 (unlimited cache)
+	if requiredCheckCacheMaxSize > 0 && len(requiredCheckCache) >= requiredCheckCacheMaxSize {
 		// Create slice of keys sorted by expiration time (oldest first)
 		type cacheItem struct {
 			expiresAt time.Time
@@ -1111,7 +1120,7 @@ func validateRequiredCheckConfig(config *promoterv1alpha1.RequiredCheckCommitSta
 		pendingInterval := config.PendingCheckInterval.Duration
 		terminalInterval := config.TerminalCheckInterval.Duration
 		if pendingInterval > 0 && terminalInterval > 0 && pendingInterval > terminalInterval {
-			errs = append(errs, fmt.Errorf("pendingCheckInterval (%v) should be <= terminalCheckInterval (%v) since pending checks need faster polling",
+			errs = append(errs, fmt.Errorf("pendingCheckInterval (%v) must not be greater than terminalCheckInterval (%v); pending checks need faster polling (shorter intervals) than terminal checks",
 				pendingInterval, terminalInterval))
 		}
 	}

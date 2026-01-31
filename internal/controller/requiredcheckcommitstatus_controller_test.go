@@ -621,46 +621,6 @@ var _ = Describe("RequiredCheckCommitStatus Controller", func() {
 			})
 		})
 
-		Context("generateCommitStatusName", func() {
-			It("should generate valid Kubernetes names", func() {
-				name1 := generateCommitStatusName("github-smoke", "environment/dev")
-				Expect(name1).To(MatchRegexp(`^required-check-[a-z0-9-]+-[a-f0-9]{8}$`))
-
-				name2 := generateCommitStatusName("github-e2e-test", "environment/staging")
-				Expect(name2).To(MatchRegexp(`^required-check-[a-z0-9-]+-[a-f0-9]{8}$`))
-			})
-
-			It("should normalize check keys properly", func() {
-				// Check with slashes
-				name := generateCommitStatusName("ci/cd-pipeline", "main")
-				Expect(name).To(ContainSubstring("ci-cd-pipeline"))
-
-				// Check with underscores
-				name = generateCommitStatusName("smoke_test", "main")
-				Expect(name).To(ContainSubstring("smoke-test"))
-
-				// Check with dots
-				name = generateCommitStatusName("e2e.test", "main")
-				Expect(name).To(ContainSubstring("e2e-test"))
-			})
-
-			It("should generate different names for different inputs", func() {
-				name1 := generateCommitStatusName("github-smoke", "environment/dev")
-				name2 := generateCommitStatusName("github-smoke", "environment/staging")
-				name3 := generateCommitStatusName("github-lint", "environment/dev")
-
-				Expect(name1).NotTo(Equal(name2))
-				Expect(name1).NotTo(Equal(name3))
-				Expect(name2).NotTo(Equal(name3))
-			})
-
-			It("should generate consistent names for same inputs", func() {
-				name1 := generateCommitStatusName("github-smoke", "environment/dev")
-				name2 := generateCommitStatusName("github-smoke", "environment/dev")
-				Expect(name1).To(Equal(name2))
-			})
-		})
-
 		Context("generateRequiredCheckDescription", func() {
 			It("should generate pending description", func() {
 				desc := generateRequiredCheckDescription("smoke-test", promoterv1alpha1.CommitPhasePending)
