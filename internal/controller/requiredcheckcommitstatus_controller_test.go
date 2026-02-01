@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "k8s.io/api/core/v1"
@@ -777,72 +778,38 @@ var _ = Describe("RequiredCheckCommitStatus Controller", func() {
 		// which is complex to set up in unit tests. This functionality is covered by
 		// integration tests where the full controller is properly initialized.
 
-		Context("Cache eviction", func() {
+		Context("Cache integration with golang-lru", func() {
+			var testCache *expirable.LRU[string, []scms.RequiredCheck]
+
 			BeforeEach(func() {
-				// Reset cache before each test
-				requiredCheckCacheMutex.Lock()
-				requiredCheckCache = make(map[string]*requiredCheckCacheEntry)
-				requiredCheckCacheMutex.Unlock()
+				testCache = expirable.NewLRU[string, []scms.RequiredCheck](
+					5,                      // small size for testing
+					nil,                    // no eviction callback
+					100*time.Millisecond,   // short TTL for testing
+				)
 			})
 
-			It("should evict expired entries", func() {
-				requiredCheckCacheMutex.Lock()
-				// Add expired entry
-				requiredCheckCache["expired"] = &requiredCheckCacheEntry{
-					expiresAt: time.Now().Add(-1 * time.Hour),
-					checks:    []scms.RequiredCheck{},
-				}
-				// Add valid entry
-				requiredCheckCache["valid"] = &requiredCheckCacheEntry{
-					expiresAt: time.Now().Add(1 * time.Hour),
-					checks:    []scms.RequiredCheck{},
-				}
-				requiredCheckCacheMutex.Unlock()
+			It("should automatically evict expired entries after TTL", func() {
+				testCache.Add("key1", []scms.RequiredCheck{})
+				Expect(testCache.Contains("key1")).To(BeTrue())
 
-				// Trigger eviction
-				requiredCheckCacheMutex.Lock()
-				evictExpiredOrOldestEntries(ctx)
-				requiredCheckCacheMutex.Unlock()
+				time.Sleep(150 * time.Millisecond) // Wait past TTL
 
-				// Check that expired entry was removed
-				requiredCheckCacheMutex.RLock()
-				defer requiredCheckCacheMutex.RUnlock()
-				Expect(requiredCheckCache).NotTo(HaveKey("expired"))
-				Expect(requiredCheckCache).To(HaveKey("valid"))
+				_, found := testCache.Get("key1")
+				Expect(found).To(BeFalse())
 			})
 
-			It("should evict oldest entries when over limit", func() {
-				requiredCheckCacheMutex.Lock()
-				requiredCheckCacheMaxSize = 5
-				defer func() {
-					requiredCheckCacheMaxSize = DefaultRequiredCheckCacheMaxSize
-				}()
-
-				// Add entries
-				for i := 0; i < 10; i++ {
-					key := fmt.Sprintf("key-%d", i)
-					requiredCheckCache[key] = &requiredCheckCacheEntry{
-						expiresAt: time.Now().Add(time.Duration(i) * time.Hour), // Different expiration times
-						checks:    []scms.RequiredCheck{},
-					}
+			It("should automatically evict oldest entries when size limit reached", func() {
+				// Add 6 entries to cache with limit of 5
+				for i := 0; i < 6; i++ {
+					testCache.Add(fmt.Sprintf("key-%d", i), []scms.RequiredCheck{})
+					time.Sleep(10 * time.Millisecond) // Ensure ordering
 				}
-				requiredCheckCacheMutex.Unlock()
 
-				// Trigger eviction
-				requiredCheckCacheMutex.Lock()
-				evictExpiredOrOldestEntries(ctx)
-				requiredCheckCacheMutex.Unlock()
-
-				// Check that cache size is within limit (with 10% headroom)
-				requiredCheckCacheMutex.RLock()
-				defer requiredCheckCacheMutex.RUnlock()
-				targetSize := int(float64(requiredCheckCacheMaxSize) * 0.9)
-				Expect(len(requiredCheckCache)).To(BeNumerically("<=", targetSize))
-
-				// Older entries should be evicted
-				Expect(requiredCheckCache).NotTo(HaveKey("key-0"))
-				// Newer entries should remain
-				Expect(requiredCheckCache).To(HaveKey("key-9"))
+				// First entry should be evicted (LRU)
+				Expect(testCache.Contains("key-0")).To(BeFalse())
+				// Most recent entry should remain
+				Expect(testCache.Contains("key-5")).To(BeTrue())
 			})
 		})
 	})

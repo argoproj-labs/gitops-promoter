@@ -20,11 +20,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"golang.org/x/sync/singleflight"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -64,25 +64,33 @@ const (
 )
 
 var (
-	// requiredCheckCache stores required check discovery results
-	requiredCheckCache = make(map[string]*requiredCheckCacheEntry)
-
-	// requiredCheckCacheMutex protects access to requiredCheckCache and cache configuration
-	requiredCheckCacheMutex sync.RWMutex
-
-	// requiredCheckCacheTTL is how long to cache required check discovery results
-	requiredCheckCacheTTL = DefaultRequiredCheckCacheTTL
-
-	// requiredCheckCacheMaxSize is the maximum number of entries in the cache
-	requiredCheckCacheMaxSize = DefaultRequiredCheckCacheMaxSize
+	// Thread-safe LRU cache with TTL-based expiration
+	requiredCheckCache atomic.Pointer[expirable.LRU[string, []scms.RequiredCheck]]
 
 	// requiredCheckFlight prevents duplicate concurrent API calls for the same cache key
 	requiredCheckFlight singleflight.Group
 )
 
-type requiredCheckCacheEntry struct {
-	expiresAt time.Time
-	checks    []scms.RequiredCheck
+// initializeRequiredCheckCache creates the cache with specified TTL and maxSize.
+// Called at startup and when cache configuration changes.
+func initializeRequiredCheckCache(ttl time.Duration, maxSize int) error {
+	if maxSize <= 0 {
+		return fmt.Errorf("cache maxSize must be positive, got: %d", maxSize)
+	}
+
+	cache := expirable.NewLRU[string, []scms.RequiredCheck](
+		maxSize,
+		nil, // No eviction callback
+		ttl,
+	)
+
+	requiredCheckCache.Store(cache)
+	return nil
+}
+
+// getRequiredCheckCache safely retrieves current cache instance.
+func getRequiredCheckCache() *expirable.LRU[string, []scms.RequiredCheck] {
+	return requiredCheckCache.Load()
 }
 
 // RequiredCheckCommitStatusReconciler reconciles a RequiredCheckCommitStatus object
@@ -205,14 +213,20 @@ func (r *RequiredCheckCommitStatusReconciler) SetupWithManager(ctx context.Conte
 	}
 
 	// Initialize cache configuration from settings
-	requiredCheckCacheMutex.Lock()
+	cacheTTL := DefaultRequiredCheckCacheTTL
 	if config.RequiredCheckCacheTTL != nil {
-		requiredCheckCacheTTL = config.RequiredCheckCacheTTL.Duration
+		cacheTTL = config.RequiredCheckCacheTTL.Duration
 	}
+
+	cacheMaxSize := DefaultRequiredCheckCacheMaxSize
 	if config.RequiredCheckCacheMaxSize != nil && *config.RequiredCheckCacheMaxSize > 0 {
-		requiredCheckCacheMaxSize = *config.RequiredCheckCacheMaxSize
+		cacheMaxSize = *config.RequiredCheckCacheMaxSize
 	}
-	requiredCheckCacheMutex.Unlock()
+
+	// Initialize the required check cache
+	if err := initializeRequiredCheckCache(cacheTTL, cacheMaxSize); err != nil {
+		return fmt.Errorf("failed to initialize required check cache: %w", err)
+	}
 
 	rateLimiter, err := settings.GetRateLimiterDirect[promoterv1alpha1.RequiredCheckCommitStatusConfiguration, ctrl.Request](ctx, r.SettingsMgr)
 	if err != nil {
@@ -561,21 +575,17 @@ func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironme
 	// For GitHub: domain|owner|name|branch
 	cacheKey := r.buildCacheKey(gitRepo, env.Branch)
 
-	// Fast path: check cache with read lock first
-	requiredCheckCacheMutex.RLock()
-	if entry, found := requiredCheckCache[cacheKey]; found {
-		if time.Now().Before(entry.expiresAt) {
-			// Cache hit with valid entry
-			requiredCheckCacheMutex.RUnlock()
+	// Fast path: check cache (thread-safe)
+	cache := getRequiredCheckCache()
+	if cache != nil {
+		if checks, ok := cache.Get(cacheKey); ok {
 			logger.V(4).Info("Using cached required check discovery",
 				"repository", gitRepo.Name,
 				"branch", env.Branch,
-				"checks", len(entry.checks),
-				"expiresIn", time.Until(entry.expiresAt).Round(time.Second))
-			return entry.checks, nil
+				"checks", len(checks))
+			return checks, nil
 		}
 	}
-	requiredCheckCacheMutex.RUnlock()
 
 	// Cache miss or expired - use singleflight to prevent duplicate API calls
 	result, err, _ := requiredCheckFlight.Do(cacheKey, func() (any, error) {
@@ -596,29 +606,15 @@ func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironme
 			checks = []scms.RequiredCheck{}
 		}
 
-		// Store in cache before returning (write lock)
-		requiredCheckCacheMutex.Lock()
-
-		// Read configuration values while holding lock to avoid race condition with configuration updates
-		maxSize := requiredCheckCacheMaxSize
-		cacheTTL := requiredCheckCacheTTL
-
-		requiredCheckCache[cacheKey] = &requiredCheckCacheEntry{
-			checks:    checks,
-			expiresAt: time.Now().Add(cacheTTL),
+		// Store in cache (automatic TTL and eviction)
+		cache := getRequiredCheckCache()
+		if cache != nil {
+			cache.Add(cacheKey, checks)
+			logger.V(4).Info("Cached required check discovery",
+				"repository", gitRepo.Name,
+				"branch", env.Branch,
+				"checks", len(checks))
 		}
-
-		// Check if we need to enforce cache size limit after insertion
-		if maxSize > 0 && len(requiredCheckCache) > maxSize {
-			evictExpiredOrOldestEntries(ctx)
-		}
-		requiredCheckCacheMutex.Unlock()
-
-		logger.V(4).Info("Cached required check discovery",
-			"repository", gitRepo.Name,
-			"branch", env.Branch,
-			"checks", len(checks),
-			"ttl", cacheTTL)
 
 		return checks, nil
 	})
@@ -1033,58 +1029,6 @@ func (r *RequiredCheckCommitStatusReconciler) triggerCTPReconciliation(ctx conte
 // repository configuration, even if the underlying SCM repository is the same.
 func (r *RequiredCheckCommitStatusReconciler) buildCacheKey(gitRepo *promoterv1alpha1.GitRepository, branch string) string {
 	return fmt.Sprintf("%s|%s|%s", gitRepo.Namespace, gitRepo.Name, branch)
-}
-
-// evictExpiredOrOldestEntries removes expired entries and, if still over limit, evicts oldest entries.
-// Must be called with requiredCheckCacheMutex write lock held.
-func evictExpiredOrOldestEntries(ctx context.Context) {
-	logger := log.FromContext(ctx)
-	now := time.Now()
-	initialSize := len(requiredCheckCache)
-
-	// First pass: remove expired entries
-	expiredCount := 0
-	for key, entry := range requiredCheckCache {
-		if now.After(entry.expiresAt) {
-			delete(requiredCheckCache, key)
-			expiredCount++
-		}
-	}
-
-	// If still over limit, remove oldest entries
-	// Skip LRU eviction if maxSize is 0 (unlimited cache)
-	if requiredCheckCacheMaxSize > 0 && len(requiredCheckCache) >= requiredCheckCacheMaxSize {
-		// Create slice of keys sorted by expiration time (oldest first)
-		type cacheItem struct {
-			expiresAt time.Time
-			key       string
-		}
-		items := make([]cacheItem, 0, len(requiredCheckCache))
-		for key, entry := range requiredCheckCache {
-			items = append(items, cacheItem{expiresAt: entry.expiresAt, key: key})
-		}
-
-		// Sort by expiration time (oldest first)
-		sort.Slice(items, func(i, j int) bool {
-			return items[i].expiresAt.Before(items[j].expiresAt)
-		})
-
-		// Remove oldest entries until we're under the limit
-		// Keep 10% headroom to avoid frequent evictions
-		targetSize := int(float64(requiredCheckCacheMaxSize) * 0.9)
-		for i := 0; i < len(items) && len(requiredCheckCache) > targetSize; i++ {
-			delete(requiredCheckCache, items[i].key)
-		}
-	}
-
-	if expiredCount > 0 || len(requiredCheckCache) < initialSize {
-		logger.V(4).Info("Cache eviction summary",
-			"initialSize", initialSize,
-			"finalSize", len(requiredCheckCache),
-			"totalEvicted", initialSize-len(requiredCheckCache),
-			"expiredEvicted", expiredCount,
-			"lruEvicted", initialSize-len(requiredCheckCache)-expiredCount)
-	}
 }
 
 // validateRequiredCheckConfig validates the RequiredCheckCommitStatus configuration

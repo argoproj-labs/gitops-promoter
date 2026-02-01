@@ -14,6 +14,7 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/google/go-github/v71 v71.0.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/ktrysmt/go-bitbucket v0.9.88
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
 	github.com/onsi/ginkgo/v2 v2.27.5
