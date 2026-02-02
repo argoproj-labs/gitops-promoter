@@ -58,6 +58,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
+	multiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
+	singleprovider "sigs.k8s.io/multicluster-runtime/providers/single"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -165,16 +167,19 @@ var _ = BeforeSuite(func() {
 	err = createKubeconfigSecret(ctx, "testenv-staging", constants.KubeconfigSecretNamespace, cfgStaging, k8sClient)
 	Expect(err).NotTo(HaveOccurred())
 
-	multiClusterManager, err := mcmanager.New(cfg, kubeconfigProvider, ctrl.Options{
+	// Create the multi-provider that combines local and remote cluster providers
+	multiProvider := multiprovider.New(multiprovider.Options{})
+
+	// Add the kubeconfig provider for remote clusters with the "remote" prefix
+	err = multiProvider.AddProvider("remote", kubeconfigProvider)
+	Expect(err).NotTo(HaveOccurred())
+
+	multiClusterManager, err := mcmanager.New(cfg, multiProvider, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
 	})
-	Expect(err).ToNot(HaveOccurred())
-
-	// Setup kubeconfig provider controller with manager
-	err = kubeconfigProvider.SetupWithManager(ctx, multiClusterManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	k8sManager := multiClusterManager.GetLocalManager()
@@ -352,6 +357,12 @@ var _ = BeforeSuite(func() {
 		ControllerNamespace: "default",
 	})
 
+	// Add the local cluster provider using the single provider
+	// The cluster filtering will be done via WithClusterFilter in the controller setup
+	localClusterProvider := singleprovider.New(mcmanager.LocalCluster, k8sManager)
+	err = multiProvider.AddProvider("local", localClusterProvider)
+	Expect(err).NotTo(HaveOccurred())
+
 	// ChangeTransferPolicy controller must be set up first so we can
 	// get the enqueue function to pass to other controllers.
 	ctpReconciler := &ChangeTransferPolicyReconciler{
@@ -430,6 +441,10 @@ var _ = BeforeSuite(func() {
 	}).SetupWithManager(ctx, k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	// Setup kubeconfig provider controller with manager
+	err = kubeconfigProvider.SetupWithManager(ctx, multiClusterManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	err = (&ArgoCDCommitStatusReconciler{
 		Manager:            multiClusterManager,
 		SettingsMgr:        settingsMgr,
@@ -479,11 +494,13 @@ var _ = BeforeSuite(func() {
 	// Wait for remote cluster caches to sync as well
 	By("waiting for remote cluster caches to sync")
 	for _, clusterName := range kubeconfigProvider.ListClusters() {
-		cluster, err := multiClusterManager.GetCluster(ctx, clusterName)
-		Expect(err).ToNot(HaveOccurred(), "should be able to get cluster %s", clusterName)
+		// With the multi-provider setup, remote clusters are prefixed with "remote#" (using the default separator)
+		prefixedClusterName := "remote#" + clusterName
+		cluster, err := multiClusterManager.GetCluster(ctx, prefixedClusterName)
+		Expect(err).ToNot(HaveOccurred(), "should be able to get cluster %s", prefixedClusterName)
 		Eventually(func() bool {
 			return cluster.GetCache().WaitForCacheSync(ctx)
-		}, constants.EventuallyTimeout).Should(BeTrue(), "cache for cluster %s should sync", clusterName)
+		}, constants.EventuallyTimeout).Should(BeTrue(), "cache for cluster %s should sync", prefixedClusterName)
 	}
 
 	// Wait for ArgoCDCommitStatus informer to be ready

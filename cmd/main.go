@@ -57,6 +57,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
+	multiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
+	singleprovider "sigs.k8s.io/multicluster-runtime/providers/single"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -159,10 +161,21 @@ func runController(
 		},
 	}
 
-	// Create the provider first, then the manager with the provider
-	provider := kubeconfigprovider.New(providerOpts)
+	// Create the kubeconfig provider for remote clusters
+	kubeconfigProvider := kubeconfigprovider.New(providerOpts)
 
-	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
+	// Create the multi-provider that combines local and remote cluster providers
+	multiProvider := multiprovider.New(multiprovider.Options{})
+
+	// Add the kubeconfig provider for remote clusters with the "remote" prefix
+	if err := multiProvider.AddProvider(controller.KubeConfigProviderName, kubeconfigProvider); err != nil {
+		panic(fmt.Errorf("unable to add kubeconfig provider: %w", err))
+	}
+
+	// We'll add the local cluster provider later (after creating the manager)
+	// because we need the manager's cluster to create the single provider
+
+	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), multiProvider, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
@@ -198,6 +211,13 @@ func runController(
 	settingsMgr := settings.NewManager(localManager.GetClient(), localManager.GetAPIReader(), settings.ManagerConfig{
 		ControllerNamespace: controllerNamespace,
 	})
+
+	// Add a local cluster provider using the single provider
+	// The local cluster will be filtered at watch-time using WithClusterFilter
+	localClusterProvider := singleprovider.New(mcmanager.LocalCluster, localManager)
+	if err := multiProvider.AddProvider(controller.LocalProviderName, localClusterProvider); err != nil {
+		panic(fmt.Errorf("unable to add local cluster provider: %w", err))
+	}
 
 	processSignalsCtx := ctrl.SetupSignalHandler()
 
@@ -266,7 +286,7 @@ func runController(
 	if err = (&controller.ArgoCDCommitStatusReconciler{
 		Manager:            mcMgr,
 		SettingsMgr:        settingsMgr,
-		KubeConfigProvider: provider,
+		KubeConfigProvider: kubeconfigProvider,
 		Recorder:           localManager.GetEventRecorder("ArgoCDCommitStatus"),
 	}).SetupWithManager(processSignalsCtx, mcMgr); err != nil {
 		panic(fmt.Errorf("unable to create ArgoCDCommitStatus controller: %w", err))
@@ -317,9 +337,9 @@ func runController(
 
 	g, ctx := errgroup.WithContext(processSignalsCtx)
 
-	// Initialize the provider controller with the manager
-	if err := provider.SetupWithManager(ctx, mcMgr); err != nil {
-		panic("unable to setup provider with manager")
+	// Initialize the kubeconfig provider with the manager
+	if err := kubeconfigProvider.SetupWithManager(ctx, mcMgr); err != nil {
+		panic("unable to setup kubeconfig provider with manager")
 	}
 
 	g.Go(func() error {

@@ -33,6 +33,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/multicluster-runtime/pkg/controller"
+	"sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -53,7 +54,6 @@ import (
 	mchandler "sigs.k8s.io/multicluster-runtime/pkg/handler"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	mcreconcile "sigs.k8s.io/multicluster-runtime/pkg/reconcile"
-	"sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -138,12 +138,18 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
 	apps := []ApplicationsInEnvironment{}
 
-	// list clusters so we can query argocd applications from all clusters
-	clusters := r.KubeConfigProvider.ListClusters()
-	if r.watchLocalApplications {
-		// The provider doesn't know about the local cluster, so we need to add it ourselves.
-		clusters = append(clusters, mcmanager.LocalCluster)
+	// List clusters from the kubeconfig provider (remote clusters)
+	var clusters []string
+	for _, clusterName := range r.KubeConfigProvider.ListClusters() {
+		// The multi-provider automatically prefixes cluster names with "remote#" (using default separator)
+		clusters = append(clusters, KubeConfigProviderName+"#"+clusterName)
 	}
+
+	// Add the local cluster if watchLocalApplications is enabled
+	if r.watchLocalApplications {
+		clusters = append(clusters, LocalProviderName+"#"+mcmanager.LocalCluster)
+	}
+
 	for _, clusterName := range clusters {
 		logger.Info("Fetching Argo CD applications from cluster", "cluster", clusterName)
 		cluster, err := r.Manager.GetCluster(ctx, clusterName)
@@ -486,18 +492,30 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		return fmt.Errorf("failed to get ArgoCDCommitStatus max concurrent reconciles: %w", err)
 	}
 
-	// Get the controller configuration to check if local Applications should be watched
+	// Read the WatchLocalApplications configuration at startup.
+	// This is a static configuration that requires a restart to change.
+	// The filter function evaluates this at engage time to determine if the local cluster
+	// should be watched for Applications. This provides graceful failure if the Application
+	// CRD is not installed locally.
 	watchLocalApplications, err := r.SettingsMgr.GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get controller configuration: %w", err)
+		return fmt.Errorf("failed to get ArgoCDCommitStatus watch local applications configuration: %w", err)
 	}
-
 	r.watchLocalApplications = watchLocalApplications
+
+	// Create a cluster filter function that uses the static configuration. If local cluster watching is disabled,
+	// this ensures that the local cluster is not engaged.
+	clusterFilter := func(clusterName string, _ cluster.Cluster) bool {
+		if clusterName == LocalProviderName+"#"+mcmanager.LocalCluster {
+			return r.watchLocalApplications
+		}
+		// For remote clusters, always engage.
+		return true
+	}
 
 	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
-			mcbuilder.WithEngageWithLocalCluster(true),
-			mcbuilder.WithEngageWithProviderClusters(false),
+			mcbuilder.WithEngageWithProviderClusters(true),
 			mcbuilder.WithPredicates(predicate.GenerationChangedPredicate{}),
 		).
 		WithOptions(controller.Options{
@@ -506,8 +524,8 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 			UsePriorityQueue:        ptr.To(true),
 		}).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
-			mcbuilder.WithEngageWithLocalCluster(watchLocalApplications),
 			mcbuilder.WithEngageWithProviderClusters(true),
+			mcbuilder.WithClusterFilter(clusterFilter),
 			mcbuilder.WithPredicates(applicationPredicate)).
 		Complete(r)
 	if err != nil {
