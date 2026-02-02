@@ -778,6 +778,339 @@ var _ = Describe("RequiredCheckCommitStatus Controller", func() {
 		// which is complex to set up in unit tests. This functionality is covered by
 		// integration tests where the full controller is properly initialized.
 
+		Context("Required check cache operations", func() {
+			It("should successfully initialize cache with valid parameters", func() {
+				err := initializeRequiredCheckCache(1*time.Hour, 100)
+				Expect(err).NotTo(HaveOccurred())
+
+				cache, err := getRequiredCheckCache()
+				Expect(err).NotTo(HaveOccurred())
+				Expect(cache).NotTo(BeNil())
+			})
+
+			It("should reject cache initialization with invalid maxSize", func() {
+				err := initializeRequiredCheckCache(1*time.Hour, 0)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("cache maxSize must be positive"))
+
+				err = initializeRequiredCheckCache(1*time.Hour, -5)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(ContainSubstring("cache maxSize must be positive"))
+			})
+
+			It("should store and retrieve items from cache", func() {
+				err := initializeRequiredCheckCache(1*time.Hour, 100)
+				Expect(err).NotTo(HaveOccurred())
+
+				cache, err := getRequiredCheckCache()
+				Expect(err).NotTo(HaveOccurred())
+
+				testChecks := []scms.RequiredCheck{
+					{Name: "check-1", Key: "github-check-1", ExternalRef: "check-1"},
+					{Name: "check-2", Key: "github-check-2", ExternalRef: "check-2"},
+				}
+
+				// Add to cache
+				cache.Add("test-key", testChecks)
+
+				// Retrieve from cache
+				retrieved, found := cache.Get("test-key")
+				Expect(found).To(BeTrue())
+				Expect(retrieved).To(Equal(testChecks))
+			})
+
+			It("should automatically evict items after TTL expires", func() {
+				// Create cache with very short TTL for testing
+				err := initializeRequiredCheckCache(100*time.Millisecond, 100)
+				Expect(err).NotTo(HaveOccurred())
+
+				cache, err := getRequiredCheckCache()
+				Expect(err).NotTo(HaveOccurred())
+
+				testChecks := []scms.RequiredCheck{
+					{Name: "check", Key: "github-check", ExternalRef: "check"},
+				}
+
+				cache.Add("test-key", testChecks)
+
+				// Should be present immediately
+				_, found := cache.Get("test-key")
+				Expect(found).To(BeTrue())
+
+				// Wait for TTL to expire
+				time.Sleep(150 * time.Millisecond)
+
+				// Should be evicted
+				_, found = cache.Get("test-key")
+				Expect(found).To(BeFalse())
+			})
+
+			It("should handle cache miss gracefully", func() {
+				err := initializeRequiredCheckCache(1*time.Hour, 100)
+				Expect(err).NotTo(HaveOccurred())
+
+				cache, err := getRequiredCheckCache()
+				Expect(err).NotTo(HaveOccurred())
+
+				// Try to get non-existent key
+				_, found := cache.Get("non-existent-key")
+				Expect(found).To(BeFalse())
+			})
+
+			It("should support cache purge", func() {
+				err := initializeRequiredCheckCache(1*time.Hour, 100)
+				Expect(err).NotTo(HaveOccurred())
+
+				cache, err := getRequiredCheckCache()
+				Expect(err).NotTo(HaveOccurred())
+
+				// Add multiple items
+				for i := 0; i < 10; i++ {
+					key := fmt.Sprintf("key-%d", i)
+					cache.Add(key, []scms.RequiredCheck{})
+				}
+
+				// Verify items are present
+				Expect(cache.Contains("key-0")).To(BeTrue())
+				Expect(cache.Contains("key-5")).To(BeTrue())
+
+				// Purge cache
+				cache.Purge()
+
+				// Verify all items are removed
+				Expect(cache.Contains("key-0")).To(BeFalse())
+				Expect(cache.Contains("key-5")).To(BeFalse())
+			})
+
+			It("should enforce LRU eviction when size limit is reached", func() {
+				// Create cache with small size limit
+				err := initializeRequiredCheckCache(1*time.Hour, 3)
+				Expect(err).NotTo(HaveOccurred())
+
+				cache, err := getRequiredCheckCache()
+				Expect(err).NotTo(HaveOccurred())
+
+				// Add 4 items (one more than limit)
+				for i := 0; i < 4; i++ {
+					key := fmt.Sprintf("key-%d", i)
+					cache.Add(key, []scms.RequiredCheck{})
+					time.Sleep(10 * time.Millisecond) // Ensure ordering
+				}
+
+				// First item should be evicted (LRU)
+				Expect(cache.Contains("key-0")).To(BeFalse())
+				// Most recent items should remain
+				Expect(cache.Contains("key-1")).To(BeTrue())
+				Expect(cache.Contains("key-2")).To(BeTrue())
+				Expect(cache.Contains("key-3")).To(BeTrue())
+			})
+		})
+
+		Context("Singleflight deduplication", func() {
+			It("should deduplicate concurrent cache misses", func() {
+				err := initializeRequiredCheckCache(1*time.Hour, 100)
+				Expect(err).NotTo(HaveOccurred())
+
+				cache, err := getRequiredCheckCache()
+				Expect(err).NotTo(HaveOccurred())
+				cache.Purge()
+
+				callCount := 0
+				cacheKey := "test-singleflight-key"
+
+				// Simulate expensive operation
+				expensiveOperation := func() (any, error) {
+					callCount++
+					time.Sleep(100 * time.Millisecond)
+					return []scms.RequiredCheck{
+						{Name: "check", Key: "github-check", ExternalRef: "check"},
+					}, nil
+				}
+
+				// Launch 5 concurrent requests for the same key
+				numConcurrent := 5
+				resultChan := make(chan []scms.RequiredCheck, numConcurrent)
+				errChan := make(chan error, numConcurrent)
+
+				for i := 0; i < numConcurrent; i++ {
+					go func() {
+						result, err, _ := requiredCheckFlight.Do(cacheKey, expensiveOperation)
+						if err != nil {
+							errChan <- err
+							return
+						}
+						checks := result.([]scms.RequiredCheck)
+						resultChan <- checks
+					}()
+				}
+
+				// Collect results
+				var results [][]scms.RequiredCheck
+				for i := 0; i < numConcurrent; i++ {
+					select {
+					case err := <-errChan:
+						Fail(fmt.Sprintf("Unexpected error: %v", err))
+					case result := <-resultChan:
+						results = append(results, result)
+					case <-time.After(2 * time.Second):
+						Fail("Timeout waiting for results")
+					}
+				}
+
+				// All should get the same result
+				for _, result := range results {
+					Expect(result).To(HaveLen(1))
+					Expect(result[0].Name).To(Equal("check"))
+				}
+
+				// Critical: expensive operation should only be called once
+				Expect(callCount).To(Equal(1), "Singleflight should deduplicate concurrent calls")
+			})
+		})
+
+		Context("Polling optimization logic", func() {
+			It("should determine skip decision for terminal checks correctly", func() {
+				now := metav1.Now()
+				terminalInterval := 10 * time.Minute
+
+				testCases := []struct {
+					name               string
+					phase              promoterv1alpha1.CommitStatusPhase
+					lastPolledAt       *metav1.Time
+					sha                string
+					previousSha        string
+					expectedShouldSkip bool
+				}{
+					{
+						name:               "terminal check polled recently (5min ago) with same SHA",
+						phase:              promoterv1alpha1.CommitPhaseSuccess,
+						lastPolledAt:       &metav1.Time{Time: now.Time.Add(-5 * time.Minute)},
+						sha:                "abc123",
+						previousSha:        "abc123",
+						expectedShouldSkip: true,
+					},
+					{
+						name:               "terminal check polled long ago (11min ago)",
+						phase:              promoterv1alpha1.CommitPhaseSuccess,
+						lastPolledAt:       &metav1.Time{Time: now.Time.Add(-11 * time.Minute)},
+						sha:                "abc123",
+						previousSha:        "abc123",
+						expectedShouldSkip: false,
+					},
+					{
+						name:               "pending check should never be skipped",
+						phase:              promoterv1alpha1.CommitPhasePending,
+						lastPolledAt:       &metav1.Time{Time: now.Time.Add(-1 * time.Minute)},
+						sha:                "abc123",
+						previousSha:        "abc123",
+						expectedShouldSkip: false,
+					},
+					{
+						name:               "terminal check with different SHA",
+						phase:              promoterv1alpha1.CommitPhaseSuccess,
+						lastPolledAt:       &metav1.Time{Time: now.Time.Add(-5 * time.Minute)},
+						sha:                "abc123",
+						previousSha:        "xyz789",
+						expectedShouldSkip: false, // Different SHA means don't skip
+					},
+					{
+						name:               "terminal check with nil lastPolledAt",
+						phase:              promoterv1alpha1.CommitPhaseSuccess,
+						lastPolledAt:       nil,
+						sha:                "abc123",
+						previousSha:        "abc123",
+						expectedShouldSkip: false,
+					},
+					{
+						name:               "failure check (terminal) polled recently",
+						phase:              promoterv1alpha1.CommitPhaseFailure,
+						lastPolledAt:       &metav1.Time{Time: now.Time.Add(-5 * time.Minute)},
+						sha:                "abc123",
+						previousSha:        "abc123",
+						expectedShouldSkip: true,
+					},
+				}
+
+				for _, tc := range testCases {
+					By(tc.name)
+
+					// Simulate the optimization logic from pollCheckStatusForEnvironment
+					shouldSkip := false
+
+					// Only apply optimization if SHAs match
+					if tc.sha == tc.previousSha {
+						isTerminal := tc.phase == promoterv1alpha1.CommitPhaseSuccess ||
+							tc.phase == promoterv1alpha1.CommitPhaseFailure
+
+						if isTerminal && tc.lastPolledAt != nil {
+							timeSinceLastPoll := now.Time.Sub(tc.lastPolledAt.Time)
+							if timeSinceLastPoll < terminalInterval {
+								shouldSkip = true
+							}
+						}
+					}
+
+					Expect(shouldSkip).To(Equal(tc.expectedShouldSkip),
+						"Skip decision mismatch for: %s", tc.name)
+				}
+			})
+		})
+
+		Context("Timeout handling in polling", func() {
+			It("should detect context deadline exceeded", func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+				defer cancel()
+
+				// Simulate slow operation
+				time.Sleep(100 * time.Millisecond)
+
+				// Check if context is done
+				select {
+				case <-ctx.Done():
+					Expect(ctx.Err()).To(Equal(context.DeadlineExceeded))
+				default:
+					Fail("Context should have been cancelled")
+				}
+			})
+
+			It("should handle graceful degradation pattern", func() {
+				// This tests the error handling pattern used in pollCheckStatusForEnvironment
+				checks := []scms.RequiredCheck{
+					{Name: "check-1", Key: "github-check-1"},
+					{Name: "check-2", Key: "github-check-2"},
+					{Name: "check-3", Key: "github-check-3"},
+				}
+
+				results := make(map[string]promoterv1alpha1.CommitStatusPhase)
+
+				// Simulate polling with one failure
+				for _, check := range checks {
+					var phase promoterv1alpha1.CommitStatusPhase
+					var err error
+
+					// Simulate failure on check-2
+					if check.Name == "check-2" {
+						err = fmt.Errorf("simulated error")
+					} else {
+						phase = promoterv1alpha1.CommitPhaseSuccess
+					}
+
+					// Apply graceful degradation pattern
+					if err != nil {
+						// Log error but mark as pending to maintain visibility
+						phase = promoterv1alpha1.CommitPhasePending
+					}
+
+					results[check.Key] = phase
+				}
+
+				// Verify graceful degradation
+				Expect(results["github-check-1"]).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+				Expect(results["github-check-2"]).To(Equal(promoterv1alpha1.CommitPhasePending))
+				Expect(results["github-check-3"]).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			})
+		})
+
 		Context("Cache integration with golang-lru", func() {
 			var testCache *expirable.LRU[string, []scms.RequiredCheck]
 

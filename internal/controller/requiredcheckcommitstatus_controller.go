@@ -182,11 +182,26 @@ func (r *RequiredCheckCommitStatusReconciler) Reconcile(ctx context.Context, req
 		previousStatus = &promoterv1alpha1.RequiredCheckCommitStatusStatus{}
 	}
 
+	// Check if SCM provider supports required check discovery
+	scmSupported := true
+	_, err = r.getRequiredCheckProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
+	if err != nil {
+		if errors.Is(err, scms.ErrNotSupported) {
+			scmSupported = false
+			logger.Info("SCM provider does not support required check discovery",
+				"repository", ps.Spec.RepositoryReference.Name)
+		} else {
+			// Other errors (e.g., GitRepository not found) will be caught during processEnvironments
+			logger.V(4).Info("Error checking SCM provider support, will retry during environment processing",
+				"error", err)
+		}
+	}
+
 	// 4. Process each environment and create/update CommitStatus resources
-	commitStatuses := r.processEnvironments(ctx, &rccs, &ps, relevantCTPs, previousStatus)
+	commitStatuses, commitStatusUpdateFailures, pollingDegradedChecks := r.processEnvironments(ctx, &rccs, &ps, relevantCTPs, previousStatus)
 
 	// 5. Clean up orphaned CommitStatus resources
-	err = r.cleanupOrphanedCommitStatuses(ctx, &rccs, commitStatuses)
+	failedDeletions, err := r.cleanupOrphanedCommitStatuses(ctx, &rccs, commitStatuses)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources for RCCS %s/%s: %w", rccs.Namespace, rccs.Name, err)
 	}
@@ -194,13 +209,63 @@ func (r *RequiredCheckCommitStatusReconciler) Reconcile(ctx context.Context, req
 	// 6. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&rccs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// 7. Trigger CTP reconciliation if any environment phase changed
+	// 7. Set or clear operational conditions based on tracked failures
+
+	// Condition #1: CommitStatus update failures
+	if len(commitStatusUpdateFailures) > 0 {
+		meta.SetStatusCondition(rccs.GetConditions(), metav1.Condition{
+			Type:    "CommitStatusUpdateFailure",
+			Status:  metav1.ConditionTrue,
+			Reason:  "CheckResourceUpdateErrors",
+			Message: fmt.Sprintf("Failed to update CommitStatus for: %s", strings.Join(commitStatusUpdateFailures, ", ")),
+		})
+	} else {
+		meta.RemoveStatusCondition(rccs.GetConditions(), "CommitStatusUpdateFailure")
+	}
+
+	// Condition #2: Polling degradation
+	if len(pollingDegradedChecks) > 0 {
+		meta.SetStatusCondition(rccs.GetConditions(), metav1.Condition{
+			Type:    "PollingDegraded",
+			Status:  metav1.ConditionTrue,
+			Reason:  "CheckPollingErrors",
+			Message: fmt.Sprintf("Unable to poll status for %d check(s) (marked pending): %s", len(pollingDegradedChecks), strings.Join(pollingDegradedChecks, ", ")),
+		})
+	} else {
+		meta.RemoveStatusCondition(rccs.GetConditions(), "PollingDegraded")
+	}
+
+	// Condition #3: Cleanup failures
+	if len(failedDeletions) > 0 {
+		meta.SetStatusCondition(rccs.GetConditions(), metav1.Condition{
+			Type:    "CleanupFailure",
+			Status:  metav1.ConditionTrue,
+			Reason:  "OrphanedResourceDeletionErrors",
+			Message: fmt.Sprintf("Failed to delete %d orphaned CommitStatus resource(s): %s", len(failedDeletions), strings.Join(failedDeletions, ", ")),
+		})
+	} else {
+		meta.RemoveStatusCondition(rccs.GetConditions(), "CleanupFailure")
+	}
+
+	// Condition #7: Unsupported SCM provider
+	if !scmSupported {
+		meta.SetStatusCondition(rccs.GetConditions(), metav1.Condition{
+			Type:    "UnsupportedSCMProvider",
+			Status:  metav1.ConditionTrue,
+			Reason:  "FeatureNotImplemented",
+			Message: "Required check discovery is not supported for this SCM provider",
+		})
+	} else {
+		meta.RemoveStatusCondition(rccs.GetConditions(), "UnsupportedSCMProvider")
+	}
+
+	// 8. Trigger CTP reconciliation if any environment phase changed
 	err = r.triggerCTPReconciliation(ctx, &ps, previousStatus, &rccs.Status)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to trigger CTP reconciliation for RCCS %s/%s: %w", rccs.Namespace, rccs.Name, err)
 	}
 
-	// 8. Calculate dynamic requeue duration
+	// 9. Calculate dynamic requeue duration
 	requeueDuration, err := r.calculateRequeueDuration(ctx, &rccs)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to calculate requeue duration for RCCS %s/%s: %w", rccs.Namespace, rccs.Name, err)
@@ -393,8 +458,9 @@ func (r *RequiredCheckCommitStatusReconciler) ctpProposedShaChangedPredicate() p
 	}
 }
 
-// processEnvironments processes each environment and creates/updates CommitStatus resources
-func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Context, rccs *promoterv1alpha1.RequiredCheckCommitStatus, ps *promoterv1alpha1.PromotionStrategy, ctps []promoterv1alpha1.ChangeTransferPolicy, previousStatus *promoterv1alpha1.RequiredCheckCommitStatusStatus) []*promoterv1alpha1.CommitStatus {
+// processEnvironments processes each environment and creates/updates CommitStatus resources.
+// Returns: commitStatuses, commitStatusUpdateFailures, pollingDegradedChecks
+func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Context, rccs *promoterv1alpha1.RequiredCheckCommitStatus, ps *promoterv1alpha1.PromotionStrategy, ctps []promoterv1alpha1.ChangeTransferPolicy, previousStatus *promoterv1alpha1.RequiredCheckCommitStatusStatus) ([]*promoterv1alpha1.CommitStatus, []string, []string) {
 	logger := log.FromContext(ctx)
 
 	// Initialize environments status
@@ -402,6 +468,11 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 
 	// Track all CommitStatus objects created/updated
 	var commitStatuses []*promoterv1alpha1.CommitStatus
+
+	// Track partial failures to report in conditions
+	var partialFailures []string
+	var commitStatusUpdateFailures []string
+	var pollingDegradedChecks []string
 
 	// Build a map of CTPs by environment branch
 	ctpByBranch := make(map[string]*promoterv1alpha1.ChangeTransferPolicy)
@@ -426,7 +497,7 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 		// Remaining environments will be processed on next reconciliation.
 		select {
 		case <-ctx.Done():
-			return commitStatuses
+			return commitStatuses, commitStatusUpdateFailures, pollingDegradedChecks
 		default:
 		}
 
@@ -454,6 +525,8 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 				"promotionStrategy", ps.Name,
 				"repository", ps.Spec.RepositoryReference.Name,
 				"branch", env.Branch)
+			partialFailures = append(partialFailures,
+				fmt.Sprintf("Branch %s: failed to discover required checks: %v", env.Branch, err))
 			// Continue to process other environments
 			continue
 		}
@@ -462,7 +535,7 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 		previousEnv := previousEnvByBranch[env.Branch]
 
 		// Poll check status for each required check
-		checkStatuses, err := r.pollCheckStatusForEnvironment(ctx, ps, requiredChecks, proposedSha, previousEnv)
+		checkStatuses, degradedChecks, err := r.pollCheckStatusForEnvironment(ctx, ps, requiredChecks, proposedSha, previousEnv)
 		if err != nil {
 			// Provide more context for timeout errors
 			if errors.Is(err, context.DeadlineExceeded) {
@@ -472,15 +545,25 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 					"branch", env.Branch,
 					"sha", proposedSha,
 					"checkCount", len(requiredChecks))
+				partialFailures = append(partialFailures,
+					fmt.Sprintf("Branch %s: polling timeout (some checks may not have been polled)", env.Branch))
 			} else {
 				logger.Error(err, "failed to poll check status",
 					"promotionStrategy", ps.Name,
 					"repository", ps.Spec.RepositoryReference.Name,
 					"branch", env.Branch,
 					"sha", proposedSha)
+				partialFailures = append(partialFailures,
+					fmt.Sprintf("Branch %s: failed to poll check status: %v", env.Branch, err))
 			}
 			// Continue to process other environments
 			continue
+		}
+
+		// Track degraded checks (polling failed but marked as pending)
+		for _, degradedCheck := range degradedChecks {
+			pollingDegradedChecks = append(pollingDegradedChecks,
+				fmt.Sprintf("%s:%s", env.Branch, degradedCheck))
 		}
 
 		// Create/update CommitStatus resources for each check
@@ -491,7 +574,7 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 			// Remaining checks will have CommitStatus resources created/updated on next reconciliation.
 			select {
 			case <-ctx.Done():
-				return commitStatuses
+				return commitStatuses, commitStatusUpdateFailures, pollingDegradedChecks
 			default:
 			}
 
@@ -518,6 +601,8 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 					"repository", ps.Spec.RepositoryReference.Name,
 					"branch", env.Branch,
 					"sha", proposedSha)
+				commitStatusUpdateFailures = append(commitStatusUpdateFailures,
+					fmt.Sprintf("%s:%s", env.Branch, check.Key))
 				// Continue to process other checks
 				continue
 			}
@@ -543,7 +628,19 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 		})
 	}
 
-	return commitStatuses
+	// Set or clear the PartialFailure condition based on whether any failures occurred
+	if len(partialFailures) > 0 {
+		meta.SetStatusCondition(rccs.GetConditions(), metav1.Condition{
+			Type:    "PartialFailure",
+			Status:  metav1.ConditionTrue,
+			Reason:  "EnvironmentProcessingErrors",
+			Message: strings.Join(partialFailures, "; "),
+		})
+	} else {
+		meta.RemoveStatusCondition(rccs.GetConditions(), "PartialFailure")
+	}
+
+	return commitStatuses, commitStatusUpdateFailures, pollingDegradedChecks
 }
 
 // getRequiredCheckProvider creates the appropriate required check provider based on the SCM type.
@@ -688,17 +785,18 @@ func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironme
 // Uses per-check polling optimization: terminal checks (success/failure) are only polled
 // if they haven't been polled recently (based on terminalCheckInterval), while pending
 // checks are always polled.
-func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, requiredChecks []scms.RequiredCheck, sha string, previousEnv *promoterv1alpha1.RequiredCheckEnvironmentStatus) (map[string]checkStatus, error) {
+// Returns a map of check statuses, a list of degraded check keys (polling failed), and an error.
+func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, requiredChecks []scms.RequiredCheck, sha string, previousEnv *promoterv1alpha1.RequiredCheckEnvironmentStatus) (map[string]checkStatus, []string, error) {
 	logger := log.FromContext(ctx)
 
 	if len(requiredChecks) == 0 {
-		return map[string]checkStatus{}, nil
+		return map[string]checkStatus{}, nil, nil
 	}
 
 	// Get configuration for polling intervals
 	config, err := settings.GetRequiredCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get RequiredCheckCommitStatus configuration: %w", err)
+		return nil, nil, fmt.Errorf("failed to get RequiredCheckCommitStatus configuration: %w", err)
 	}
 
 	// Apply overall timeout for the entire polling operation to prevent excessive reconciliation times
@@ -736,20 +834,21 @@ func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx 
 		Name:      ps.Spec.RepositoryReference.Name,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository %s/%s for check status polling on SHA %s: %w", ps.Namespace, ps.Spec.RepositoryReference.Name, sha, err)
+		return nil, nil, fmt.Errorf("failed to get GitRepository %s/%s for check status polling on SHA %s: %w", ps.Namespace, ps.Spec.RepositoryReference.Name, sha, err)
 	}
 
 	// Get required check provider
 	provider, err := r.getRequiredCheckProvider(ctx, ps.Spec.RepositoryReference, ps.Namespace)
 	if err != nil {
 		if errors.Is(err, scms.ErrNotSupported) {
-			return map[string]checkStatus{}, nil
+			return map[string]checkStatus{}, nil, nil
 		}
-		return nil, fmt.Errorf("failed to get required check provider for repo %s/%s, SHA %s: %w", ps.Namespace, ps.Spec.RepositoryReference.Name, sha, err)
+		return nil, nil, fmt.Errorf("failed to get required check provider for repo %s/%s, SHA %s: %w", ps.Namespace, ps.Spec.RepositoryReference.Name, sha, err)
 	}
 
 	now := metav1.Now()
 	checkStatuses := make(map[string]checkStatus)
+	var degradedChecks []string
 
 	// Query check status for each required check (with per-check polling optimization)
 	for _, check := range requiredChecks {
@@ -758,7 +857,7 @@ func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx 
 		// Checks that weren't polled will be retried on next reconciliation.
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, nil, ctx.Err()
 		default:
 		}
 
@@ -811,6 +910,9 @@ func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx 
 						"repository", gitRepo.Name,
 						"sha", sha)
 
+					// Track this degraded check for condition reporting
+					degradedChecks = append(degradedChecks, check.Key)
+
 					// Mark as pending so we maintain visibility into other working checks
 					// The check will be retried on next reconciliation
 					phase = promoterv1alpha1.CommitPhasePending
@@ -829,7 +931,7 @@ func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx 
 		}
 	}
 
-	return checkStatuses, nil
+	return checkStatuses, degradedChecks, nil
 }
 
 // checkStatus holds check status along with the timestamp when it was last polled
@@ -931,8 +1033,9 @@ func (r *RequiredCheckCommitStatusReconciler) calculateAggregatedPhase(checks []
 	return promoterv1alpha1.CommitPhaseSuccess
 }
 
-// cleanupOrphanedCommitStatuses removes CommitStatus resources that are no longer needed
-func (r *RequiredCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, rccs *promoterv1alpha1.RequiredCheckCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
+// cleanupOrphanedCommitStatuses removes CommitStatus resources that are no longer needed.
+// Returns a list of CommitStatus names that failed to delete.
+func (r *RequiredCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, rccs *promoterv1alpha1.RequiredCheckCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) ([]string, error) {
 	logger := log.FromContext(ctx)
 
 	// List only CommitStatus resources owned by this RCCS using label selector
@@ -943,7 +1046,7 @@ func (r *RequiredCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx 
 		promoterv1alpha1.RequiredCheckCommitStatusLabel: rccs.Name,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list CommitStatus resources for RCCS %s/%s: %w", rccs.Namespace, rccs.Name, err)
+		return nil, fmt.Errorf("failed to list CommitStatus resources for RCCS %s/%s: %w", rccs.Namespace, rccs.Name, err)
 	}
 
 	// Build a set of valid CommitStatus names
@@ -951,6 +1054,9 @@ func (r *RequiredCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx 
 	for _, cs := range validCommitStatuses {
 		validNames[cs.Name] = true
 	}
+
+	// Track failed deletions
+	var failedDeletions []string
 
 	// Delete orphaned CommitStatus resources
 	for _, cs := range csList.Items {
@@ -960,7 +1066,7 @@ func (r *RequiredCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx 
 		// Remaining orphaned resources will be cleaned up on the next reconciliation.
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		default:
 		}
 
@@ -970,6 +1076,7 @@ func (r *RequiredCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx 
 			err := r.Delete(ctx, &cs)
 			if err != nil && !k8serrors.IsNotFound(err) {
 				logger.Error(err, "failed to delete orphaned CommitStatus", "name", cs.Name)
+				failedDeletions = append(failedDeletions, cs.Name)
 				// Continue to try deleting other orphaned resources
 				continue
 			}
@@ -977,7 +1084,7 @@ func (r *RequiredCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx 
 		}
 	}
 
-	return nil
+	return failedDeletions, nil
 }
 
 // calculateRequeueDuration calculates the dynamic requeue duration based on check status
