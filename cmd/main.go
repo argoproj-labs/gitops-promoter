@@ -294,6 +294,14 @@ func runController(
 	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
 		panic("unable to create TimedCommitStatus controller")
 	}
+	if err := (&controller.ScheduledCommitStatusReconciler{
+		Client:      localManager.GetClient(),
+		Scheme:      localManager.GetScheme(),
+		Recorder:    localManager.GetEventRecorderFor("ScheduledCommitStatus"),
+		SettingsMgr: settingsMgr,
+	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
+		panic(fmt.Errorf("unable to create ScheduledCommitStatus controller: %w", err))
+	}
 	if err := (&controller.GitCommitStatusReconciler{
 		Client:      localManager.GetClient(),
 		Scheme:      localManager.GetScheme(),
