@@ -244,16 +244,16 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		previousStatus = &promoterv1alpha1.WebRequestCommitStatusStatus{}
 	}
 
-	// Build a map of previous environment statuses for efficient lookup
-	previousEnvStatusMap := make(map[string]*promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, len(previousStatus.Environments))
+	// Build a map of previous environment statuses from WebRequestCommitStatus for efficient lookup
+	wrcsEnvStatusMap := make(map[string]*promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, len(previousStatus.Environments))
 	for i := range previousStatus.Environments {
-		previousEnvStatusMap[previousStatus.Environments[i].Branch] = &previousStatus.Environments[i]
+		wrcsEnvStatusMap[previousStatus.Environments[i].Branch] = &previousStatus.Environments[i]
 	}
 
 	// Build a map of environments from PromotionStrategy for efficient lookup
-	envStatusMap := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
+	psEnvStatusMap := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
 	for i := range ps.Status.Environments {
-		envStatusMap[ps.Status.Environments[i].Branch] = &ps.Status.Environments[i]
+		psEnvStatusMap[ps.Status.Environments[i].Branch] = &ps.Status.Environments[i]
 	}
 
 	// Get applicable environments based on the key
@@ -266,7 +266,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		branch := env.Branch
 
 		// Look up the environment status in PromotionStrategy
-		envStatus, found := envStatusMap[branch]
+		envStatus, found := psEnvStatusMap[branch]
 		if !found {
 			logger.Info("Environment not found in PromotionStrategy status", "branch", branch)
 			continue
@@ -284,7 +284,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		}
 
 		// Get previous status for this environment
-		prevEnvStatus := previousEnvStatusMap[branch]
+		prevEnvStatus := wrcsEnvStatusMap[branch]
 		previousPhase := ""
 		lastSuccessfulSha := ""
 		var expressionData map[string]any
