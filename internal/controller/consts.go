@@ -6,5 +6,5 @@ const (
 	KubeConfigProviderName = "kubeconfig"
 	// LocalProviderName is the name of the local cluster provider used by multicluster-runtime to connect to the local
 	// cluster.
-	LocalProviderName      = "local"
+	LocalProviderName = "local"
 )

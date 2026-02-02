@@ -170,8 +170,8 @@ var _ = BeforeSuite(func() {
 	// Create the multi-provider that combines local and remote cluster providers
 	multiProvider := multiprovider.New(multiprovider.Options{})
 
-	// Add the kubeconfig provider for remote clusters with the "remote" prefix
-	err = multiProvider.AddProvider("remote", kubeconfigProvider)
+	// Add the kubeconfig provider for remote clusters
+	err = multiProvider.AddProvider(KubeConfigProviderName, kubeconfigProvider)
 	Expect(err).NotTo(HaveOccurred())
 
 	multiClusterManager, err := mcmanager.New(cfg, multiProvider, ctrl.Options{
@@ -360,7 +360,7 @@ var _ = BeforeSuite(func() {
 	// Add the local cluster provider using the single provider
 	// The cluster filtering will be done via WithClusterFilter in the controller setup
 	localClusterProvider := singleprovider.New(mcmanager.LocalCluster, k8sManager)
-	err = multiProvider.AddProvider("local", localClusterProvider)
+	err = multiProvider.AddProvider(LocalProviderName, localClusterProvider)
 	Expect(err).NotTo(HaveOccurred())
 
 	// ChangeTransferPolicy controller must be set up first so we can
@@ -494,8 +494,8 @@ var _ = BeforeSuite(func() {
 	// Wait for remote cluster caches to sync as well
 	By("waiting for remote cluster caches to sync")
 	for _, clusterName := range kubeconfigProvider.ListClusters() {
-		// With the multi-provider setup, remote clusters are prefixed with "remote#" (using the default separator)
-		prefixedClusterName := "remote#" + clusterName
+		// With the multi-provider setup, remote clusters are prefixed with the provider name
+		prefixedClusterName := KubeConfigProviderName + "#" + clusterName
 		cluster, err := multiClusterManager.GetCluster(ctx, prefixedClusterName)
 		Expect(err).ToNot(HaveOccurred(), "should be able to get cluster %s", prefixedClusterName)
 		Eventually(func() bool {
