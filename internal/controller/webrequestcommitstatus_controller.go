@@ -268,8 +268,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		// Look up the environment status in PromotionStrategy
 		envStatus, found := psEnvStatusMap[branch]
 		if !found {
-			logger.Info("Environment not found in PromotionStrategy status", "branch", branch)
-			continue
+			return nil, nil, 0, fmt.Errorf("environment %q not found in PromotionStrategy status", branch)
 		}
 
 		// Determine which SHA to report on based on reportOn setting
@@ -279,8 +278,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		}
 
 		if reportedSha == "" {
-			logger.Info("No SHA available for environment", "branch", branch, "reportOn", wrcs.Spec.ReportOn)
-			continue
+			return nil, nil, 0, fmt.Errorf("no SHA available for environment %q (reportOn: %q)", branch, wrcs.Spec.ReportOn)
 		}
 
 		// Get previous status for this environment
