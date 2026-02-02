@@ -111,9 +111,9 @@ spec:
   mode:
     trigger:
       requeueDuration: 30s
-      expression: |
+      triggerExpression: |
         {
-          trigger: ReportedSha != ExpressionData["lastCheckedSha"],
+          trigger: ReportedSha != TriggerData["lastCheckedSha"],
           lastCheckedSha: ReportedSha
         }
 ```
@@ -195,7 +195,7 @@ spec:
     trigger:
       requeueDuration: 30s
       # Only trigger when the previous environment (staging) has healthy dry SHAs
-      expression: |
+      triggerExpression: |
         let stagingEnvs = filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"});
         len(stagingEnvs) > 0 && len(stagingEnvs[0].LastHealthyDryShas) > 0
 ```
@@ -336,7 +336,7 @@ The trigger expression is evaluated **before** making HTTP requests to determine
 | `Phase` | string | Phase from previous reconcile |
 | `PromotionStrategy` | PromotionStrategy | Full PromotionStrategy object |
 | `Environment` | EnvironmentStatus | Current environment's status |
-| `ExpressionData` | map[string]any | Custom data from previous evaluation |
+| `TriggerData` | map[string]any | Custom data from previous evaluation |
 
 ### Return Values
 
@@ -349,21 +349,178 @@ The trigger expression can return:
 
 ```yaml
 # Always trigger (equivalent to polling)
-expression: "true"
+triggerExpression: "true"
 
 # Only trigger when SHA changes
-expression: 'ReportedSha != ExpressionData["lastCheckedSha"]'
+triggerExpression: 'ReportedSha != TriggerData["lastCheckedSha"]'
 
 # Track SHA and only trigger when it changes
-expression: |
+triggerExpression: |
   {
-    trigger: ReportedSha != ExpressionData["trackedSha"],
+    trigger: ReportedSha != TriggerData["trackedSha"],
     trackedSha: ReportedSha
   }
 
 # Trigger based on PR state
-expression: |
+triggerExpression: |
   Environment.PullRequest != nil && Environment.PullRequest.State == "open"
+
+# Use previous response data to make decisions
+triggerExpression: |
+  {
+    trigger: ResponseData == nil || ResponseData.body.retryAfter == "now",
+    customState: "checked"
+  }
+```
+
+### Using Response Data in Trigger Expressions (Trigger Mode Only)
+
+In trigger mode, you can use the optional `responseExpression` field to extract and store specific data from HTTP responses. This data is then available in subsequent trigger expressions via `ResponseData`, enabling stateful validation logic based on previous API responses.
+
+**Important:** `ResponseData` is ONLY populated when you explicitly provide a `responseExpression`. Without it, no response data is stored.
+
+**Customizing Response Data with responseExpression:**
+
+The `responseExpression` allows you to extract and transform only the data you need from the HTTP response before storing it. This is useful for:
+- Extracting only relevant fields to reduce storage
+- Pulling out nested data
+- Transforming response data for easier use in trigger expressions  
+- Parsing rate limit headers or pagination info
+- Making decisions based on previous responses
+
+**Available Response Data:**
+
+When `responseExpression` is defined, the `ResponseData` field will contain whatever your expression returns (custom fields).
+
+**Note:** `ResponseData` is only populated in trigger mode when `responseExpression` is provided. In polling mode or trigger mode without `responseExpression`, this field is always `nil`.
+
+**Example - Extract Specific Fields:**
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: extract-fields
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: validation
+  reportOn: proposed
+  httpRequest:
+    urlTemplate: "https://api.example.com/validate/{{ .ReportedSha }}"
+    method: GET
+    timeout: 30s
+  expression: "Response.StatusCode == 200 && Response.Body.status == 'approved'"
+  mode:
+    trigger:
+      requeueDuration: 30s
+      responseExpression: |
+        {
+          status: Response.Body.status,
+          retryAfter: Response.Body.retryAfter,
+          message: Response.Body.message
+        }
+      triggerExpression: |
+        # ResponseData will contain: {status: "...", retryAfter: "...", message: "..."}
+        ResponseData == nil || ResponseData.status == "retry"
+```
+
+**Example - Extract Rate Limit Info from Headers:**
+
+```yaml
+mode:
+  trigger:
+    requeueDuration: 30s
+    responseExpression: |
+      {
+        statusCode: Response.StatusCode,
+        approved: Response.Body.approved,
+        rateLimit: {
+          remaining: int(Response.Headers["X-RateLimit-Remaining"][0]),
+          reset: Response.Headers["X-RateLimit-Reset"][0]
+        }
+      }
+    triggerExpression: |
+      # Only trigger if we have rate limit capacity
+      ResponseData == nil || ResponseData.rateLimit.remaining > 0
+```
+
+**Example - Conditional Data Extraction:**
+
+```yaml
+mode:
+  trigger:
+    requeueDuration: 30s
+    responseExpression: |
+      Response.StatusCode == 200 ? 
+        {type: "success", data: Response.Body.result, timestamp: Response.Body.timestamp} : 
+        {type: "error", error: Response.Body.error, code: Response.StatusCode}
+    triggerExpression: |
+      ResponseData == nil || ResponseData.type == "error"
+```
+
+**Example - Smart Retry Logic:**
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: smart-retry
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: validation
+  reportOn: proposed
+  httpRequest:
+    urlTemplate: "https://api.example.com/validate/{{ .ReportedSha }}"
+    method: GET
+    timeout: 30s
+  expression: "Response.StatusCode == 200 && Response.Body.status == 'approved'"
+  mode:
+    trigger:
+      requeueDuration: 30s
+      responseExpression: |
+        {
+          statusCode: Response.StatusCode,
+          status: Response.Body.status,
+          shouldRetry: Response.StatusCode == 429 || Response.Body.status == "pending"
+        }
+      triggerExpression: |
+        # Only retry if the previous response indicated we should
+        ResponseData == nil || ResponseData.shouldRetry
+```
+
+**Example - Progressive Backoff:**
+
+```yaml
+mode:
+  trigger:
+    requeueDuration: 30s
+    responseExpression: |
+      {
+        statusCode: Response.StatusCode,
+        approved: Response.Body.approved
+      }
+    triggerExpression: |
+      let shouldRetry = ResponseData == nil || ResponseData.statusCode != 200;
+      let retryCount = TriggerData["retryCount"] ?? 0;
+      {
+        trigger: shouldRetry && retryCount < 5,
+        retryCount: shouldRetry ? retryCount + 1 : 0,
+        lastStatus: ResponseData.statusCode
+      }
+```
+
+**Example - Without responseExpression (No Data Stored):**
+
+```yaml
+mode:
+  trigger:
+    requeueDuration: 30s
+    # No responseExpression - ResponseData will always be nil
+    triggerExpression: |
+      # Must use other state like TriggerData
+      ReportedSha != TriggerData["lastCheckedSha"]
 ```
 
 ## Authentication
@@ -512,12 +669,30 @@ status:
       lastResponseStatusCode: 200
       expressionData:
         trackedSha: "abc123def456"
+      responseData:  # Only present when responseExpression is provided
+        status: "approved"
+        approver: "john.doe@example.com"
+        rateLimit:
+          remaining: 42
   conditions:
     - type: Ready
       status: "True"
       reason: ReconcileComplete
       message: All environments validated successfully
 ```
+
+### Status Field Descriptions
+
+| Field | Description |
+|-------|-------------|
+| `branch` | Environment branch name |
+| `reportedSha` | Current SHA being validated |
+| `lastSuccessfulSha` | Last SHA that achieved success |
+| `phase` | Current phase: `pending`, `success`, or `failure` |
+| `lastRequestTime` | Timestamp of last HTTP request |
+| `lastResponseStatusCode` | HTTP status code from last request |
+| `expressionData` | Custom data from trigger expression (JSON object) |
+| `responseData` | **Trigger mode with responseExpression only**: Data extracted from HTTP response via responseExpression. Only populated when spec.mode.trigger.responseExpression is provided. |
 
 ## Troubleshooting
 
@@ -543,6 +718,6 @@ If expressions are failing:
 
 If trigger mode isn't making requests:
 
-1. Check `expressionData` in status to see stored state
+1. Check `triggerData` in status to see stored state
 2. Verify the trigger expression logic
-3. Remember that first reconcile has empty `ExpressionData`
+3. Remember that first reconcile has empty `TriggerData`

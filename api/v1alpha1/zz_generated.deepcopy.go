@@ -22,6 +22,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -2481,12 +2482,15 @@ func (in *WebRequestCommitStatusEnvironmentStatus) DeepCopyInto(out *WebRequestC
 		*out = new(int)
 		**out = **in
 	}
-	if in.ExpressionData != nil {
-		in, out := &in.ExpressionData, &out.ExpressionData
-		*out = make(map[string]string, len(*in))
-		for key, val := range *in {
-			(*out)[key] = val
-		}
+	if in.TriggerData != nil {
+		in, out := &in.TriggerData, &out.TriggerData
+		*out = new(apiextensionsv1.JSON)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.ResponseData != nil {
+		in, out := &in.ResponseData, &out.ResponseData
+		*out = new(apiextensionsv1.JSON)
+		(*in).DeepCopyInto(*out)
 	}
 }
 

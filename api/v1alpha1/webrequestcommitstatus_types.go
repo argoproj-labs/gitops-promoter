@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -154,7 +155,7 @@ type TriggerModeSpec struct {
 	// +kubebuilder:default="1m"
 	RequeueDuration metav1.Duration `json:"requeueDuration,omitempty"`
 
-	// Expression is an expr expression that dynamically controls whether the HTTP request should be made.
+	// TriggerExpression is an expr expression that dynamically controls whether the HTTP request should be made.
 	// When specified, this expression is evaluated BEFORE each HTTP request to determine if the controller should
 	// make the request at all.
 	//
@@ -162,7 +163,7 @@ type TriggerModeSpec struct {
 	//  1. Boolean: true/false to control whether to make the HTTP request
 	//  2. Object with 'trigger' field: {trigger: true/false, ...customData}
 	//     - The 'trigger' field controls whether to make the HTTP request
-	//     - Any additional fields are stored and available in the next reconcile as 'ExpressionData'
+	//     - Any additional fields are stored and available in the next reconcile as 'TriggerData'
 	//
 	// Available variables in the expression context:
 	//   - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
@@ -170,7 +171,8 @@ type TriggerModeSpec struct {
 	//   - Phase (string): current phase (success/pending/failure)
 	//   - ReportedSha (string): the SHA being validated
 	//   - LastSuccessfulSha (string): last SHA that achieved success for this environment
-	//   - ExpressionData (map[string]any): custom data from previous trigger expression evaluation
+	//   - TriggerData (map[string]any): custom data from previous trigger expression evaluation
+	//   - ResponseData (map[string]any): response data from previous HTTP request (if any)
 	//
 	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
 	// Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
@@ -183,21 +185,72 @@ type TriggerModeSpec struct {
 	//   - "true"
 	//
 	//   # Only trigger when SHA changes from what we last tracked
-	//   - "ReportedSha != ExpressionData['lastCheckedSha']"
+	//   - "ReportedSha != TriggerData['lastCheckedSha']"
 	//
 	//   # Only trigger when previous environment is healthy
 	//   - "len(filter(PromotionStrategy.Status.Environments, {.Branch == 'environment/staging'})[0].LastHealthyDryShas) > 0"
+	//
+	//   # Only retry if previous response indicated we should
+	//   - "ResponseData == nil || ResponseData.status == 'retry'"
 	//
 	// Examples (Object return with state tracking):
 	//   # Track SHA and only trigger when it changes
 	//   - |
 	//     {
-	//       trigger: ReportedSha != ExpressionData["trackedSha"],
+	//       trigger: ReportedSha != TriggerData["trackedSha"],
 	//       trackedSha: ReportedSha
 	//     }
 	//
 	// +required
-	Expression string `json:"expression"`
+	TriggerExpression string `json:"triggerExpression"`
+
+	// ResponseExpression is an optional expr expression that extracts and transforms data from the HTTP response
+	// before storing it in ResponseData. This allows you to store only the fields you need instead of the entire response.
+	//
+	// The expression is evaluated AFTER a successful HTTP request and its result is stored in status.responseData.
+	// If not specified, the full response (statusCode, body, headers) is stored.
+	//
+	// Available variables in the expression context:
+	//   - Response.StatusCode (int): HTTP response status code
+	//   - Response.Body (any): parsed JSON as map[string]any, or raw string if not JSON
+	//   - Response.Headers (map[string][]string): HTTP response headers
+	//
+	// The expression should return an object/map that will be stored as ResponseData.
+	//
+	// Examples:
+	//   # Store only specific fields from response body
+	//   - |
+	//     {
+	//       status: Response.Body.status,
+	//       retryAfter: Response.Body.retryAfter,
+	//       message: Response.Body.message
+	//     }
+	//
+	//   # Store status code and a single field
+	//   - |
+	//     {
+	//       statusCode: Response.StatusCode,
+	//       approved: Response.Body.approved
+	//     }
+	//
+	//   # Extract rate limit info from headers
+	//   - |
+	//     {
+	//       statusCode: Response.StatusCode,
+	//       rateLimit: {
+	//         remaining: int(Response.Headers["X-RateLimit-Remaining"][0]),
+	//         reset: Response.Headers["X-RateLimit-Reset"][0]
+	//       }
+	//     }
+	//
+	//   # Conditional extraction based on status
+	//   - |
+	//     Response.StatusCode == 200 ?
+	//       {status: "success", data: Response.Body.result} :
+	//       {status: "error", error: Response.Body.error}
+	//
+	// +optional
+	ResponseExpression string `json:"responseExpression,omitempty"`
 }
 
 // HTTPRequestSpec defines the HTTP request configuration.
@@ -329,10 +382,31 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	// +optional
 	LastResponseStatusCode *int `json:"lastResponseStatusCode,omitempty"`
 
-	// ExpressionData stores custom data returned from the trigger expression.
+	// TriggerData stores custom data returned from the trigger expression.
 	// This data is passed to the next trigger expression evaluation.
+	// The data is preserved as arbitrary JSON.
 	// +optional
-	ExpressionData map[string]string `json:"expressionData,omitempty"`
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:validation:Type=object
+	// +kubebuilder:pruning:PreserveUnknownFields
+	TriggerData *apiextensionsv1.JSON `json:"triggerData,omitempty"`
+
+	// ResponseData stores data from the HTTP response body (trigger mode with responseExpression only).
+	// This field is ONLY populated when spec.mode.trigger.responseExpression is provided.
+	// The responseExpression is evaluated after each HTTP request and its result is stored here,
+	// allowing trigger expressions to inspect response data from previous requests when
+	// deciding whether to trigger the next request.
+	//
+	// Without responseExpression, this field will always be nil.
+	//
+	// Available in trigger expressions as: ResponseData.field1, ResponseData.field2, etc.
+	// (where fields depend on what your responseExpression returns)
+	//
+	// +optional
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:validation:Type=object
+	// +kubebuilder:pruning:PreserveUnknownFields
+	ResponseData *apiextensionsv1.JSON `json:"responseData,omitempty"`
 }
 
 // +kubebuilder:ac:generate=true

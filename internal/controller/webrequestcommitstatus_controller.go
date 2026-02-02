@@ -30,6 +30,7 @@ import (
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -107,7 +108,8 @@ type TriggerContext struct {
 	Environment       *promoterv1alpha1.EnvironmentStatus
 
 	// Persistent state between reconciles
-	ExpressionData map[string]any // custom data from previous trigger evaluation
+	TriggerData  map[string]any // custom data from previous trigger evaluation
+	ResponseData map[string]any // response data from previous HTTP request
 }
 
 // ValidationContext holds the context for validation expression evaluation.
@@ -117,8 +119,8 @@ type ValidationContext struct {
 
 // TriggerResult holds the result of a trigger expression evaluation.
 type TriggerResult struct {
-	Trigger        bool
-	ExpressionData map[string]any
+	Trigger     bool
+	TriggerData map[string]any
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -285,23 +287,25 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		prevEnvStatus := wrcsEnvStatusMap[branch]
 		previousPhase := ""
 		lastSuccessfulSha := ""
-		var expressionData map[string]any
+		var triggerData map[string]any
 
 		if prevEnvStatus != nil {
 			previousPhase = prevEnvStatus.Phase
 			lastSuccessfulSha = prevEnvStatus.LastSuccessfulSha
-			// Convert string map to any map for expression evaluation
-			if prevEnvStatus.ExpressionData != nil {
-				expressionData = make(map[string]any)
-				for k, v := range prevEnvStatus.ExpressionData {
-					// Try to parse as JSON first
-					var parsed any
-					if err := json.Unmarshal([]byte(v), &parsed); err == nil {
-						expressionData[k] = parsed
-					} else {
-						expressionData[k] = v
-					}
+			// Parse trigger data from JSON
+			if prevEnvStatus.TriggerData != nil {
+				triggerData = make(map[string]any)
+				if err := json.Unmarshal(prevEnvStatus.TriggerData.Raw, &triggerData); err != nil {
+					logger.Error(err, "Failed to unmarshal trigger data", "branch", branch)
 				}
+			}
+		}
+
+		// Parse previous response data for trigger expression
+		var previousResponseData map[string]any
+		if prevEnvStatus != nil && prevEnvStatus.ResponseData != nil {
+			if err := json.Unmarshal(prevEnvStatus.ResponseData.Raw, &previousResponseData); err != nil {
+				logger.Error(err, "Failed to unmarshal response data", "branch", branch)
 			}
 		}
 
@@ -335,7 +339,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 
 		// For trigger mode, evaluate the trigger expression first
 		shouldTrigger := true
-		var newExpressionData map[string]any
+		var newTriggerData map[string]any
 
 		if wrcs.Spec.Mode.Trigger != nil {
 			triggerCtx := TriggerContext{
@@ -344,20 +348,22 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 				Phase:             previousPhase,
 				PromotionStrategy: ps,
 				Environment:       envStatus,
-				ExpressionData:    expressionData,
+				TriggerData:       triggerData,
+				ResponseData:      previousResponseData,
 			}
 
-			triggerResult, err := r.evaluateTriggerExpression(ctx, wrcs.Spec.Mode.Trigger.Expression, triggerCtx)
+			triggerResult, err := r.evaluateTriggerExpression(ctx, wrcs.Spec.Mode.Trigger.TriggerExpression, triggerCtx)
 			if err != nil {
 				return nil, nil, 0, fmt.Errorf("failed to evaluate trigger expression for environment %q: %w", branch, err)
 			}
 			shouldTrigger = triggerResult.Trigger
-			newExpressionData = triggerResult.ExpressionData
+			newTriggerData = triggerResult.TriggerData
 		}
 
 		var phase promoterv1alpha1.CommitStatusPhase
 		var lastRequestTime *metav1.Time
 		var lastResponseStatusCode *int
+		var responseDataJSON *apiextensionsv1.JSON
 
 		if shouldTrigger {
 			// Make the HTTP request
@@ -369,6 +375,31 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			now := metav1.Now()
 			lastRequestTime = &now
 			lastResponseStatusCode = &response.StatusCode
+
+			// Log response details for debugging
+			bodyPreview := fmt.Sprintf("%v", response.Body)
+			if len(bodyPreview) > 200 {
+				bodyPreview = bodyPreview[:200] + "..."
+			}
+			logger.V(3).Info("HTTP response received", "branch", branch, "statusCode", response.StatusCode, "bodyPreview", bodyPreview)
+
+			// Store response data (only in trigger mode with responseExpression - allows trigger expressions to use response data in subsequent evaluations)
+			if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.ResponseExpression != "" {
+				validationCtx := ValidationContext{
+					Response: response,
+				}
+
+				extractedData, err := r.evaluateResponseExpression(ctx, wrcs.Spec.Mode.Trigger.ResponseExpression, validationCtx)
+				if err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to evaluate response expression for environment %q: %w", branch, err)
+				}
+
+				responseDataBytes, err := json.Marshal(extractedData)
+				if err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to marshal response data: %w", err)
+				}
+				responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
+			}
 
 			// Evaluate the validation expression
 			validationCtx := ValidationContext{
@@ -388,6 +419,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			}
 		} else {
 			// Trigger expression returned false, keep previous phase or default to pending
+			logger.V(3).Info("Trigger expression returned false, not making HTTP request", "branch", branch, "triggerExpression", wrcs.Spec.Mode.Trigger.TriggerExpression)
 			if previousPhase != "" {
 				phase = promoterv1alpha1.CommitStatusPhase(previousPhase)
 			} else {
@@ -397,6 +429,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			if prevEnvStatus != nil {
 				lastRequestTime = prevEnvStatus.LastRequestTime
 				lastResponseStatusCode = prevEnvStatus.LastResponseStatusCode
+				responseDataJSON = prevEnvStatus.ResponseData
 			}
 		}
 
@@ -406,19 +439,14 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			logger.Info("Validation transitioned to success", "branch", branch, "sha", reportedSha)
 		}
 
-		// Convert expression data to string map for status
-		var expressionDataStrMap map[string]string
-		if newExpressionData != nil {
-			expressionDataStrMap = make(map[string]string)
-			for k, v := range newExpressionData {
-				// Convert value to JSON string
-				jsonBytes, err := json.Marshal(v)
-				if err != nil {
-					expressionDataStrMap[k] = fmt.Sprintf("%v", v)
-				} else {
-					expressionDataStrMap[k] = string(jsonBytes)
-				}
+		// Convert trigger data to JSON for status
+		var triggerDataJSON *apiextensionsv1.JSON
+		if newTriggerData != nil {
+			jsonBytes, err := json.Marshal(newTriggerData)
+			if err != nil {
+				return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
 			}
+			triggerDataJSON = &apiextensionsv1.JSON{Raw: jsonBytes}
 		}
 
 		// Update status for this environment
@@ -429,7 +457,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			Phase:                  string(phase),
 			LastRequestTime:        lastRequestTime,
 			LastResponseStatusCode: lastResponseStatusCode,
-			ExpressionData:         expressionDataStrMap,
+			TriggerData:            triggerDataJSON,
+			ResponseData:           responseDataJSON,
 		}
 		wrcs.Status.Environments = append(wrcs.Status.Environments, envWebRequestStatus)
 
@@ -645,7 +674,8 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 		"Phase":             triggerCtx.Phase,
 		"PromotionStrategy": triggerCtx.PromotionStrategy,
 		"Environment":       triggerCtx.Environment,
-		"ExpressionData":    triggerCtx.ExpressionData,
+		"TriggerData":       triggerCtx.TriggerData,
+		"ResponseData":      triggerCtx.ResponseData,
 	}
 
 	// Run the expression
@@ -668,16 +698,16 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 			}
 		}
 
-		// Extract expression data (everything except "trigger")
-		expressionData := make(map[string]any)
+		// Extract trigger data (everything except "trigger")
+		triggerData := make(map[string]any)
 		for k, v := range mapResult {
 			if k != "trigger" {
-				expressionData[k] = v
+				triggerData[k] = v
 			}
 		}
 
-		logger.V(4).Info("Trigger expression returned object", "trigger", trigger, "expressionData", expressionData)
-		return TriggerResult{Trigger: trigger, ExpressionData: expressionData}, nil
+		logger.V(4).Info("Trigger expression returned object", "trigger", trigger, "triggerData", triggerData)
+		return TriggerResult{Trigger: trigger, TriggerData: triggerData}, nil
 	}
 
 	return TriggerResult{}, fmt.Errorf("trigger expression must return bool or {trigger: bool, ...}, got %T", output)
@@ -710,6 +740,38 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx cont
 	result, ok := output.(bool)
 	if !ok {
 		return false, fmt.Errorf("validation expression must return boolean, got %T", output)
+	}
+
+	return result, nil
+}
+
+// evaluateResponseExpression evaluates the response expression to extract/transform response data.
+func (r *WebRequestCommitStatusReconciler) evaluateResponseExpression(ctx context.Context, expression string, validationCtx ValidationContext) (map[string]any, error) {
+	// Get compiled expression from cache or compile it
+	program, err := r.getCompiledResponseExpression(expression)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compile response expression: %w", err)
+	}
+
+	// Build environment for expression evaluation (same as validation expression)
+	env := map[string]any{
+		"Response": map[string]any{
+			"StatusCode": validationCtx.Response.StatusCode,
+			"Body":       validationCtx.Response.Body,
+			"Headers":    validationCtx.Response.Headers,
+		},
+	}
+
+	// Run the expression
+	output, err := expr.Run(program, env)
+	if err != nil {
+		return nil, fmt.Errorf("failed to evaluate response expression: %w", err)
+	}
+
+	// Convert output to map[string]any
+	result, ok := output.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("response expression must return a map/object, got %T", output)
 	}
 
 	return result, nil
@@ -754,6 +816,30 @@ func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpression(expre
 
 	// Compile with bool return type constraint
 	program, err := expr.Compile(expression, expr.AsBool())
+	if err != nil {
+		return nil, fmt.Errorf("failed to compile expression: %w", err)
+	}
+
+	// Store in cache
+	r.expressionCache.Store(cacheKey, program)
+	return program, nil
+}
+
+// getCompiledResponseExpression retrieves a compiled response expression from the cache or compiles and caches it.
+func (r *WebRequestCommitStatusReconciler) getCompiledResponseExpression(expression string) (*vm.Program, error) {
+	cacheKey := "response:" + expression
+
+	// Check cache first
+	if cached, ok := r.expressionCache.Load(cacheKey); ok {
+		program, ok := cached.(*vm.Program)
+		if !ok {
+			return nil, fmt.Errorf("cached value is not a *vm.Program")
+		}
+		return program, nil
+	}
+
+	// Compile without type constraints since we expect a map return
+	program, err := expr.Compile(expression)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile expression: %w", err)
 	}

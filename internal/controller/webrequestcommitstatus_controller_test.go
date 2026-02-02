@@ -229,12 +229,12 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
 		})
 
-		It("should report failure status when HTTP response fails validation", func() {
+		It("should report pending status when HTTP response fails validation", func() {
 			By("Waiting for WebRequestCommitStatus to process environments")
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name + "-polling-failure",
+					Name:      name + "-polling-pending",
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -251,17 +251,17 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					}
 				}
 				g.Expect(devEnvStatus).ToNot(BeNil(), "Dev environment status should exist")
-				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
+				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 
-				// Verify CommitStatus was created for dev environment with failure phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-polling-failure-"+testBranchDevelopment+"-webrequest")
+				// Verify CommitStatus was created for dev environment with pending phase
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-polling-pending-"+testBranchDevelopment+"-webrequest")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
 					Namespace: "default",
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseFailure))
+				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
@@ -305,7 +305,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
 							// Only trigger when SHA changes from what we tracked
-							Expression: `{trigger: ReportedSha != ExpressionData["trackedSha"], trackedSha: ReportedSha}`,
+							TriggerExpression: `{trigger: ReportedSha != TriggerData["trackedSha"], trackedSha: ReportedSha}`,
 						},
 					},
 				},
@@ -336,17 +336,22 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				// Should have status for environments
 				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
 
-				// Find an environment with expression data stored
+				// Find an environment with trigger data stored
 				var foundEnvWithData bool
 				for _, envStatus := range wrcs.Status.Environments {
 					if envStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
-						envStatus.ExpressionData != nil &&
-						envStatus.ExpressionData["trackedSha"] != "" {
-						foundEnvWithData = true
-						break
+						envStatus.TriggerData != nil {
+						// Parse the trigger data
+						var trigData map[string]any
+						if err := json.Unmarshal(envStatus.TriggerData.Raw, &trigData); err == nil {
+							if trackedSha, ok := trigData["trackedSha"].(string); ok && trackedSha != "" {
+								foundEnvWithData = true
+								break
+							}
+						}
 					}
 				}
-				g.Expect(foundEnvWithData).To(BeTrue(), "At least one environment should have expression data stored")
+				g.Expect(foundEnvWithData).To(BeTrue(), "At least one environment should have trigger data stored")
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying subsequent reconciles do not trigger HTTP requests (same SHA)")
@@ -688,6 +693,466 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				// Expression evaluates to false because StatusCode != 200
 				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
 				g.Expect(*devEnvStatus.LastResponseStatusCode).To(Equal(500))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+})
+
+// Test ResponseData feature (trigger mode only)
+var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, func() {
+	var (
+		name                   string
+		promotionStrategy      *promoterv1alpha1.PromotionStrategy
+		gitRepo                *promoterv1alpha1.GitRepository
+		scmProvider            *promoterv1alpha1.ScmProvider
+		scmSecret              *corev1.Secret
+		webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+		testServer             *httptest.Server
+		requestCount           int
+		mu                     sync.Mutex
+	)
+
+	const (
+		testBranchDevelopment = "environment/development"
+	)
+
+	ctx := context.Background()
+
+	BeforeAll(func() {
+		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "webrequest-responsedata", "default")
+
+		// Override to only use development environment for this test suite
+		promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+			{Branch: testBranchDevelopment},
+		}
+
+		promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+			{Key: "responsedata-test"},
+		}
+
+		setupInitialTestGitRepoOnServer(ctx, name, name)
+
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+	})
+
+	AfterAll(func() {
+		By("Cleaning up test resources")
+		if promotionStrategy != nil {
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		}
+		if gitRepo != nil {
+			_ = k8sClient.Delete(ctx, gitRepo)
+		}
+		if scmProvider != nil {
+			_ = k8sClient.Delete(ctx, scmProvider)
+		}
+		if scmSecret != nil {
+			_ = k8sClient.Delete(ctx, scmSecret)
+		}
+	})
+
+	BeforeEach(func() {
+		requestCount = 0
+	})
+
+	AfterEach(func() {
+		By("Cleaning up test resources")
+		if testServer != nil {
+			testServer.Close()
+		}
+		if webRequestCommitStatus != nil {
+			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+		}
+	})
+
+	Context("Trigger Mode", func() {
+		It("should NOT store response data without responseExpression", func() {
+			By("Creating a test HTTP server")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(map[string]any{
+					"approved": true,
+					"data":     "some-data",
+				})
+			}))
+
+			By("Creating a WebRequestCommitStatus in trigger mode WITHOUT responseExpression")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:      "responsedata-test",
+					ReportOn: "active",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: "Response.StatusCode == 200",
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration:   metav1.Duration{Duration: 10 * time.Second},
+							TriggerExpression: "true",
+							// NO responseExpression
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Verifying ResponseData is NOT populated without responseExpression")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+
+				devEnv := wrcs.Status.Environments[0]
+
+				// Verify validation succeeded
+				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+				// Verify ResponseData is nil without responseExpression
+				g.Expect(devEnv.ResponseData).To(BeNil(), "ResponseData should be nil without responseExpression")
+
+				// But lastResponseStatusCode should still be populated
+				g.Expect(devEnv.LastResponseStatusCode).NotTo(BeNil())
+				g.Expect(*devEnv.LastResponseStatusCode).To(Equal(200))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should preserve response data when trigger returns false", func() {
+			By("Creating a test HTTP server")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				requestCount++
+				mu.Unlock()
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(map[string]any{
+					"approved": true,
+					"count":    requestCount,
+				})
+			}))
+
+			By("Creating WebRequestCommitStatus that only triggers once")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:      "responsedata-test",
+					ReportOn: "active",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: "Response.StatusCode == 200",
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
+							ResponseExpression: `{
+								statusCode: Response.StatusCode,
+								approved: Response.Body.approved,
+								count: Response.Body.count
+							}`,
+							TriggerExpression: `{
+								trigger: TriggerData == nil || TriggerData["triggered"] != true,
+								triggered: true
+							}`,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Waiting for first request and response data")
+			var firstResponseData []byte
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				g.Expect(wrcs.Status.Environments[0].ResponseData).NotTo(BeNil())
+				firstResponseData = wrcs.Status.Environments[0].ResponseData.Raw
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying response data is preserved on subsequent reconciles")
+			Consistently(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+
+				currentResponseData := wrcs.Status.Environments[0].ResponseData.Raw
+				g.Expect(currentResponseData).To(Equal(firstResponseData), "ResponseData should be preserved")
+
+				// Verify only one request was made
+				g.Expect(requestCount).To(Equal(1), "Should only make one request")
+			}, 15*time.Second, 3*time.Second).Should(Succeed())
+		})
+
+		It("should use response data in subsequent trigger expressions", func() {
+			By("Creating a test HTTP server that returns retry-after")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				requestCount++
+				count := requestCount
+				mu.Unlock()
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+
+				// First two requests return "retry", third returns "done"
+				status := "retry"
+				if count >= 3 {
+					status = "done"
+				}
+
+				json.NewEncoder(w).Encode(map[string]any{
+					"status": status,
+					"count":  count,
+				})
+			}))
+
+			By("Creating WebRequestCommitStatus that uses ResponseData in trigger")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:      "responsedata-test",
+					ReportOn: "active",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: `Response.StatusCode == 200 && Response.Body.status == "done"`,
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration: metav1.Duration{Duration: 3 * time.Second},
+							ResponseExpression: `{
+								statusCode: Response.StatusCode,
+								status: Response.Body.status
+							}`,
+							// Trigger if no response data or if previous response said to retry
+							TriggerExpression: `ResponseData == nil || ResponseData.status == "retry"`,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Waiting for validation to eventually succeed")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+
+				devEnv := wrcs.Status.Environments[0]
+				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+				// Verify we made multiple requests (at least 3)
+				g.Expect(requestCount).To(BeNumerically(">=", 3))
+
+				// Verify final response data shows "done"
+				g.Expect(devEnv.ResponseData).NotTo(BeNil())
+				var responseData map[string]any
+				err = json.Unmarshal(devEnv.ResponseData.Raw, &responseData)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(responseData["status"]).To(Equal("done"))
+			}, 30*time.Second).Should(Succeed())
+		})
+
+		It("should extract custom fields using responseExpression", func() {
+			By("Creating a test HTTP server with complex response")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Rate-Limit-Remaining", "42")
+				w.Header().Set("X-Request-Id", "abc-123")
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(map[string]any{
+					"approved": true,
+					"nested": map[string]any{
+						"field1": "value1",
+						"field2": 123,
+					},
+					"largeData": "this is a lot of data that we don't need to store...",
+					"metadata": map[string]any{
+						"timestamp": "2024-01-15T10:30:00Z",
+						"user":      "system",
+					},
+				})
+			}))
+
+			By("Creating WebRequestCommitStatus with responseExpression")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:      "responsedata-test",
+					ReportOn: "active",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: "Response.StatusCode == 200",
+					Mode: promoterv1alpha1.ModeSpec{
+						Trigger: &promoterv1alpha1.TriggerModeSpec{
+							RequeueDuration:   metav1.Duration{Duration: 10 * time.Second},
+							TriggerExpression: "true",
+							// Extract only the fields we care about
+							ResponseExpression: `{
+								statusCode: Response.StatusCode,
+								approved: Response.Body.approved,
+								nestedField: Response.Body.nested.field1,
+								rateLimit: int(Response.Headers["X-Rate-Limit-Remaining"][0]),
+								timestamp: Response.Body.metadata.timestamp
+							}`,
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Verifying only extracted fields are in ResponseData")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+
+				devEnv := wrcs.Status.Environments[0]
+				g.Expect(devEnv.ResponseData).NotTo(BeNil())
+
+				// Parse the response data
+				var responseData map[string]any
+				err = json.Unmarshal(devEnv.ResponseData.Raw, &responseData)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				// Verify only the extracted fields are present
+				g.Expect(responseData).To(HaveKey("statusCode"))
+				g.Expect(responseData).To(HaveKey("approved"))
+				g.Expect(responseData).To(HaveKey("nestedField"))
+				g.Expect(responseData).To(HaveKey("rateLimit"))
+				g.Expect(responseData).To(HaveKey("timestamp"))
+
+				// Verify the values
+				g.Expect(responseData["statusCode"]).To(Equal(float64(200)))
+				g.Expect(responseData["approved"]).To(Equal(true))
+				g.Expect(responseData["nestedField"]).To(Equal("value1"))
+				g.Expect(responseData["rateLimit"]).To(Equal(float64(42)))
+				g.Expect(responseData["timestamp"]).To(Equal("2024-01-15T10:30:00Z"))
+
+				// Verify fields we didn't extract are NOT present
+				g.Expect(responseData).NotTo(HaveKey("body"))
+				g.Expect(responseData).NotTo(HaveKey("headers"))
+				g.Expect(responseData).NotTo(HaveKey("largeData"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
+	Context("Polling Mode", func() {
+		It("should NOT populate response data", func() {
+			By("Creating a test HTTP server")
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("X-Custom-Header", "test-value")
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(map[string]any{
+					"approved": true,
+					"data":     "some-data",
+				})
+			}))
+
+			By("Creating a WebRequestCommitStatus in polling mode")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:      "responsedata-test",
+					ReportOn: "active",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: "Response.StatusCode == 200",
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 30 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Verifying ResponseData is NOT populated in polling mode")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+
+				// Verify validation succeeded
+				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+
+				// Verify ResponseData is nil in polling mode
+				g.Expect(wrcs.Status.Environments[0].ResponseData).To(BeNil(), "ResponseData should be nil in polling mode")
+
+				// But lastResponseStatusCode should still be populated
+				g.Expect(wrcs.Status.Environments[0].LastResponseStatusCode).NotTo(BeNil())
+				g.Expect(*wrcs.Status.Environments[0].LastResponseStatusCode).To(Equal(200))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})

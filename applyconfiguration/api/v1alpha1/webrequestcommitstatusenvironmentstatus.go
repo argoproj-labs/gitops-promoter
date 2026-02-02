@@ -18,6 +18,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -41,9 +42,21 @@ type WebRequestCommitStatusEnvironmentStatusApplyConfiguration struct {
 	LastRequestTime *v1.Time `json:"lastRequestTime,omitempty"`
 	// LastResponseStatusCode is the HTTP status code from the last request.
 	LastResponseStatusCode *int `json:"lastResponseStatusCode,omitempty"`
-	// ExpressionData stores custom data returned from the trigger expression.
+	// TriggerData stores custom data returned from the trigger expression.
 	// This data is passed to the next trigger expression evaluation.
-	ExpressionData map[string]string `json:"expressionData,omitempty"`
+	// The data is preserved as arbitrary JSON.
+	TriggerData *apiextensionsv1.JSON `json:"triggerData,omitempty"`
+	// ResponseData stores data from the HTTP response body (trigger mode with responseExpression only).
+	// This field is ONLY populated when spec.mode.trigger.responseExpression is provided.
+	// The responseExpression is evaluated after each HTTP request and its result is stored here,
+	// allowing trigger expressions to inspect response data from previous requests when
+	// deciding whether to trigger the next request.
+	//
+	// Without responseExpression, this field will always be nil.
+	//
+	// Available in trigger expressions as: ResponseData.field1, ResponseData.field2, etc.
+	// (where fields depend on what your responseExpression returns)
+	ResponseData *apiextensionsv1.JSON `json:"responseData,omitempty"`
 }
 
 // WebRequestCommitStatusEnvironmentStatusApplyConfiguration constructs a declarative configuration of the WebRequestCommitStatusEnvironmentStatus type for use with
@@ -100,16 +113,18 @@ func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithLastResp
 	return b
 }
 
-// WithExpressionData puts the entries into the ExpressionData field in the declarative configuration
-// and returns the receiver, so that objects can be build by chaining "With" function invocations.
-// If called multiple times, the entries provided by each call will be put on the ExpressionData field,
-// overwriting an existing map entries in ExpressionData field with the same key.
-func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithExpressionData(entries map[string]string) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
-	if b.ExpressionData == nil && len(entries) > 0 {
-		b.ExpressionData = make(map[string]string, len(entries))
-	}
-	for k, v := range entries {
-		b.ExpressionData[k] = v
-	}
+// WithTriggerData sets the TriggerData field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the TriggerData field is set to the value of the last call.
+func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithTriggerData(value apiextensionsv1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
+	b.TriggerData = &value
+	return b
+}
+
+// WithResponseData sets the ResponseData field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ResponseData field is set to the value of the last call.
+func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithResponseData(value apiextensionsv1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
+	b.ResponseData = &value
 	return b
 }
