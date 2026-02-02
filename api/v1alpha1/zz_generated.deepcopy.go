@@ -1789,6 +1789,11 @@ func (in *RequiredCheckCommitStatusConfiguration) DeepCopyInto(out *RequiredChec
 		*out = new(v1.Duration)
 		**out = **in
 	}
+	if in.PollingOperationTimeout != nil {
+		in, out := &in.PollingOperationTimeout, &out.PollingOperationTimeout
+		*out = new(v1.Duration)
+		**out = **in
+	}
 	if in.SafetyNetInterval != nil {
 		in, out := &in.SafetyNetInterval, &out.SafetyNetInterval
 		*out = new(v1.Duration)

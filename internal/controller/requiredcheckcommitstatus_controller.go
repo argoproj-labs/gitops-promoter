@@ -58,6 +58,7 @@ const (
 	DefaultTerminalCheckInterval     = 10 * time.Minute
 	DefaultSafetyNetInterval         = 1 * time.Hour
 	DefaultSCMAPITimeout             = 30 * time.Second
+	DefaultPollingOperationTimeout   = 5 * time.Minute
 
 	// Index field name for efficient lookup of RCCS by PromotionStrategy
 	promotionStrategyRefIndex = "spec.promotionStrategyRef.name"
@@ -89,8 +90,19 @@ func initializeRequiredCheckCache(ttl time.Duration, maxSize int) error {
 }
 
 // getRequiredCheckCache safely retrieves current cache instance.
-func getRequiredCheckCache() *expirable.LRU[string, []scms.RequiredCheck] {
-	return requiredCheckCache.Load()
+// Returns an error if the cache has not been initialized.
+func getRequiredCheckCache() (*expirable.LRU[string, []scms.RequiredCheck], error) {
+	cache := requiredCheckCache.Load()
+	if cache == nil {
+		return nil, fmt.Errorf("required check cache not initialized")
+	}
+	return cache, nil
+}
+
+// withSCMTimeout creates a context with DefaultSCMAPITimeout to prevent goroutine leaks
+// from hanging API calls. Returns the new context and cancel function.
+func withSCMTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, DefaultSCMAPITimeout)
 }
 
 // RequiredCheckCommitStatusReconciler reconciles a RequiredCheckCommitStatus object
@@ -238,15 +250,22 @@ func (r *RequiredCheckCommitStatusReconciler) SetupWithManager(ctx context.Conte
 		return fmt.Errorf("failed to get RequiredCheckCommitStatus max concurrent reconciles: %w", err)
 	}
 
-	// Set up field index for efficient lookup of RCCS by PromotionStrategy name
-	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.RequiredCheckCommitStatus{}, promotionStrategyRefIndex, func(obj client.Object) []string {
+	// Set up field index for efficient lookup of RCCS by PromotionStrategy name.
+	// IndexField is idempotent in recent controller-runtime versions, but we handle
+	// errors defensively in case of version differences or cache timing issues.
+	err = mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.RequiredCheckCommitStatus{}, promotionStrategyRefIndex, func(obj client.Object) []string {
 		rccs, ok := obj.(*promoterv1alpha1.RequiredCheckCommitStatus)
 		if !ok {
 			return nil
 		}
 		return []string{rccs.Spec.PromotionStrategyRef.Name}
-	}); err != nil {
-		return fmt.Errorf("failed to create field index for PromotionStrategyRef: %w", err)
+	})
+	if err != nil {
+		// In controller-runtime, IndexField typically fails only if:
+		// 1. Cache is already started and this is a new index (should not happen during setup)
+		// 2. Index exists with different indexer function (programming error)
+		// We fail fast on any error to catch misconfigurations early.
+		return fmt.Errorf("failed to create field index %q for RequiredCheckCommitStatus: %w", promotionStrategyRefIndex, err)
 	}
 
 	err = ctrl.NewControllerManagedBy(mgr).
@@ -403,6 +422,8 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 	// Process each environment
 	for _, env := range ps.Spec.Environments {
 		// Check for context cancellation to support graceful shutdown
+		// NOTE: If cancelled, returns partial results (already processed environments).
+		// Remaining environments will be processed on next reconciliation.
 		select {
 		case <-ctx.Done():
 			return commitStatuses
@@ -443,11 +464,21 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 		// Poll check status for each required check
 		checkStatuses, err := r.pollCheckStatusForEnvironment(ctx, ps, requiredChecks, proposedSha, previousEnv)
 		if err != nil {
-			logger.Error(err, "failed to poll check status",
-				"promotionStrategy", ps.Name,
-				"repository", ps.Spec.RepositoryReference.Name,
-				"branch", env.Branch,
-				"sha", proposedSha)
+			// Provide more context for timeout errors
+			if errors.Is(err, context.DeadlineExceeded) {
+				logger.Error(err, "polling operation timeout exceeded (some checks may not have been polled)",
+					"promotionStrategy", ps.Name,
+					"repository", ps.Spec.RepositoryReference.Name,
+					"branch", env.Branch,
+					"sha", proposedSha,
+					"checkCount", len(requiredChecks))
+			} else {
+				logger.Error(err, "failed to poll check status",
+					"promotionStrategy", ps.Name,
+					"repository", ps.Spec.RepositoryReference.Name,
+					"branch", env.Branch,
+					"sha", proposedSha)
+			}
 			// Continue to process other environments
 			continue
 		}
@@ -456,9 +487,10 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 		var envCheckStatuses []promoterv1alpha1.RequiredCheckStatus
 		for _, check := range requiredChecks {
 			// Check for context cancellation to support graceful shutdown
+			// NOTE: If cancelled, returns partial results (already processed checks and environments).
+			// Remaining checks will have CommitStatus resources created/updated on next reconciliation.
 			select {
 			case <-ctx.Done():
-				// Return what we've processed so far
 				return commitStatuses
 			default:
 			}
@@ -466,6 +498,13 @@ func (r *RequiredCheckCommitStatusReconciler) processEnvironments(ctx context.Co
 			chkStatus, ok := checkStatuses[check.Key]
 			if !ok {
 				// If we couldn't get the status, default to pending
+				// This can happen if polling was interrupted (e.g., context cancellation, timeout)
+				logger.Info("Check status missing from polling results, defaulting to pending (will retry on next reconciliation)",
+					"check", check.Name,
+					"key", check.Key,
+					"repository", ps.Spec.RepositoryReference.Name,
+					"branch", env.Branch,
+					"sha", proposedSha)
 				chkStatus = checkStatus{
 					phase:        promoterv1alpha1.CommitPhasePending,
 					lastPolledAt: nil,
@@ -576,21 +615,24 @@ func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironme
 	cacheKey := r.buildCacheKey(gitRepo, env.Branch)
 
 	// Fast path: check cache (thread-safe)
-	cache := getRequiredCheckCache()
-	if cache != nil {
-		if checks, ok := cache.Get(cacheKey); ok {
-			logger.V(4).Info("Using cached required check discovery",
-				"repository", gitRepo.Name,
-				"branch", env.Branch,
-				"checks", len(checks))
-			return checks, nil
-		}
+	cache, err := getRequiredCheckCache()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get required check cache: %w", err)
+	}
+	if checks, ok := cache.Get(cacheKey); ok {
+		logger.V(4).Info("Using cached required check discovery",
+			"repository", gitRepo.Name,
+			"branch", env.Branch,
+			"checks", len(checks))
+		return checks, nil
 	}
 
-	// Cache miss or expired - use singleflight to prevent duplicate API calls
-	result, err, _ := requiredCheckFlight.Do(cacheKey, func() (any, error) {
+	// Cache miss or expired - use singleflight to prevent duplicate API calls.
+	// Singleflight deduplicates concurrent requests for the same cache key, ensuring
+	// only one API call is made even if multiple reconciliations happen simultaneously.
+	result, err, shared := requiredCheckFlight.Do(cacheKey, func() (any, error) {
 		// Add timeout to prevent goroutine leaks from hanging API calls
-		ctx, cancel := context.WithTimeout(ctx, DefaultSCMAPITimeout)
+		ctx, cancel := withSCMTimeout(ctx)
 		defer cancel()
 
 		// Call provider to discover checks
@@ -607,8 +649,11 @@ func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironme
 		}
 
 		// Store in cache (automatic TTL and eviction)
-		cache := getRequiredCheckCache()
-		if cache != nil {
+		cache, err := getRequiredCheckCache()
+		if err != nil {
+			// Log error but don't fail - caching is optional optimization
+			logger.Error(err, "Failed to get cache for storing results, continuing without cache")
+		} else {
 			cache.Add(cacheKey, checks)
 			logger.V(4).Info("Cached required check discovery",
 				"repository", gitRepo.Name,
@@ -621,6 +666,15 @@ func (r *RequiredCheckCommitStatusReconciler) discoverRequiredChecksForEnvironme
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover required checks for repo %s/%s, branch %s: %w", gitRepo.Namespace, gitRepo.Name, env.Branch, err)
+	}
+
+	// Log when singleflight deduplication occurred to provide visibility into
+	// concurrent request patterns and potential memory pressure from result sharing
+	if shared {
+		logger.V(4).Info("Reused singleflight result (concurrent reconciliations deduplicated)",
+			"cacheKey", cacheKey,
+			"repository", gitRepo.Name,
+			"branch", env.Branch)
 	}
 
 	checks, ok := result.([]scms.RequiredCheck)
@@ -645,6 +699,20 @@ func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx 
 	config, err := settings.GetRequiredCheckCommitStatusConfiguration(ctx, r.SettingsMgr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get RequiredCheckCommitStatus configuration: %w", err)
+	}
+
+	// Apply overall timeout for the entire polling operation to prevent excessive reconciliation times
+	pollingTimeout := DefaultPollingOperationTimeout
+	if config.PollingOperationTimeout != nil && config.PollingOperationTimeout.Duration > 0 {
+		pollingTimeout = config.PollingOperationTimeout.Duration
+	}
+	if pollingTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, pollingTimeout)
+		defer cancel()
+		logger.V(4).Info("Applied overall polling operation timeout",
+			"timeout", pollingTimeout,
+			"checkCount", len(requiredChecks))
 	}
 
 	terminalInterval := DefaultTerminalCheckInterval
@@ -686,6 +754,8 @@ func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx 
 	// Query check status for each required check (with per-check polling optimization)
 	for _, check := range requiredChecks {
 		// Check for context cancellation to support graceful shutdown
+		// NOTE: If cancelled during polling, returns error and partial results are discarded.
+		// Checks that weren't polled will be retried on next reconciliation.
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -725,7 +795,7 @@ func (r *RequiredCheckCommitStatusReconciler) pollCheckStatusForEnvironment(ctx 
 			lastPolledAt = previousCheck.LastPolledAt
 		} else {
 			// Poll the check from SCM with timeout to prevent goroutine leaks
-			pollCtx, pollCancel := context.WithTimeout(ctx, DefaultSCMAPITimeout)
+			pollCtx, pollCancel := withSCMTimeout(ctx)
 			polledPhase, err := provider.PollCheckStatus(pollCtx, gitRepo, sha, check)
 			pollCancel() // Release resources immediately after call
 			if err != nil {
@@ -885,6 +955,9 @@ func (r *RequiredCheckCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx 
 	// Delete orphaned CommitStatus resources
 	for _, cs := range csList.Items {
 		// Check for context cancellation to support graceful shutdown
+		// NOTE: If context is cancelled during cleanup, some orphaned resources may remain.
+		// This is expected behavior - graceful shutdown takes priority over complete cleanup.
+		// Remaining orphaned resources will be cleaned up on the next reconciliation.
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -1064,7 +1137,7 @@ func validateRequiredCheckConfig(config *promoterv1alpha1.RequiredCheckCommitSta
 		pendingInterval := config.PendingCheckInterval.Duration
 		terminalInterval := config.TerminalCheckInterval.Duration
 		if pendingInterval > 0 && terminalInterval > 0 && pendingInterval > terminalInterval {
-			errs = append(errs, fmt.Errorf("pendingCheckInterval (%v) must not be greater than terminalCheckInterval (%v); pending checks need faster polling (shorter intervals) than terminal checks",
+			errs = append(errs, fmt.Errorf("pendingCheckInterval (%v) must not be greater than terminalCheckInterval (%v); typically pending checks should have smaller intervals for faster polling (equal intervals are acceptable if needed)",
 				pendingInterval, terminalInterval))
 		}
 	}
@@ -1091,6 +1164,20 @@ func validateRequiredCheckConfig(config *promoterv1alpha1.RequiredCheckCommitSta
 		maxSize := *config.RequiredCheckCacheMaxSize
 		if maxSize < 10 {
 			errs = append(errs, fmt.Errorf("requiredCheckCacheMaxSize is very small (%v), may cause frequent evictions; recommended: >= 100", maxSize))
+		}
+	}
+
+	// Validate PollingOperationTimeout
+	if config.PollingOperationTimeout != nil {
+		timeout := config.PollingOperationTimeout.Duration
+		if timeout < 0 {
+			errs = append(errs, fmt.Errorf("pollingOperationTimeout must not be negative, got: %v", timeout))
+		}
+		// Warn if timeout is too short (should be at least longer than a single API call timeout)
+		minPollingTimeout := DefaultSCMAPITimeout
+		if timeout > 0 && timeout < minPollingTimeout {
+			errs = append(errs, fmt.Errorf("pollingOperationTimeout (%v) is too short; recommended: >= %v (DefaultSCMAPITimeout) to allow at least one check to complete",
+				timeout, minPollingTimeout))
 		}
 	}
 

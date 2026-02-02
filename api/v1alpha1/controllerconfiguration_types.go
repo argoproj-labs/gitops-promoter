@@ -216,6 +216,17 @@ type RequiredCheckCommitStatusConfiguration struct {
 	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
 	TerminalCheckInterval *metav1.Duration `json:"terminalCheckInterval,omitempty"`
 
+	// PollingOperationTimeout is the overall timeout for polling all checks in a single reconciliation.
+	// This prevents excessive reconciliation times when there are many checks.
+	// Individual check polls also have their own timeout (DefaultSCMAPITimeout = 30s).
+	// Set to "0s" to disable overall timeout (not recommended).
+	// Recommended: 5m-10m depending on expected number of checks
+	// +optional
+	// +kubebuilder:default="5m"
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:Pattern="^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$"
+	PollingOperationTimeout *metav1.Duration `json:"pollingOperationTimeout,omitempty"`
+
 	// SafetyNetInterval is the minimum requeue duration when there are no checks to monitor.
 	// This provides a safety net to ensure the controller reconciles periodically even if
 	// watch events are missed due to network issues, API server restarts, or other failures.

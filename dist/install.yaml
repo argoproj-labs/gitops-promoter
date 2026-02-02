@@ -3361,6 +3361,16 @@ spec:
                       Minimum: 10s (to avoid rate limiting), Recommended: >= 1m
                     pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
                     type: string
+                  pollingOperationTimeout:
+                    default: 5m
+                    description: |-
+                      PollingOperationTimeout is the overall timeout for polling all checks in a single reconciliation.
+                      This prevents excessive reconciliation times when there are many checks.
+                      Individual check polls also have their own timeout (DefaultSCMAPITimeout = 30s).
+                      Set to "0s" to disable overall timeout (not recommended).
+                      Recommended: 5m-10m depending on expected number of checks
+                    pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                    type: string
                   requiredCheckCacheMaxSize:
                     default: 1000
                     description: |-

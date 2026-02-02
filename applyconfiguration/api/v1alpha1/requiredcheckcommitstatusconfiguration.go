@@ -58,6 +58,12 @@ type RequiredCheckCommitStatusConfigurationApplyConfiguration struct {
 	// Checks in terminal state rarely change, so longer intervals are appropriate.
 	// Minimum: 10s (to avoid rate limiting), Recommended: >= 10m
 	TerminalCheckInterval *v1.Duration `json:"terminalCheckInterval,omitempty"`
+	// PollingOperationTimeout is the overall timeout for polling all checks in a single reconciliation.
+	// This prevents excessive reconciliation times when there are many checks.
+	// Individual check polls also have their own timeout (DefaultSCMAPITimeout = 30s).
+	// Set to "0s" to disable overall timeout (not recommended).
+	// Recommended: 5m-10m depending on expected number of checks
+	PollingOperationTimeout *v1.Duration `json:"pollingOperationTimeout,omitempty"`
 	// SafetyNetInterval is the minimum requeue duration when there are no checks to monitor.
 	// This provides a safety net to ensure the controller reconciles periodically even if
 	// watch events are missed due to network issues, API server restarts, or other failures.
@@ -110,6 +116,14 @@ func (b *RequiredCheckCommitStatusConfigurationApplyConfiguration) WithPendingCh
 // If called multiple times, the TerminalCheckInterval field is set to the value of the last call.
 func (b *RequiredCheckCommitStatusConfigurationApplyConfiguration) WithTerminalCheckInterval(value v1.Duration) *RequiredCheckCommitStatusConfigurationApplyConfiguration {
 	b.TerminalCheckInterval = &value
+	return b
+}
+
+// WithPollingOperationTimeout sets the PollingOperationTimeout field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PollingOperationTimeout field is set to the value of the last call.
+func (b *RequiredCheckCommitStatusConfigurationApplyConfiguration) WithPollingOperationTimeout(value v1.Duration) *RequiredCheckCommitStatusConfigurationApplyConfiguration {
+	b.PollingOperationTimeout = &value
 	return b
 }
 
