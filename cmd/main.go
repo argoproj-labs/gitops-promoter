@@ -58,7 +58,6 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 	multiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
-	singleprovider "sigs.k8s.io/multicluster-runtime/providers/single"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -212,14 +211,27 @@ func runController(
 		ControllerNamespace: controllerNamespace,
 	})
 
-	// Add a local cluster provider using the single provider
-	// The local cluster will be filtered at watch-time using WithClusterFilter
-	localClusterProvider := singleprovider.New(mcmanager.LocalCluster, localManager)
-	if err := multiProvider.AddProvider(controller.LocalProviderName, localClusterProvider); err != nil {
+	processSignalsCtx := ctrl.SetupSignalHandler()
+
+	// Create the ControllerConfigurationReconciler early, as it acts as a provider
+	// for the local cluster and needs to be registered before other controllers
+	configController := &controller.ControllerConfigurationReconciler{
+		Client:   localManager.GetClient(),
+		Scheme:   localManager.GetScheme(),
+		Recorder: localManager.GetEventRecorder("ControllerConfiguration"),
+	}
+
+	// Register the ControllerConfiguration controller as the local cluster provider
+	// It will dynamically engage/disengage the local cluster based on configuration
+	if err = multiProvider.AddProvider(controller.LocalProviderName, configController); err != nil {
 		panic(fmt.Errorf("unable to add local cluster provider: %w", err))
 	}
 
-	processSignalsCtx := ctrl.SetupSignalHandler()
+	// Now set up the ControllerConfigurationReconciler with both managers
+	// This must be done after adding it as a provider
+	if err = configController.SetupWithManager(processSignalsCtx, localManager, mcMgr); err != nil {
+		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
+	}
 
 	if err = (&controller.PullRequestReconciler{
 		Client:      localManager.GetClient(),
@@ -290,12 +302,6 @@ func runController(
 		Recorder:           localManager.GetEventRecorder("ArgoCDCommitStatus"),
 	}).SetupWithManager(processSignalsCtx, mcMgr); err != nil {
 		panic(fmt.Errorf("unable to create ArgoCDCommitStatus controller: %w", err))
-	}
-	if err = (&controller.ControllerConfigurationReconciler{
-		Client: localManager.GetClient(),
-		Scheme: localManager.GetScheme(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
 	}
 	if err = (&controller.ClusterScmProviderReconciler{
 		Client:      localManager.GetClient(),

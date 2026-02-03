@@ -74,12 +74,11 @@ const lastTransitionTimeThreshold = 5 * time.Second
 
 // ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
 type ArgoCDCommitStatusReconciler struct {
-	Manager                mcmanager.Manager
-	Recorder               events.EventRecorder
-	SettingsMgr            *settings.Manager
-	KubeConfigProvider     *kubeconfig.Provider
-	localClient            client.Client
-	watchLocalApplications bool
+	Manager            mcmanager.Manager
+	Recorder           events.EventRecorder
+	SettingsMgr        *settings.Manager
+	KubeConfigProvider *kubeconfig.Provider
+	localClient        client.Client
 }
 
 // URLTemplateData is the data passed to the URLTemplate in the ArgoCDCommitStatus.
@@ -138,17 +137,24 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	// TODO: we should setup a field index and only list apps related to the currently reconciled app
 	apps := []ApplicationsInEnvironment{}
 
-	// List clusters from the kubeconfig provider (remote clusters)
+	// List clusters to fetch applications from
+	// The multi-provider automatically includes engaged clusters, so we can just iterate
+	// over all remote clusters from the kubeconfig provider and the local cluster if engaged
 	var clusters []string
 	for _, clusterName := range r.KubeConfigProvider.ListClusters() {
-		// The multi-provider automatically prefixes cluster names with "remote#" (using default separator)
+		// The multi-provider automatically prefixes cluster names with the provider name
 		clusters = append(clusters, KubeConfigProviderName+"#"+clusterName)
 	}
 
-	// Add the local cluster if watchLocalApplications is enabled
-	if r.watchLocalApplications {
-		clusters = append(clusters, LocalProviderName+"#"+mcmanager.LocalCluster)
+	// Try to add the local cluster - it will only be available if the ControllerConfigurationReconciler
+	// has engaged it based on the WatchLocalApplications configuration
+	localClusterName := LocalProviderName + "#" + mcmanager.LocalCluster
+	_, err = r.Manager.GetCluster(ctx, localClusterName)
+	if err == nil {
+		// Local cluster is available, add it to the list
+		clusters = append(clusters, localClusterName)
 	}
+	// If err != nil, the local cluster is not engaged, which is fine - just skip it
 
 	for _, clusterName := range clusters {
 		logger.Info("Fetching Argo CD applications from cluster", "cluster", clusterName)
@@ -492,27 +498,6 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		return fmt.Errorf("failed to get ArgoCDCommitStatus max concurrent reconciles: %w", err)
 	}
 
-	// Read the WatchLocalApplications configuration at startup.
-	// This is a static configuration that requires a restart to change.
-	// The filter function evaluates this at engage time to determine if the local cluster
-	// should be watched for Applications. This provides graceful failure if the Application
-	// CRD is not installed locally.
-	watchLocalApplications, err := r.SettingsMgr.GetArgoCDCommitStatusControllersWatchLocalApplicationsDirect(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get ArgoCDCommitStatus watch local applications configuration: %w", err)
-	}
-	r.watchLocalApplications = watchLocalApplications
-
-	// Create a cluster filter function that uses the static configuration. If local cluster watching is disabled,
-	// this ensures that the local cluster is not engaged.
-	clusterFilter := func(clusterName string, _ cluster.Cluster) bool {
-		if clusterName == LocalProviderName+"#"+mcmanager.LocalCluster {
-			return r.watchLocalApplications
-		}
-		// For remote clusters, always engage.
-		return true
-	}
-
 	err = mcbuilder.ControllerManagedBy(mcMgr).
 		For(&promoterv1alpha1.ArgoCDCommitStatus{},
 			mcbuilder.WithEngageWithProviderClusters(true),
@@ -525,7 +510,6 @@ func (r *ArgoCDCommitStatusReconciler) SetupWithManager(ctx context.Context, mcM
 		}).
 		Watches(&argocd.Application{}, lookupArgoCDCommitStatusFromArgoCDApplication(mcMgr),
 			mcbuilder.WithEngageWithProviderClusters(true),
-			mcbuilder.WithClusterFilter(clusterFilter),
 			mcbuilder.WithPredicates(applicationPredicate)).
 		Complete(r)
 	if err != nil {

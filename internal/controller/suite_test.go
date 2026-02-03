@@ -59,7 +59,6 @@ import (
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
 	multiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
-	singleprovider "sigs.k8s.io/multicluster-runtime/providers/single"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -357,10 +356,21 @@ var _ = BeforeSuite(func() {
 		ControllerNamespace: "default",
 	})
 
-	// Add the local cluster provider using the single provider
-	// The cluster filtering will be done via WithClusterFilter in the controller setup
-	localClusterProvider := singleprovider.New(mcmanager.LocalCluster, k8sManager)
-	err = multiProvider.AddProvider(LocalProviderName, localClusterProvider)
+	// Create the ControllerConfigurationReconciler early, as it acts as a provider
+	// for the local cluster and needs to be registered before other controllers
+	configController := &ControllerConfigurationReconciler{
+		Client: k8sManager.GetClient(),
+		Scheme: k8sManager.GetScheme(),
+	}
+
+	// Register the ControllerConfiguration controller as the local cluster provider
+	// It will dynamically engage/disengage the local cluster based on configuration
+	err = multiProvider.AddProvider(LocalProviderName, configController)
+	Expect(err).NotTo(HaveOccurred())
+
+	// Now set up the ControllerConfigurationReconciler with both managers
+	// This must be done after adding it as a provider
+	err = configController.SetupWithManager(ctx, k8sManager, multiClusterManager)
 	Expect(err).NotTo(HaveOccurred())
 
 	// ChangeTransferPolicy controller must be set up first so we can
