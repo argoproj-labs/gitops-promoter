@@ -36,7 +36,7 @@ COPY go.sum go.sum
 RUN go mod download
 
 # Copy the go source
-COPY cmd/main.go cmd/main.go
+COPY cmd/ cmd/
 COPY api/ api/
 COPY applyconfiguration/ applyconfiguration/
 COPY internal/ internal/
