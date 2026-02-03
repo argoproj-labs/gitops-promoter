@@ -443,6 +443,110 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			})
 		})
 
+		Context("When reading commit status phase", func() {
+			var name string
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var commitStatus *promoterv1alpha1.CommitStatus
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var gitPath string
+			var err error
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-spec-phase", "default")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+
+				changeTransferPolicy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+					{
+						Key: healthCheckCSKey,
+					},
+				}
+
+				commitStatus.Spec.Name = healthCheckCSKey
+				commitStatus.Labels = map[string]string{
+					promoterv1alpha1.CommitStatusLabel: healthCheckCSKey,
+				}
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				gitPath, err = os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				Expect(k8sClient.Delete(ctx, changeTransferPolicy)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+
+			It("should read phase from spec instead of status to avoid stale cache", func() {
+				By("Adding a pending commit")
+				makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+
+				By("Creating CommitStatus with pending phase in spec")
+				Eventually(func(g Gomega) {
+					sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
+					g.Expect(err).NotTo(HaveOccurred())
+					sha = strings.TrimSpace(sha)
+
+					commitStatus.Spec.Sha = sha
+					commitStatus.Spec.Phase = promoterv1alpha1.CommitPhasePending
+					err = k8sClient.Create(ctx, commitStatus)
+					g.Expect(err).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying CTP reads pending phase from CommitStatus spec")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses).To(HaveLen(1))
+					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
+					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("pending"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Updating CommitStatus spec.phase to success")
+				Eventually(func(g Gomega) {
+					csKey := types.NamespacedName{
+						Name:      commitStatus.Name,
+						Namespace: commitStatus.Namespace,
+					}
+					err := k8sClient.Get(ctx, csKey, commitStatus)
+					g.Expect(err).To(Succeed())
+
+					commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
+					err = k8sClient.Update(ctx, commitStatus)
+					g.Expect(err).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying CTP reads updated success phase from spec, not stale status")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses).To(HaveLen(1))
+					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
+					// This should be "success" because we read from spec.phase, not status.phase
+					// If we were reading from status.phase, this might still be "pending" due to cache staleness
+					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("success"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
 		Context("When handling PR lifecycle and finalizers", func() {
 			var name string
 			var scmSecret *v1.Secret

@@ -673,17 +673,20 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 		found := false
 		phase := promoterv1alpha1.CommitPhasePending
 		if len(csList.Items) == 1 {
-			// Default to pending if the phase is empty (can happen when CommitStatus is newly created
-			// and the controller hasn't updated status yet)
-			csPhase := csList.Items[0].Status.Phase
+			cs := csList.Items[0]
+
+			// Read phase from spec instead of status. Since we query by spec.sha, reading from
+			// spec.phase ensures we get the phase that corresponds to the SHA we're checking.
+			// This prevents reading stale status.phase values when spec was just updated.
+			csPhase := cs.Spec.Phase
 			if csPhase == "" {
 				csPhase = promoterv1alpha1.CommitPhasePending
 			}
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:         status.Key,
 				Phase:       string(csPhase),
-				Url:         csList.Items[0].Spec.Url,
-				Description: csList.Items[0].Spec.Description,
+				Url:         cs.Spec.Url,
+				Description: cs.Spec.Description,
 			})
 			found = true
 			phase = csPhase
