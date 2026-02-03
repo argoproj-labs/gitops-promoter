@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -57,70 +58,65 @@ import (
 // WebRequestCommitStatusReconciler reconciles a WebRequestCommitStatus object
 type WebRequestCommitStatusReconciler struct {
 	client.Client
-	Scheme      *runtime.Scheme
-	Recorder    events.EventRecorder
-	SettingsMgr *settings.Manager
-	EnqueueCTP  CTPEnqueueFunc
-
-	// expressionCache caches compiled expressions to avoid recompilation on every reconciliation
-	// Key: expression string, Value: compiled *vm.Program
+	Recorder        events.EventRecorder
+	Scheme          *runtime.Scheme
+	SettingsMgr     *settings.Manager
+	EnqueueCTP      CTPEnqueueFunc
+	httpClient      *http.Client
 	expressionCache sync.Map
-
-	// httpClient is a shared HTTP client with sensible defaults
-	httpClient *http.Client
 }
 
-// TemplateData is the data passed to Go templates for URL, headers, body, and description rendering.
-type TemplateData struct {
-	// Convenience fields for common use cases
-	ReportedSha       string // the SHA being reported on (based on reportOn setting)
-	LastSuccessfulSha string // last SHA that achieved success for this environment
-	Phase             string // current phase (success/pending/failure)
-
-	// Full objects for advanced use cases
+// templateData is the data passed to Go templates for URL, headers, body, and description rendering.
+type templateData struct {
+	NamespaceMetadata namespaceMetadata
 	PromotionStrategy *promoterv1alpha1.PromotionStrategy
 	Environment       *promoterv1alpha1.EnvironmentStatus
-	NamespaceMetadata NamespaceMetadata
+	ReportedSha       string
+	LastSuccessfulSha string
+	Phase             string
 }
 
-// NamespaceMetadata holds namespace labels and annotations for template rendering.
-type NamespaceMetadata struct {
+// namespaceMetadata holds namespace labels and annotations for template rendering.
+type namespaceMetadata struct {
 	Labels      map[string]string
 	Annotations map[string]string
 }
 
-// ResponseContext holds the HTTP response data for expression evaluation.
-type ResponseContext struct {
-	StatusCode int
-	Body       any // JSON as map[string]any, or raw string if not JSON
+// responseContext holds the HTTP response data for expression evaluation.
+type responseContext struct {
+	Body       any
 	Headers    map[string][]string
+	StatusCode int
 }
 
-// TriggerContext holds the context for trigger expression evaluation.
-type TriggerContext struct {
-	// Convenience fields
-	ReportedSha       string // the SHA being validated (based on reportOn setting)
-	LastSuccessfulSha string // last SHA that achieved success
-	Phase             string // phase from previous reconcile
-
-	// Full objects (Branch, ProposedHydratedSha, ActiveHydratedSha all accessible via Environment)
+// triggerContext holds the context for trigger expression evaluation.
+type triggerContext struct {
 	PromotionStrategy *promoterv1alpha1.PromotionStrategy
 	Environment       *promoterv1alpha1.EnvironmentStatus
-
-	// Persistent state between reconciles
-	TriggerData  map[string]any // custom data from previous trigger evaluation
-	ResponseData map[string]any // response data from previous HTTP request
+	TriggerData       map[string]any
+	ResponseData      map[string]any
+	ReportedSha       string
+	LastSuccessfulSha string
+	Phase             string
 }
 
-// ValidationContext holds the context for validation expression evaluation.
-type ValidationContext struct {
-	Response ResponseContext
+// validationContext holds the context for validation expression evaluation.
+type validationContext struct {
+	Response responseContext
 }
 
-// TriggerResult holds the result of a trigger expression evaluation.
-type TriggerResult struct {
-	Trigger     bool
+// triggerResult holds the result of a trigger expression evaluation.
+type triggerResult struct {
 	TriggerData map[string]any
+	Trigger     bool
+}
+
+// httpValidationResult holds the result of HTTP request and validation.
+type httpValidationResult struct {
+	LastRequestTime        *metav1.Time
+	LastResponseStatusCode *int
+	ResponseDataJSON       *apiextensionsv1.JSON
+	Phase                  promoterv1alpha1.CommitStatusPhase
 }
 
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses,verbs=get;list;watch;create;update;patch;delete
@@ -232,7 +228,9 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 
 // processEnvironments processes each applicable environment, making HTTP requests and evaluating expressions.
 // Returns the list of environments that transitioned to success, the CommitStatus objects, and the requeue duration.
-func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta NamespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
+//
+//nolint:gocyclo // Complex business logic, refactoring would reduce readability
+func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta namespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
 	logger := log.FromContext(ctx)
 
 	// Track which environments transitioned to success
@@ -310,7 +308,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		}
 
 		// Build template data
-		templateData := TemplateData{
+		templateData := templateData{
 			ReportedSha:       reportedSha,
 			LastSuccessfulSha: lastSuccessfulSha,
 			Phase:             previousPhase,
@@ -342,7 +340,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		var newTriggerData map[string]any
 
 		if wrcs.Spec.Mode.Trigger != nil {
-			triggerCtx := TriggerContext{
+			triggerCtx := triggerContext{
 				ReportedSha:       reportedSha,
 				LastSuccessfulSha: lastSuccessfulSha,
 				Phase:             previousPhase,
@@ -364,59 +362,19 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		var lastRequestTime *metav1.Time
 		var lastResponseStatusCode *int
 		var responseDataJSON *apiextensionsv1.JSON
+		var err error
 
+		//nolint:nestif // Extracted most logic to helper function, remaining complexity is minimal
 		if shouldTrigger {
-			// Make the HTTP request
-			response, err := r.makeHTTPRequest(ctx, wrcs, templateData)
+			result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, templateData, branch)
 			if err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to make HTTP request for environment %q: %w", branch, err)
+				return nil, nil, 0, err
 			}
-
-			now := metav1.Now()
-			lastRequestTime = &now
-			lastResponseStatusCode = &response.StatusCode
-
-			// Log response details for debugging
-			bodyPreview := fmt.Sprintf("%v", response.Body)
-			if len(bodyPreview) > 200 {
-				bodyPreview = bodyPreview[:200] + "..."
-			}
-			logger.V(3).Info("HTTP response received", "branch", branch, "statusCode", response.StatusCode, "bodyPreview", bodyPreview)
-
-			// Store response data (only in trigger mode with responseExpression - allows trigger expressions to use response data in subsequent evaluations)
-			if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.ResponseExpression != "" {
-				validationCtx := ValidationContext{
-					Response: response,
-				}
-
-				extractedData, err := r.evaluateResponseExpression(ctx, wrcs.Spec.Mode.Trigger.ResponseExpression, validationCtx)
-				if err != nil {
-					return nil, nil, 0, fmt.Errorf("failed to evaluate response expression for environment %q: %w", branch, err)
-				}
-
-				responseDataBytes, err := json.Marshal(extractedData)
-				if err != nil {
-					return nil, nil, 0, fmt.Errorf("failed to marshal response data: %w", err)
-				}
-				responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
-			}
-
-			// Evaluate the validation expression
-			validationCtx := ValidationContext{
-				Response: response,
-			}
-
-			passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Expression, validationCtx)
-			if err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to evaluate validation expression for environment %q: %w", branch, err)
-			}
-
-			if passed {
-				phase = promoterv1alpha1.CommitPhaseSuccess
-				lastSuccessfulSha = reportedSha
-			} else {
-				phase = promoterv1alpha1.CommitPhasePending
-			}
+			phase = result.Phase
+			lastRequestTime = result.LastRequestTime
+			lastResponseStatusCode = result.LastResponseStatusCode
+			responseDataJSON = result.ResponseDataJSON
+			lastSuccessfulSha = reportedSha
 		} else {
 			// Trigger expression returned false, keep previous phase or default to pending
 			logger.V(3).Info("Trigger expression returned false, not making HTTP request", "branch", branch, "triggerExpression", wrcs.Spec.Mode.Trigger.TriggerExpression)
@@ -487,6 +445,71 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 	return transitionedEnvironments, commitStatuses, requeueAfter, nil
 }
 
+// handleHTTPRequestAndValidation makes the HTTP request and evaluates the validation expression.
+func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData, branch string) (httpValidationResult, error) {
+	logger := log.FromContext(ctx)
+
+	// Make the HTTP request
+	response, err := r.makeHTTPRequest(ctx, wrcs, templateData)
+	if err != nil {
+		return httpValidationResult{}, fmt.Errorf("failed to make HTTP request for environment %q: %w", branch, err)
+	}
+
+	now := metav1.Now()
+	lastRequestTime := &now
+	lastResponseStatusCode := &response.StatusCode
+
+	// Log response details for debugging
+	bodyPreview := fmt.Sprintf("%v", response.Body)
+	if len(bodyPreview) > 200 {
+		bodyPreview = bodyPreview[:200] + "..."
+	}
+	logger.V(3).Info("HTTP response received", "branch", branch, "statusCode", response.StatusCode, "bodyPreview", bodyPreview)
+
+	// Store response data (only in trigger mode with responseExpression)
+	var responseDataJSON *apiextensionsv1.JSON
+	if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.ResponseExpression != "" {
+		validationCtx := validationContext{
+			Response: response,
+		}
+
+		extractedData, err := r.evaluateResponseExpression(ctx, wrcs.Spec.Mode.Trigger.ResponseExpression, validationCtx)
+		if err != nil {
+			return httpValidationResult{}, fmt.Errorf("failed to evaluate response expression for environment %q: %w", branch, err)
+		}
+
+		responseDataBytes, err := json.Marshal(extractedData)
+		if err != nil {
+			return httpValidationResult{}, fmt.Errorf("failed to marshal response data: %w", err)
+		}
+		responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
+	}
+
+	// Evaluate the validation expression
+	validationCtx := validationContext{
+		Response: response,
+	}
+
+	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Expression, validationCtx)
+	if err != nil {
+		return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression for environment %q: %w", branch, err)
+	}
+
+	var phase promoterv1alpha1.CommitStatusPhase
+	if passed {
+		phase = promoterv1alpha1.CommitPhaseSuccess
+	} else {
+		phase = promoterv1alpha1.CommitPhasePending
+	}
+
+	return httpValidationResult{
+		Phase:                  phase,
+		LastRequestTime:        lastRequestTime,
+		LastResponseStatusCode: lastResponseStatusCode,
+		ResponseDataJSON:       responseDataJSON,
+	}, nil
+}
+
 // getApplicableEnvironments returns the environments from the PromotionStrategy that this WebRequestCommitStatus applies to.
 // An environment is applicable if the WebRequestCommitStatus key is referenced in either:
 // - The global ps.Spec.ProposedCommitStatuses or ps.Spec.ActiveCommitStatuses, or
@@ -535,13 +558,13 @@ func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promote
 }
 
 // makeHTTPRequest makes the HTTP request with the configured settings.
-func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData TemplateData) (ResponseContext, error) {
+func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (responseContext, error) {
 	logger := log.FromContext(ctx)
 
 	// Render URL template
 	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, templateData)
 	if err != nil {
-		return ResponseContext{}, fmt.Errorf("failed to render URL template: %w", err)
+		return responseContext{}, fmt.Errorf("failed to render URL template: %w", err)
 	}
 
 	// Render body template if present
@@ -549,7 +572,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	if wrcs.Spec.HTTPRequest.BodyTemplate != "" {
 		bodyStr, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.BodyTemplate, templateData)
 		if err != nil {
-			return ResponseContext{}, fmt.Errorf("failed to render body template: %w", err)
+			return responseContext{}, fmt.Errorf("failed to render body template: %w", err)
 		}
 		body = strings.NewReader(bodyStr)
 	}
@@ -557,14 +580,14 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, wrcs.Spec.HTTPRequest.Method, url, body)
 	if err != nil {
-		return ResponseContext{}, fmt.Errorf("failed to create HTTP request: %w", err)
+		return responseContext{}, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
 	// Render and set headers
 	for headerName, headerTemplate := range wrcs.Spec.HTTPRequest.HeaderTemplates {
 		headerValue, err := utils.RenderStringTemplate(headerTemplate, templateData)
 		if err != nil {
-			return ResponseContext{}, fmt.Errorf("failed to render header template %q: %w", headerName, err)
+			return responseContext{}, fmt.Errorf("failed to render header template %q: %w", headerName, err)
 		}
 		req.Header.Set(headerName, headerValue)
 	}
@@ -573,7 +596,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	if wrcs.Spec.HTTPRequest.Authentication != nil {
 		httpClient, err := r.applyAuthentication(ctx, wrcs, req)
 		if err != nil {
-			return ResponseContext{}, fmt.Errorf("failed to apply authentication: %w", err)
+			return responseContext{}, fmt.Errorf("failed to apply authentication: %w", err)
 		}
 		if httpClient != nil {
 			// Use the custom client (e.g., for TLS)
@@ -597,14 +620,18 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	// Execute request
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
-		return ResponseContext{}, fmt.Errorf("HTTP request failed: %w", err)
+		return responseContext{}, fmt.Errorf("HTTP request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			logger.V(4).Info("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	// Read response body
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return ResponseContext{}, fmt.Errorf("failed to read response body: %w", err)
+		return responseContext{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Try to parse body as JSON
@@ -614,7 +641,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		parsedBody = string(bodyBytes)
 	}
 
-	response := ResponseContext{
+	response := responseContext{
 		StatusCode: resp.StatusCode,
 		Body:       parsedBody,
 		Headers:    resp.Header,
@@ -631,13 +658,17 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 	auth := wrcs.Spec.HTTPRequest.Authentication
 
 	if auth.Basic != nil {
-		err := httpauth.ApplyBasicAuthFromSecret(ctx, r.Client, wrcs.Namespace, auth.Basic.SecretRef.Name, req)
-		return nil, err
+		if err := httpauth.ApplyBasicAuthFromSecret(ctx, r.Client, wrcs.Namespace, auth.Basic.SecretRef.Name, req); err != nil {
+			return nil, fmt.Errorf("failed to apply basic auth: %w", err)
+		}
+		return nil, nil
 	}
 
 	if auth.Bearer != nil {
-		err := httpauth.ApplyBearerAuthFromSecret(ctx, r.Client, wrcs.Namespace, auth.Bearer.SecretRef.Name, req)
-		return nil, err
+		if err := httpauth.ApplyBearerAuthFromSecret(ctx, r.Client, wrcs.Namespace, auth.Bearer.SecretRef.Name, req); err != nil {
+			return nil, fmt.Errorf("failed to apply bearer auth: %w", err)
+		}
+		return nil, nil
 	}
 
 	if auth.OAuth2 != nil {
@@ -646,25 +677,31 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 			TokenURL:   auth.OAuth2.TokenURL,
 			Scopes:     auth.OAuth2.Scopes,
 		}
-		err := httpauth.ApplyOAuth2AuthFromSecret(ctx, r.Client, wrcs.Namespace, config, req)
-		return nil, err
+		if err := httpauth.ApplyOAuth2AuthFromSecret(ctx, r.Client, wrcs.Namespace, config, req); err != nil {
+			return nil, fmt.Errorf("failed to apply oauth2 auth: %w", err)
+		}
+		return nil, nil
 	}
 
 	if auth.TLS != nil {
-		return httpauth.BuildTLSClientFromSecret(ctx, r.Client, wrcs.Namespace, auth.TLS.SecretRef.Name, 60*time.Second)
+		client, err := httpauth.BuildTLSClientFromSecret(ctx, r.Client, wrcs.Namespace, auth.TLS.SecretRef.Name, 60*time.Second)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build TLS client: %w", err)
+		}
+		return client, nil
 	}
 
 	return nil, nil
 }
 
 // evaluateTriggerExpression evaluates the trigger expression to determine if the HTTP request should be made.
-func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context.Context, expression string, triggerCtx TriggerContext) (TriggerResult, error) {
+func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context.Context, expression string, triggerCtx triggerContext) (triggerResult, error) {
 	logger := log.FromContext(ctx)
 
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledTriggerExpression(expression)
 	if err != nil {
-		return TriggerResult{}, fmt.Errorf("failed to compile trigger expression: %w", err)
+		return triggerResult{}, fmt.Errorf("failed to compile trigger expression: %w", err)
 	}
 
 	// Build environment for expression evaluation
@@ -681,12 +718,12 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 	// Run the expression
 	output, err := expr.Run(program, env)
 	if err != nil {
-		return TriggerResult{}, fmt.Errorf("failed to evaluate trigger expression: %w", err)
+		return triggerResult{}, fmt.Errorf("failed to evaluate trigger expression: %w", err)
 	}
 
 	// Handle boolean result
 	if boolResult, ok := output.(bool); ok {
-		return TriggerResult{Trigger: boolResult}, nil
+		return triggerResult{Trigger: boolResult}, nil
 	}
 
 	// Handle object result with "trigger" field
@@ -707,14 +744,14 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 		}
 
 		logger.V(4).Info("Trigger expression returned object", "trigger", trigger, "triggerData", triggerData)
-		return TriggerResult{Trigger: trigger, TriggerData: triggerData}, nil
+		return triggerResult{Trigger: trigger, TriggerData: triggerData}, nil
 	}
 
-	return TriggerResult{}, fmt.Errorf("trigger expression must return bool or {trigger: bool, ...}, got %T", output)
+	return triggerResult{}, fmt.Errorf("trigger expression must return bool or {trigger: bool, ...}, got %T", output)
 }
 
 // evaluateValidationExpression evaluates the validation expression against the HTTP response.
-func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx context.Context, expression string, validationCtx ValidationContext) (bool, error) {
+func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(_ context.Context, expression string, validationCtx validationContext) (bool, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledValidationExpression(expression)
 	if err != nil {
@@ -746,7 +783,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx cont
 }
 
 // evaluateResponseExpression evaluates the response expression to extract/transform response data.
-func (r *WebRequestCommitStatusReconciler) evaluateResponseExpression(ctx context.Context, expression string, validationCtx ValidationContext) (map[string]any, error) {
+func (r *WebRequestCommitStatusReconciler) evaluateResponseExpression(_ context.Context, expression string, validationCtx validationContext) (map[string]any, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledResponseExpression(expression)
 	if err != nil {
@@ -785,7 +822,7 @@ func (r *WebRequestCommitStatusReconciler) getCompiledTriggerExpression(expressi
 	if cached, ok := r.expressionCache.Load(cacheKey); ok {
 		program, ok := cached.(*vm.Program)
 		if !ok {
-			return nil, fmt.Errorf("cached value is not a *vm.Program")
+			return nil, errors.New("cached value is not a *vm.Program")
 		}
 		return program, nil
 	}
@@ -809,7 +846,7 @@ func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpression(expre
 	if cached, ok := r.expressionCache.Load(cacheKey); ok {
 		program, ok := cached.(*vm.Program)
 		if !ok {
-			return nil, fmt.Errorf("cached value is not a *vm.Program")
+			return nil, errors.New("cached value is not a *vm.Program")
 		}
 		return program, nil
 	}
@@ -833,7 +870,7 @@ func (r *WebRequestCommitStatusReconciler) getCompiledResponseExpression(express
 	if cached, ok := r.expressionCache.Load(cacheKey); ok {
 		program, ok := cached.(*vm.Program)
 		if !ok {
-			return nil, fmt.Errorf("cached value is not a *vm.Program")
+			return nil, errors.New("cached value is not a *vm.Program")
 		}
 		return program, nil
 	}
@@ -850,7 +887,7 @@ func (r *WebRequestCommitStatusReconciler) getCompiledResponseExpression(express
 }
 
 // upsertCommitStatus creates or updates a CommitStatus resource for the validation result.
-func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData TemplateData) (*promoterv1alpha1.CommitStatus, error) {
+func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData templateData) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch))
 
@@ -914,6 +951,8 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 
 // cleanupOrphanedCommitStatuses deletes CommitStatus resources that are owned by this WebRequestCommitStatus
 // but are not in the current list of valid CommitStatus resources.
+//
+//nolint:dupl // Similar to cleanupOrphanedChangeTransferPolicies but operates on different types
 func (r *WebRequestCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
 	logger := log.FromContext(ctx)
 
@@ -1020,13 +1059,13 @@ func (r *WebRequestCommitStatusReconciler) enqueueWebRequestCommitStatusForPromo
 }
 
 // getNamespaceMetadata retrieves the labels and annotations from the namespace.
-func (r *WebRequestCommitStatusReconciler) getNamespaceMetadata(ctx context.Context, namespace string) (NamespaceMetadata, error) {
+func (r *WebRequestCommitStatusReconciler) getNamespaceMetadata(ctx context.Context, namespace string) (namespaceMetadata, error) {
 	var ns corev1.Namespace
 	if err := r.Get(ctx, client.ObjectKey{Name: namespace}, &ns); err != nil {
-		return NamespaceMetadata{}, fmt.Errorf("failed to get namespace %q: %w", namespace, err)
+		return namespaceMetadata{}, fmt.Errorf("failed to get namespace %q: %w", namespace, err)
 	}
 
-	return NamespaceMetadata{
+	return namespaceMetadata{
 		Labels:      ns.Labels,
 		Annotations: ns.Annotations,
 	}, nil

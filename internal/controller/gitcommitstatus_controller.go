@@ -62,6 +62,11 @@ type GitCommitStatusReconciler struct {
 	expressionCache sync.Map
 }
 
+const (
+	// targetProposed is the value for Spec.Target indicating proposed commit
+	targetProposed = "proposed"
+)
+
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitcommitstatuses,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=gitcommitstatuses/finalizers,verbs=update
@@ -239,7 +244,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		// Determine which commit SHA to validate based on the Target field
 		// The field is defaulted to "active" by the API server and validated to be "active" or "proposed"
 		shaToValidate := activeHydratedSha
-		if gcs.Spec.Target == "proposed" {
+		if gcs.Spec.Target == targetProposed {
 			shaToValidate = proposedSha
 		}
 

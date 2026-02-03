@@ -93,7 +93,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"approved": true,
 					"status":   "approved",
 				})
@@ -187,7 +187,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"approved": false,
 					"status":   "pending",
 				})
@@ -278,7 +278,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				requestCount++
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"approved": true,
 				})
 			}))
@@ -408,7 +408,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]any{"approved": true})
+				_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
 			}))
 
 			By("Creating a WebRequestCommitStatus resource with templates")
@@ -501,7 +501,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]any{"approved": true})
+				_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
 			}))
 
 			By("Creating a WebRequestCommitStatus resource for all environments")
@@ -629,7 +629,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			By("Creating a test HTTP server that returns 500 error")
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
-				fmt.Fprintln(w, "Internal Server Error")
+				_, _ = fmt.Fprintln(w, "Internal Server Error")
 			}))
 
 			By("Creating a WebRequestCommitStatus resource")
@@ -774,7 +774,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"approved": true,
 					"data":     "some-data",
 				})
@@ -842,7 +842,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"approved": true,
 					"count":    requestCount,
 				})
@@ -933,7 +933,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 					status = "done"
 				}
 
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"status": status,
 					"count":  count,
 				})
@@ -1004,7 +1004,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				w.Header().Set("X-Rate-Limit-Remaining", "42")
 				w.Header().Set("X-Request-Id", "abc-123")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"approved": true,
 					"nested": map[string]any{
 						"field1": "value1",
@@ -1101,7 +1101,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("X-Custom-Header", "test-value")
 				w.WriteHeader(http.StatusOK)
-				json.NewEncoder(w).Encode(map[string]any{
+				_ = json.NewEncoder(w).Encode(map[string]any{
 					"approved": true,
 					"data":     "some-data",
 				})

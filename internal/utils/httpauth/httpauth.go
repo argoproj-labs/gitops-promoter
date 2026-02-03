@@ -76,6 +76,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -88,21 +89,25 @@ import (
 )
 
 const (
-	// Secret keys for Basic Auth
+	// UsernameKey is the secret key for Basic Auth username
 	UsernameKey = "username"
+	// PasswordKey is the secret key for Basic Auth password
 	PasswordKey = "password"
 
-	// Secret key for Bearer Auth
+	// TokenKey is the secret key for Bearer Auth token
 	TokenKey = "token"
 
-	// Secret keys for OAuth2 Auth
-	ClientIDKey     = "clientID"
+	// ClientIDKey is the secret key for OAuth2 client ID
+	ClientIDKey = "clientID"
+	// ClientSecretKey is the secret key for OAuth2 client secret
 	ClientSecretKey = "clientSecret"
 
-	// Secret keys for TLS Auth
+	// TLSCertKey is the secret key for TLS certificate
 	TLSCertKey = "tls.crt"
-	TLSKeyKey  = "tls.key"
-	TLSCAKey   = "ca.crt"
+	// TLSKeyKey is the secret key for TLS private key
+	TLSKeyKey = "tls.key"
+	// TLSCAKey is the secret key for TLS CA certificate
+	TLSCAKey = "ca.crt"
 )
 
 // OAuth2Config contains configuration for OAuth2 client credentials authentication.
@@ -189,7 +194,7 @@ func ApplyOAuth2Auth(ctx context.Context, secret *corev1.Secret, config *OAuth2C
 	logger := log.FromContext(ctx)
 
 	if config == nil {
-		return fmt.Errorf("OAuth2 config is required")
+		return errors.New("OAuth2 config is required")
 	}
 
 	clientID, err := GetSecretValue(secret, ClientIDKey)
@@ -265,7 +270,7 @@ func BuildTLSClient(ctx context.Context, secret *corev1.Secret, timeout time.Dur
 	if caPEM, exists := secret.Data[TLSCAKey]; exists && len(caPEM) > 0 {
 		caCertPool := x509.NewCertPool()
 		if !caCertPool.AppendCertsFromPEM(caPEM) {
-			return nil, fmt.Errorf("failed to parse CA certificate")
+			return nil, errors.New("failed to parse CA certificate")
 		}
 		tlsConfig.RootCAs = caCertPool
 	}
@@ -382,7 +387,7 @@ func ApplyBearerAuthFromSecret(ctx context.Context, reader client.Reader, namesp
 // Returns an error if the secret cannot be read, token exchange fails, or authentication fails.
 func ApplyOAuth2AuthFromSecret(ctx context.Context, reader client.Reader, namespace string, config *OAuth2Config, req *http.Request) error {
 	if config == nil {
-		return fmt.Errorf("OAuth2 config is required")
+		return errors.New("OAuth2 config is required")
 	}
 
 	secret, err := getSecret(ctx, reader, namespace, config.SecretName)
@@ -419,7 +424,7 @@ func BuildTLSClientFromSecret(ctx context.Context, reader client.Reader, namespa
 func getSecret(ctx context.Context, reader client.Reader, namespace, name string) (*corev1.Secret, error) {
 	secret := &corev1.Secret{}
 	if err := reader.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, secret); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get secret: %w", err)
 	}
 	return secret, nil
 }
