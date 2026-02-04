@@ -495,32 +495,24 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 			})
 
-			It("should read phase from spec instead of status to avoid stale cache", func() {
+			It("should read phase from spec instead of status to avoid stale reads", func() {
 				By("Adding a pending commit")
 				makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
 
-				By("Creating CommitStatus with pending phase in spec")
+				By("Creating CommitStatus with success in spec")
 				Eventually(func(g Gomega) {
 					sha, err := runGitCmd(ctx, gitPath, "rev-parse", "origin/"+changeTransferPolicy.Spec.ActiveBranch)
 					g.Expect(err).NotTo(HaveOccurred())
 					sha = strings.TrimSpace(sha)
 
+					// Create with spec.phase = success
 					commitStatus.Spec.Sha = sha
-					commitStatus.Spec.Phase = promoterv1alpha1.CommitPhasePending
+					commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
 					err = k8sClient.Create(ctx, commitStatus)
 					g.Expect(err).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Verifying CTP reads pending phase from CommitStatus spec")
-				Eventually(func(g Gomega) {
-					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
-					g.Expect(err).To(Succeed())
-					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses).To(HaveLen(1))
-					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
-					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("pending"))
-				}, constants.EventuallyTimeout).Should(Succeed())
-
-				By("Updating CommitStatus spec.phase to success")
+				By("Setting status.phase to pending (creating spec/status mismatch)")
 				Eventually(func(g Gomega) {
 					csKey := types.NamespacedName{
 						Name:      commitStatus.Name,
@@ -529,19 +521,31 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					err := k8sClient.Get(ctx, csKey, commitStatus)
 					g.Expect(err).To(Succeed())
 
-					commitStatus.Spec.Phase = promoterv1alpha1.CommitPhaseSuccess
-					err = k8sClient.Update(ctx, commitStatus)
+					// Intentionally set status to pending while spec is success
+					commitStatus.Status.Phase = promoterv1alpha1.CommitPhasePending
+					err = k8sClient.Status().Update(ctx, commitStatus)
 					g.Expect(err).To(Succeed())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Verifying CTP reads updated success phase from spec, not stale status")
+				By("Confirming spec.phase=success but status.phase=pending (mismatch)")
+				csKey := types.NamespacedName{
+					Name:      commitStatus.Name,
+					Namespace: commitStatus.Namespace,
+				}
+				err = k8sClient.Get(ctx, csKey, commitStatus)
+				Expect(err).To(Succeed())
+				Expect(commitStatus.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess), "spec should be success")
+				Expect(commitStatus.Status.Phase).To(Equal(promoterv1alpha1.CommitPhasePending), "status should be pending")
+
+				By("Verifying CTP reads 'success' from spec, NOT 'pending' from status")
+				// CRITICAL TEST: CTP MUST read "success" from spec.phase
+				// If it reads from status.phase, it would see "pending" and this test would FAIL
 				Eventually(func(g Gomega) {
 					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
 					g.Expect(err).To(Succeed())
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses).To(HaveLen(1))
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
-					// This should be "success" because we read from spec.phase, not status.phase
-					// If we were reading from status.phase, this might still be "pending" due to cache staleness
+					// This MUST be "success" - proves we read from spec, not status
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("success"))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
