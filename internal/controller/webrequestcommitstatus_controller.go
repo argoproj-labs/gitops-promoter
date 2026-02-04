@@ -320,7 +320,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		// For polling mode with reportOn "proposed", skip HTTP request if already succeeded for this SHA
 		// but still ensure CommitStatus exists
 		if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == "proposed" {
-			if previousPhase == string(promoterv1alpha1.CommitPhaseSuccess) && lastSuccessfulSha == reportedSha {
+			if prevEnvStatus != nil && previousPhase == string(promoterv1alpha1.CommitPhaseSuccess) && lastSuccessfulSha == reportedSha {
 				logger.V(4).Info("Skipping already successful SHA in polling mode", "branch", branch, "sha", reportedSha)
 				// Keep the previous status
 				wrcs.Status.Environments = append(wrcs.Status.Environments, *prevEnvStatus)
@@ -621,6 +621,9 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
 		return responseContext{}, fmt.Errorf("HTTP request failed: %w", err)
+	}
+	if resp == nil {
+		return responseContext{}, fmt.Errorf("HTTP response is nil")
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
