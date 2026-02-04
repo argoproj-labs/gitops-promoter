@@ -623,7 +623,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		return responseContext{}, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	if resp == nil {
-		return responseContext{}, fmt.Errorf("HTTP response is nil")
+		return responseContext{}, errors.New("HTTP response is nil")
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
