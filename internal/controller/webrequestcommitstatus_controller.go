@@ -74,6 +74,8 @@ type templateData struct {
 	ReportedSha       string
 	LastSuccessfulSha string
 	Phase             string
+	TriggerData       map[string]any
+	ResponseData      map[string]any
 }
 
 // namespaceMetadata holds namespace labels and annotations for template rendering.
@@ -315,6 +317,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			PromotionStrategy: ps,
 			Environment:       envStatus,
 			NamespaceMetadata: namespaceMeta,
+			TriggerData:       triggerData,
+			ResponseData:      previousResponseData,
 		}
 
 		// For polling mode with reportOn "proposed", skip HTTP request if already succeeded for this SHA
@@ -374,7 +378,10 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			lastRequestTime = result.LastRequestTime
 			lastResponseStatusCode = result.LastResponseStatusCode
 			responseDataJSON = result.ResponseDataJSON
-			lastSuccessfulSha = reportedSha
+			// Only update lastSuccessfulSha if validation actually succeeded
+			if phase == promoterv1alpha1.CommitPhaseSuccess {
+				lastSuccessfulSha = reportedSha
+			}
 		} else {
 			// Trigger expression returned false, keep previous phase or default to pending
 			logger.V(3).Info("Trigger expression returned false, not making HTTP request", "branch", branch, "triggerExpression", wrcs.Spec.Mode.Trigger.TriggerExpression)

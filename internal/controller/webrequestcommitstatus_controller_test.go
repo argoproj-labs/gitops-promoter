@@ -264,6 +264,99 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
+		It("should only update lastSuccessfulSha when validation succeeds", func() {
+			By("Creating a test HTTP server that starts failing then succeeds")
+			var requestCount int
+			var mu sync.Mutex
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				requestCount++
+				count := requestCount
+				mu.Unlock()
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				// First 2 requests: not approved (validation should fail)
+				// After that: approved (validation should succeed)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"approved": count > 2,
+					"status":   map[bool]string{true: "approved", false: "pending"}[count > 2],
+				})
+			}))
+
+			By("Creating WebRequestCommitStatus in polling mode")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-polling-lastsuccessfulsha",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: promotionStrategy.Name,
+					},
+					Key: "external-approval",
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL,
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+					},
+					Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 2 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+
+			By("Waiting for first requests (pending phase) and verifying lastSuccessfulSha is empty")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-polling-lastsuccessfulsha",
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+
+				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
+				for i := range wrcs.Status.Environments {
+					if wrcs.Status.Environments[i].Branch == testBranchDevelopment {
+						devEnvStatus = &wrcs.Status.Environments[i]
+						break
+					}
+				}
+				g.Expect(devEnvStatus).ToNot(BeNil())
+				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
+				// lastSuccessfulSha should still be empty when in pending phase
+				g.Expect(devEnvStatus.LastSuccessfulSha).To(BeEmpty(), "lastSuccessfulSha should be empty when validation has not succeeded")
+				g.Expect(devEnvStatus.ReportedSha).NotTo(BeEmpty(), "reportedSha should be set")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Waiting for validation to succeed and lastSuccessfulSha to be set")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-polling-lastsuccessfulsha",
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				var devEnvStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
+				for i := range wrcs.Status.Environments {
+					if wrcs.Status.Environments[i].Branch == testBranchDevelopment {
+						devEnvStatus = &wrcs.Status.Environments[i]
+						break
+					}
+				}
+				g.Expect(devEnvStatus).ToNot(BeNil())
+				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				// lastSuccessfulSha should now be set to reportedSha after success
+				g.Expect(devEnvStatus.LastSuccessfulSha).To(Equal(devEnvStatus.ReportedSha), "lastSuccessfulSha should match reportedSha after success")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 
 	Describe("Trigger Mode - SHA Change Detection", func() {
