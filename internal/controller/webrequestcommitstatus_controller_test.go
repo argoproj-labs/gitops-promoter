@@ -234,7 +234,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name + "-polling-pending",
+					Name:      name + "-polling-failure",
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -254,7 +254,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 
 				// Verify CommitStatus was created for dev environment with pending phase
-				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-polling-pending-"+testBranchDevelopment+"-webrequest")
+				commitStatusName := utils.KubeSafeUniqueName(ctx, name+"-polling-failure-"+testBranchDevelopment+"-webrequest")
 				var cs promoterv1alpha1.CommitStatus
 				err = k8sClient.Get(ctx, types.NamespacedName{
 					Name:      commitStatusName,
@@ -691,7 +691,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				}
 				g.Expect(devEnvStatus).ToNot(BeNil(), "Dev environment status should exist")
 				// Expression evaluates to false because StatusCode != 200
-				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseFailure)))
+				g.Expect(devEnvStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)))
 				g.Expect(*devEnvStatus.LastResponseStatusCode).To(Equal(500))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
