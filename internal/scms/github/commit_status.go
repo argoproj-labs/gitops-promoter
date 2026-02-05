@@ -66,7 +66,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.
 		(commitStatus.Status.Phase == promoterv1alpha1.CommitPhaseSuccess || commitStatus.Status.Phase == promoterv1alpha1.CommitPhaseFailure)
 
 	// Determine if we should update an existing check run or create a new one
-	if commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != "" && !shouldCreateNewCheck {
+	if commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != "" && !isTransitionFromCompleted {
 		logger.Info("Updating existing check run via Checks API", "checkRunId", commitStatus.Status.Id)
 		return cs.updateCheckRun(ctx, commitStatus)
 	}
