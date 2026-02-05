@@ -1,57 +1,66 @@
-# WebRequestCommitStatus
+# Web Request Commit Status Controller
+
+The Web Request Commit Status controller enables environment gating based on external HTTP/HTTPS API validation. This controller makes HTTP requests to external systems and evaluates their responses to determine if a promotion should proceed, allowing integration with virtually any external validation system.
 
 ## Overview
 
-The WebRequestCommitStatus controller validates commits by making HTTP requests to external endpoints and evaluating the responses using expressions. This enables integration with external approval systems, change management platforms, custom health checks, and any API-based validation.
+The WebRequestCommitStatus controller provides flexible validation by calling external HTTP APIs and evaluating the responses. It supports both simple polling and advanced expression-based triggering, making it suitable for a wide range of integration scenarios.
 
 ### How It Works
 
-For each environment configured in a WebRequestCommitStatus resource:
+For each environment configured via the PromotionStrategy:
 
-1. The controller reads the PromotionStrategy to get commit SHAs
-2. **In Trigger Mode**: Evaluates the trigger expression to decide if an HTTP request should be made
-3. **In Polling Mode**: Makes HTTP requests at the configured interval
-4. The controller renders Go templates for URL, headers, and body
-5. The controller makes the HTTP request with the configured authentication
-6. The controller evaluates the validation expression against the HTTP response
-7. The controller creates/updates a CommitStatus with the result
-8. The PromotionStrategy checks the CommitStatus before allowing promotion
+1. The controller determines which SHA to validate based on the `reportOn` setting:
+   - `proposed` (default): Validates the commit that will be promoted
+   - `active`: Validates the currently deployed commit
+2. The controller evaluates whether to make an HTTP request (polling mode always makes requests, trigger mode evaluates a trigger expression first)
+3. If triggered, the controller makes an HTTP request to the configured endpoint using templated URL, headers, and body
+4. The controller evaluates the validation expression against the HTTP response
+5. The controller creates/updates a CommitStatus with the validation result
+6. The PromotionStrategy checks the CommitStatus before allowing promotion
 
 ### Operating Modes
 
-WebRequestCommitStatus supports two operating modes:
+WebRequestCommitStatus supports two distinct operating modes:
 
 #### Polling Mode
 
-Simple interval-based polling. The controller makes HTTP requests at a fixed interval.
-
-**Behavior:**
-- When `reportOn: proposed`: Polls until success, then stops polling for that SHA
-- When `reportOn: active`: Always polls at the configured interval
+Continuously polls the HTTP endpoint at a fixed interval. Simple and reliable for most use cases.
 
 **Use cases:**
-- External approval systems that you want to check regularly
-- Simple health check endpoints
-- Systems where you always want to poll
+- External approval systems with status endpoints
+- Change management APIs that update status over time
+- Monitoring systems with health check endpoints
+- Simple API integrations without complex state tracking
+
+**Behavior:**
+- Makes HTTP request every interval (default: 1 minute)
+- For `reportOn: proposed`: Stops polling once success is achieved for a given SHA
+- For `reportOn: active`: Continuously polls forever to track active state changes
 
 #### Trigger Mode
 
-Expression-based triggering. The controller evaluates an expression **before** making HTTP requests to determine if the request should be made at all.
-
-**Behavior:**
-- Evaluates trigger expression before each potential HTTP request
-- If expression returns `true` or `{trigger: true}`: Makes the HTTP request
-- If expression returns `false` or `{trigger: false}`: Skips the request, requeues for later
-- Can persist custom data between reconciles for stateful decisions
+Uses expressions to dynamically control when HTTP requests are made. Powerful for advanced scenarios requiring state tracking or conditional logic.
 
 **Use cases:**
-- Only call expensive APIs when something has changed
-- Wait for specific conditions before making requests
-- Implement complex polling logic based on PromotionStrategy state
+- Only trigger requests when SHA changes
+- Implement rate limiting or backoff strategies based on previous responses
+- Track custom state between reconciliations
+- Conditional triggering based on previous environment status
+- Complex integration patterns requiring decision logic
+
+**Behavior:**
+- Evaluates trigger expression on each reconciliation
+- Only makes HTTP request if trigger expression returns true
+- Can store and access custom state via `TriggerData`
+- Can access previous HTTP response data via `ResponseData`
+- Always reconciles at `requeueDuration` interval (default: 1 minute)
 
 ## Example Configurations
 
-### Basic Polling - External Approval System
+### Basic Polling Mode
+
+Simple polling configuration that checks an external approval API:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -61,56 +70,78 @@ metadata:
 spec:
   promotionStrategyRef:
     name: my-app
-  key: approval-check
-  descriptionTemplate: "Checking approval for {{ .Environment.Branch }}"
-  urlTemplate: "https://approvals.example.com/status/{{ .ReportedSha }}"
+  key: external-approval
+  descriptionTemplate: "Waiting for external approval"
   reportOn: proposed
   httpRequest:
-    urlTemplate: "https://api.approvals.example.com/v1/check"
-    method: POST
-    headerTemplates:
-      Content-Type: "application/json"
-    bodyTemplate: |
-      {
-        "sha": "{{ .ReportedSha }}",
-        "environment": "{{ .Environment.Branch }}",
-        "repository": "{{ .PromotionStrategy.Spec.RepositoryReference.Name }}"
-      }
+    urlTemplate: "https://approvals.example.com/api/check/{{ .ReportedSha }}"
+    method: GET
     timeout: 30s
-    authentication:
-      bearer:
-        secretRef:
-          name: approval-api-token
-  expression: "Response.StatusCode == 200 && Response.Body.status == 'approved'"
+  expression: "Response.StatusCode == 200 && Response.Body.approved == true"
   mode:
     polling:
-      interval: 1m
+      interval: 2m
 ```
 
-### Trigger Mode - Only Check When SHA Changes
+### Polling with Authentication
+
+Using bearer token authentication to call a protected API:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: WebRequestCommitStatus
 metadata:
-  name: change-management
+  name: change-validation
 spec:
   promotionStrategyRef:
     name: my-app
-  key: change-ticket
-  reportOn: proposed
+  key: change-validation
+  descriptionTemplate: "Validating change request for {{ .Environment.Branch }}"
+  urlTemplate: "https://dashboard.example.com/changes/{{ .ReportedSha }}"
   httpRequest:
-    urlTemplate: "https://servicenow.example.com/api/change/{{ .ReportedSha }}"
+    urlTemplate: "https://api.example.com/v1/changes/{{ .ReportedSha }}/status"
     method: GET
-    timeout: 30s
+    headerTemplates:
+      Content-Type: "application/json"
     authentication:
-      basic:
+      bearer:
         secretRef:
-          name: servicenow-creds
-  expression: "Response.StatusCode == 200 && Response.Body.state == 'approved'"
+          name: api-token-secret
+  expression: "Response.StatusCode == 200 && Response.Body.status == 'approved'"
+  mode:
+    polling:
+      interval: 5m
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: api-token-secret
+type: Opaque
+stringData:
+  token: "your-bearer-token-here"
+```
+
+### Trigger Mode - SHA Change Detection
+
+Only make HTTP requests when the SHA changes, avoiding redundant calls:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: deployment-check
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: deployment-check
+  descriptionTemplate: "Checking deployment {{ .ReportedSha | trunc 7 }}"
+  httpRequest:
+    urlTemplate: "https://monitoring.example.com/api/deployment/{{ .ReportedSha }}"
+    method: GET
+  expression: "Response.StatusCode == 200 && Response.Body.ready == true"
   mode:
     trigger:
-      requeueDuration: 30s
+      requeueDuration: 1m
       triggerExpression: |
         {
           trigger: ReportedSha != TriggerData["lastCheckedSha"],
@@ -118,91 +149,285 @@ spec:
         }
 ```
 
-### OAuth2 Authentication
+### Trigger Mode - Conditional on Previous Environment
+
+Only trigger validation once the previous environment is healthy:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: WebRequestCommitStatus
 metadata:
-  name: oauth-protected-api
+  name: staged-validation
 spec:
   promotionStrategyRef:
     name: my-app
-  key: api-validation
+  key: staged-validation
+  descriptionTemplate: "Waiting for staging environment"
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://api.example.com/validate/{{ .ReportedSha }}"
+    method: POST
+    bodyTemplate: |
+      {
+        "sha": "{{ .ReportedSha }}",
+        "environment": "{{ .Environment.Branch }}"
+      }
+  expression: "Response.StatusCode == 200"
+  mode:
+    trigger:
+      requeueDuration: 30s
+      triggerExpression: |
+        len(filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"})[0].LastHealthyDryShas) > 0
+```
+
+### Trigger Mode with Response Data Tracking
+
+Store and use data from previous HTTP responses to implement retry logic:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: progressive-check
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: progressive-check
+  descriptionTemplate: "Progressive validation (attempt {{ index .TriggerData \"attemptCount\" | default 0 }})"
+  httpRequest:
+    urlTemplate: "https://validation.example.com/api/check/{{ .ReportedSha }}"
     method: GET
-    timeout: 30s
+  expression: "Response.StatusCode == 200 && Response.Body.validated == true"
+  mode:
+    trigger:
+      requeueDuration: 1m
+      triggerExpression: |
+        {
+          trigger: ResponseData == nil || 
+                   ResponseData.status == "retry" || 
+                   ResponseData.validated == false,
+          attemptCount: (TriggerData["attemptCount"] ?? 0) + 1
+        }
+      responseExpression: |
+        {
+          status: Response.Body.status,
+          validated: Response.Body.validated,
+          retryAfter: Response.Body.retryAfter
+        }
+```
+
+### POST Request with JSON Body
+
+Sending structured data to an external validation service:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: compliance-check
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: compliance-check
+  descriptionTemplate: "Checking compliance for {{ .Environment.Branch }}"
+  httpRequest:
+    urlTemplate: "https://compliance.example.com/api/v1/validate"
+    method: POST
+    headerTemplates:
+      Content-Type: "application/json"
+      X-Environment: "{{ .Environment.Branch }}"
+    bodyTemplate: |
+      {
+        "commitSha": "{{ .ReportedSha }}",
+        "environment": "{{ .Environment.Branch }}",
+        "dryCommitSha": "{{ .Environment.Active.Dry.Sha }}",
+        "namespace": "{{ index .NamespaceMetadata.Labels "team" }}"
+      }
+    authentication:
+      basic:
+        secretRef:
+          name: compliance-api-creds
+  expression: |
+    Response.StatusCode == 200 && 
+    Response.Body.compliant == true &&
+    Response.Body.score >= 0.8
+  mode:
+    polling:
+      interval: 5m
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: compliance-api-creds
+type: Opaque
+stringData:
+  username: "service-account"
+  password: "your-password-here"
+```
+
+### OAuth2 Authentication
+
+Using OAuth2 client credentials flow for enterprise API integration:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: enterprise-gate
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: enterprise-gate
+  descriptionTemplate: "Enterprise approval check"
+  httpRequest:
+    urlTemplate: "https://api.enterprise.com/v2/deployments/{{ .ReportedSha }}/approval"
+    method: GET
     authentication:
       oauth2:
-        tokenURL: "https://auth.example.com/oauth/token"
-        scopes:
-          - read:api
-          - write:api
+        tokenURL: "https://auth.enterprise.com/oauth/token"
+        scopes: ["deployments:read", "approvals:read"]
         secretRef:
           name: oauth-credentials
+  expression: "Response.StatusCode == 200 && Response.Body.approved == true"
+  mode:
+    polling:
+      interval: 3m
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: oauth-credentials
+type: Opaque
+stringData:
+  clientID: "your-client-id"
+  clientSecret: "your-client-secret"
+```
+
+### Mutual TLS (mTLS) Authentication
+
+Using client certificates for high-security environments:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: secure-validation
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: secure-validation
+  descriptionTemplate: "Secure validation check"
+  httpRequest:
+    urlTemplate: "https://secure.internal.company.com/api/validate/{{ .ReportedSha }}"
+    method: GET
+    authentication:
+      tls:
+        secretRef:
+          name: mtls-client-cert
   expression: "Response.StatusCode == 200"
+  mode:
+    polling:
+      interval: 2m
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mtls-client-cert
+type: kubernetes.io/tls
+data:
+  tls.crt: <base64-encoded-certificate>
+  tls.key: <base64-encoded-private-key>
+  ca.crt: <base64-encoded-ca-cert>  # Optional, for custom CA
+```
+
+### Active Commit Monitoring
+
+Monitor the currently deployed commit rather than the proposed commit:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: production-health
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: production-health
+  descriptionTemplate: "Monitoring production health"
+  reportOn: active  # Monitor what's currently deployed
+  httpRequest:
+    urlTemplate: "https://monitoring.example.com/health/{{ .ReportedSha }}"
+    method: GET
+  expression: "Response.StatusCode == 200 && Response.Body.errorRate < 0.01"
+  mode:
+    polling:
+      interval: 1m  # Continuously monitor active deployment
+```
+
+### Complex Response Validation
+
+Evaluating multiple conditions from the HTTP response:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: multi-check
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: multi-check
+  descriptionTemplate: "Running comprehensive checks"
+  httpRequest:
+    urlTemplate: "https://api.example.com/comprehensive-check/{{ .ReportedSha }}"
+    method: GET
+  expression: |
+    Response.StatusCode == 200 &&
+    Response.Body.securityScan.passed == true &&
+    Response.Body.performanceTest.score >= 90 &&
+    len(Response.Body.criticalIssues) == 0 &&
+    Response.Body.approvals.managerApproval == true &&
+    Response.Body.approvals.securityApproval == true
+  mode:
+    polling:
+      interval: 5m
+```
+
+### Using Namespace Metadata
+
+Leverage namespace labels and annotations in your requests:
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: team-approval
+spec:
+  promotionStrategyRef:
+    name: my-app
+  key: team-approval
+  descriptionTemplate: "Waiting for {{ index .NamespaceMetadata.Labels \"team\" }} approval"
+  httpRequest:
+    urlTemplate: "https://approvals.example.com/api/check"
+    method: POST
+    headerTemplates:
+      X-Team-ID: "{{ index .NamespaceMetadata.Labels \"team-id\" }}"
+      X-Cost-Center: "{{ index .NamespaceMetadata.Annotations \"cost-center\" }}"
+    bodyTemplate: |
+      {
+        "sha": "{{ .ReportedSha }}",
+        "team": "{{ index .NamespaceMetadata.Labels \"team\" }}",
+        "environment": "{{ .Environment.Branch }}"
+      }
+  expression: "Response.StatusCode == 200 && Response.Body.approved == true"
   mode:
     polling:
       interval: 2m
 ```
 
-### mTLS Authentication
+### Integrating with PromotionStrategy
 
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: WebRequestCommitStatus
-metadata:
-  name: mtls-protected-api
-spec:
-  promotionStrategyRef:
-    name: my-app
-  key: secure-validation
-  reportOn: proposed
-  httpRequest:
-    urlTemplate: "https://secure-api.example.com/validate"
-    method: GET
-    timeout: 30s
-    authentication:
-      tls:
-        secretRef:
-          name: client-certificate
-  expression: "Response.StatusCode == 200 && Response.Body.valid == true"
-  mode:
-    polling:
-      interval: 1m
-```
-
-### Advanced Trigger - Wait for Previous Environment Health
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: WebRequestCommitStatus
-metadata:
-  name: staged-approval
-spec:
-  promotionStrategyRef:
-    name: my-app
-  key: staged-check
-  reportOn: proposed
-  httpRequest:
-    urlTemplate: "https://api.example.com/validate"
-    method: GET
-    timeout: 30s
-  expression: "Response.StatusCode == 200"
-  mode:
-    trigger:
-      requeueDuration: 30s
-      # Only trigger when the previous environment (staging) has healthy dry SHAs
-      triggerExpression: |
-        let stagingEnvs = filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"});
-        len(stagingEnvs) > 0 && len(stagingEnvs[0].LastHealthyDryShas) > 0
-```
-
-## Integrating with PromotionStrategy
-
-### As Proposed Commit Status (Gate Promotions)
+Configure your PromotionStrategy to use the web request validation as a gate:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
@@ -213,450 +438,294 @@ spec:
   gitRepositoryRef:
     name: my-app-repo
   proposedCommitStatuses:
-    - key: approval-check  # Must match WebRequestCommitStatus.spec.key
-  environments:
-    - branch: environment/development
-    - branch: environment/staging
-    - branch: environment/production
-```
-
-### As Active Commit Status (Validate Running State)
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: PromotionStrategy
-metadata:
-  name: my-app
-spec:
-  gitRepositoryRef:
-    name: my-app-repo
-  activeCommitStatuses:
-    - key: health-check  # Must match WebRequestCommitStatus.spec.key
-  environments:
-    - branch: environment/development
-    - branch: environment/staging
-    - branch: environment/production
-```
-
-### Environment-Specific Validation
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: PromotionStrategy
-metadata:
-  name: my-app
-spec:
-  gitRepositoryRef:
-    name: my-app-repo
+    - key: external-approval  # Must match WebRequestCommitStatus.spec.key
   environments:
     - branch: environment/development
     - branch: environment/staging
     - branch: environment/production
       proposedCommitStatuses:
-        - key: production-approval  # Only for production
-```
-
-## Template Variables
-
-All Go templates (URL, headers, body, description, url) have access to the following variables:
-
-| Variable | Type | Description |
-|----------|------|-------------|
-| `.ReportedSha` | string | The commit SHA being reported on (based on `reportOn` setting) |
-| `.LastSuccessfulSha` | string | Last SHA that achieved success for this environment |
-| `.Phase` | string | Current phase (`pending`, `success`, `failure`) |
-| `.PromotionStrategy` | PromotionStrategy | Full PromotionStrategy object |
-| `.Environment` | EnvironmentStatus | Current environment's status |
-| `.NamespaceMetadata.Labels` | map[string]string | Namespace labels |
-| `.NamespaceMetadata.Annotations` | map[string]string | Namespace annotations |
-
-### Template Examples
-
-```yaml
-# Simple SHA in URL
-urlTemplate: "https://api.example.com/validate/{{ .ReportedSha }}"
-
-# Access environment branch
-urlTemplate: "https://api.example.com/env/{{ .Environment.Branch }}/status"
-
-# Use both proposed and active SHAs
-urlTemplate: "https://api.example.com/diff?from={{ .Environment.Active.Hydrated.Sha }}&to={{ .Environment.Proposed.Hydrated.Sha }}"
-
-# Use namespace labels
-urlTemplate: "https://api.example.com/validate?asset={{ index .NamespaceMetadata.Labels \"asset-id\" }}"
-
-# Truncate SHA in description
-descriptionTemplate: "Checking {{ .ReportedSha | trunc 7 }} on {{ .Environment.Branch }}"
-```
-
-## Validation Expression
-
-The validation expression is evaluated using the [expr](https://github.com/expr-lang/expr) library against the HTTP response. It must return a boolean value.
-
-### Available Variables
-
-| Variable | Type | Description |
-|----------|------|-------------|
-| `Response.StatusCode` | int | HTTP response status code |
-| `Response.Body` | any | Parsed JSON as map[string]any, or raw string if not JSON |
-| `Response.Headers` | map[string][]string | HTTP response headers |
-
-### Expression Examples
-
-```yaml
-# Simple status check
-expression: "Response.StatusCode == 200"
-
-# Check JSON field
-expression: "Response.StatusCode == 200 && Response.Body.approved == true"
-
-# Check string field value
-expression: 'Response.StatusCode == 200 && Response.Body.status == "approved"'
-
-# Check header presence
-expression: 'len(Response.Headers["X-Approval"]) > 0'
-
-# Complex logic
-expression: |
-  Response.StatusCode == 200 && 
-  Response.Body.state in ["approved", "auto-approved"] &&
-  Response.Body.risk_level != "critical"
-```
-
-## Trigger Expression
-
-The trigger expression is evaluated **before** making HTTP requests to determine if the request should be made.
-
-### Available Variables
-
-| Variable | Type | Description |
-|----------|------|-------------|
-| `ReportedSha` | string | The SHA being validated |
-| `LastSuccessfulSha` | string | Last SHA that achieved success |
-| `Phase` | string | Phase from previous reconcile |
-| `PromotionStrategy` | PromotionStrategy | Full PromotionStrategy object |
-| `Environment` | EnvironmentStatus | Current environment's status |
-| `TriggerData` | map[string]any | Custom data from previous evaluation |
-
-### Return Values
-
-The trigger expression can return:
-
-1. **Boolean**: `true` to trigger, `false` to skip
-2. **Object with trigger field**: `{trigger: bool, ...customData}` - Custom data is persisted for next evaluation
-
-### Trigger Expression Examples
-
-```yaml
-# Always trigger (equivalent to polling)
-triggerExpression: "true"
-
-# Only trigger when SHA changes
-triggerExpression: 'ReportedSha != TriggerData["lastCheckedSha"]'
-
-# Track SHA and only trigger when it changes
-triggerExpression: |
-  {
-    trigger: ReportedSha != TriggerData["trackedSha"],
-    trackedSha: ReportedSha
-  }
-
-# Trigger based on PR state
-triggerExpression: |
-  Environment.PullRequest != nil && Environment.PullRequest.State == "open"
-
-# Use previous response data to make decisions
-triggerExpression: |
-  {
-    trigger: ResponseData == nil || ResponseData.body.retryAfter == "now",
-    customState: "checked"
-  }
-```
-
-### Using Response Data in Trigger Expressions (Trigger Mode Only)
-
-In trigger mode, you can use the optional `responseExpression` field to extract and store specific data from HTTP responses. This data is then available in subsequent trigger expressions via `ResponseData`, enabling stateful validation logic based on previous API responses.
-
-**Important:** `ResponseData` is ONLY populated when you explicitly provide a `responseExpression`. Without it, no response data is stored.
-
-**Customizing Response Data with responseExpression:**
-
-The `responseExpression` allows you to extract and transform only the data you need from the HTTP response before storing it. This is useful for:
-- Extracting only relevant fields to reduce storage
-- Pulling out nested data
-- Transforming response data for easier use in trigger expressions  
-- Parsing rate limit headers or pagination info
-- Making decisions based on previous responses
-
-**Available Response Data:**
-
-When `responseExpression` is defined, the `ResponseData` field will contain whatever your expression returns (custom fields).
-
-**Note:** `ResponseData` is only populated in trigger mode when `responseExpression` is provided. In polling mode or trigger mode without `responseExpression`, this field is always `nil`.
-
-**Example - Extract Specific Fields:**
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: WebRequestCommitStatus
-metadata:
-  name: extract-fields
-spec:
-  promotionStrategyRef:
-    name: my-app
-  key: validation
-  reportOn: proposed
-  httpRequest:
-    urlTemplate: "https://api.example.com/validate/{{ .ReportedSha }}"
-    method: GET
-    timeout: 30s
-  expression: "Response.StatusCode == 200 && Response.Body.status == 'approved'"
-  mode:
-    trigger:
-      requeueDuration: 30s
-      responseExpression: |
-        {
-          status: Response.Body.status,
-          retryAfter: Response.Body.retryAfter,
-          message: Response.Body.message
-        }
-      triggerExpression: |
-        # ResponseData will contain: {status: "...", retryAfter: "...", message: "..."}
-        ResponseData == nil || ResponseData.status == "retry"
-```
-
-**Example - Extract Rate Limit Info from Headers:**
-
-```yaml
-mode:
-  trigger:
-    requeueDuration: 30s
-    responseExpression: |
-      {
-        statusCode: Response.StatusCode,
-        approved: Response.Body.approved,
-        rateLimit: {
-          remaining: int(Response.Headers["X-RateLimit-Remaining"][0]),
-          reset: Response.Headers["X-RateLimit-Reset"][0]
-        }
-      }
-    triggerExpression: |
-      # Only trigger if we have rate limit capacity
-      ResponseData == nil || ResponseData.rateLimit.remaining > 0
-```
-
-**Example - Conditional Data Extraction:**
-
-```yaml
-mode:
-  trigger:
-    requeueDuration: 30s
-    responseExpression: |
-      Response.StatusCode == 200 ? 
-        {type: "success", data: Response.Body.result, timestamp: Response.Body.timestamp} : 
-        {type: "error", error: Response.Body.error, code: Response.StatusCode}
-    triggerExpression: |
-      ResponseData == nil || ResponseData.type == "error"
-```
-
-**Example - Smart Retry Logic:**
-
-```yaml
-apiVersion: promoter.argoproj.io/v1alpha1
-kind: WebRequestCommitStatus
-metadata:
-  name: smart-retry
-spec:
-  promotionStrategyRef:
-    name: my-app
-  key: validation
-  reportOn: proposed
-  httpRequest:
-    urlTemplate: "https://api.example.com/validate/{{ .ReportedSha }}"
-    method: GET
-    timeout: 30s
-  expression: "Response.StatusCode == 200 && Response.Body.status == 'approved'"
-  mode:
-    trigger:
-      requeueDuration: 30s
-      responseExpression: |
-        {
-          statusCode: Response.StatusCode,
-          status: Response.Body.status,
-          shouldRetry: Response.StatusCode == 429 || Response.Body.status == "pending"
-        }
-      triggerExpression: |
-        # Only retry if the previous response indicated we should
-        ResponseData == nil || ResponseData.shouldRetry
-```
-
-**Example - Progressive Backoff:**
-
-```yaml
-mode:
-  trigger:
-    requeueDuration: 30s
-    responseExpression: |
-      {
-        statusCode: Response.StatusCode,
-        approved: Response.Body.approved
-      }
-    triggerExpression: |
-      let shouldRetry = ResponseData == nil || ResponseData.statusCode != 200;
-      let retryCount = TriggerData["retryCount"] ?? 0;
-      {
-        trigger: shouldRetry && retryCount < 5,
-        retryCount: shouldRetry ? retryCount + 1 : 0,
-        lastStatus: ResponseData.statusCode
-      }
-```
-
-**Example - Without responseExpression (No Data Stored):**
-
-```yaml
-mode:
-  trigger:
-    requeueDuration: 30s
-    # No responseExpression - ResponseData will always be nil
-    triggerExpression: |
-      # Must use other state like TriggerData
-      ReportedSha != TriggerData["lastCheckedSha"]
-```
-
-## Authentication
-
-### Secret Requirements
-
-#### Basic Auth
-
-Secret must contain keys `username` and `password`:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: basic-auth-creds
-type: Opaque
-stringData:
-  username: myuser
-  password: mypassword
-```
-
-#### Bearer Token
-
-Secret must contain key `token`:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: api-token
-type: Opaque
-stringData:
-  token: your-api-token
-```
-
-#### OAuth2 Client Credentials
-
-Secret must contain keys `clientID` and `clientSecret`:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: oauth-creds
-type: Opaque
-stringData:
-  clientID: your-client-id
-  clientSecret: your-client-secret
-```
-
-#### TLS Client Certificate
-
-Secret must contain keys `tls.crt`, `tls.key`, and optionally `ca.crt`:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: client-cert
-type: kubernetes.io/tls
-data:
-  tls.crt: <base64-encoded-cert>
-  tls.key: <base64-encoded-key>
-  ca.crt: <base64-encoded-ca>  # optional
+        - key: compliance-check  # Additional gate for production only
 ```
 
 ## Field Reference
 
-### spec.promotionStrategyRef
-
-Reference to the PromotionStrategy this applies to.
-
-**Required**
-
 ### spec.key
 
-Unique identifier for this validation. Matched against PromotionStrategy's commit status selectors.
+Unique identifier for this validation rule. This key is matched against the PromotionStrategy's `proposedCommitStatuses` or `activeCommitStatuses`.
 
 **Requirements:**
-- Lowercase alphanumeric with hyphens
+- Must be lowercase alphanumeric with hyphens
 - Max 63 characters
 - Pattern: `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 
-**Required**
+**Required:** Yes
 
 ### spec.reportOn
 
-Which commit SHA to report the CommitStatus on.
+Specifies which commit SHA to report the CommitStatus on.
 
 **Values:**
 - `proposed` (default): Reports on the proposed hydrated commit SHA
 - `active`: Reports on the active hydrated commit SHA
 
-**Default:** `proposed`
+**Behavior:**
+- When `proposed`: In polling mode, stops polling after success for that SHA
+- When `active`: In polling mode, continuously polls even after success (active state can change)
+
+**Optional:** Yes (defaults to `proposed`)
+
+### spec.descriptionTemplate
+
+Human-readable description shown in the SCM provider (GitHub, GitLab, etc.) as the commit status description. Supports Go templates.
+
+**Available template variables:**
+- `{{ .ReportedSha }}`: the commit SHA being reported on
+- `{{ .LastSuccessfulSha }}`: last SHA that achieved success
+- `{{ .Phase }}`: current phase (success/pending/failure)
+- `{{ .PromotionStrategy }}`: full PromotionStrategy object
+- `{{ .Environment }}`: current environment status from PromotionStrategy
+- `{{ .NamespaceMetadata.Labels }}`: map of labels from the namespace
+- `{{ .NamespaceMetadata.Annotations }}`: map of annotations from the namespace
+
+**Template functions:** All standard [Sprig](https://masterminds.github.io/sprig/) functions except `env`, `expandenv`, and `getHostByName`
+
+**Optional:** Yes
+
+### spec.urlTemplate
+
+URL template with link to more details, shown in the SCM provider as the commit status target URL. Supports the same template variables as `descriptionTemplate`.
+
+**Examples:**
+- `"https://dashboard.example.com/{{ .Environment.Branch }}/status"`
+- `"https://approvals.example.com/{{ .ReportedSha }}"`
+
+**Optional:** Yes
 
 ### spec.httpRequest
 
-HTTP request configuration.
+Defines the HTTP request configuration.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `urlTemplate` | string | URL template (required) |
-| `method` | string | HTTP method: GET, POST, PUT, PATCH (required) |
-| `headerTemplates` | map[string]string | Header templates (optional) |
-| `bodyTemplate` | string | Body template (optional) |
-| `timeout` | duration | Request timeout (default: 30s) |
-| `authentication` | HttpAuthentication | Authentication config (optional) |
+#### spec.httpRequest.urlTemplate
+
+HTTP endpoint to request. Supports Go templates with the same variables as `descriptionTemplate`.
+
+**Required:** Yes
+
+#### spec.httpRequest.method
+
+HTTP method to use.
+
+**Values:** `GET`, `POST`, `PUT`, `PATCH`
+
+**Required:** Yes
+
+#### spec.httpRequest.headerTemplates
+
+Additional HTTP headers to include. Map key is the header name, value is the header value template.
+
+**Optional:** Yes
+
+**Example:**
+```yaml
+headerTemplates:
+  Content-Type: "application/json"
+  X-Custom-Header: "{{ .ReportedSha }}"
+```
+
+#### spec.httpRequest.bodyTemplate
+
+Request body to send. Supports Go templates.
+
+**Optional:** Yes
+
+**Example:**
+```yaml
+bodyTemplate: |
+  {
+    "sha": "{{ .ReportedSha }}",
+    "environment": "{{ .Environment.Branch }}"
+  }
+```
+
+#### spec.httpRequest.timeout
+
+Maximum time to wait for the HTTP request to complete.
+
+**Default:** `30s`
+
+**Optional:** Yes
+
+#### spec.httpRequest.authentication
+
+Authentication configuration for the HTTP request.
+
+**Optional:** Yes
+
+**Supported methods:**
+
+1. **Basic Authentication** - Username and password
+   ```yaml
+   authentication:
+     basic:
+       secretRef:
+         name: basic-auth-secret  # Must contain keys: username, password
+   ```
+
+2. **Bearer Token** - API keys, JWTs, personal access tokens
+   ```yaml
+   authentication:
+     bearer:
+       secretRef:
+         name: bearer-token-secret  # Must contain key: token
+   ```
+
+3. **OAuth2** - Automatic token management with client credentials flow
+   ```yaml
+   authentication:
+     oauth2:
+       tokenURL: "https://auth.example.com/oauth/token"
+       scopes: ["read:api"]
+       secretRef:
+         name: oauth-creds  # Must contain keys: clientID, clientSecret
+   ```
+
+4. **TLS** - Mutual TLS with client certificates
+   ```yaml
+   authentication:
+     tls:
+       secretRef:
+         name: tls-cert  # Must contain keys: tls.crt, tls.key, optionally ca.crt
+   ```
+
+See the [HTTP Authentication Types](httpauth_types.go) documentation for detailed information.
 
 ### spec.expression
 
-Validation expression evaluated against HTTP response. Must return boolean.
+Expression evaluated using the [expr](https://github.com/expr-lang/expr) library against the HTTP response. Must return a boolean value where `true` indicates validation passed.
 
-**Required**
+**Available variables:**
+- `Response.StatusCode` (int): HTTP response status code
+- `Response.Body` (any): Parsed JSON as map[string]any, or raw string if not JSON
+- `Response.Headers` (map[string][]string): HTTP response headers
+
+**Required:** Yes
+
+**Examples:**
+```yaml
+# Simple status check
+expression: "Response.StatusCode == 200"
+
+# Status and body check
+expression: "Response.StatusCode == 200 && Response.Body.approved == true"
+
+# Complex validation
+expression: |
+  Response.StatusCode == 200 &&
+  Response.Body.status == "approved" &&
+  len(Response.Body.errors) == 0
+```
 
 ### spec.mode
 
-Operating mode configuration. Exactly one of `polling` or `trigger` must be specified.
+Controls how the controller polls or triggers HTTP requests. Exactly one of `polling` or `trigger` must be specified.
 
-#### Polling Mode
+**Required:** Yes
 
+#### spec.mode.polling
+
+Enables interval-based polling mode.
+
+**Fields:**
+- `interval` (duration): How often to retry the HTTP request. Default: `1m`
+
+**Example:**
 ```yaml
 mode:
   polling:
-    interval: 1m  # default
+    interval: 2m
 ```
 
-#### Trigger Mode
+#### spec.mode.trigger
 
+Enables expression-based triggering mode.
+
+**Fields:**
+
+##### spec.mode.trigger.requeueDuration
+
+How long to wait before requeuing to re-evaluate the trigger expression.
+
+**Default:** `1m`
+
+**Optional:** Yes
+
+##### spec.mode.trigger.triggerExpression
+
+Expression that dynamically controls whether the HTTP request should be made. Evaluated BEFORE each potential HTTP request.
+
+**Return types:**
+1. **Boolean:** `true` to make HTTP request, `false` to skip
+2. **Object with trigger field:** `{trigger: bool, ...customData}` where additional fields are stored in `TriggerData`
+
+**Available variables:**
+- `PromotionStrategy` (PromotionStrategy): full PromotionStrategy spec and status
+- `Environment` (EnvironmentStatus): current environment's status
+- `Phase` (string): current phase (success/pending/failure)
+- `ReportedSha` (string): SHA being validated
+- `LastSuccessfulSha` (string): last SHA that achieved success
+- `TriggerData` (map[string]any): custom data from previous trigger evaluation
+- `ResponseData` (map[string]any): response data from previous HTTP request
+
+**Required:** Yes
+
+**Examples:**
 ```yaml
-mode:
-  trigger:
-    requeueDuration: 1m  # default
-    expression: "..."    # required
+# Always trigger (equivalent to polling)
+triggerExpression: "true"
+
+# Only trigger when SHA changes
+triggerExpression: "ReportedSha != TriggerData['lastCheckedSha']"
+
+# Track state and trigger on changes
+triggerExpression: |
+  {
+    trigger: ReportedSha != TriggerData["trackedSha"],
+    trackedSha: ReportedSha
+  }
 ```
 
-## Status Fields
+##### spec.mode.trigger.responseExpression
+
+Optional expression that extracts and transforms data from the HTTP response before storing it in `ResponseData`. Allows storing only needed fields instead of the entire response.
+
+**Available variables:**
+- `Response.StatusCode` (int): HTTP response status code
+- `Response.Body` (any): parsed JSON response body
+- `Response.Headers` (map[string][]string): HTTP response headers
+
+**Return type:** Must return an object/map that will be stored as `ResponseData`
+
+**Optional:** Yes
+
+**Examples:**
+```yaml
+# Store specific fields
+responseExpression: |
+  {
+    status: Response.Body.status,
+    retryAfter: Response.Body.retryAfter
+  }
+
+# Conditional extraction
+responseExpression: |
+  Response.StatusCode == 200 ?
+    {status: "success", data: Response.Body.result} :
+    {status: "error", error: Response.Body.error}
+```
+
+### Status Fields
+
+The WebRequestCommitStatus resource maintains detailed status for each environment:
 
 ```yaml
 status:
@@ -667,57 +736,24 @@ status:
       phase: success
       lastRequestTime: "2024-01-15T10:30:00Z"
       lastResponseStatusCode: 200
-      expressionData:
-        trackedSha: "abc123def456"
-      responseData:  # Only present when responseExpression is provided
-        status: "approved"
-        approver: "john.doe@example.com"
-        rateLimit:
-          remaining: 42
-  conditions:
-    - type: Ready
-      status: "True"
-      reason: ReconcileComplete
-      message: All environments validated successfully
+      triggerData:
+        lastCheckedSha: abc123def456
+        attemptCount: 3
+      responseData:
+        status: approved
+        approver: john.doe@example.com
 ```
 
-### Status Field Descriptions
+**Fields:**
+- `branch`: Environment branch name
+- `reportedSha`: Commit SHA being reported on (based on `reportOn` setting)
+- `lastSuccessfulSha`: Last SHA that achieved success status
+- `phase`: Current validation phase (`pending`, `success`, or `failure`)
+- `lastRequestTime`: When the last HTTP request was made
+- `lastResponseStatusCode`: HTTP status code from last request
+- `triggerData`: Custom data from trigger expression (trigger mode only)
+- `responseData`: Extracted response data (trigger mode with `responseExpression` only)
 
-| Field | Description |
-|-------|-------------|
-| `branch` | Environment branch name |
-| `reportedSha` | Current SHA being validated |
-| `lastSuccessfulSha` | Last SHA that achieved success |
-| `phase` | Current phase: `pending`, `success`, or `failure` |
-| `lastRequestTime` | Timestamp of last HTTP request |
-| `lastResponseStatusCode` | HTTP status code from last request |
-| `expressionData` | Custom data from trigger expression (JSON object) |
-| `responseData` | **Trigger mode with responseExpression only**: Data extracted from HTTP response via responseExpression. Only populated when spec.mode.trigger.responseExpression is provided. |
+## Expression Language
 
-## Troubleshooting
-
-### HTTP Request Failures
-
-If HTTP requests are failing:
-
-1. Check the `lastResponseStatusCode` in status
-2. Verify the URL template renders correctly
-3. Check authentication credentials are valid
-4. Ensure the target endpoint is reachable from the cluster
-
-### Expression Evaluation Failures
-
-If expressions are failing:
-
-1. Check the `message` field in status for error details
-2. Verify the response body structure matches your expression
-3. Test expressions with simpler conditions first
-4. Remember that `Response.Body` is `map[string]any` for JSON or `string` for non-JSON
-
-### Trigger Not Firing
-
-If trigger mode isn't making requests:
-
-1. Check `triggerData` in status to see stored state
-2. Verify the trigger expression logic
-3. Remember that first reconcile has empty `TriggerData`
+WebRequestCommitStatus uses the [expr](https://github.com/expr-lang/expr) library for expression evaluation. The library provides a powerful expression language with familiar syntax.
