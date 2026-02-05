@@ -1,4 +1,5 @@
 import { FaServer, FaHistory } from 'react-icons/fa';
+import { GoGitMerge } from 'react-icons/go';
 import { StatusType } from './StatusIcon';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import CommitInfo from './CommitInfo';
@@ -141,13 +142,26 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       codeCommit={env.proposedReferenceCommit}
                       isActive={false}
                       status={env.proposedStatus as StatusType}
-                      className="proposed"
+                      className={`proposed ${isVerticalLayout ? 'proposed--bottom' : 'proposed--side'}`}
                       deploymentCommitUrl={env.proposedDryCommitUrl}
                       codeCommitUrl={env.proposedReferenceCommitUrl}
                       checks={env.proposedChecks}
                       healthSummary={env.proposedChecksSummary}
                       prUrl={env.prUrl}
                       prNumber={env.prNumber?.toString()}
+                      footerClassName={isVerticalLayout ? 'commit-group-footer--bottom' : 'commit-group-footer--side'}
+                      footer={(
+                        <button
+                          type="button"
+                          className={`proposed-merge-button ${isVerticalLayout ? 'proposed-merge-button--bottom' : 'proposed-merge-button--side'}`}
+                          aria-label={`Merge proposed changes into ${branch}`}
+                        >
+                          <GoGitMerge className="proposed-merge-icon" aria-hidden="true" strokeWidth={1} />
+                          <span className={`proposed-merge-label ${isVerticalLayout ? 'proposed-merge-label--bottom' : 'proposed-merge-label--side'}`}>
+                            Merge proposed into active
+                          </span>
+                        </button>
+                      )}
                     />
                   )}
                 </div>
