@@ -71,7 +71,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.
 		return cs.updateCheckRun(ctx, commitStatus)
 	}
 
-	if shouldCreateNewCheck {
+	if isTransitionFromCompleted {
 		logger.Info("Creating new check run for phase change", "oldPhase", commitStatus.Status.Phase, "newPhase", commitStatus.Spec.Phase, "oldCheckRunId", commitStatus.Status.Id)
 	} else {
 		logger.Info("Creating new check run via Checks API")
