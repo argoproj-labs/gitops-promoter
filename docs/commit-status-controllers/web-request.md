@@ -597,8 +597,6 @@ Authentication configuration for the HTTP request.
          name: tls-cert  # Must contain keys: tls.crt, tls.key, optionally ca.crt
    ```
 
-See the [HTTP Authentication Types](httpauth_types.go) documentation for detailed information.
-
 ### spec.expression
 
 Expression evaluated using the [expr](https://github.com/expr-lang/expr) library against the HTTP response. Must return a boolean value where `true` indicates validation passed.

@@ -71,11 +71,11 @@ type templateData struct {
 	NamespaceMetadata namespaceMetadata
 	PromotionStrategy *promoterv1alpha1.PromotionStrategy
 	Environment       *promoterv1alpha1.EnvironmentStatus
+	TriggerData       map[string]any
+	ResponseData      map[string]any
 	ReportedSha       string
 	LastSuccessfulSha string
 	Phase             string
-	TriggerData       map[string]any
-	ResponseData      map[string]any
 }
 
 // namespaceMetadata holds namespace labels and annotations for template rendering.
