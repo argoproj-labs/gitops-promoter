@@ -53,17 +53,30 @@ func NewGithubCommitStatusProvider(ctx context.Context, k8sClient client.Client,
 
 // Set sets the commit status for a given commit SHA in the specified repository using GitHub Checks API.
 // If the SHA hasn't changed and we have an existing check run ID, it will update the existing check run.
+// However, if we're transitioning from a completed state (success/failure) back to pending, we create a new check run
+// because GitHub's API doesn't allow reopening completed checks.
 // Otherwise, it creates a new check run.
 func (cs *CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
+	// Check if we're trying to reopen a completed check run
+	// GitHub doesn't allow changing a completed check (with conclusion) back to in_progress
+	isReopeningCompletedCheck := commitStatus.Status.Sha == commitStatus.Spec.Sha &&
+		commitStatus.Status.Id != "" &&
+		(commitStatus.Status.Phase == promoterv1alpha1.CommitPhaseSuccess || commitStatus.Status.Phase == promoterv1alpha1.CommitPhaseFailure) &&
+		commitStatus.Spec.Phase == promoterv1alpha1.CommitPhasePending
+
 	// Determine if we should update an existing check run or create a new one
-	if commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != "" {
+	if commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != "" && !isReopeningCompletedCheck {
 		logger.Info("Updating existing check run via Checks API", "checkRunId", commitStatus.Status.Id)
 		return cs.updateCheckRun(ctx, commitStatus)
 	}
 
-	logger.Info("Creating new check run via Checks API")
+	if isReopeningCompletedCheck {
+		logger.V(4).Info("Creating new check run because GitHub API doesn't allow reopening completed checks", "oldPhase", commitStatus.Status.Phase, "newPhase", commitStatus.Spec.Phase, "oldCheckRunId", commitStatus.Status.Id)
+	} else {
+		logger.V(4).Info("Creating new check run via Checks API")
+	}
 	return cs.createCheckRun(ctx, commitStatus)
 }
 
