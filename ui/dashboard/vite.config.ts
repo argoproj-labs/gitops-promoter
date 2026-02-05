@@ -25,6 +25,16 @@ export default defineConfig({
         secure: false,
         ws: false,
       },
+      '/get': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/merge': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
   resolve: {

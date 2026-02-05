@@ -813,7 +813,8 @@ func (ws *WebServer) findPullRequestByStrategy(ctx context.Context, namespace, s
 	}
 
 	// Find the ChangeTransferPolicy to get the proposed branch
-	ctpName := utils.GetChangeTransferPolicyName(strategyName, branch)
+	ctpBaseName := utils.GetChangeTransferPolicyName(strategyName, branch)
+	ctpName := utils.KubeSafeUniqueName(ctx, ctpBaseName)
 	ctp := &promoterv1alpha1.ChangeTransferPolicy{}
 	if err := ws.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ctpName}, ctp); err != nil {
 		return nil, fmt.Errorf("change transfer policy not found: %w", err)
