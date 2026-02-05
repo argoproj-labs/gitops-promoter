@@ -53,17 +53,29 @@ func NewGithubCommitStatusProvider(ctx context.Context, k8sClient client.Client,
 
 // Set sets the commit status for a given commit SHA in the specified repository using GitHub Checks API.
 // If the SHA hasn't changed and we have an existing check run ID, it will update the existing check run.
-// Otherwise, it creates a new check run.
+// However, if we're transitioning between different completed states or from completed to pending,
+// we create a new check run.
 func (cs *CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
+	// Check if we should create a new check run instead of updating
+	// We create a new check run when transitioning FROM a completed state (success/failure):
+	// 1. Completed -> pending: GitHub API doesn't allow reopening completed checks
+	// 2. Success <-> failure: Better UX to show as a new check rather than retroactively changing
+	isTransitionFromCompleted := commitStatus.Status.Phase != commitStatus.Spec.Phase &&
+		(commitStatus.Status.Phase == promoterv1alpha1.CommitPhaseSuccess || commitStatus.Status.Phase == promoterv1alpha1.CommitPhaseFailure)
+
 	// Determine if we should update an existing check run or create a new one
-	if commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != "" {
+	if commitStatus.Status.Sha == commitStatus.Spec.Sha && commitStatus.Status.Id != "" && !isTransitionFromCompleted {
 		logger.Info("Updating existing check run via Checks API", "checkRunId", commitStatus.Status.Id)
 		return cs.updateCheckRun(ctx, commitStatus)
 	}
 
-	logger.Info("Creating new check run via Checks API")
+	if isTransitionFromCompleted {
+		logger.Info("Creating new check run for phase change", "oldPhase", commitStatus.Status.Phase, "newPhase", commitStatus.Spec.Phase, "oldCheckRunId", commitStatus.Status.Id)
+	} else {
+		logger.Info("Creating new check run via Checks API")
+	}
 	return cs.createCheckRun(ctx, commitStatus)
 }
 
