@@ -1,21 +1,29 @@
 import { FaServer, FaHistory } from 'react-icons/fa';
 import { GoGitMerge } from 'react-icons/go';
 import { StatusType } from './StatusIcon';
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import CommitInfo from './CommitInfo';
 import HistoryNavigation from './HistoryNavigation';
 import {EnrichedEnvDetails, enrichFromEnvironments} from '@shared/utils/PSData';
 import type { Environment } from '@shared/types/promotion';
 import './Card.scss';
 
-export interface CardProps {
-  environments: Environment[];
+export interface MergeResult {
+  success: boolean;
+  message?: string;
 }
 
-const Card: React.FC<CardProps> = ({ environments }) => {
+export interface CardProps {
+  environments: Environment[];
+  /** Callback when merge button is clicked. Returns a promise with the merge result. */
+  onMerge?: (branch: string) => Promise<MergeResult>;
+}
+
+const Card: React.FC<CardProps> = ({ environments, onMerge }) => {
   const [historyMode, setHistoryMode] = useState<{ [branch: string]: number }>({});
   const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(true);
+  const [mergingBranch, setMergingBranch] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
@@ -45,6 +53,23 @@ const Card: React.FC<CardProps> = ({ environments }) => {
   const isInHistoryMode = (branch: string) => {
     return (historyMode[branch] || 0) > 0;
   };
+
+  const handleMerge = useCallback(async (branch: string) => {
+    if (!onMerge || mergingBranch) return;
+    
+    setMergingBranch(branch);
+    try {
+      const result = await onMerge(branch);
+      if (!result.success) {
+        // TODO: Show error toast/notification
+        console.error('Merge failed:', result.message);
+      }
+    } catch (error) {
+      console.error('Merge error:', error);
+    } finally {
+      setMergingBranch(null);
+    }
+  }, [onMerge, mergingBranch]);
   
   // Get enriched environments with current history index
   const enrichedEnvs = useMemo(() => {
@@ -153,12 +178,14 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                       footer={(
                         <button
                           type="button"
-                          className={`proposed-merge-button ${isVerticalLayout ? 'proposed-merge-button--bottom' : 'proposed-merge-button--side'}`}
+                          className={`proposed-merge-button ${isVerticalLayout ? 'proposed-merge-button--bottom' : 'proposed-merge-button--side'}${mergingBranch === branch ? ' merging' : ''}`}
                           aria-label={`Merge proposed changes into ${branch}`}
+                          onClick={() => handleMerge(branch)}
+                          disabled={!onMerge || mergingBranch !== null}
                         >
                           <GoGitMerge className="proposed-merge-icon" aria-hidden="true" strokeWidth={1} />
                           <span className={`proposed-merge-label ${isVerticalLayout ? 'proposed-merge-label--bottom' : 'proposed-merge-label--side'}`}>
-                            Merge proposed into active
+                            {mergingBranch === branch ? 'Merging...' : 'Merge proposed into active'}
                           </span>
                         </button>
                       )}
