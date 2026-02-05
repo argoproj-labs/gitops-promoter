@@ -449,6 +449,64 @@ spec:
 
 ## Field Reference
 
+### Template data (all templateable fields)
+
+The following fields support Go templates and all receive the **same template data**:
+
+| Field | Purpose |
+|-------|---------|
+| `spec.descriptionTemplate` | Commit status description (SCM UI) |
+| `spec.urlTemplate` | Commit status target URL (SCM UI) |
+| `spec.httpRequest.urlTemplate` | HTTP request URL |
+| `spec.httpRequest.headerTemplates` | HTTP request header values (map values) |
+| `spec.httpRequest.bodyTemplate` | HTTP request body |
+
+**Available template variables:**
+
+| Variable | Type | Description |
+|----------|------|-------------|
+| `ReportedSha` | string | Commit SHA being reported on |
+| `LastSuccessfulSha` | string | Last SHA that achieved success |
+| `Phase` | string | Current phase: `success`, `pending`, or `failure` |
+| `PromotionStrategy` | object | Full PromotionStrategy resource |
+| `Environment` | object | Current environment status (branch, Proposed, Active, PullRequest, etc.) |
+| `NamespaceMetadata.Labels` | map[string]string | Labels on the WebRequestCommitStatus namespace |
+| `NamespaceMetadata.Annotations` | map[string]string | Annotations on the namespace |
+| `TriggerData` | map[string]any | Custom data from the trigger expression (trigger mode only). Use `{{ index .TriggerData "key" }}` for a value. |
+| `ResponseData` | map[string]any | Data from the last HTTP response when using `responseExpression` (trigger mode only). Keys match what your response expression returns (e.g. `approvedCount`, `lastCheckedAt`). |
+
+**When is ResponseData / TriggerData from?**
+
+| Field | When data is from |
+|-------|-------------------|
+| `spec.descriptionTemplate`, `spec.urlTemplate` | **Latest** — from the most recent HTTP request and trigger evaluation (what you see in status is up to date). |
+| `spec.httpRequest.urlTemplate`, `headerTemplates`, `bodyTemplate` | **Previous attempt** — from the last run. These are rendered *before* making the current HTTP request, so they never contain the response from the request being built. |
+
+**Template functions:** All standard [Sprig](https://masterminds.github.io/sprig/) functions except `env`, `expandenv`, and `getHostByName`.
+
+**Examples:**
+```yaml
+# Description
+descriptionTemplate: "{{ .Phase }}: {{ .ResponseData.approvedCount }}/{{ .ResponseData.totalRecordCount }} approved"
+
+# URL
+urlTemplate: "https://dashboard.example.com/{{ .Environment.Branch }}/{{ .ReportedSha }}"
+
+# HTTP URL
+urlTemplate: "https://api.example.com/check/{{ .ReportedSha }}?env={{ .Environment.Branch }}"
+
+# Header value
+headerTemplates:
+  X-Sha: "{{ .ReportedSha }}"
+  X-Environment: "{{ .Environment.Branch }}"
+
+# Body
+bodyTemplate: |
+  {"sha": "{{ .ReportedSha }}", "branch": "{{ .Environment.Branch }}"}
+```
+
+---
+
 ### spec.key
 
 Unique identifier for this validation rule. This key is matched against the PromotionStrategy's `proposedCommitStatuses` or `activeCommitStatuses`.
@@ -476,28 +534,17 @@ Specifies which commit SHA to report the CommitStatus on.
 
 ### spec.descriptionTemplate
 
-Human-readable description shown in the SCM provider (GitHub, GitLab, etc.) as the commit status description. Supports Go templates.
+Human-readable description shown in the SCM provider (GitHub, GitLab, etc.) as the commit status description.
 
-**Available template variables:**
-- `{{ .ReportedSha }}`: the commit SHA being reported on
-- `{{ .LastSuccessfulSha }}`: last SHA that achieved success
-- `{{ .Phase }}`: current phase (success/pending/failure)
-- `{{ .PromotionStrategy }}`: full PromotionStrategy object
-- `{{ .Environment }}`: current environment status from PromotionStrategy
-- `{{ .NamespaceMetadata.Labels }}`: map of labels from the namespace
-- `{{ .NamespaceMetadata.Annotations }}`: map of annotations from the namespace
-
-**Template functions:** All standard [Sprig](https://masterminds.github.io/sprig/) functions except `env`, `expandenv`, and `getHostByName`
+**Templates:** Uses the [template data](#template-data-all-templateable-fields) above (same variables for all templateable fields).
 
 **Optional:** Yes
 
 ### spec.urlTemplate
 
-URL template with link to more details, shown in the SCM provider as the commit status target URL. Supports the same template variables as `descriptionTemplate`.
+URL template with link to more details, shown in the SCM provider as the commit status target URL.
 
-**Examples:**
-- `"https://dashboard.example.com/{{ .Environment.Branch }}/status"`
-- `"https://approvals.example.com/{{ .ReportedSha }}"`
+**Templates:** Uses the [template data](#template-data-all-templateable-fields) above.
 
 **Optional:** Yes
 
@@ -507,7 +554,9 @@ Defines the HTTP request configuration.
 
 #### spec.httpRequest.urlTemplate
 
-HTTP endpoint to request. Supports Go templates with the same variables as `descriptionTemplate`.
+HTTP endpoint to request.
+
+**Templates:** Uses the [template data](#template-data-all-templateable-fields) above.
 
 **Required:** Yes
 
@@ -523,6 +572,8 @@ HTTP method to use.
 
 Additional HTTP headers to include. Map key is the header name, value is the header value template.
 
+**Templates:** Uses the [template data](#template-data-all-templateable-fields) above.
+
 **Optional:** Yes
 
 **Example:**
@@ -534,7 +585,9 @@ headerTemplates:
 
 #### spec.httpRequest.bodyTemplate
 
-Request body to send. Supports Go templates.
+Request body to send.
+
+**Templates:** Uses the [template data](#template-data-all-templateable-fields) above.
 
 **Optional:** Yes
 

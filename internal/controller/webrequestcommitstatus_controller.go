@@ -427,8 +427,20 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		}
 		wrcs.Status.Environments = append(wrcs.Status.Environments, envWebRequestStatus)
 
+		// Use latest response and trigger data for commit status description template
+		commitTemplateData := templateData
+		if responseDataJSON != nil {
+			var latestResponseData map[string]any
+			if err := json.Unmarshal(responseDataJSON.Raw, &latestResponseData); err == nil {
+				commitTemplateData.ResponseData = latestResponseData
+			}
+		}
+		if newTriggerData != nil {
+			commitTemplateData.TriggerData = newTriggerData
+		}
+
 		// Create or update the CommitStatus
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, phase, templateData)
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, phase, commitTemplateData)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
