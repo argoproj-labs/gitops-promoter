@@ -13,6 +13,15 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	webserverlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
 	"github.com/argoproj-labs/gitops-promoter/ui/web"
 	"github.com/gin-contrib/gzip"
@@ -29,11 +38,19 @@ import (
 
 var logger = ctrl.Log.WithName("webServer")
 
+// PullRequestProviderFunc is a function that returns a PullRequestProvider for a given PullRequest.
+// This allows for dependency injection in tests.
+type PullRequestProviderFunc func(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error)
+
 // WebServer handles the web server functionality for the dashboard and API endpoints.
 type WebServer struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Event  *Event
+	// GetPullRequestProvider is an optional function to get a PullRequestProvider.
+	// If nil, the default implementation is used.
+	GetPullRequestProvider PullRequestProviderFunc
+	Scheme                 *runtime.Scheme
+	Event                  *Event
+	ControllerNamespace    string
 }
 
 // Event represents a server-sent event that can be broadcast to clients.
@@ -65,7 +82,7 @@ type Message struct {
 type ClientChan chan Message
 
 // NewWebServer creates a new WebServer instance with the given manager.
-func NewWebServer(mgr controllerruntime.Manager) WebServer {
+func NewWebServer(mgr controllerruntime.Manager, controllerNamespace string) WebServer {
 	event := &Event{
 		Message:       make(chan Message, 100),
 		newClients:    make(chan chan Message),
@@ -75,9 +92,10 @@ func NewWebServer(mgr controllerruntime.Manager) WebServer {
 	go event.listen()
 
 	return WebServer{
-		Event:  event,
-		Scheme: mgr.GetScheme(),
-		Client: mgr.GetClient(),
+		Event:               event,
+		Scheme:              mgr.GetScheme(),
+		Client:              mgr.GetClient(),
+		ControllerNamespace: controllerNamespace,
 	}
 }
 
@@ -229,6 +247,9 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	router.GET("/list", ws.httpList)
 
 	router.GET("/get", ws.httpGet)
+
+	// Mutation endpoints
+	router.POST("/merge", ws.httpMerge)
 
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "ok")
@@ -571,4 +592,132 @@ func filter(msg Message, c *gin.Context) (bool, error) {
 		return false, fmt.Errorf("failed to match path: %w", err)
 	}
 	return match, nil
+}
+
+// mergeRequest represents the request payload for merging a pull request.
+type mergeRequest struct {
+	Namespace string `json:"namespace" binding:"required"`
+	Name      string `json:"name" binding:"required"`
+}
+
+// mergeResponse represents the response for a merge operation.
+type mergeResponse struct {
+	State   string `json:"state"`
+	Message string `json:"message,omitempty"`
+}
+
+func (ws *WebServer) httpMerge(c *gin.Context) {
+	var req mergeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, mergeResponse{
+			State:   "failed",
+			Message: fmt.Sprintf("invalid request: %v", err),
+		})
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Get the PullRequest CR
+	pr := &promoterv1alpha1.PullRequest{}
+	if err := ws.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, pr); err != nil {
+		c.JSON(http.StatusNotFound, mergeResponse{
+			State:   "failed",
+			Message: fmt.Sprintf("pull request not found: %v", err),
+		})
+		return
+	}
+
+	// Check if the PR is in the correct state for merging
+	if pr.Status.State != promoterv1alpha1.PullRequestOpen {
+		c.JSON(http.StatusBadRequest, mergeResponse{
+			State:   "failed",
+			Message: fmt.Sprintf("pull request is not open, current state: %s", pr.Status.State),
+		})
+		return
+	}
+
+	if pr.Status.ID == "" {
+		c.JSON(http.StatusBadRequest, mergeResponse{
+			State:   "failed",
+			Message: "pull request has no ID (not yet created on SCM)",
+		})
+		return
+	}
+
+	// Get the PullRequest provider
+	provider, err := ws.pullRequestProvider(ctx, *pr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, mergeResponse{
+			State:   "failed",
+			Message: fmt.Sprintf("failed to get SCM provider: %v", err),
+		})
+		return
+	}
+
+	// Perform the merge
+	if err := provider.Merge(ctx, *pr); err != nil {
+		c.JSON(http.StatusInternalServerError, mergeResponse{
+			State:   "failed",
+			Message: fmt.Sprintf("failed to merge pull request: %v", err),
+		})
+		return
+	}
+
+	// Update the PullRequest spec to trigger controller reconciliation
+	pr.Spec.State = promoterv1alpha1.PullRequestMerged
+	if err := ws.Update(ctx, pr); err != nil {
+		// The merge succeeded but we failed to update the spec
+		// Log the error but return success since the merge actually happened
+		logger.Error(err, "failed to update pull request spec after merge", "namespace", pr.Namespace, "name", pr.Name)
+		c.JSON(http.StatusOK, mergeResponse{
+			State:   "merged",
+			Message: "merge succeeded but failed to update PullRequest resource",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, mergeResponse{
+		State: "merged",
+	})
+}
+
+// pullRequestProvider returns a PullRequestProvider for the given PullRequest.
+// If GetPullRequestProvider is set, it uses that function; otherwise, it uses the default implementation.
+func (ws *WebServer) pullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
+	if ws.GetPullRequestProvider != nil {
+		return ws.GetPullRequestProvider(ctx, pr)
+	}
+	return ws.defaultPullRequestProvider(ctx, pr)
+}
+
+func (ws *WebServer) defaultPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, ws.Client, ws.ControllerNamespace, pr.Spec.RepositoryReference, &pr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
+	}
+
+	gitRepository, err := utils.GetGitRepositoryFromObjectKey(ctx, ws.Client, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	switch {
+	case scmProvider.GetSpec().GitHub != nil:
+		return github.NewGithubPullRequestProvider(ctx, ws.Client, scmProvider, *secret, gitRepository.Spec.GitHub.Owner) //nolint:wrapcheck
+	case scmProvider.GetSpec().GitLab != nil:
+		return gitlab.NewGitlabPullRequestProvider(ws.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().BitbucketCloud != nil:
+		return bitbucket_cloud.NewBitbucketCloudPullRequestProvider(ws.Client, *secret) //nolint:wrapcheck
+	case scmProvider.GetSpec().Forgejo != nil:
+		return forgejo.NewForgejoPullRequestProvider(ws.Client, *secret, scmProvider.GetSpec().Forgejo.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().Gitea != nil:
+		return gitea.NewGiteaPullRequestProvider(ws.Client, *secret, scmProvider.GetSpec().Gitea.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().AzureDevOps != nil:
+		return azuredevops.NewAzdoPullRequestProvider(ws.Client, *secret, scmProvider, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck,contextcheck
+	case scmProvider.GetSpec().Fake != nil:
+		return fake.NewFakePullRequestProvider(ws.Client), nil
+	default:
+		return nil, fmt.Errorf("unsupported SCM provider: %s", scmProvider.GetName())
+	}
 }
