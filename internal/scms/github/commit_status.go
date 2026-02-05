@@ -54,7 +54,7 @@ func NewGithubCommitStatusProvider(ctx context.Context, k8sClient client.Client,
 // Set sets the commit status for a given commit SHA in the specified repository using GitHub Checks API.
 // If the SHA hasn't changed and we have an existing check run ID, it will update the existing check run.
 // However, if we're transitioning between different completed states or from completed to pending,
-// we create a new check run for clarity in the GitHub UI timeline.
+// we create a new check run.
 func (cs *CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
