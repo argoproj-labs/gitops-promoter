@@ -62,9 +62,7 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *promoterv1alpha1.
 	// We create a new check run when transitioning FROM a completed state (success/failure):
 	// 1. Completed -> pending: GitHub API doesn't allow reopening completed checks
 	// 2. Success <-> failure: Better UX to show as a new check rather than retroactively changing
-	shouldCreateNewCheck := commitStatus.Status.Sha == commitStatus.Spec.Sha &&
-		commitStatus.Status.Id != "" &&
-		commitStatus.Status.Phase != commitStatus.Spec.Phase &&
+	isTransitionFromCompleted := commitStatus.Status.Phase != commitStatus.Spec.Phase &&
 		(commitStatus.Status.Phase == promoterv1alpha1.CommitPhaseSuccess || commitStatus.Status.Phase == promoterv1alpha1.CommitPhaseFailure)
 
 	// Determine if we should update an existing check run or create a new one
