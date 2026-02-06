@@ -870,6 +870,23 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 	return nil
 }
 
+// getPromotionStrategy fetches the PromotionStrategy for the CTP (from its label).
+// Returns (nil, nil) when the CTP has no PromotionStrategy label or the strategy is not found.
+func (r *ChangeTransferPolicyReconciler) getPromotionStrategy(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PromotionStrategy, error) {
+	psName := ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]
+	if psName == "" {
+		return nil, nil
+	}
+	var ps promoterv1alpha1.PromotionStrategy
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: psName}, &ps); err != nil {
+		if k8s_errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get PromotionStrategy %q: %w", psName, err)
+	}
+	return &ps, nil
+}
+
 // tooManyPRsError constructs an error indicating that there are too many open pull requests for the CTP.
 func tooManyPRsError(pr *promoterv1alpha1.PullRequestList) error {
 	prNames := make([]string, 0, len(pr.Items))
@@ -922,16 +939,6 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 
 	prName = utils.KubeSafeUniqueName(ctx, prName)
 
-	templatePullRequestTemplate, err := r.SettingsMgr.GetPullRequestControllersTemplate(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get pull request template from settings: %w", err)
-	}
-
-	title, description, err := TemplatePullRequest(templatePullRequestTemplate, map[string]any{"ChangeTransferPolicy": ctp})
-	if err != nil {
-		return nil, fmt.Errorf("failed to template pull request: %w", err)
-	}
-
 	// Check if the PR already exists to determine the commit message
 	existingPR := &promoterv1alpha1.PullRequest{}
 	prExists := true
@@ -940,6 +947,29 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			return nil, fmt.Errorf("failed to get existing PullRequest: %w", err)
 		}
 		prExists = false
+		existingPR = nil
+	}
+
+	ps, err := r.getPromotionStrategy(ctx, ctp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get PromotionStrategy for template: %w", err)
+	}
+
+	templatePullRequestTemplate, err := r.SettingsMgr.GetPullRequestControllersTemplate(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pull request template from settings: %w", err)
+	}
+
+	// Template receives the single current CTP and, when present, its PromotionStrategy (for env order).
+	templateData := map[string]any{
+		"ChangeTransferPolicy": ctp,
+	}
+	if ps != nil {
+		templateData["PromotionStrategy"] = ps
+	}
+	title, description, err := TemplatePullRequest(templatePullRequestTemplate, templateData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to template pull request: %w", err)
 	}
 
 	// Build owner reference
@@ -1143,14 +1173,37 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	return pr, nil
 }
 
-// gitMergeStrategyOurs tests if there is a conflict between the active and proposed branches. If there is, we
-// perform a merge with ours as the strategy. This is to prevent conflicts in the pull request by assuming that
-// the proposed branch is the source of truth.
+// gitMergeStrategyOurs tests if there is a conflict or branch divergence between the active and proposed branches.
+// If branches have diverged (e.g., due to a squash merge on the SCM), or if there is a content conflict, we
+// perform a merge with ours as the strategy. This prevents conflicts in the pull request and resolves stale
+// commits from appearing in future PRs after squash merges, by assuming the proposed branch is the source of truth.
 func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Context, gitOperations *git.EnvironmentOperations, ctp *promoterv1alpha1.ChangeTransferPolicy) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Testing for conflicts between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+	logger.Info("Testing for conflicts and divergence between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
 
-	// Check if there's a conflict between branches
+	// First, check if the active branch is an ancestor of the proposed branch.
+	// If not, the branches have diverged (e.g., due to a squash merge on the SCM).
+	// In that case, we merge active into proposed with "ours" strategy to make active
+	// an ancestor of proposed, so future PRs only show genuinely new commits.
+	isAncestor, err := gitOperations.IsAncestor(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch)
+	if err != nil {
+		return fmt.Errorf("failed to check ancestry between branches %q and %q: %w", ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch, err)
+	}
+
+	if !isAncestor {
+		logger.Info("Branch divergence detected (possible squash merge), performing merge with 'ours' strategy",
+			"proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+
+		err = gitOperations.MergeWithOursStrategy(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+		if err != nil {
+			return fmt.Errorf("failed to merge diverged branches %q and %q with 'ours' strategy: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+		}
+
+		r.Recorder.Eventf(ctp, nil, "Normal", constants.ResolvedDivergenceReason, "ResolvingDivergence", constants.ResolvedDivergenceMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+		return nil
+	}
+
+	// Active is an ancestor of proposed (normal state). Check for content conflicts.
 	hasConflict, err := gitOperations.HasConflict(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	if err != nil {
 		return fmt.Errorf("failed to check for conflicts between branches %q and %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)

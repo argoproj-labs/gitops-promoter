@@ -19,11 +19,15 @@ package controller
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"strings"
+	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -551,6 +555,206 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Key).To(Equal(healthCheckCSKey))
 					// This MUST be "success" - proves we read from spec, not status
 					g.Expect(changeTransferPolicy.Status.Active.CommitStatuses[0].Phase).To(Equal("success"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
+		Context("When active branch is squash-merged externally", func() {
+			var name string
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var gitPath string
+			var err error
+			var prName string
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-squash-merge", "default")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+
+				gitPath, err = os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				Expect(k8sClient.Delete(ctx, changeTransferPolicy)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+			})
+
+			It("should resolve branch divergence after squash merge and show only new commits in PR", func() {
+				By("Making the first change and hydrating")
+				firstDrySha, _ := makeChangeAndHydrateRepo(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+
+				By("Waiting for PR to be created for the first change")
+				var pr promoterv1alpha1.PullRequest
+				Eventually(func(g Gomega) {
+					typeNamespacedNamePR := types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Namespace: "default",
+					}
+					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
+					g.Expect(err).To(Succeed())
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Simulating a squash merge on the active branch")
+				squashDir, err := os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+				repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name)
+				_, err = runGitCmd(ctx, squashDir, "clone", repoURL, ".")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "config", "user.name", "testuser")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "config", "user.email", "testmail@test.com")
+				Expect(err).NotTo(HaveOccurred())
+
+				// Get the current active branch SHA before squash merge (for webhook)
+				_, err = runGitCmd(ctx, squashDir, "fetch", "origin")
+				Expect(err).NotTo(HaveOccurred())
+				beforeSquashSha, err := runGitCmd(ctx, squashDir, "rev-parse", "origin/"+testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				beforeSquashSha = strings.TrimSpace(beforeSquashSha)
+
+				// Checkout active branch and squash merge proposed into it
+				_, err = runGitCmd(ctx, squashDir, "checkout", "-B", testBranchDevelopment, "origin/"+testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "merge", "--squash", "origin/"+testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "commit", "-m", "squash merge from proposed")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "push", "origin", testBranchDevelopment)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Trigger CTP reconciliation to pick up the squash merge on the active branch
+				sendWebhookForPush(ctx, beforeSquashSha, testBranchDevelopment)
+				enqueueCTP(changeTransferPolicy.Namespace, changeTransferPolicy.Name)
+
+				By("Waiting for CTP to see the squash merge on active (active dry sha matches first dry sha)")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Making a second change on the dry branch and hydrating proposed")
+				// Get the default branch name
+				defaultBranch, err := runGitCmd(ctx, squashDir, "rev-parse", "--abbrev-ref", "origin/HEAD")
+				Expect(err).NotTo(HaveOccurred())
+				defaultBranch = strings.TrimSpace(defaultBranch)
+				defaultBranch, _ = strings.CutPrefix(defaultBranch, "origin/")
+
+				// Checkout and pull dry branch
+				_, err = runGitCmd(ctx, squashDir, "checkout", defaultBranch)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "pull")
+				Expect(err).NotTo(HaveOccurred())
+
+				// Make a new dry commit
+				f, err := os.Create(path.Join(squashDir, "manifests-fake.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				_, err = f.WriteString(fmt.Sprintf(`{"time": "%s"}`, time.Now().Format(time.RFC3339Nano)))
+				Expect(err).NotTo(HaveOccurred())
+				err = f.Close()
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "add", "manifests-fake.yaml")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "commit", "-m", "second dry commit")
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "push", "origin", defaultBranch)
+				Expect(err).NotTo(HaveOccurred())
+
+				secondDrySha, err := runGitCmd(ctx, squashDir, "rev-parse", defaultBranch)
+				Expect(err).NotTo(HaveOccurred())
+				secondDrySha = strings.TrimSpace(secondDrySha)
+				secondDryShort, err := runGitCmd(ctx, squashDir, "rev-parse", "--short=7", defaultBranch)
+				Expect(err).NotTo(HaveOccurred())
+				secondDryShort = strings.TrimSpace(secondDryShort)
+
+				// Get the current proposed branch SHA before hydration push (for webhook)
+				beforeHydrateSha, err := runGitCmd(ctx, squashDir, "rev-parse", "origin/"+testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+				beforeHydrateSha = strings.TrimSpace(beforeHydrateSha)
+
+				// Hydrate dev-next with the second dry SHA
+				_, err = runGitCmd(ctx, squashDir, "checkout", "-B", testBranchDevelopmentNext, "origin/"+testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+
+				metadata := git.HydratorMetadata{
+					DrySha:  secondDrySha,
+					Author:  "testuser <testmail@test.com>",
+					Date:    metav1.Now(),
+					Subject: "second dry commit",
+				}
+				m, err := json.MarshalIndent(metadata, "", "\t")
+				Expect(err).NotTo(HaveOccurred())
+
+				f, err = os.Create(path.Join(squashDir, "hydrator.metadata"))
+				Expect(err).NotTo(HaveOccurred())
+				_, err = f.Write(m)
+				Expect(err).NotTo(HaveOccurred())
+				err = f.Close()
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "add", "hydrator.metadata")
+				Expect(err).NotTo(HaveOccurred())
+
+				f, err = os.Create(path.Join(squashDir, "manifests-fake.yaml"))
+				Expect(err).NotTo(HaveOccurred())
+				_, err = f.WriteString(fmt.Sprintf(`{"time": "%s"}`, time.Now().Format(time.RFC3339Nano)))
+				Expect(err).NotTo(HaveOccurred())
+				err = f.Close()
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "add", "manifests-fake.yaml")
+				Expect(err).NotTo(HaveOccurred())
+
+				_, err = runGitCmd(ctx, squashDir, "commit", "-m", "hydrated for second dry sha "+secondDrySha)
+				Expect(err).NotTo(HaveOccurred())
+				_, err = runGitCmd(ctx, squashDir, "push", "origin", testBranchDevelopmentNext)
+				Expect(err).NotTo(HaveOccurred())
+
+				// Trigger CTP reconciliation to pick up the new hydration on proposed
+				sendWebhookForPush(ctx, beforeHydrateSha, testBranchDevelopmentNext)
+				enqueueCTP(changeTransferPolicy.Namespace, changeTransferPolicy.Name)
+
+				By("Verifying CTP detects divergence, resolves it, and creates PR with the new commit")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					// The proposed dry SHA should be the second commit
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(secondDrySha))
+					// The active dry SHA should still be the first commit (from squash merge)
+					g.Expect(changeTransferPolicy.Status.Active.Dry.Sha).To(Equal(firstDrySha))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				// The PR should reflect only the new change (title uses secondDryShort)
+				Eventually(func(g Gomega) {
+					typeNamespacedNamePR := types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Namespace: "default",
+					}
+					err := k8sClient.Get(ctx, typeNamespacedNamePR, &pr)
+					g.Expect(err).To(Succeed())
+					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", secondDryShort, testBranchDevelopment)))
+					g.Expect(pr.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 		})
