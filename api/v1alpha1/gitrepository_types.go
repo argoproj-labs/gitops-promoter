@@ -69,7 +69,9 @@ type GitRepositoryStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// GitRepository is the Schema for the gitrepositories API
+// GitRepository represents a single git repository. It references an ScmProvider (or ClusterScmProvider)
+// to enable access via some configured auth mechanism. Exactly one of the provider fields in spec
+// (github, gitlab, forgejo, gitea, bitbucketCloud, azureDevOps, fake) must be set to identify the repo.
 // +kubebuilder:printcolumn:name="Provider",type=string,JSONPath=`.spec.scmProviderRef.name`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type GitRepository struct {

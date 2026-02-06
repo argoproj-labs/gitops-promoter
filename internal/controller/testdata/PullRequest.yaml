@@ -1,3 +1,5 @@
+# PullRequest is a thin wrapper around the SCM's pull request API. ChangeTransferPolicies use PullRequests to manage
+# promotions.
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: PullRequest
 metadata:
@@ -5,29 +7,27 @@ metadata:
 spec:
   gitRepositoryRef:
     name: example-git-repository
-  title:
-  targetBranch:
-  sourceBranch:
-  description:
+  title: "Promote abc1234 to environment/dev"
+  targetBranch: environment/dev   # Base: the branch we are merging into (Head ---> Base)
+  sourceBranch: environment/dev-next  # Head: the branch we are merging from
+  description: |
+    This PR promotes the environment branch environment/dev.
   # The commit SHA that must be at the head of the source branch for the merge to succeed.
   # This prevents race conditions where a different commit gets merged than intended.
-  mergeSha: abc123def456789012345678901234567890abcd
-
+  mergeSha: abcdef1234567890abcdef1234567890abcdef12
   # Must be closed, merged, or open. Default is open.
   # Must be set to "open" when initially created, and cannot be set to "closed" or "merged" unless status.id is set
   # (which the controller should do automatically as long as there are no errors).
-  state:
+  state: open
 status:
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
-    # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile the resource,
-    # the condition will be True with a reason of ReconciliationSuccess. The Ready condition is essentially a way to show reconciliation
-    # errors to the user. This condition exists on all resources that have reconciliation logic.
+    # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile
+    # the resource, the condition will be True with a reason of ReconciliationSuccess.
     - type: Ready
       lastTransitionTime: 2023-10-01T00:00:00Z
       message: Reconciliation succeeded
-      reason: ReconciliationSuccess # ReconciliationSuccess or ReconciliationError
-      status: "True" # "True," "False," or "Unknown"
-      # observedGeneration is the generation of the resource that was last reconciled. This is used to track if the
-      # resource has changed since the last reconciliation.
+      reason: ReconciliationSuccess
+      status: "True"  # "True," "False," or "Unknown"
+      # observedGeneration is the generation of the resource that was last reconciled.
       observedGeneration: 123

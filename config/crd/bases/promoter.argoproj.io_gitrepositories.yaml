@@ -24,7 +24,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GitRepository is the Schema for the gitrepositories API
+        description: |-
+          GitRepository represents a single git repository. It references an ScmProvider (or ClusterScmProvider)
+          to enable access via some configured auth mechanism. Exactly one of the provider fields in spec
+          (github, gitlab, forgejo, gitea, bitbucketCloud, azureDevOps, fake) must be set to identify the repo.
         properties:
           apiVersion:
             description: |-

@@ -109,7 +109,7 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// PullRequest is the Schema for the pullrequests API
+// PullRequest is a thin wrapper around the SCM's pull request API.
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
 // +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.id`
 // +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.spec.sourceBranch`,priority=1

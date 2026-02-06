@@ -1,3 +1,11 @@
+# ClusterScmProvider represents a SCM instance (such as GitHub). ClusterScmProvider is the cluster-scoped alternative to
+# the ScmProvider. It references a Secret in the same namespace where the promoter is running to enable access via
+# some configured auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in the cluster, regardless
+# of namespace.
+#
+# You must specify either github, gitlab, forgejo, gitea, bitbucketCloud or azureDevOps. Multiple are provided here as
+# examples so you can see available fields per provider. If you do not need to specify any sub-fields, just set the
+# field to {}.
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ClusterScmProvider
 metadata:
@@ -5,27 +13,20 @@ metadata:
 spec:
   secretRef:
     # Secret must be in the same namespace where the promoter is running
-    name: example-cluster-scm-provider-secret 
-
-  # You must specify either github, gitlab, forgejo, or bitbucketCloud. Multiple are provided here as examples.
-  # If you do not need to specify any sub-fields, just set the field to {}.
-
+    name: example-cluster-scm-provider-secret
   github:
-    domain: github.example.com # Optional, leave empty for default github.com
+    domain: ""  # Optional, leave empty for default github.com
     appID: 1234
-    installationID: 1234 # Optional, will query ListInstallations if not provided
-
+    installationID: 1234  # Optional
   gitlab:
-    domain: gitlab.com # Optional
-
+    domain: ""  # Optional
   forgejo:
     domain: forgejo.example.com
-
-  bitbucketCloud: {}
-
-  azureDevOps:
-    organization: example-org
-    domain: dev.azure.com # Optional
-
   gitea:
-    domain: gitea.
+    domain: gitea.example.com
+  bitbucketCloud: {}
+  azureDevOps:
+    organization: my-organization
+    domain: ""  # Optional
+  fake:
+    domain: fake.example.com

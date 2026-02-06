@@ -21,9 +21,6 @@ spec:
     - jsonPath: .status.proposed.dry.sha
       name: Proposed Dry Sha
       type: string
-    - jsonPath: .status.proposed.note.drySha
-      name: Proposed Note Dry Sha
-      type: string
     - jsonPath: .status.pullRequest.state
       name: PR State
       type: string
@@ -33,8 +30,11 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ChangeTransferPolicy is the Schema for the changetransferpolicies
-          API
+        description: |-
+          ChangeTransferPolicy represents a pair of hydrated environment branches: the proposed branch and the active
+          branch. When a new commit appears in the proposed branch, the controller opens a PR against the active branch.
+          When all configured proposed commit status checks pass, the controller merges the PR. Active checks are
+          continuously monitored, and their states are saved to the ChangeTransferPolicy status.
         properties:
           apiVersion:
             description: |-

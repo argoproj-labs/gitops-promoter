@@ -1,30 +1,35 @@
+# GitRepository represents a single git repository. It references an ScmProvider to enable access via some configured
+# auth mechanism.
+#
+# Only one of the git providers should be specified at apply time; all are shown here so you can see available fields
+# per provider.
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: GitRepository
 metadata:
   name: example-git-repository
 spec:
-  # Only one of the git providers should be specified.
   github:
-    name:
-    owner:
-
+    owner: my-org
+    name: my-repo
   gitlab:
-    name:
-    namespace:
-    projectId:
-
+    namespace: my-group
+    name: my-project
+    projectId: 12345  # ID of the project in GitLab
   forgejo:
-    name:
-    owner:
-
+    owner: my-org
+    name: my-repo
+  gitea:
+    owner: my-org
+    name: my-repo
   bitbucketCloud:
-    owner:
-    name:
-
+    owner: my-workspace
+    name: my-repo
   azureDevOps:
-    name:
-    project:
-
+    project: my-project
+    name: my-repo
+  fake:
+    owner: test-owner
+    name: test-repo
   scmProviderRef:
     kind: ScmProvider
     name: example-scm-provider

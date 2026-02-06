@@ -37,8 +37,11 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ArgoCDCommitStatus is the Schema for the argocdcommitstatuses
-          API.
+        description: |-
+          ArgoCDCommitStatus aggregates the status of Argo CD Applications used in a promotion strategy. It selects
+          Applications via a label selector and a reference to a PromotionStrategy, then creates CommitStatus resources
+          (with key "argocd-health") so that promotion gates reflect whether the selected applications are synced and
+          healthy. Optional URL config can generate links (e.g. to the Argo CD UI) for each status.
         properties:
           apiVersion:
             description: |-
@@ -321,9 +324,6 @@ spec:
     - jsonPath: .status.proposed.dry.sha
       name: Proposed Dry Sha
       type: string
-    - jsonPath: .status.proposed.note.drySha
-      name: Proposed Note Dry Sha
-      type: string
     - jsonPath: .status.pullRequest.state
       name: PR State
       type: string
@@ -333,8 +333,11 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ChangeTransferPolicy is the Schema for the changetransferpolicies
-          API
+        description: |-
+          ChangeTransferPolicy represents a pair of hydrated environment branches: the proposed branch and the active
+          branch. When a new commit appears in the proposed branch, the controller opens a PR against the active branch.
+          When all configured proposed commit status checks pass, the controller merges the PR. Active checks are
+          continuously monitored, and their states are saved to the ChangeTransferPolicy status.
         properties:
           apiVersion:
             description: |-
@@ -1597,8 +1600,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ClusterScmProvider is the Schema for the clusterscmproviders
-          API.
+        description: |-
+          ClusterScmProvider is the cluster-scoped alternative to ScmProvider. It represents an SCM instance (e.g. GitHub)
+          and references a Secret in the namespace where the promoter runs. Any GitRepository in the cluster can reference
+          a ClusterScmProvider by name. Exactly one provider field in spec must be set, same as ScmProvider.
         properties:
           apiVersion:
             description: |-
@@ -1850,7 +1855,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: CommitStatus is the Schema for the commitstatuses API
+        description: |-
+          CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses are the primary source of truth
+          for promotion gates: the controller writes their state to the SCM so checkmarks/failures appear in the SCM UI.
         properties:
           apiVersion:
             description: |-
@@ -2041,8 +2048,11 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ControllerConfiguration is the Schema for the controllerconfigurations
-          API.
+        description: |-
+          ControllerConfiguration configures the behavior of the promoter controllers. A global instance is typically
+          deployed with the controller and applies to all promotions. Each controller has a section (WorkQueue settings,
+          rate limiters, and controller-specific options such as PR templates or watchLocalApplications). All fields are
+          required; defaults are provided in the installation manifests.
         properties:
           apiVersion:
             description: |-
@@ -2082,6 +2092,8 @@ spec:
                       in the local cluster. When false, the controller will only watch Applications in remote clusters
                       configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed
                       in the local cluster or when all Applications are deployed to remote clusters.
+
+                      This value is evaluated at startup and requires a restart to change.
                     type: boolean
                   workQueue:
                     description: |-
@@ -3920,7 +3932,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GitRepository is the Schema for the gitrepositories API
+        description: |-
+          GitRepository represents a single git repository. It references an ScmProvider (or ClusterScmProvider)
+          to enable access via some configured auth mechanism. Exactly one of the provider fields in spec
+          (github, gitlab, forgejo, gitea, bitbucketCloud, azureDevOps, fake) must be set to identify the repo.
         properties:
           apiVersion:
             description: |-
@@ -4194,7 +4209,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PromotionStrategy is the Schema for the promotionstrategies API
+        description: |-
+          PromotionStrategy is the user's interface to controlling how changes are promoted through environments.
+          In this resource you configure the list of live hydrated environment branches in promotion order and the
+          checks (active and proposed commit statuses) that must pass between promotion steps.
         properties:
           apiVersion:
             description: |-
@@ -5634,7 +5652,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PullRequest is the Schema for the pullrequests API
+        description: PullRequest is a thin wrapper around the SCM's pull request API.
         properties:
           apiVersion:
             description: |-
@@ -5911,7 +5929,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ScmProvider is the Schema for the scmproviders API
+        description: |-
+          ScmProvider represents an SCM instance (e.g. GitHub, GitLab). It references a Secret in the same namespace
+          to supply credentials for API access. Exactly one of the provider fields in spec (github, gitlab, forgejo,
+          gitea, bitbucketCloud, azureDevOps, fake) must be set. GitRepository resources reference ScmProvider by name.
         properties:
           apiVersion:
             description: |-
@@ -6152,7 +6173,12 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: TimedCommitStatus is the Schema for the timedcommitstatuses API
+        description: |-
+          TimedCommitStatus provides time-based gating for environment promotions. It monitors how long commits have been
+          running in specified environments and creates CommitStatus resources (as active commit statuses) based on
+          configured duration requirements. This enables "soak time" or "bake time" policies: changes must run successfully
+          in an environment for at least the configured duration before being promoted. Referenced in PromotionStrategy
+          via activeCommitStatuses with key "timer".
         properties:
           apiVersion:
             description: |-

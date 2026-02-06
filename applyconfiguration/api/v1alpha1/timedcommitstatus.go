@@ -26,7 +26,11 @@ import (
 // TimedCommitStatusApplyConfiguration represents a declarative configuration of the TimedCommitStatus type for use
 // with apply.
 //
-// TimedCommitStatus is the Schema for the timedcommitstatuses API
+// TimedCommitStatus provides time-based gating for environment promotions. It monitors how long commits have been
+// running in specified environments and creates CommitStatus resources (as active commit statuses) based on
+// configured duration requirements. This enables "soak time" or "bake time" policies: changes must run successfully
+// in an environment for at least the configured duration before being promoted. Referenced in PromotionStrategy
+// via activeCommitStatuses with key "timer".
 type TimedCommitStatusApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration `json:",inline"`
 	// metadata is a standard object metadata
