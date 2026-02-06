@@ -57,6 +57,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	mcmanager "sigs.k8s.io/multicluster-runtime/pkg/manager"
 	kubeconfigprovider "sigs.k8s.io/multicluster-runtime/providers/kubeconfig"
+	multiprovider "sigs.k8s.io/multicluster-runtime/providers/multi"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -159,10 +160,21 @@ func runController(
 		},
 	}
 
-	// Create the provider first, then the manager with the provider
-	provider := kubeconfigprovider.New(providerOpts)
+	// Create the kubeconfig provider for remote clusters
+	kubeconfigProvider := kubeconfigprovider.New(providerOpts)
 
-	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
+	// Create the multi-provider that combines local and remote cluster providers
+	multiProvider := multiprovider.New(multiprovider.Options{})
+
+	// Add the kubeconfig provider for remote clusters with the "remote" prefix
+	if err := multiProvider.AddProvider(controller.KubeConfigProviderName, kubeconfigProvider); err != nil {
+		panic(fmt.Errorf("unable to add kubeconfig provider: %w", err))
+	}
+
+	// We'll add the local cluster provider later (after creating the manager)
+	// because we need the manager's cluster to create the single provider
+
+	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), multiProvider, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
@@ -200,6 +212,26 @@ func runController(
 	})
 
 	processSignalsCtx := ctrl.SetupSignalHandler()
+
+	// Create the ControllerConfigurationReconciler early, as it acts as a provider
+	// for the local cluster and needs to be registered before other controllers
+	configController := &controller.ControllerConfigurationReconciler{
+		Client:   localManager.GetClient(),
+		Scheme:   localManager.GetScheme(),
+		Recorder: localManager.GetEventRecorder("ControllerConfiguration"),
+	}
+
+	// Register the ControllerConfiguration controller as the local cluster provider
+	// It will dynamically engage/disengage the local cluster based on configuration
+	if err = multiProvider.AddProvider(controller.LocalProviderName, configController); err != nil {
+		panic(fmt.Errorf("unable to add local cluster provider: %w", err))
+	}
+
+	// Now set up the ControllerConfigurationReconciler with both managers
+	// This must be done after adding it as a provider
+	if err = configController.SetupWithManager(processSignalsCtx, localManager, mcMgr); err != nil {
+		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
+	}
 
 	if err = (&controller.PullRequestReconciler{
 		Client:      localManager.GetClient(),
@@ -266,16 +298,10 @@ func runController(
 	if err = (&controller.ArgoCDCommitStatusReconciler{
 		Manager:            mcMgr,
 		SettingsMgr:        settingsMgr,
-		KubeConfigProvider: provider,
+		KubeConfigProvider: kubeconfigProvider,
 		Recorder:           localManager.GetEventRecorder("ArgoCDCommitStatus"),
 	}).SetupWithManager(processSignalsCtx, mcMgr); err != nil {
 		panic(fmt.Errorf("unable to create ArgoCDCommitStatus controller: %w", err))
-	}
-	if err = (&controller.ControllerConfigurationReconciler{
-		Client: localManager.GetClient(),
-		Scheme: localManager.GetScheme(),
-	}).SetupWithManager(processSignalsCtx, localManager); err != nil {
-		panic(fmt.Errorf("unable to create ControllerConfiguration controller: %w", err))
 	}
 	if err = (&controller.ClusterScmProviderReconciler{
 		Client:      localManager.GetClient(),
@@ -317,9 +343,9 @@ func runController(
 
 	g, ctx := errgroup.WithContext(processSignalsCtx)
 
-	// Initialize the provider controller with the manager
-	if err := provider.SetupWithManager(ctx, mcMgr); err != nil {
-		panic("unable to setup provider with manager")
+	// Initialize the kubeconfig provider with the manager
+	if err := kubeconfigProvider.SetupWithManager(ctx, mcMgr); err != nil {
+		panic("unable to setup kubeconfig provider with manager")
 	}
 
 	g.Go(func() error {
