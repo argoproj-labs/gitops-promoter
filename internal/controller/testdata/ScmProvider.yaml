@@ -1,9 +1,5 @@
 # ScmProvider represents an SCM instance (such as github). It references a Secret to enable access via some configured
 # auth mechanism.
-#
-# You must specify either github, gitlab, forgejo, gitea, bitbucketCloud or azureDevOps. Multiple are provided here as
-# examples so you can see available fields per provider. If you do not need to specify any sub-fields for a provider,
-# just set the field to {}.
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ScmProvider
 metadata:
@@ -11,19 +7,26 @@ metadata:
 spec:
   secretRef:
     name: example-scm-provider-secret
+
+  # You must specify either github, gitlab, forgejo, bitbucketCloud or azureDevops. Multiple are provided here as examples.
+  # If you do not need to specify any sub-fields, just set the field to {}.
+
   github:
     domain: ""  # Optional, leave empty for default github.com
     appID: 1234
     installationID: 1234  # Optional, will query ListInstallations if not provided
+
   gitlab:
     domain: ""  # Optional, leave empty for default gitlab.com
+
   forgejo:
     domain: forgejo.example.com  # Required; no default domain
+
   gitea:
     domain: gitea.example.com  # Required; no default domain
+
   bitbucketCloud: {}
+
   azureDevOps:
     organization: my-organization
     domain: ""  # Optional, leave empty for dev.azure.com
-  fake:
-    domain: fake.example.com

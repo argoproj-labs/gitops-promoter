@@ -2,10 +2,6 @@
 # the ScmProvider. It references a Secret in the same namespace where the promoter is running to enable access via
 # some configured auth mechanism. A ClusterScmProvider can be referenced by any GitRepository in the cluster, regardless
 # of namespace.
-#
-# You must specify either github, gitlab, forgejo, gitea, bitbucketCloud or azureDevOps. Multiple are provided here as
-# examples so you can see available fields per provider. If you do not need to specify any sub-fields, just set the
-# field to {}.
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ClusterScmProvider
 metadata:
@@ -23,7 +19,7 @@ spec:
     installationID: 1234  # Optional
 
   gitlab:
-    domain: ""  # Optional
+    domain: ""  # Optional, default is gitlab.com
 
   forgejo:
     domain: forgejo.example.com
