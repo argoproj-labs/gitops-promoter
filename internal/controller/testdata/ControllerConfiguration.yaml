@@ -1,113 +1,104 @@
-# ControllerConfiguration defines the global settings for all promoter controllers.
-# Each controller has its own configuration section with WorkQueue settings that control
-# how frequently resources are reconciled, how many can run concurrently, and how
-# rate limiting is applied to prevent overwhelming external systems.
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ControllerConfiguration
 metadata:
-  name: example-controller-configuration
+  labels:
+    app.kubernetes.io/name: promoter
+    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/managed-by: kustomize
+  name: controller-configuration
 spec:
-  # PromotionStrategy controller manages promotion strategies and creates ChangeTransferPolicies
   promotionStrategy:
     workQueue:
-      # How often to automatically requeue resources for reconciliation
+      maxConcurrentReconciles: 10
       requeueDuration: "5m"
-      # Maximum number of concurrent reconcile operations for this controller
-      maxConcurrentReconciles: 3
-      # Rate limiter controls retry behavior for failed reconciliations
       rateLimiter:
-        # Exponential backoff: start at 1s, max out at 1 minute
-        exponentialFailure:
-          baseDelay: "1s"
-          maxDelay: "1m"
-
-  # ChangeTransferPolicy controller handles the actual promotion logic and creates PRs
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
   changeTransferPolicy:
     workQueue:
+      maxConcurrentReconciles: 10
       requeueDuration: "5m"
-      maxConcurrentReconciles: 5
       rateLimiter:
-        # MaxOf combiner: use the maximum delay from multiple rate limiters
-        # This combines per-item exponential backoff with a global rate limit
         maxOf:
-          - exponentialFailure:
-              baseDelay: "1s"
-              maxDelay: "2m"
           - bucket:
-              # Allow 10 operations per second with bursts up to 20
               qps: 10
-              bucket: 20
-
-  # PullRequest controller manages pull request lifecycle
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
   pullRequest:
-    # Template configuration for generating PR titles and descriptions.
-    # Available template data: ChangeTransferPolicy (current CTP), PromotionStrategy (when present, for env order).
-    template:
-      title: "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`"
-      description: |
-        This PR promotes to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`.
-        {{ if .PromotionStrategy }}
-        
-        **Promotion chain** (dry SHA = proposed for that env):
-        {{ range $i, $env := .PromotionStrategy.Spec.Environments }}
-        {{ add $i 1 }}. {{ if eq $env.Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}`{{ $env.Branch }}` **(this PR)** `{{ $.ChangeTransferPolicy.Status.Proposed.Dry.Sha | default "—" | trunc 7 }}`{{ else }}{{ range $.PromotionStrategy.Status.Environments }}{{ if eq .Branch $env.Branch }}{{ if .PullRequest.Url }}[`{{ $env.Branch }}`]({{ .PullRequest.Url }}){{ else }}`{{ $env.Branch }}`{{ end }} `{{ .Proposed.Dry.Sha | default "—" | trunc 7 }}`{{ end }}{{ end }}{{ end }}
-        {{ end }}
-        
-        ```mermaid
-        flowchart LR
-        {{ range $i, $env := .PromotionStrategy.Spec.Environments }}  N{{ $i }}["{{ $env.Branch }}{{ if eq $env.Branch $.ChangeTransferPolicy.Spec.ActiveBranch }} (this PR) {{ $.ChangeTransferPolicy.Status.Proposed.Dry.Sha | default "—" | trunc 7 }}{{ else }}{{ range $.PromotionStrategy.Status.Environments }}{{ if eq .Branch $env.Branch }} {{ .Proposed.Dry.Sha | default "—" | trunc 7 }}{{ end }}{{ end }}{{ end }}"]
-        {{ end }}{{ range $i, $env := .PromotionStrategy.Spec.Environments }}{{ if gt $i 0 }}  N{{ sub $i 1 }} --> N{{ $i }}
-        {{ end }}{{ end }}```
-        {{ end }}
-        
-        **Changes:**
-        - Active dry SHA: {{ .ChangeTransferPolicy.Status.Active.Dry.Sha | default "—" | trunc 7 }}
-        - Proposed dry SHA: {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha | trunc 7 }}
-        {{ if .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
-        - **Proposed commit:** {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject | regexReplaceAllLiteral "#[0-9]+" "" | trim }}
-        {{ if .ChangeTransferPolicy.Status.Proposed.Dry.Body }}
-        {{ .ChangeTransferPolicy.Status.Proposed.Dry.Body | regexReplaceAllLiteral "#[0-9]+" "" | trim | nindent 2 }}
-        {{ end }}
-        {{ end }}
-        {{ if .ChangeTransferPolicy.Status.Proposed.Dry.References }}
-        - **Reference commits:**
-        {{ range .ChangeTransferPolicy.Status.Proposed.Dry.References }}
-        {{ if .Commit }}
-          - `{{ .Commit.Sha | trunc 7 }}` **{{ .Commit.Subject | regexReplaceAllLiteral "#[0-9]+" "" | trim }}**
-        {{ if .Commit.Body }}{{ .Commit.Body | regexReplaceAllLiteral "#[0-9]+" "" | trim | nindent 4 }}
-        {{ end }}
-        {{ end }}
-        {{ end }}
-        {{ end }}
     workQueue:
+      maxConcurrentReconciles: 10
       requeueDuration: "5m"
-      maxConcurrentReconciles: 3
       rateLimiter:
-        # FastSlow: retry quickly for the first 3 attempts, then slow down
-        # Good for handling transient SCM API errors
-        fastSlow:
-          fastDelay: "500ms"
-          slowDelay: "30s"
-          maxFastAttempts: 3
-
-  # CommitStatus controller updates commit status based on policies
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
+    template:
+      title: "Promote {{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`"
+      description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}."
   commitStatus:
     workQueue:
-      requeueDuration: "2m"
-      maxConcurrentReconciles: 5
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
       rateLimiter:
-        exponentialFailure:
-          baseDelay: "500ms"
-          maxDelay: "1m"
-
-  # ArgoCDCommitStatus controller syncs ArgoCD application status to commit statuses
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
   argocdCommitStatus:
     watchLocalApplications: true
     workQueue:
-      requeueDuration: "5m"
       maxConcurrentReconciles: 10
+      requeueDuration: "5m"
       rateLimiter:
-        # Bucket rate limiter: control overall request rate to external APIs
-        bucket:
-          qps: 20
-          bucket: 50
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
+  timedCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
+      rateLimiter:
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
+  gitCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      requeueDuration: "5m"
+      rateLimiter:
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
