@@ -11,25 +11,28 @@ spec:
   github:
     owner: my-org
     name: my-repo
+
   gitlab:
     namespace: my-group
     name: my-project
     projectId: 12345  # ID of the project in GitLab
+
   forgejo:
     owner: my-org
     name: my-repo
+
   gitea:
     owner: my-org
     name: my-repo
+
   bitbucketCloud:
     owner: my-workspace
     name: my-repo
+
   azureDevOps:
     project: my-project
     name: my-repo
-  fake:
-    owner: test-owner
-    name: test-repo
+
   scmProviderRef:
-    kind: ScmProvider
+    kind: ScmProvider # or ClusterScmProvider
     name: example-scm-provider

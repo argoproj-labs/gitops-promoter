@@ -79,9 +79,7 @@ type ScmProviderStatus struct {
 //+kubebuilder:subresource:status
 
 // ScmProvider represents an SCM instance (e.g. GitHub, GitLab). It references a Secret in the same namespace
-// to supply credentials for API access. Exactly one of the provider fields in spec (github, gitlab, forgejo,
-// gitea, bitbucketCloud, azureDevOps, fake) must be set. GitRepository resources reference ScmProvider by name.
-//
+// to supply credentials for API access.
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
 type ScmProvider struct {
 	metav1.TypeMeta   `json:",inline"`

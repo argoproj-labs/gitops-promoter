@@ -26,8 +26,7 @@ spec:
       openAPIV3Schema:
         description: |-
           GitRepository represents a single git repository. It references an ScmProvider (or ClusterScmProvider)
-          to enable access via some configured auth mechanism. Exactly one of the provider fields in spec
-          (github, gitlab, forgejo, gitea, bitbucketCloud, azureDevOps, fake) must be set to identify the repo.
+          to enable access via some configured auth mechanism.
         properties:
           apiVersion:
             description: |-

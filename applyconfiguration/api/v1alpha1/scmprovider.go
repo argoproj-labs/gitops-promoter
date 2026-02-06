@@ -27,8 +27,7 @@ import (
 // with apply.
 //
 // ScmProvider represents an SCM instance (e.g. GitHub, GitLab). It references a Secret in the same namespace
-// to supply credentials for API access. Exactly one of the provider fields in spec (github, gitlab, forgejo,
-// gitea, bitbucketCloud, azureDevOps, fake) must be set. GitRepository resources reference ScmProvider by name.
+// to supply credentials for API access.
 type ScmProviderApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

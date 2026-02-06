@@ -15,11 +15,17 @@ spec:
   # The commit SHA that must be at the head of the source branch for the merge to succeed.
   # This prevents race conditions where a different commit gets merged than intended.
   mergeSha: abcdef1234567890abcdef1234567890abcdef12
-  # Must be closed, merged, or open. Default is open.
-  # Must be set to "open" when initially created, and cannot be set to "closed" or "merged" unless status.id is set
-  # (which the controller should do automatically as long as there are no errors).
-  state: open
+  # Must be closed, merged, or open. Default is open. Set to "merged" after the controller merges the PR.
+  state: merged
 status:
+  # Populated by the controller; reflects the PR on the SCM
+  id: "848"
+  state: merged  # closed, merged, or open
+  prCreationTime: 2023-10-01T00:00:00Z
+  url: https://github.com/org/repo/pull/848
+  # This is set to true if the PR was merged or closed outside of the controller, which can happen when users manually merge or close the PR on the SCM.
+  externallyMergedOrClosed: false
+
   conditions:
     # The Ready condition indicates that the resource has been successfully reconciled, when there is an error during
     # reconciliation, the condition will be False with a reason of ReconciliationError. When we successfully reconcile

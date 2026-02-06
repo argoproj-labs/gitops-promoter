@@ -10,18 +10,28 @@ spec:
   # Reference to the PromotionStrategy this TimedCommitStatus monitors
   promotionStrategyRef:
     name: webservice-tier-1
+
   # List of environments to monitor for time-based gating.
   # For each environment, the controller will:
   # 1. Check how long the active commit has been running
   # 2. Create a CommitStatus for the CURRENT environment's active SHA
   # 3. Set the CommitStatus phase based on whether duration is met
   environments:
+    # Monitor development environment
+    # Creates an active CommitStatus that gates promotions from development
     - branch: environment/development
       duration: 1h
+
+    # Monitor staging environment
+    # Creates an active CommitStatus that gates promotions from staging
     - branch: environment/staging
       duration: 4h
+
+    # Monitor production environment
+    # Creates an active CommitStatus for production (useful for audit/compliance)
     - branch: environment/production
       duration: 24h
+
 status:
   # Status is populated by the controller
   conditions:
@@ -33,14 +43,22 @@ status:
       observedGeneration: 1
   environments:
     - branch: environment/development
+      # The active commit SHA being monitored
       sha: abc123def456789012345678901234567890abcd
+      # When this commit was deployed to the environment
       commitTime: "2024-01-15T10:00:00Z"
+      # The configured required duration
       requiredDuration: 1h
-      phase: pending  # pending or success
-      atMostDurationRemaining: 14m30s  # Maximum time remaining until the gate is satisfied
+      # How long the commit has been running
+      timeElapsed: 45m30s
+      # Current gate status: "pending" or "success"
+      phase: pending
+      # Maximum time remaining until the gate is satisfied
+      atMostDurationRemaining: 14m30s
     - branch: environment/staging
       sha: def456789012345678901234567890abcdef123456
       commitTime: "2024-01-14T06:00:00Z"
       requiredDuration: 4h
+      timeElapsed: 5h15m20s
       phase: success
       atMostDurationRemaining: 0s

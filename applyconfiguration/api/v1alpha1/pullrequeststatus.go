@@ -26,23 +26,25 @@ import (
 // PullRequestStatusApplyConfiguration represents a declarative configuration of the PullRequestStatus type for use
 // with apply.
 //
-// PullRequestStatus defines the observed state of PullRequest
+// PullRequestStatus defines the observed state of PullRequest.
 type PullRequestStatusApplyConfiguration struct {
-	// ID the id of the pull request
+	// ID is the unique identifier of the pull request, set by the SCM.
 	ID *string `json:"id,omitempty"`
-	// State of the merge request closed/merged/open
+	// State is the state of the pull request (closed, merged, or open).
 	State *apiv1alpha1.PullRequestState `json:"state,omitempty"`
-	// PRCreationTime the time the PR was created
+	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime *v1.Time `json:"prCreationTime,omitempty"`
+	// PRMergeTime is the time when the pull request was merged. This is set when the controller
+	// sets the PR to merged; it may vary slightly from the SCM's actual merge time.
+	PRMergeTime *v1.Time `json:"prMergeTime,omitempty"`
 	// Url is the URL of the pull request.
 	Url *string `json:"url,omitempty"`
-	// ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-	// This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-	// When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
-	// The PullRequest resource will be deleted after this flag is set, but the status is preserved in
-	// the owning ChangeTransferPolicy to maintain a record of the external action.
+	// ExternallyMergedOrClosed indicates that the pull request was merged or closed outside the controller
+	// (e.g. via the SCM UI). Set to true when the resource has an ID but is no longer found on the SCM.
+	// When true, State may be empty since we cannot determine if it was merged or closed. The PullRequest
+	// resource may be deleted after this is set; the owning ChangeTransferPolicy preserves the status.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
-	// Conditions Represents the observations of the current state.
+	// Conditions represent the observations of the current state.
 	Conditions []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
 
@@ -73,6 +75,14 @@ func (b *PullRequestStatusApplyConfiguration) WithState(value apiv1alpha1.PullRe
 // If called multiple times, the PRCreationTime field is set to the value of the last call.
 func (b *PullRequestStatusApplyConfiguration) WithPRCreationTime(value v1.Time) *PullRequestStatusApplyConfiguration {
 	b.PRCreationTime = &value
+	return b
+}
+
+// WithPRMergeTime sets the PRMergeTime field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PRMergeTime field is set to the value of the last call.
+func (b *PullRequestStatusApplyConfiguration) WithPRMergeTime(value v1.Time) *PullRequestStatusApplyConfiguration {
+	b.PRMergeTime = &value
 	return b
 }
 
