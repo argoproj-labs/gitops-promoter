@@ -40,15 +40,45 @@ spec:
 
   # PullRequest controller manages pull request lifecycle
   pullRequest:
-    # Template configuration for generating PR titles and descriptions
+    # Template configuration for generating PR titles and descriptions.
+    # Available template data: ChangeTransferPolicy (current CTP), PromotionStrategy (when present, for env order).
     template:
       title: "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`"
       description: |
-        This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`.
+        This PR promotes to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`.
+        {{ if .PromotionStrategy }}
+        
+        **Promotion chain** (dry SHA = proposed for that env):
+        {{ range $i, $env := .PromotionStrategy.Spec.Environments }}
+        {{ add $i 1 }}. {{ if eq $env.Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}`{{ $env.Branch }}` **(this PR)** `{{ $.ChangeTransferPolicy.Status.Proposed.Dry.Sha | default "—" | trunc 7 }}`{{ else }}{{ range $.PromotionStrategy.Status.Environments }}{{ if eq .Branch $env.Branch }}{{ if .PullRequest.Url }}[`{{ $env.Branch }}`]({{ .PullRequest.Url }}){{ else }}`{{ $env.Branch }}`{{ end }} `{{ .Proposed.Dry.Sha | default "—" | trunc 7 }}`{{ end }}{{ end }}{{ end }}
+        {{ end }}
+        
+        ```mermaid
+        flowchart LR
+        {{ range $i, $env := .PromotionStrategy.Spec.Environments }}  N{{ $i }}["{{ $env.Branch }}{{ if eq $env.Branch $.ChangeTransferPolicy.Spec.ActiveBranch }} (this PR) {{ $.ChangeTransferPolicy.Status.Proposed.Dry.Sha | default "—" | trunc 7 }}{{ else }}{{ range $.PromotionStrategy.Status.Environments }}{{ if eq .Branch $env.Branch }} {{ .Proposed.Dry.Sha | default "—" | trunc 7 }}{{ end }}{{ end }}{{ end }}"]
+        {{ end }}{{ range $i, $env := .PromotionStrategy.Spec.Environments }}{{ if gt $i 0 }}  N{{ sub $i 1 }} --> N{{ $i }}
+        {{ end }}{{ end }}```
+        {{ end }}
         
         **Changes:**
-        - Current SHA: {{ .ChangeTransferPolicy.Status.Active.Dry.Sha }}
-        - Proposed SHA: {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}
+        - Active dry SHA: {{ .ChangeTransferPolicy.Status.Active.Dry.Sha | default "—" | trunc 7 }}
+        - Proposed dry SHA: {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha | trunc 7 }}
+        {{ if .ChangeTransferPolicy.Status.Proposed.Dry.Subject }}
+        - **Proposed commit:** {{ .ChangeTransferPolicy.Status.Proposed.Dry.Subject | regexReplaceAllLiteral "#[0-9]+" "" | trim }}
+        {{ if .ChangeTransferPolicy.Status.Proposed.Dry.Body }}
+        {{ .ChangeTransferPolicy.Status.Proposed.Dry.Body | regexReplaceAllLiteral "#[0-9]+" "" | trim | nindent 2 }}
+        {{ end }}
+        {{ end }}
+        {{ if .ChangeTransferPolicy.Status.Proposed.Dry.References }}
+        - **Reference commits:**
+        {{ range .ChangeTransferPolicy.Status.Proposed.Dry.References }}
+        {{ if .Commit }}
+          - `{{ .Commit.Sha | trunc 7 }}` **{{ .Commit.Subject | regexReplaceAllLiteral "#[0-9]+" "" | trim }}**
+        {{ if .Commit.Body }}{{ .Commit.Body | regexReplaceAllLiteral "#[0-9]+" "" | trim | nindent 4 }}
+        {{ end }}
+        {{ end }}
+        {{ end }}
+        {{ end }}
     workQueue:
       requeueDuration: "5m"
       maxConcurrentReconciles: 3
