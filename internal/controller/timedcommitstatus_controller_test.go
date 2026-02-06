@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	_ "embed"
 	"os"
 	"time"
 
@@ -34,7 +35,17 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+//go:embed testdata/TimedCommitStatus.yaml
+var testTimedCommitStatusYAML string
+
 var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the TimedCommitStatus resource", func() {
+			err := unmarshalYamlStrict(testTimedCommitStatusYAML, &promoterv1alpha1.TimedCommitStatus{})
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	var (
 		ctx               context.Context
 		name              string
