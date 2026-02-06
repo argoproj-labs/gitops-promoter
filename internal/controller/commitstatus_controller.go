@@ -101,6 +101,13 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
+	// Check if the status is already set correctly to avoid redundant API calls
+	// This prevents GitLab state transition errors when status is already set
+	if cs.Status.Sha == cs.Spec.Sha && cs.Status.Phase == cs.Spec.Phase {
+		logger.Info("Commit status already set correctly, skipping API call", "sha", cs.Spec.Sha, "phase", cs.Spec.Phase)
+		return ctrl.Result{}, nil
+	}
+
 	commitStatusProvider, err := r.getCommitStatusProvider(ctx, cs)
 	if err != nil || commitStatusProvider == nil {
 		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus provider: %w", err)

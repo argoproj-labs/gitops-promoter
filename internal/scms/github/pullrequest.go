@@ -160,8 +160,41 @@ func (pr *PullRequest) Merge(ctx context.Context, pullRequest v1alpha1.PullReque
 		return fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 
+	// Check if the PR is already merged to avoid errors
 	start := time.Now()
-	_, response, err := pr.client.PullRequests.Merge(
+	ghPR, response, err := pr.client.PullRequests.Get(
+		ctx,
+		gitRepo.Spec.GitHub.Owner,
+		gitRepo.Spec.GitHub.Name,
+		prNumber,
+	)
+	if response != nil {
+		metrics.RecordSCMCall(gitRepo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, response.StatusCode, time.Since(start), getRateLimitMetrics(response.Rate))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get pull request state: %w", err)
+	}
+
+	logger.Info("github rate limit",
+		"limit", response.Rate.Limit,
+		"remaining", response.Rate.Remaining,
+		"reset", response.Rate.Reset)
+	logger.V(4).Info("github response status",
+		"status", response.Status)
+
+	// If already merged, this is a no-op (status will be updated by controller)
+	if ghPR.GetMerged() {
+		logger.Info("Pull request is already merged, skipping merge operation", "prNumber", prNumber)
+		return nil
+	}
+
+	// If PR is closed (not merged), we can't merge it
+	if ghPR.GetState() == "closed" {
+		return fmt.Errorf("pull request %d is closed and cannot be merged", prNumber)
+	}
+
+	start = time.Now()
+	_, response, err = pr.client.PullRequests.Merge(
 		ctx,
 		gitRepo.Spec.GitHub.Owner,
 		gitRepo.Spec.GitHub.Name,

@@ -145,12 +145,39 @@ func (pr *PullRequest) Close(ctx context.Context, prObj v1alpha1.PullRequest) er
 		return fmt.Errorf("failed to get repo: %w", err)
 	}
 
+	// Check if the MR is already closed or merged to avoid unnecessary API calls
+	start := time.Now()
+	mr, resp, err := pr.client.MergeRequests.GetMergeRequest(
+		repo.Spec.GitLab.ProjectID,
+		mrIID,
+		nil,
+		gitlab.WithContext(ctx),
+	)
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get merge request state: %w", err)
+	}
+
+	logGitLabRateLimitsIfAvailable(
+		logger,
+		prObj.Spec.RepositoryReference.Name,
+		resp,
+	)
+
+	// If already closed or merged, this is a no-op (status will be updated by controller)
+	if mr.State == "closed" || mr.State == "merged" {
+		logger.Info("Merge request is already closed or merged, skipping close operation", "mrIID", mrIID, "state", mr.State)
+		return nil
+	}
+
 	options := &gitlab.UpdateMergeRequestOptions{
 		StateEvent: gitlab.Ptr("close"),
 	}
 
-	start := time.Now()
-	_, resp, err := pr.client.MergeRequests.UpdateMergeRequest(
+	start = time.Now()
+	_, resp, err = pr.client.MergeRequests.UpdateMergeRequest(
 		repo.Spec.GitLab.ProjectID,
 		mrIID,
 		options,
@@ -191,6 +218,38 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		return fmt.Errorf("failed to get repo: %w", err)
 	}
 
+	// Check if the MR is already merged to avoid 405 errors
+	start := time.Now()
+	mr, resp, err := pr.client.MergeRequests.GetMergeRequest(
+		repo.Spec.GitLab.ProjectID,
+		mrIID,
+		nil,
+		gitlab.WithContext(ctx),
+	)
+	if resp != nil {
+		metrics.RecordSCMCall(repo, metrics.SCMAPIPullRequest, metrics.SCMOperationGet, resp.StatusCode, time.Since(start), nil)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get merge request state: %w", err)
+	}
+
+	logGitLabRateLimitsIfAvailable(
+		logger,
+		prObj.Spec.RepositoryReference.Name,
+		resp,
+	)
+
+	// If already merged, this is a no-op (status will be updated by controller)
+	if mr.State == "merged" {
+		logger.Info("Merge request is already merged, skipping merge operation", "mrIID", mrIID)
+		return nil
+	}
+
+	// If MR is closed (not merged), we can't merge it
+	if mr.State == "closed" {
+		return fmt.Errorf("merge request %d is closed and cannot be merged", mrIID)
+	}
+
 	options := &gitlab.AcceptMergeRequestOptions{
 		AutoMerge:                gitlab.Ptr(false),
 		ShouldRemoveSourceBranch: gitlab.Ptr(false),
@@ -202,8 +261,8 @@ func (pr *PullRequest) Merge(ctx context.Context, prObj v1alpha1.PullRequest) er
 		options.MergeCommitMessage = gitlab.Ptr(prObj.Spec.Commit.Message)
 	}
 
-	start := time.Now()
-	_, resp, err := pr.client.MergeRequests.AcceptMergeRequest(
+	start = time.Now()
+	_, resp, err = pr.client.MergeRequests.AcceptMergeRequest(
 		repo.Spec.GitLab.ProjectID,
 		mrIID,
 		options,
