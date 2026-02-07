@@ -21,6 +21,8 @@ export interface CommitInfoProps {
   healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
   prUrl: string | null;
   prNumber?: string;
+  footer?: React.ReactNode;
+  footerClassName?: string;
 }
 
 // Combined component to display commit information and groups
@@ -36,7 +38,9 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
   checks,
   healthSummary,
   prUrl, 
-  prNumber
+  prNumber,
+  footer,
+  footerClassName
 }) => {
   const [showDeploymentTooltip, setShowDeploymentTooltip] = useState(false);
   const [showCodeTooltip, setShowCodeTooltip] = useState(false);
@@ -219,6 +223,12 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
           status={status} 
           healthSummary={healthSummary}
         />
+      )}
+
+      {footer && (
+        <div className={`commit-group-footer ${footerClassName || ''}`.trim()}>
+          {footer}
+        </div>
       )}
     </div>
   );

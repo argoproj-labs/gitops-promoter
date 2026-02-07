@@ -360,6 +360,7 @@ func runController(
 
 func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 	var port int
+	var controllerNamespace string
 
 	cmd := &cobra.Command{
 		Use:   "dashboard",
@@ -384,7 +385,7 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 			// Create single signal handler
 			ctx := ctrl.SetupSignalHandler()
 
-			ws := webserver.NewWebServer(mgr)
+			ws := webserver.NewWebServer(mgr, controllerNamespace)
 
 			if err = ws.SetupWithManager(mgr); err != nil {
 				panic("unable to create WebServer controller")
@@ -406,6 +407,12 @@ func newDashboardCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 
 	// Add default port flag
 	cmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to run the dashboard on")
+	cmd.Flags().StringVar(
+		&controllerNamespace,
+		"controller-namespace",
+		"gitops-promoter-system",
+		"Namespace where the controller is running (used for ClusterScmProvider secret lookup)",
+	)
 	return cmd
 }
 
