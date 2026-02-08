@@ -1,6 +1,6 @@
 module github.com/argoproj-labs/gitops-promoter
 
-go 1.25.6
+go 1.25.7
 
 require (
 	code.gitea.io/sdk/gitea v0.23.2
