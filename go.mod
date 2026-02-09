@@ -17,7 +17,7 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/google/go-github/v71 v71.0.0
-	github.com/ktrysmt/go-bitbucket v0.9.88
+	github.com/ktrysmt/go-bitbucket v0.9.89
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
@@ -30,7 +30,7 @@ require (
 	github.com/tidwall/gjson v1.18.0
 	gitlab.com/gitlab-org/api/client-go v1.28.1
 	go.uber.org/zap v1.27.1
-	golang.org/x/oauth2 v0.34.0
+	golang.org/x/oauth2 v0.35.0
 	golang.org/x/sync v0.19.0
 	golang.org/x/time v0.14.0
 	gopkg.in/yaml.v3 v3.0.1
