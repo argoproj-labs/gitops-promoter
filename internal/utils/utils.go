@@ -18,6 +18,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -319,14 +320,71 @@ func HandleReconciliationResult(
 		})
 	}
 
-	// Single status update. This is the only place Status().Update() is called for reconciled resources.
-	if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
+	// Single status update. This function should be the only place Status().Update() is called for reconciled resources.
+	updateErr := client.Status().Update(ctx, obj)
+	if updateErr == nil {
+		return
+	}
+
+	// Full status update failed. Try a fallback: update only the status condition.
+	// This can help when the failure is due to validation errors in other status fields.
+	logger.V(4).Info("Full status update failed, attempting fallback to update only status condition", "error", updateErr)
+
+	// Get a fresh copy of the object from the API server to avoid using tainted data
+	//nolint:forcetypeassert // Type assertion is guaranteed to succeed for all CRDs in this codebase.
+	freshObj := obj.DeepCopyObject().(StatusConditionUpdater)
+	objectKey := types.NamespacedName{
+		Name:      obj.GetName(),
+		Namespace: obj.GetNamespace(),
+	}
+	if getErr := client.Get(ctx, objectKey, freshObj); getErr != nil {
 		if *err == nil {
 			*err = fmt.Errorf("failed to update status: %w", updateErr)
 		} else {
 			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
 			*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
 		}
+		return
+	}
+
+	// Build the Ready condition to write. If there was an original reconciliation error,
+	// use that. Otherwise, create an error condition indicating the status update failed.
+	conditionToWrite := metav1.Condition{
+		Type:               string(promoterConditions.Ready),
+		Status:             metav1.ConditionFalse,
+		Reason:             string(promoterConditions.ReconciliationError),
+		ObservedGeneration: obj.GetGeneration(),
+	}
+	if *err != nil {
+		conditionToWrite.Message = fmt.Sprintf("Reconciliation failed: %s", *err)
+	} else {
+		conditionToWrite.Message = fmt.Sprintf("Reconciliation succeeded but failed to update status: %s", updateErr)
+	}
+
+	// Copy only the Ready status condition to the fresh object
+	freshConditions := freshObj.GetConditions()
+	meta.SetStatusCondition(freshConditions, conditionToWrite)
+
+	// Try updating only the status condition
+	fallbackErr := client.Status().Update(ctx, freshObj)
+	if fallbackErr != nil {
+		// Fallback also failed, report both errors
+		if *err == nil {
+			*err = fmt.Errorf("failed to update status (original error: %w), updating only the Ready condition also failed: %w", updateErr, fallbackErr)
+		} else {
+			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
+			*err = fmt.Errorf("failed to update status with error condition with error %q (original status update error: %w), updating only the Ready condition also failed: %w", *err, updateErr, fallbackErr)
+		}
+		return
+	}
+
+	// Fallback succeeded, but report the original status update failure
+	logger.Info("Successfully updated only the Ready condition after full status update failed")
+	if *err == nil {
+		*err = fmt.Errorf("failed to update full status (updating only the Ready condition succeeded): %w", updateErr)
+	} else {
+		//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
+		*err = fmt.Errorf("failed to update status with error condition with error %q (updating only the Ready condition succeeded): %w", *err, updateErr)
 	}
 }
 
