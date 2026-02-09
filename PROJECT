@@ -5,7 +5,7 @@
 domain: argoproj.io
 layout:
 - go.kubebuilder.io/v4
-projectName: promoter
+projectName: gitops-promoter
 repo: github.com/argoproj-labs/gitops-promoter
 resources:
 - api:
