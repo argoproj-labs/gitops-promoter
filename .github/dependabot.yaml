@@ -17,3 +17,28 @@ updates:
     directory: "/"
     schedule:
       interval: "daily"
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: daily
+
+  - package-ecosystem: pip
+    directory: /docs
+    schedule:
+      interval: daily
+
+  - package-ecosystem: npm
+    directory: /ui/components-lib
+    schedule:
+      interval: daily
+
+  - package-ecosystem: npm
+    directory: /ui/dashboard
+    schedule:
+      interval: daily
+
+  - package-ecosystem: npm
+    directory: /ui/extension
+    schedule:
+      interval: daily
