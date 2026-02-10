@@ -66,7 +66,7 @@ Connect with this password for the `admin` user.
 > See [Getting Started](./getting-started.md)
 
 ```bash
-kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.22.2/install.yaml
+kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.22.3/install.yaml
 ```
 
 > [!NOTE]
