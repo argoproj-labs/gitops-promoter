@@ -29,5 +29,6 @@ echo "Bumped manifest versions to v$NEW_VERSION in docs."
 sed_replace "s/.*/v$NEW_VERSION/" cmd/demo/config/promoter_version
 sed_replace "s/download\/v[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/download\/v$NEW_VERSION/g" cmd/demo/config/argocd-extension.yaml
 sed_replace "s/gitops-promoter_[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}_checksums\.txt/gitops-promoter_${NEW_VERSION}_checksums.txt/g" cmd/demo/config/argocd-extension.yaml
+sed_replace "s|gitops-promoter/releases/download/v[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/install.yaml|gitops-promoter/releases/download/v$NEW_VERSION/install.yaml|g" cmd/demo/config/config.yaml
 echo "Bumped manifest versions to v$NEW_VERSION in demo."
 

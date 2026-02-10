@@ -200,9 +200,6 @@ spec:
                 maxLength: 64
                 pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                 type: string
-            required:
-            - id
-            - sha
             type: object
         type: object
     served: true
