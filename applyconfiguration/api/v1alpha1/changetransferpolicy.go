@@ -26,7 +26,10 @@ import (
 // ChangeTransferPolicyApplyConfiguration represents a declarative configuration of the ChangeTransferPolicy type for use
 // with apply.
 //
-// ChangeTransferPolicy is the Schema for the changetransferpolicies API
+// ChangeTransferPolicy represents a pair of hydrated environment branches: the proposed branch and the active
+// branch. When a new commit appears in the proposed branch, the controller opens a PR against the active branch.
+// When all configured proposed commit status checks pass, the controller merges the PR. Active checks are
+// continuously monitored, and their states are saved to the ChangeTransferPolicy status.
 type ChangeTransferPolicyApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
