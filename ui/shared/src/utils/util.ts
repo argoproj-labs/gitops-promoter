@@ -25,7 +25,14 @@ export const timeAgo = (dateString: string): string => {
 export function getCommitUrl(repoUrl: string, sha: string): string {
   if (!repoUrl || !sha) return '';
   const cleanRepoUrl = repoUrl.replace(/\/$/, '');
-  return `${cleanRepoUrl}/commit/${sha}`;
+  // SCM-specific commit URL path patterns, keyed by domain.
+  // Fallback is '/commit/' which works for GitHub, Gitea, Forgejo, and Azure DevOps.
+  const scmCommitPaths: { domain: string; path: string }[] = [
+    { domain: 'bitbucket.org', path: '/commits/' },
+    { domain: 'gitlab.com', path: '/-/commit/' },
+  ];
+  const match = scmCommitPaths.find(scm => cleanRepoUrl.includes(scm.domain));
+  return `${cleanRepoUrl}${match ? match.path : '/commit/'}${sha}`;
 }
   
 //Extract name from 'Name <email>'
