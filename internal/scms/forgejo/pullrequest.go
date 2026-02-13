@@ -237,6 +237,17 @@ func checkOpenPR(ctx context.Context, pr PullRequest, repo *promoterv1alpha1.Git
 	}
 	logger.V(4).Info("forgejo response status", "status", resp.Status)
 
+	// If already merged, this is a no-op (status will be updated by controller)
+	if existingPr.State == forgejo.StateClosed && existingPr.HasMerged {
+		logger.Info("Pull request is already merged, skipping merge operation", "prID", prID)
+		return true, nil
+	}
+
+	// If PR is closed (not merged), we can't merge it
+	if existingPr.State == forgejo.StateClosed {
+		return true, fmt.Errorf("pull request %d is closed and cannot be merged", prID)
+	}
+
 	return existingPr.State != forgejo.StateOpen, nil
 }
 

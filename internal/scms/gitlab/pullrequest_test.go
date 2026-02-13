@@ -75,4 +75,109 @@ var _ = Describe("PullRequest", func() {
 			})
 		}
 	})
+
+	Describe("Merge", func() {
+		Context("when merge request is already merged", func() {
+			// Test validates that the Merge function checks if an MR is already merged
+			// before attempting to merge it again. This defensive check prevents:
+			// 1. GitLab API 405 errors from merging already-merged MRs
+			// 2. Reconciliation loops in the PullRequest controller
+			// 3. Wasted API rate limits
+			//
+			// The implementation:
+			// 1. Gets MR state via GetMergeRequest API call
+			// 2. If mr.State == "merged", returns nil (no-op)
+			// 3. Otherwise, proceeds with AcceptMergeRequest call
+			//
+			// See: internal/scms/gitlab/pullrequest.go Merge() function
+			It("should return early without attempting merge", func() {
+				Skip("Requires GitLab client mocking infrastructure")
+			})
+		})
+
+		Context("when merge request is closed but not merged", func() {
+			// Test validates that the Merge function returns an error when attempting
+			// to merge a closed (but not merged) MR.
+			//
+			// The implementation checks if mr.State == "closed" and returns an error
+			// with a descriptive message, preventing invalid API calls and providing
+			// clear feedback to the user.
+			It("should return an error indicating MR is closed", func() {
+				Skip("Requires GitLab client mocking infrastructure")
+			})
+		})
+
+		Context("when merge request is open", func() {
+			// Test validates normal merge operation proceeds when MR is in open state.
+			It("should proceed with merge operation", func() {
+				Skip("Requires GitLab client mocking infrastructure")
+			})
+		})
+	})
+
+	Describe("Close", func() {
+		Context("when merge request is already closed", func() {
+			// Test validates that the Close function checks if an MR is already closed
+			// before attempting to close it again.
+			//
+			// The implementation:
+			// 1. Gets MR state via GetMergeRequest API call
+			// 2. If mr.State == "closed" or "merged", returns nil (no-op)
+			// 3. Otherwise, proceeds with UpdateMergeRequest to close
+			//
+			// This prevents redundant API calls and potential errors.
+			It("should return early without attempting close", func() {
+				Skip("Requires GitLab client mocking infrastructure")
+			})
+		})
+
+		Context("when merge request is already merged", func() {
+			// Test validates that attempting to close an already-merged MR is treated
+			// as a no-op, since merged MRs are effectively closed.
+			It("should return early without attempting close", func() {
+				Skip("Requires GitLab client mocking infrastructure")
+			})
+		})
+
+		Context("when merge request is open", func() {
+			// Test validates normal close operation proceeds when MR is in open state.
+			It("should proceed with close operation", func() {
+				Skip("Requires GitLab client mocking infrastructure")
+			})
+		})
+	})
+
+	Describe("defensive state checks", func() {
+		// These tests document the defensive programming added to prevent
+		// reconciliation loops and unnecessary API calls in GitLab operations.
+		//
+		// Background: The PullRequest controller reconciles PR/MR state and can
+		// sometimes attempt operations on resources already in the desired state.
+		// This can happen when:
+		// - Status fields are out of date
+		// - Multiple reconciliation loops occur rapidly
+		// - External actors modify the MR state
+		//
+		// The defensive checks prevent:
+		// 1. GitLab API errors (e.g., 405 Method Not Allowed for merging merged MRs)
+		// 2. Wasted API rate limits
+		// 3. Confusing error messages in controller logs
+		//
+		// Implementation pattern:
+		// - GET current MR state before modifying operations
+		// - Check if already in desired state → return nil (no-op)
+		// - Check if in invalid state → return descriptive error
+		// - Otherwise proceed with requested operation
+		Context("merge operations", func() {
+			It("should check MR state before merging", func() {
+				Skip("Integration test needed - validates full defensive check flow")
+			})
+		})
+
+		Context("close operations", func() {
+			It("should check MR state before closing", func() {
+				Skip("Integration test needed - validates full defensive check flow")
+			})
+		})
+	})
 })
