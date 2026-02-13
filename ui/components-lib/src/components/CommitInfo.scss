@@ -78,6 +78,42 @@
     background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
     border-radius: 8px;
     padding: 24px 24px 0 24px;
+    position: relative;
+  }
+
+  &.proposed--side {
+    padding-right: 64px;
+  }
+}
+
+.commit-group-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 0 20px;
+}
+
+.commit-group.proposed {
+  .commit-group-footer--bottom {
+    margin: 12px -24px -24px;
+    padding: 0;
+    border-top: 1px solid rgba(13, 173, 234, 0.18);
+    background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
+    border-radius: 0 0 8px 8px;
+  }
+
+  .commit-group-footer--side {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 44px;
+    margin: 0;
+    padding: 0;
+    border-left: 1px solid rgba(13, 173, 234, 0.2);
+    background: linear-gradient(180deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
+    border-radius: 0 8px 8px 0;
+    align-items: stretch;
+    justify-content: center;
   }
 }
 

@@ -13,6 +13,15 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/bitbucket_cloud"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/fake"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/forgejo"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitea"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/github"
+	"github.com/argoproj-labs/gitops-promoter/internal/scms/gitlab"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	webserverlogr "github.com/argoproj-labs/gitops-promoter/internal/webserver/logr"
 	"github.com/argoproj-labs/gitops-promoter/ui/web"
 	"github.com/gin-contrib/gzip"
@@ -29,11 +38,19 @@ import (
 
 var logger = ctrl.Log.WithName("webServer")
 
+// PullRequestProviderFunc is a function that returns a PullRequestProvider for a given PullRequest.
+// This allows for dependency injection in tests.
+type PullRequestProviderFunc func(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error)
+
 // WebServer handles the web server functionality for the dashboard and API endpoints.
 type WebServer struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Event  *Event
+	// GetPullRequestProvider is an optional function to get a PullRequestProvider.
+	// If nil, the default implementation is used.
+	GetPullRequestProvider PullRequestProviderFunc
+	Scheme                 *runtime.Scheme
+	Event                  *Event
+	ControllerNamespace    string
 }
 
 // Event represents a server-sent event that can be broadcast to clients.
@@ -65,7 +82,7 @@ type Message struct {
 type ClientChan chan Message
 
 // NewWebServer creates a new WebServer instance with the given manager.
-func NewWebServer(mgr controllerruntime.Manager) WebServer {
+func NewWebServer(mgr controllerruntime.Manager, controllerNamespace string) WebServer {
 	event := &Event{
 		Message:       make(chan Message, 100),
 		newClients:    make(chan chan Message),
@@ -75,9 +92,10 @@ func NewWebServer(mgr controllerruntime.Manager) WebServer {
 	go event.listen()
 
 	return WebServer{
-		Event:  event,
-		Scheme: mgr.GetScheme(),
-		Client: mgr.GetClient(),
+		Event:               event,
+		Scheme:              mgr.GetScheme(),
+		Client:              mgr.GetClient(),
+		ControllerNamespace: controllerNamespace,
 	}
 }
 
@@ -229,6 +247,9 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 	router.GET("/list", ws.httpList)
 
 	router.GET("/get", ws.httpGet)
+
+	// Mutation endpoints
+	router.POST("/merge", ws.httpMerge)
 
 	router.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, "ok")
@@ -571,4 +592,243 @@ func filter(msg Message, c *gin.Context) (bool, error) {
 		return false, fmt.Errorf("failed to match path: %w", err)
 	}
 	return match, nil
+}
+
+// mergeRequest represents the request payload for merging a pull request.
+// Either (namespace + name) OR (namespace + promotionStrategy + branch) must be provided.
+type mergeRequest struct {
+	Namespace         string `json:"namespace" binding:"required"`
+	Name              string `json:"name"`              // PullRequest CR name (optional if promotionStrategy + branch provided)
+	PromotionStrategy string `json:"promotionStrategy"` // PromotionStrategy name (optional if name provided)
+	Branch            string `json:"branch"`            // Environment branch (optional if name provided)
+}
+
+// mergeResponse represents the response for a merge operation.
+type mergeResponse struct {
+	State   string `json:"state"`
+	Message string `json:"message,omitempty"`
+}
+
+func (ws *WebServer) httpMerge(c *gin.Context) {
+	var req mergeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, mergeResponse{
+			State:   "failed",
+			Message: fmt.Sprintf("invalid request: %v", err),
+		})
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	// Validate request: either name OR (promotionStrategy + branch) must be provided
+	if req.Name == "" && (req.PromotionStrategy == "" || req.Branch == "") {
+		c.JSON(http.StatusBadRequest, mergeResponse{
+			State:   "failed",
+			Message: "either 'name' or both 'promotionStrategy' and 'branch' must be provided",
+		})
+		return
+	}
+
+	var pr *promoterv1alpha1.PullRequest
+
+	if req.Name != "" {
+		// Direct lookup by PullRequest CR name
+		pr = &promoterv1alpha1.PullRequest{}
+		if err := ws.Get(ctx, client.ObjectKey{Namespace: req.Namespace, Name: req.Name}, pr); err != nil {
+			c.JSON(http.StatusNotFound, mergeResponse{
+				State:   "failed",
+				Message: fmt.Sprintf("pull request not found: %v", err),
+			})
+			return
+		}
+	} else {
+		// Lookup by PromotionStrategy + branch
+		var err error
+		pr, err = ws.findPullRequestByStrategy(ctx, req.Namespace, req.PromotionStrategy, req.Branch)
+		if err != nil {
+			c.JSON(http.StatusNotFound, mergeResponse{
+				State:   "failed",
+				Message: fmt.Sprintf("pull request not found: %v", err),
+			})
+			return
+		}
+	}
+
+	// Check if the PR is in the correct state for merging
+	if pr.Status.State != promoterv1alpha1.PullRequestOpen {
+		c.JSON(http.StatusBadRequest, mergeResponse{
+			State:   "failed",
+			Message: fmt.Sprintf("pull request is not open, current state: %s", pr.Status.State),
+		})
+		return
+	}
+
+	if pr.Status.ID == "" {
+		c.JSON(http.StatusBadRequest, mergeResponse{
+			State:   "failed",
+			Message: "pull request has no ID (not yet created on SCM)",
+		})
+		return
+	}
+
+	// Get the PullRequest provider
+	provider, err := ws.pullRequestProvider(ctx, *pr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, mergeResponse{
+			State:   "failed",
+			Message: fmt.Sprintf("failed to get SCM provider: %v", err),
+		})
+		return
+	}
+
+	// Perform the merge
+	if err := provider.Merge(ctx, *pr); err != nil {
+		c.JSON(http.StatusInternalServerError, mergeResponse{
+			State:   "failed",
+			Message: fmt.Sprintf("failed to merge pull request: %v", err),
+		})
+		return
+	}
+
+	// Update the PullRequest spec to trigger controller reconciliation
+	pr.Spec.State = promoterv1alpha1.PullRequestMerged
+	if err := ws.Update(ctx, pr); err != nil {
+		// The merge succeeded but we failed to update the spec
+		// Log the error but return success since the merge actually happened
+		logger.Error(err, "failed to update pull request spec after merge", "namespace", pr.Namespace, "name", pr.Name)
+		c.JSON(http.StatusOK, mergeResponse{
+			State:   "merged",
+			Message: "merge succeeded but failed to update PullRequest resource",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, mergeResponse{
+		State: "merged",
+	})
+}
+
+// pullRequestProvider returns a PullRequestProvider for the given PullRequest.
+// If GetPullRequestProvider is set, it uses that function; otherwise, it uses the default implementation.
+func (ws *WebServer) pullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
+	if ws.GetPullRequestProvider != nil {
+		return ws.GetPullRequestProvider(ctx, pr)
+	}
+	return ws.defaultPullRequestProvider(ctx, pr)
+}
+
+func (ws *WebServer) defaultPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(ctx, ws.Client, ws.ControllerNamespace, pr.Spec.RepositoryReference, &pr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ScmProvider and secret: %w", err)
+	}
+
+	gitRepository, err := utils.GetGitRepositoryFromObjectKey(ctx, ws.Client, client.ObjectKey{Namespace: pr.Namespace, Name: pr.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	switch {
+	case scmProvider.GetSpec().GitHub != nil:
+		return github.NewGithubPullRequestProvider(ctx, ws.Client, scmProvider, *secret, gitRepository.Spec.GitHub.Owner) //nolint:wrapcheck
+	case scmProvider.GetSpec().GitLab != nil:
+		return gitlab.NewGitlabPullRequestProvider(ws.Client, *secret, scmProvider.GetSpec().GitLab.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().BitbucketCloud != nil:
+		return bitbucket_cloud.NewBitbucketCloudPullRequestProvider(ws.Client, *secret) //nolint:wrapcheck
+	case scmProvider.GetSpec().Forgejo != nil:
+		return forgejo.NewForgejoPullRequestProvider(ws.Client, *secret, scmProvider.GetSpec().Forgejo.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().Gitea != nil:
+		return gitea.NewGiteaPullRequestProvider(ws.Client, *secret, scmProvider.GetSpec().Gitea.Domain) //nolint:wrapcheck
+	case scmProvider.GetSpec().AzureDevOps != nil:
+		return azuredevops.NewAzdoPullRequestProvider(ws.Client, *secret, scmProvider, scmProvider.GetSpec().AzureDevOps.Organization) //nolint:wrapcheck,contextcheck
+	case scmProvider.GetSpec().Fake != nil:
+		return fake.NewFakePullRequestProvider(ws.Client), nil
+	default:
+		return nil, fmt.Errorf("unsupported SCM provider: %s", scmProvider.GetName())
+	}
+}
+
+// findPullRequestByStrategy finds the PullRequest CR for a given PromotionStrategy and environment branch.
+// It looks up the ChangeTransferPolicy for the environment, then finds the associated PullRequest.
+func (ws *WebServer) findPullRequestByStrategy(ctx context.Context, namespace, strategyName, branch string) (*promoterv1alpha1.PullRequest, error) {
+	// Get the PromotionStrategy to find the GitRepository reference
+	ps := &promoterv1alpha1.PromotionStrategy{}
+	if err := ws.Get(ctx, client.ObjectKey{Namespace: namespace, Name: strategyName}, ps); err != nil {
+		return nil, fmt.Errorf("promotion strategy not found: %w", err)
+	}
+
+	// Find the environment status for the given branch to get the PR info
+	var envStatus *promoterv1alpha1.EnvironmentStatus
+	if ps.Status.Environments != nil {
+		for i := range ps.Status.Environments {
+			if ps.Status.Environments[i].Branch == branch {
+				envStatus = &ps.Status.Environments[i]
+				break
+			}
+		}
+	}
+
+	if envStatus == nil {
+		return nil, fmt.Errorf("environment branch %q not found in promotion strategy", branch)
+	}
+
+	if envStatus.PullRequest == nil || envStatus.PullRequest.ID == "" {
+		return nil, fmt.Errorf("no open pull request for environment branch %q", branch)
+	}
+
+	// Get the GitRepository to determine the repo owner/name for PR lookup
+	// The GitRepository is in the same namespace as the PromotionStrategy
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, ws.Client, client.ObjectKey{Namespace: namespace, Name: ps.Spec.RepositoryReference.Name})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+
+	// Determine the repository owner and name based on the SCM provider type
+	var repoOwner, repoName string
+	switch {
+	case gitRepo.Spec.GitHub != nil:
+		repoOwner = gitRepo.Spec.GitHub.Owner
+		repoName = gitRepo.Spec.GitHub.Name
+	case gitRepo.Spec.GitLab != nil:
+		repoOwner = gitRepo.Spec.GitLab.Namespace
+		repoName = gitRepo.Spec.GitLab.Name
+	case gitRepo.Spec.BitbucketCloud != nil:
+		repoOwner = gitRepo.Spec.BitbucketCloud.Owner
+		repoName = gitRepo.Spec.BitbucketCloud.Name
+	case gitRepo.Spec.Forgejo != nil:
+		repoOwner = gitRepo.Spec.Forgejo.Owner
+		repoName = gitRepo.Spec.Forgejo.Name
+	case gitRepo.Spec.Gitea != nil:
+		repoOwner = gitRepo.Spec.Gitea.Owner
+		repoName = gitRepo.Spec.Gitea.Name
+	case gitRepo.Spec.AzureDevOps != nil:
+		repoOwner = gitRepo.Spec.AzureDevOps.Project
+		repoName = gitRepo.Spec.AzureDevOps.Name
+	case gitRepo.Spec.Fake != nil:
+		repoOwner = gitRepo.Spec.Fake.Owner
+		repoName = gitRepo.Spec.Fake.Name
+	default:
+		return nil, errors.New("unsupported SCM provider in GitRepository")
+	}
+
+	// Find the ChangeTransferPolicy to get the proposed branch
+	ctpBaseName := utils.GetChangeTransferPolicyName(strategyName, branch)
+	ctpName := utils.KubeSafeUniqueName(ctx, ctpBaseName)
+	ctp := &promoterv1alpha1.ChangeTransferPolicy{}
+	if err := ws.Get(ctx, client.ObjectKey{Namespace: namespace, Name: ctpName}, ctp); err != nil {
+		return nil, fmt.Errorf("change transfer policy not found: %w", err)
+	}
+
+	// Compute the PullRequest name using the same logic as the controller
+	prBaseName := utils.GetPullRequestName(repoOwner, repoName, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	prName := utils.KubeSafeUniqueName(ctx, prBaseName)
+
+	// Get the PullRequest CR
+	pr := &promoterv1alpha1.PullRequest{}
+	if err := ws.Get(ctx, client.ObjectKey{Namespace: namespace, Name: prName}, pr); err != nil {
+		return nil, fmt.Errorf("pull request CR not found: %w", err)
+	}
+
+	return pr, nil
 }

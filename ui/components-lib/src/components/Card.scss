@@ -96,6 +96,108 @@
   min-height: 32px;
 }
 
+.proposed-merge-button {
+  position: relative;
+  width: 100%;
+  background: $argo-running;
+  color: #ffffff;
+  border: 1px solid rgba(13, 173, 234, 0.5);
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 0 0 8px 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 6px rgba(13, 173, 234, 0.2);
+  letter-spacing: 0.2px;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+
+  &:hover {
+    background: #0b9ad1;
+    box-shadow: 0 4px 10px rgba(13, 173, 234, 0.25);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    background: #0a88b9;
+    transform: translateY(0);
+  }
+}
+
+.proposed-merge-icon {
+  font-size: 20px;
+  color: #ffffff;
+  writing-mode: horizontal-tb;
+}
+
+.proposed-merge-label {
+  position: absolute;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  background: #1b1f24;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 2;
+  writing-mode: horizontal-tb;
+}
+
+.proposed-merge-button:hover .proposed-merge-label {
+  opacity: 1;
+  visibility: visible;
+}
+
+.proposed-merge-label--bottom {
+  top: -36px;
+  left: 50%;
+  transform: translate(-50%, 4px);
+}
+
+.proposed-merge-button:hover .proposed-merge-label--bottom {
+  transform: translate(-50%, 0);
+}
+
+.proposed-merge-button--side {
+  height: 100%;
+  width: 44px;
+  padding: 16px 8px;
+  border-radius: 0 8px 8px 0;
+  border: none;
+  text-align: center;
+  box-shadow: -2px 0 6px rgba(13, 173, 234, 0.2);
+
+  &:hover {
+    box-shadow: -3px 0 10px rgba(13, 173, 234, 0.25);
+  }
+
+  &:active {
+    transform: translateX(0);
+  }
+}
+
+.proposed-merge-label--side {
+  right: -12px;
+  top: 50%;
+  transform: translate(100%, -50%);
+}
+
+.proposed-merge-button--side:hover .proposed-merge-label--side {
+  transform: translate(calc(100% + 4px), -50%);
+}
+
 @media (max-width: 1600px) {
   @include layouts.horizontal-layout;
 }
