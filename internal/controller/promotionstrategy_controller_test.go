@@ -4714,4 +4714,196 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			Expect(lastEnqueuedName).To(Equal("ctp-2"), "ctp-2 should be the last enqueued")
 		})
 	})
+
+	Context("When removing the first environment from a PromotionStrategy", func() {
+		ctx := context.Background()
+
+		var name string
+		var gitRepo *promoterv1alpha1.GitRepository
+		var promotionStrategy *promoterv1alpha1.PromotionStrategy
+		var typeNamespacedName types.NamespacedName
+		var ctpDev, ctpStaging, ctpProd promoterv1alpha1.ChangeTransferPolicy
+
+		BeforeEach(func() {
+			By("Creating the resources with active commit statuses")
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-remove-first-env", "default")
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+
+			// Add active commit statuses to ensure previous-environment commit status is created
+			promotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "argocd-health"},
+			}
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			// Initialize empty structs for use in tests
+			ctpDev = promoterv1alpha1.ChangeTransferPolicy{}
+			ctpStaging = promoterv1alpha1.ChangeTransferPolicy{}
+			ctpProd = promoterv1alpha1.ChangeTransferPolicy{}
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			_ = k8sClient.Delete(ctx, promotionStrategy)
+		})
+
+		It("should remove previous-environment commit status from new first environment after original first is removed", func() {
+			By("Waiting for initial reconciliation with all three environments")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[2].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+
+				// Verify all CTPs have reconciled
+				g.Expect(ctpDev.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpStaging.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+				g.Expect(ctpProd.Status.Proposed.Dry.Sha).To(Not(BeEmpty()))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying staging has previous-environment commit status initially")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+
+				// Staging should have the previous-environment commit status since it's the second environment
+				found := false
+				for _, cs := range ctpStaging.Spec.ProposedCommitStatuses {
+					if cs.Key == promoterv1alpha1.PreviousEnvironmentCommitStatusKey {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeTrue(), "Staging should have previous-environment commit status when it's the second environment")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Removing the first environment (dev) from the PromotionStrategy")
+			Eventually(func(g Gomega) {
+				var ps promoterv1alpha1.PromotionStrategy
+				err := k8sClient.Get(ctx, typeNamespacedName, &ps)
+				g.Expect(err).To(Succeed())
+
+				// Remove the first environment (dev)
+				ps.Spec.Environments = ps.Spec.Environments[1:]
+
+				err = k8sClient.Update(ctx, &ps)
+				g.Expect(err).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the dev CTP is deleted")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(name, testBranchDevelopment)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpDev)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(errors.IsNotFound(err)).To(BeTrue())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying PromotionStrategy status is updated correctly")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				g.Expect(err).To(Succeed())
+
+				// Verify status.environments has only 2 environments now (staging and prod)
+				g.Expect(promotionStrategy.Status.Environments).To(HaveLen(2), "Status should reflect the removal of dev environment")
+
+				// Verify the first status environment is staging (not dev)
+				g.Expect(promotionStrategy.Status.Environments[0].Branch).To(Equal(testBranchStaging), "First status environment should be staging")
+
+				// Verify the second status environment is prod
+				g.Expect(promotionStrategy.Status.Environments[1].Branch).To(Equal(testBranchProduction), "Second status environment should be production")
+
+				// Verify staging environment status no longer shows previous-environment commit status
+				stagingStatusFound := false
+				for _, cs := range promotionStrategy.Status.Environments[0].Proposed.CommitStatuses {
+					if cs.Key == promoterv1alpha1.PreviousEnvironmentCommitStatusKey {
+						stagingStatusFound = true
+						break
+					}
+				}
+				g.Expect(stagingStatusFound).To(BeFalse(), "Staging environment status should NOT have previous-environment commit status")
+
+				// Verify production environment status still shows previous-environment commit status
+				prodStatusFound := false
+				for _, cs := range promotionStrategy.Status.Environments[1].Proposed.CommitStatuses {
+					if cs.Key == promoterv1alpha1.PreviousEnvironmentCommitStatusKey {
+						prodStatusFound = true
+						break
+					}
+				}
+				g.Expect(prodStatusFound).To(BeTrue(), "Production environment status should still have previous-environment commit status")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying staging CTP spec no longer has previous-environment commit status")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, promotionStrategy)
+				g.Expect(err).To(Succeed())
+
+				// Get the updated staging CTP
+				err = k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[0].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpStaging)
+				g.Expect(err).To(Succeed())
+
+				// Staging CTP should NOT have the previous-environment commit status in its spec
+				found := false
+				for _, cs := range ctpStaging.Spec.ProposedCommitStatuses {
+					if cs.Key == promoterv1alpha1.PreviousEnvironmentCommitStatusKey {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeFalse(), "Staging CTP spec should NOT have previous-environment commit status when it becomes the first environment")
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying production still has previous-environment commit status")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(promotionStrategy.Name, promotionStrategy.Spec.Environments[1].Branch)),
+					Namespace: typeNamespacedName.Namespace,
+				}, &ctpProd)
+				g.Expect(err).To(Succeed())
+
+				// Production should still have the previous-environment commit status since staging is before it
+				found := false
+				for _, cs := range ctpProd.Spec.ProposedCommitStatuses {
+					if cs.Key == promoterv1alpha1.PreviousEnvironmentCommitStatusKey {
+						found = true
+						break
+					}
+				}
+				g.Expect(found).To(BeTrue(), "Production should still have previous-environment commit status since staging comes before it")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
 })
