@@ -838,7 +838,7 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 	})
 
-	//Context("When attempting to merge a PR that was externally closed/merged", func() {
+	// Context("When attempting to merge a PR that was externally closed/merged", func() {
 	//	var name string
 	//	var scmSecret *v1.Secret
 	//	var scmProvider *promoterv1alpha1.ScmProvider
@@ -923,7 +923,7 @@ var _ = Describe("PullRequest Controller", func() {
 	//			g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 	//		}, constants.EventuallyTimeout).Should(Succeed())
 	//	})
-	//})
+	// })
 })
 
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
