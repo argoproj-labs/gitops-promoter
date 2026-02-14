@@ -412,7 +412,23 @@ func (r *PullRequestReconciler) updatePullRequest(ctx context.Context, pr promot
 }
 
 func (r *PullRequestReconciler) mergePullRequest(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider) error {
+	logger := log.FromContext(ctx)
 	mergedTime := metav1.Now()
+
+	// Check if PR is still open before attempting merge
+	found, _, _, err := provider.FindOpen(ctx, *pr)
+	if err != nil {
+		return fmt.Errorf("failed to check PR state before merge: %w", err)
+	}
+
+	if !found {
+		// PR is no longer open - it was already merged or closed externally
+		logger.Info("PR no longer open, checking if already merged")
+		// Mark as externally handled and let cleanup handle it
+		pr.Status.ExternallyMergedOrClosed = ptr.To(true)
+		pr.Status.State = ""
+		return nil
+	}
 
 	updatedMessage, err := git.AddTrailerToCommitMessage(
 		ctx,
