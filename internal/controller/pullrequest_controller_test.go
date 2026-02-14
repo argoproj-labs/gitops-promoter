@@ -883,7 +883,10 @@ var _ = Describe("PullRequest Controller", func() {
 						var currentPR promoterv1alpha1.PullRequest
 						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
 						if err == nil && currentPR.Status.ExternallyMergedOrClosed != nil && *currentPR.Status.ExternallyMergedOrClosed {
-							externallyClosedObserved <- true
+							select {
+							case externallyClosedObserved <- true:
+							default:
+							}
 							return
 						}
 					case <-stopPolling:
@@ -914,6 +917,7 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
+
 	})
 })
 
