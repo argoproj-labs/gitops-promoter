@@ -831,6 +831,60 @@ var _ = Describe("PullRequest Controller", func() {
 			}
 		})
 	})
+
+	Context("When attempting to merge a PR that was externally closed/merged", func() {
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var pullRequest *promoterv1alpha1.PullRequest
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			By("Creating test resources")
+			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "merge-externally-closed")
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be open")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should set ExternallyMergedOrClosed when merge is requested but PR is already closed", func() {
+			By("Simulating external closure by removing PR from fake provider")
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
+
+			By("Requesting merge by setting spec.state to merged")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
+				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the PullRequest is deleted after ExternallyMergedOrClosed is detected")
+			// The merge attempt will find the PR is not open, set ExternallyMergedOrClosed,
+			// and the subsequent reconciliation will clean it up
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
 })
 
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
