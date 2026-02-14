@@ -917,7 +917,6 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
-
 	})
 })
 
