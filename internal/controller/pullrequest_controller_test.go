@@ -868,6 +868,32 @@ var _ = Describe("PullRequest Controller", func() {
 			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
 			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
 
+			// Start polling to observe ExternallyMergedOrClosed before deletion
+			externallyClosedObserved := make(chan bool, 1)
+			stopPolling := make(chan bool)
+
+			go func() {
+				defer GinkgoRecover()
+				ticker := time.NewTicker(1 * time.Millisecond)
+				defer ticker.Stop()
+				timeout := time.After(constants.EventuallyTimeout)
+				for {
+					select {
+					case <-ticker.C:
+						var currentPR promoterv1alpha1.PullRequest
+						err := k8sClient.Get(ctx, typeNamespacedName, &currentPR)
+						if err == nil && currentPR.Status.ExternallyMergedOrClosed != nil && *currentPR.Status.ExternallyMergedOrClosed {
+							externallyClosedObserved <- true
+							return
+						}
+					case <-stopPolling:
+						return
+					case <-timeout:
+						return
+					}
+				}
+			}()
+
 			By("Requesting merge by setting spec.state to merged")
 			Eventually(func(g Gomega) {
 				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
@@ -875,9 +901,13 @@ var _ = Describe("PullRequest Controller", func() {
 				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
 			}, constants.EventuallyTimeout).Should(Succeed())
 
+			By("Verifying ExternallyMergedOrClosed was set before deletion")
+			Eventually(externallyClosedObserved, constants.EventuallyTimeout).Should(Receive(Equal(true)),
+				"Should have observed ExternallyMergedOrClosed=true before deletion")
+
+			close(stopPolling)
+
 			By("Verifying the PullRequest is deleted after ExternallyMergedOrClosed is detected")
-			// The merge attempt will find the PR is not open, set ExternallyMergedOrClosed,
-			// and the subsequent reconciliation will clean it up
 			Eventually(func(g Gomega) {
 				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
 				g.Expect(err).To(HaveOccurred())
