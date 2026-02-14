@@ -64,14 +64,19 @@ var _ = Describe("PullRequest Controller", func() {
 
 		Context("When updating title then merging", func() {
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating test resources")
-				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "update-title-merge")
+				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "merge-externally-closed")
+
+				// Override branches to use ones that exist in the test git server setup
+				pullRequest.Spec.TargetBranch = testBranchDevelopment
+				pullRequest.Spec.SourceBranch = testBranchDevelopmentNext
 
 				typeNamespacedName = types.NamespacedName{
 					Name:      name,
 					Namespace: "default",
 				}
-
 				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
 				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
@@ -81,7 +86,8 @@ var _ = Describe("PullRequest Controller", func() {
 				Eventually(func(g Gomega) {
 					g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
 					g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
-				}, constants.EventuallyTimeout)
+					g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+				}, constants.EventuallyTimeout).Should(Succeed())
 			})
 
 			It("should successfully reconcile the resource when updating title then merging", func() {
