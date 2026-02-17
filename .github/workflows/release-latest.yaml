@@ -61,4 +61,7 @@ jobs:
         run: |
           docker push quay.io/argoprojlabs/gitops-promoter:latest-amd64
           docker push quay.io/argoprojlabs/gitops-promoter:latest-arm64
+          docker inspect quay.io/argoprojlabs/gitops-promoter:latest-amd64
+          docker inspect quay.io/argoprojlabs/gitops-promoter:latest-arm64
+          docker inspect quay.io/argoprojlabs/gitops-promoter:latest
           docker manifest push quay.io/argoprojlabs/gitops-promoter:latest
