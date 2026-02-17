@@ -34,5 +34,8 @@
     "react-select": "^5.8.0",
     "sass": "^1.89.2",
     "zustand": "^5.0.0"
+  },
+  "overrides": {
+    "ajv": "^8.0.0"
   }
 }
