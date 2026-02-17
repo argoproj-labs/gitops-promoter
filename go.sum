@@ -242,8 +242,8 @@ github.com/ugorji/go/codec v1.3.0/go.mod h1:pRBVtBSKl77K30Bv8R2P+cLSGaTtex6fsA2W
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
-gitlab.com/gitlab-org/api/client-go v1.34.0 h1:w/Zv3FmfrkZsVUJhzteAu0LsWsz2y7kv/XJ3pvRa+Eo=
-gitlab.com/gitlab-org/api/client-go v1.34.0/go.mod h1:nsUbXSLfne+sl+j62f7S3LFNwQ5Ey96oG9QToJT4aTM=
+gitlab.com/gitlab-org/api/client-go v1.35.0 h1:EZTgYVU+MCVGO3dEPR924GLUuHMtRVfXOAkHNvZe0Mg=
+gitlab.com/gitlab-org/api/client-go v1.35.0/go.mod h1:0r4QcFmvppZ6TqNP/2Af7T0ivxHC75a26TlWvyoyvzA=
 go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
 go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
 go.uber.org/mock v0.6.0 h1:hyF9dfmbgIX5EfOdasqLsWD6xqpNZlXblLB/Dbnwv3Y=
