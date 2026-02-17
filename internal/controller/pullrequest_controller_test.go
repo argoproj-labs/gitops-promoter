@@ -64,6 +64,8 @@ var _ = Describe("PullRequest Controller", func() {
 
 		Context("When updating title then merging", func() {
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating test resources")
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "update-title-merge")
 
@@ -114,6 +116,8 @@ var _ = Describe("PullRequest Controller", func() {
 
 		Context("When closing", func() {
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating test resources")
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "update-title-close")
 
@@ -166,6 +170,8 @@ var _ = Describe("PullRequest Controller", func() {
 
 		Context("When ScmProvider has missing secret", func() {
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating test resources with bad configuration")
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "bad-configuration-no-scm-secret")
 
@@ -197,6 +203,8 @@ var _ = Describe("PullRequest Controller", func() {
 
 		Context("When merge SHA is invalid", func() {
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating test resources with invalid merge SHA")
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "merge-error-message-test")
 
@@ -367,6 +375,8 @@ var _ = Describe("PullRequest Controller", func() {
 			var typeNamespacedName types.NamespacedName
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resource hierarchy")
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "finalizer-test-gitrepo")
 
@@ -425,6 +435,8 @@ var _ = Describe("PullRequest Controller", func() {
 			var typeNamespacedName types.NamespacedName
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resource hierarchy")
 				name, scmSecret, scmProvider, gitRepo, _ = pullRequestResources(ctx, "finalizer-test-scmprovider")
 
@@ -475,6 +487,8 @@ var _ = Describe("PullRequest Controller", func() {
 			var typeNamespacedName types.NamespacedName
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resource hierarchy")
 				name, scmSecret, scmProvider, _, _ = pullRequestResources(ctx, "finalizer-test-secret")
 
@@ -531,6 +545,8 @@ var _ = Describe("PullRequest Controller", func() {
 			var typeNamespacedName types.NamespacedName
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the complete resource hierarchy")
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "finalizer-test-complete")
 
@@ -605,6 +621,8 @@ var _ = Describe("PullRequest Controller", func() {
 			var mergeSha string
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating test resources with branches that exist in test setup")
 				name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "status-persist-merge-test")
 
