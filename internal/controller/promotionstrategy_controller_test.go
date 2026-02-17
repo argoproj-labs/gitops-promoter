@@ -58,13 +58,15 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with no commit statuses", func() {
-		ctx := context.Background()
+		var ctx context.Context
 
 		Context("When git repo is not initialized", func() {
 			var name string
 			var promotionStrategy *promoterv1alpha1.PromotionStrategy
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resources")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -110,6 +112,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			var pullRequestDev, pullRequestStaging, pullRequestProd promoterv1alpha1.PullRequest
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resources")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -1085,7 +1089,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with active commit statuses", func() {
-		ctx := context.Background()
+		var ctx context.Context
 
 		Context("When git repo is initialized with active commit statuses", func() {
 			var name string
@@ -1097,6 +1101,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			var pullRequestDev, pullRequestStaging, pullRequestProd promoterv1alpha1.PullRequest
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resource")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -1519,7 +1525,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a proposed commit status", func() {
-		ctx := context.Background()
+		var ctx context.Context
 
 		Context("When git repo is initialized with proposed commit statuses", func() {
 			var name string
@@ -1529,6 +1535,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			var typeNamespacedName types.NamespacedName
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resource")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -1938,7 +1946,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with active commit status using ArgoCDCommitStatus", Label("argocdcommitstatus"), func() {
-		ctx := context.Background()
+		var ctx context.Context
 		const argocdCSLabel = "argocd-health"
 		const namespace = "default"
 
@@ -1951,6 +1959,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			var typeNamespacedName types.NamespacedName
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resource")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -2450,7 +2460,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a proposed commit status we should have history", func() {
-		ctx := context.Background()
+		var ctx context.Context
 
 		Context("When tracking proposed commit history", func() {
 			var name string
@@ -2462,6 +2472,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			var pullRequestDev, pullRequestStaging, pullRequestProd promoterv1alpha1.PullRequest
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resource")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -2946,7 +2958,7 @@ func argocdApplications(namespace string, name string) (argocd.Application, argo
 
 var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("When PR merges while previous environment has non-passing checks", func() {
-		ctx := context.Background()
+		var ctx context.Context
 
 		Context("When PR is merged before checks pass", func() {
 			var name string
@@ -2957,6 +2969,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			var ctpDev, ctpStaging promoterv1alpha1.ChangeTransferPolicy
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resource")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -3165,7 +3179,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	})
 
 	Context("When environment branch names are changed", func() {
-		ctx := context.Background()
+		var ctx context.Context
 
 		Context("When cleaning up orphaned CTPs", func() {
 			var name string
@@ -3175,6 +3189,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 			var oldCtpDevName, oldCtpStagingName, oldCtpProdName string
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating initial resources with environments/dev naming")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -3346,7 +3362,7 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("Out-of-order hydration protection", func() {
 		// This test verifies that the system correctly blocks downstream environments
 		// from promoting when upstream environments haven't been hydrated yet.
-		ctx := context.Background()
+		var ctx context.Context
 
 		var name string
 		var gitRepo *promoterv1alpha1.GitRepository
@@ -3356,6 +3372,8 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		var ctpDev, ctpStaging promoterv1alpha1.ChangeTransferPolicy
 
 		BeforeEach(func() {
+			ctx = context.Background()
+
 			By("Creating the resources with active commit statuses to enable previous environment checks")
 			var scmSecret *v1.Secret
 			var scmProvider *promoterv1alpha1.ScmProvider
