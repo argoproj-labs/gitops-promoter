@@ -32,7 +32,7 @@ jobs:
           cache-dependency-path: |
             go.sum
       - name: Create k8s Kind Cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@92086f6be054225fa813e0a4b13787fc9088faab # v1.13.0
         with:
           cluster_name: kind
           version: v0.30.0
