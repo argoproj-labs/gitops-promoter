@@ -35,10 +35,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Docker
+        uses: docker/setup-docker-action@206b75dbd282c4008313f59196a28caf84eb4198
+        version: type=image,tag=29.2.1
+
       - name: Extract version from commit message
         id: extract_version
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          VERSION=$(echo "${{ github.event.head_commit.message }}" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
+          VERSION=$(printf '%s\n' "$COMMIT_MSG" | head -n1 | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Create tag
         if: steps.extract_version.outputs.version != ''
@@ -47,7 +53,7 @@ jobs:
           git push origin ${{ steps.extract_version.outputs.version }}
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Setup Go
         uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
