@@ -372,6 +372,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			var pullRequestDev, pullRequestStaging, pullRequestProd promoterv1alpha1.PullRequest
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resources")
 				var scmSecret *v1.Secret
 				name, scmSecret, _, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "promotion-strategy-no-commit-status", "default")
@@ -567,6 +569,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			var pullRequestDev, pullRequestStaging, pullRequestProd promoterv1alpha1.PullRequest
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resources")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -764,6 +768,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			var pullRequestDev, pullRequestStaging, pullRequestProd promoterv1alpha1.PullRequest
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resources")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -1322,6 +1328,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			var pullRequestDev, pullRequestStaging, pullRequestProd promoterv1alpha1.PullRequest
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resource")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -1795,6 +1803,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			var ctpDev, ctpStaging, ctpProd promoterv1alpha1.ChangeTransferPolicy
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resource")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
@@ -2213,6 +2223,8 @@ var _ = Describe("PromotionStrategy Controller", func() {
 			var typeNamespacedName types.NamespacedName
 
 			BeforeEach(func() {
+				ctx = context.Background()
+
 				By("Creating the resource")
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
