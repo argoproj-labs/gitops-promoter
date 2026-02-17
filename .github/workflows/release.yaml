@@ -37,7 +37,8 @@ jobs:
 
       - name: Set up Docker
         uses: docker/setup-docker-action@206b75dbd282c4008313f59196a28caf84eb4198
-        version: type=image,tag=29.2.1
+        with:
+          version: type=image,tag=29.2.1
 
       - name: Extract version from commit message
         id: extract_version
