@@ -252,7 +252,6 @@ var _ = Describe("PullRequest Controller", func() {
 	})
 
 	Context("When attempting to create a PullRequest with invalid initial state", func() {
-
 		Context("When spec.state is set to 'merged'", func() {
 			It("should fail to create a PullRequest with spec.state set to 'merged'", func() {
 				By("Attempting to create a PullRequest with spec.state='merged' and empty status.id")
@@ -301,7 +300,6 @@ var _ = Describe("PullRequest Controller", func() {
 		var typeNamespacedName types.NamespacedName
 
 		BeforeEach(func() {
-
 			By("Creating test resources with bad configuration")
 			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "delete-without-scm-pr")
 
@@ -341,7 +339,6 @@ var _ = Describe("PullRequest Controller", func() {
 	})
 
 	Context("When deleting resources with finalizers", func() {
-
 		Context("When PullRequest depends on GitRepository", func() {
 			var name string
 			var scmSecret *v1.Secret
@@ -694,7 +691,6 @@ var _ = Describe("PullRequest Controller", func() {
 		var typeNamespacedName types.NamespacedName
 
 		BeforeEach(func() {
-
 			By("Creating test resources")
 			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "externally-merged-closed")
 
