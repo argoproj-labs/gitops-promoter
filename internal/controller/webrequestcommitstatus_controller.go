@@ -84,27 +84,11 @@ type namespaceMetadata struct {
 	Annotations map[string]string
 }
 
-// responseContext holds the HTTP response data for expression evaluation.
-type responseContext struct {
+// httpResponse holds the HTTP response data for validation/response expression evaluation.
+type httpResponse struct {
 	Body       any
 	Headers    map[string][]string
 	StatusCode int
-}
-
-// triggerContext holds the context for trigger expression evaluation.
-type triggerContext struct {
-	PromotionStrategy *promoterv1alpha1.PromotionStrategy
-	Environment       *promoterv1alpha1.EnvironmentStatus
-	TriggerData       map[string]any
-	ResponseData      map[string]any
-	ReportedSha       string
-	LastSuccessfulSha string
-	Phase             string
-}
-
-// validationContext holds the context for validation expression evaluation.
-type validationContext struct {
-	Response responseContext
 }
 
 // triggerResult holds the result of a trigger expression evaluation.
@@ -344,22 +328,12 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		var newTriggerData map[string]any
 
 		if wrcs.Spec.Mode.Trigger != nil {
-			triggerCtx := triggerContext{
-				ReportedSha:       reportedSha,
-				LastSuccessfulSha: lastSuccessfulSha,
-				Phase:             previousPhase,
-				PromotionStrategy: ps,
-				Environment:       envStatus,
-				TriggerData:       triggerData,
-				ResponseData:      previousResponseData,
-			}
-
-			triggerResult, err := r.evaluateTriggerExpression(ctx, wrcs.Spec.Mode.Trigger.TriggerExpression, triggerCtx)
+			tr, err := r.evaluateTriggerExpression(ctx, wrcs.Spec.Mode.Trigger.TriggerExpression, templateData)
 			if err != nil {
 				return nil, nil, 0, fmt.Errorf("failed to evaluate trigger expression for environment %q: %w", branch, err)
 			}
-			shouldTrigger = triggerResult.Trigger
-			newTriggerData = triggerResult.TriggerData
+			shouldTrigger = tr.Trigger
+			newTriggerData = tr.TriggerData
 		}
 
 		var phase promoterv1alpha1.CommitStatusPhase
@@ -488,11 +462,7 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 	// Store response data (only in trigger mode with responseExpression)
 	var responseDataJSON *apiextensionsv1.JSON
 	if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.ResponseExpression != "" {
-		validationCtx := validationContext{
-			Response: response,
-		}
-
-		extractedData, err := r.evaluateResponseExpression(ctx, wrcs.Spec.Mode.Trigger.ResponseExpression, validationCtx)
+		extractedData, err := r.evaluateResponseExpression(ctx, wrcs.Spec.Mode.Trigger.ResponseExpression, response)
 		if err != nil {
 			return httpValidationResult{}, fmt.Errorf("failed to evaluate response expression for environment %q: %w", branch, err)
 		}
@@ -505,11 +475,7 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 	}
 
 	// Evaluate the validation expression
-	validationCtx := validationContext{
-		Response: response,
-	}
-
-	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Expression, validationCtx)
+	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Expression, response)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression for environment %q: %w", branch, err)
 	}
@@ -577,13 +543,13 @@ func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promote
 }
 
 // makeHTTPRequest makes the HTTP request with the configured settings.
-func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (responseContext, error) {
+func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (httpResponse, error) {
 	logger := log.FromContext(ctx)
 
 	// Render URL template
 	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, templateData)
 	if err != nil {
-		return responseContext{}, fmt.Errorf("failed to render URL template: %w", err)
+		return httpResponse{}, fmt.Errorf("failed to render URL template: %w", err)
 	}
 
 	// Render body template if present
@@ -591,7 +557,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	if wrcs.Spec.HTTPRequest.BodyTemplate != "" {
 		bodyStr, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.BodyTemplate, templateData)
 		if err != nil {
-			return responseContext{}, fmt.Errorf("failed to render body template: %w", err)
+			return httpResponse{}, fmt.Errorf("failed to render body template: %w", err)
 		}
 		body = strings.NewReader(bodyStr)
 	}
@@ -599,14 +565,14 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, wrcs.Spec.HTTPRequest.Method, url, body)
 	if err != nil {
-		return responseContext{}, fmt.Errorf("failed to create HTTP request: %w", err)
+		return httpResponse{}, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
 	// Render and set headers
 	for headerName, headerTemplate := range wrcs.Spec.HTTPRequest.HeaderTemplates {
 		headerValue, err := utils.RenderStringTemplate(headerTemplate, templateData)
 		if err != nil {
-			return responseContext{}, fmt.Errorf("failed to render header template %q: %w", headerName, err)
+			return httpResponse{}, fmt.Errorf("failed to render header template %q: %w", headerName, err)
 		}
 		req.Header.Set(headerName, headerValue)
 	}
@@ -615,7 +581,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	if wrcs.Spec.HTTPRequest.Authentication != nil {
 		httpClient, err := r.applyAuthentication(ctx, wrcs, req)
 		if err != nil {
-			return responseContext{}, fmt.Errorf("failed to apply authentication: %w", err)
+			return httpResponse{}, fmt.Errorf("failed to apply authentication: %w", err)
 		}
 		if httpClient != nil {
 			// Use the custom client (e.g., for TLS)
@@ -639,10 +605,10 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	// Execute request
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
-		return responseContext{}, fmt.Errorf("HTTP request failed: %w", err)
+		return httpResponse{}, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	if resp == nil {
-		return responseContext{}, errors.New("HTTP response is nil")
+		return httpResponse{}, errors.New("HTTP response is nil")
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
@@ -653,7 +619,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	// Read response body
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return responseContext{}, fmt.Errorf("failed to read response body: %w", err)
+		return httpResponse{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	// Try to parse body as JSON
@@ -663,7 +629,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		parsedBody = string(bodyBytes)
 	}
 
-	response := responseContext{
+	response := httpResponse{
 		StatusCode: resp.StatusCode,
 		Body:       parsedBody,
 		Headers:    resp.Header,
@@ -717,7 +683,7 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 }
 
 // evaluateTriggerExpression evaluates the trigger expression to determine if the HTTP request should be made.
-func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context.Context, expression string, triggerCtx triggerContext) (triggerResult, error) {
+func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context.Context, expression string, td templateData) (triggerResult, error) {
 	logger := log.FromContext(ctx)
 
 	// Get compiled expression from cache or compile it
@@ -728,13 +694,13 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 
 	// Build environment for expression evaluation
 	env := map[string]any{
-		"ReportedSha":       triggerCtx.ReportedSha,
-		"LastSuccessfulSha": triggerCtx.LastSuccessfulSha,
-		"Phase":             triggerCtx.Phase,
-		"PromotionStrategy": triggerCtx.PromotionStrategy,
-		"Environment":       triggerCtx.Environment,
-		"TriggerData":       triggerCtx.TriggerData,
-		"ResponseData":      triggerCtx.ResponseData,
+		"ReportedSha":       td.ReportedSha,
+		"LastSuccessfulSha": td.LastSuccessfulSha,
+		"Phase":             td.Phase,
+		"PromotionStrategy": td.PromotionStrategy,
+		"Environment":       td.Environment,
+		"TriggerData":       td.TriggerData,
+		"ResponseData":      td.ResponseData,
 	}
 
 	// Run the expression
@@ -773,7 +739,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 }
 
 // evaluateValidationExpression evaluates the validation expression against the HTTP response.
-func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(_ context.Context, expression string, validationCtx validationContext) (bool, error) {
+func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(_ context.Context, expression string, resp httpResponse) (bool, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledValidationExpression(expression)
 	if err != nil {
@@ -783,9 +749,9 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(_ contex
 	// Build environment for expression evaluation
 	env := map[string]any{
 		"Response": map[string]any{
-			"StatusCode": validationCtx.Response.StatusCode,
-			"Body":       validationCtx.Response.Body,
-			"Headers":    validationCtx.Response.Headers,
+			"StatusCode": resp.StatusCode,
+			"Body":       resp.Body,
+			"Headers":    resp.Headers,
 		},
 	}
 
@@ -805,7 +771,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(_ contex
 }
 
 // evaluateResponseExpression evaluates the response expression to extract/transform response data.
-func (r *WebRequestCommitStatusReconciler) evaluateResponseExpression(_ context.Context, expression string, validationCtx validationContext) (map[string]any, error) {
+func (r *WebRequestCommitStatusReconciler) evaluateResponseExpression(_ context.Context, expression string, resp httpResponse) (map[string]any, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledResponseExpression(expression)
 	if err != nil {
@@ -815,9 +781,9 @@ func (r *WebRequestCommitStatusReconciler) evaluateResponseExpression(_ context.
 	// Build environment for expression evaluation (same as validation expression)
 	env := map[string]any{
 		"Response": map[string]any{
-			"StatusCode": validationCtx.Response.StatusCode,
-			"Body":       validationCtx.Response.Body,
-			"Headers":    validationCtx.Response.Headers,
+			"StatusCode": resp.StatusCode,
+			"Body":       resp.Body,
+			"Headers":    resp.Headers,
 		},
 	}
 
