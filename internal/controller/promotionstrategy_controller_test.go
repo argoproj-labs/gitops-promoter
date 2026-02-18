@@ -50,6 +50,12 @@ import (
 var testPromotionStrategyYAML string
 
 var _ = Describe("PromotionStrategy Controller", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the PromotionStrategy resource", func() {
 			err := unmarshalYamlStrict(testPromotionStrategyYAML, &promoterv1alpha1.PromotionStrategy{})
@@ -58,8 +64,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with no commit statuses", func() {
-		ctx := context.Background()
-
 		Context("When git repo is not initialized", func() {
 			var name string
 			var promotionStrategy *promoterv1alpha1.PromotionStrategy
@@ -1085,8 +1089,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with active commit statuses", func() {
-		ctx := context.Background()
-
 		Context("When git repo is initialized with active commit statuses", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -1519,8 +1521,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a proposed commit status", func() {
-		ctx := context.Background()
-
 		Context("When git repo is initialized with proposed commit statuses", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -1938,7 +1938,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with active commit status using ArgoCDCommitStatus", Label("argocdcommitstatus"), func() {
-		ctx := context.Background()
 		const argocdCSLabel = "argocd-health"
 		const namespace = "default"
 
@@ -2450,8 +2449,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a proposed commit status we should have history", func() {
-		ctx := context.Background()
-
 		Context("When tracking proposed commit history", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -2946,8 +2943,6 @@ func argocdApplications(namespace string, name string) (argocd.Application, argo
 
 var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("When PR merges while previous environment has non-passing checks", func() {
-		ctx := context.Background()
-
 		Context("When PR is merged before checks pass", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -3165,8 +3160,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	})
 
 	Context("When environment branch names are changed", func() {
-		ctx := context.Background()
-
 		Context("When cleaning up orphaned CTPs", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -3346,7 +3339,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("Out-of-order hydration protection", func() {
 		// This test verifies that the system correctly blocks downstream environments
 		// from promoting when upstream environments haven't been hydrated yet.
-		ctx := context.Background()
 
 		var name string
 		var gitRepo *promoterv1alpha1.GitRepository
@@ -4555,7 +4547,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should enqueue CTP on first call", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4572,7 +4563,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should rate limit second call within threshold", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4598,7 +4588,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should schedule delayed enqueue on rate limited call", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4627,7 +4616,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should not accumulate multiple delayed enqueues", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4655,7 +4643,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should rate limit multiple CTPs independently", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("ctp-1"),
 				makeCTP("ctp-2"),
@@ -4687,7 +4674,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should rate limit one CTP while allowing others through", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctp1 := makeCTP("ctp-1")
 			ctp2 := makeCTP("ctp-2")
 
