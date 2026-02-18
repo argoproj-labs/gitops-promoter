@@ -55,7 +55,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 	})
 
 	Context("When reconciling a resource", func() {
-
 		Context("When no commit status checks are configured", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
