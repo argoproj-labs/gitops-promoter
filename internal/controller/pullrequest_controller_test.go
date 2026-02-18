@@ -42,6 +42,12 @@ import (
 var testPullRequestYAML string
 
 var _ = Describe("PullRequest Controller", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the PullRequest resource", func() {
 			err := unmarshalYamlStrict(testPullRequestYAML, &promoterv1alpha1.PullRequest{})
@@ -50,17 +56,12 @@ var _ = Describe("PullRequest Controller", func() {
 	})
 
 	Context("When reconciling a resource", func() {
-		var ctx context.Context
 		var name string
 		var scmSecret *v1.Secret
 		var scmProvider *promoterv1alpha1.ScmProvider
 		var gitRepo *promoterv1alpha1.GitRepository
 		var pullRequest *promoterv1alpha1.PullRequest
 		var typeNamespacedName types.NamespacedName
-
-		BeforeEach(func() {
-			ctx = context.Background()
-		})
 
 		Context("When updating title then merging", func() {
 			BeforeEach(func() {
@@ -152,17 +153,12 @@ var _ = Describe("PullRequest Controller", func() {
 	})
 
 	Context("When reconciling a resource with a bad configuration", func() {
-		var ctx context.Context
 		var name string
 		var scmSecret *v1.Secret
 		var scmProvider *promoterv1alpha1.ScmProvider
 		var gitRepo *promoterv1alpha1.GitRepository
 		var pullRequest *promoterv1alpha1.PullRequest
 		var typeNamespacedName types.NamespacedName
-
-		BeforeEach(func() {
-			ctx = context.Background()
-		})
 
 		Context("When ScmProvider has missing secret", func() {
 			BeforeEach(func() {
@@ -256,11 +252,6 @@ var _ = Describe("PullRequest Controller", func() {
 	})
 
 	Context("When attempting to create a PullRequest with invalid initial state", func() {
-		var ctx context.Context
-
-		BeforeEach(func() {
-			ctx = context.Background()
-		})
 
 		Context("When spec.state is set to 'merged'", func() {
 			It("should fail to create a PullRequest with spec.state set to 'merged'", func() {
@@ -302,7 +293,6 @@ var _ = Describe("PullRequest Controller", func() {
 	})
 
 	Context("When deleting a PullRequest that never created a PR on SCM", func() {
-		var ctx context.Context
 		var name string
 		var scmSecret *v1.Secret
 		var scmProvider *promoterv1alpha1.ScmProvider
@@ -311,7 +301,6 @@ var _ = Describe("PullRequest Controller", func() {
 		var typeNamespacedName types.NamespacedName
 
 		BeforeEach(func() {
-			ctx = context.Background()
 
 			By("Creating test resources with bad configuration")
 			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "delete-without-scm-pr")
@@ -352,11 +341,6 @@ var _ = Describe("PullRequest Controller", func() {
 	})
 
 	Context("When deleting resources with finalizers", func() {
-		var ctx context.Context
-
-		BeforeEach(func() {
-			ctx = context.Background()
-		})
 
 		Context("When PullRequest depends on GitRepository", func() {
 			var name string
@@ -702,7 +686,6 @@ var _ = Describe("PullRequest Controller", func() {
 	})
 
 	Context("When a PullRequest is externally merged or closed", func() {
-		var ctx context.Context
 		var name string
 		var scmSecret *v1.Secret
 		var scmProvider *promoterv1alpha1.ScmProvider
@@ -711,7 +694,6 @@ var _ = Describe("PullRequest Controller", func() {
 		var typeNamespacedName types.NamespacedName
 
 		BeforeEach(func() {
-			ctx = context.Background()
 
 			By("Creating test resources")
 			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "externally-merged-closed")
