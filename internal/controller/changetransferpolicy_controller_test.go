@@ -50,6 +50,9 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 	Context("When reconciling a resource", func() {
 		var ctx context.Context
+		BeforeEach(func() {
+			ctx = context.Background()
+		})
 
 		Context("When no commit status checks are configured", func() {
 			var name string
