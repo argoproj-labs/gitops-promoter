@@ -55,7 +55,9 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/httpauth"
 )
 
-// WebRequestCommitStatusReconciler reconciles a WebRequestCommitStatus object
+// WebRequestCommitStatusReconciler reconciles WebRequestCommitStatus resources by running HTTP requests
+// per environment, evaluating trigger/validation/response expressions, and upserting CommitStatus resources
+// so the SCM (e.g. GitHub) shows success or pending based on the validation result.
 type WebRequestCommitStatusReconciler struct {
 	client.Client
 	Recorder        events.EventRecorder
@@ -66,7 +68,8 @@ type WebRequestCommitStatusReconciler struct {
 	expressionCache sync.Map
 }
 
-// templateData is the data passed to Go templates for URL, headers, body, and description rendering.
+// templateData is the data passed to Go templates when rendering URL, headers, body, and description.
+// It is built per environment and includes ReportedSha, Phase, TriggerData, ResponseData, and namespace metadata.
 type templateData struct {
 	NamespaceMetadata namespaceMetadata
 	PromotionStrategy *promoterv1alpha1.PromotionStrategy
@@ -78,26 +81,42 @@ type templateData struct {
 	Phase             string
 }
 
-// namespaceMetadata holds namespace labels and annotations for template rendering.
+// namespaceMetadata holds the labels and annotations of the WebRequestCommitStatus's namespace.
+// It is included in templateData so URL, header, body, and description templates can reference them.
 type namespaceMetadata struct {
 	Labels      map[string]string
 	Annotations map[string]string
 }
 
-// httpResponse holds the HTTP response data for validation/response expression evaluation.
+// httpResponse holds the raw HTTP response (status, body, headers) after makeHTTPRequest.
+// It is passed to evaluateValidationExpression and evaluateResponseExpression as the Response variable.
 type httpResponse struct {
 	Body       any
 	Headers    map[string][]string
 	StatusCode int
 }
 
-// triggerResult holds the result of a trigger expression evaluation.
+// triggerResult holds the result of evaluateTriggerExpression. Trigger is true when the controller
+// should perform the HTTP request. TriggerData is optional: when the expression returns a map (e.g.
+// { "trigger": true, "buildId": "123" }), all keys other than "trigger" are collected as TriggerData.
+// That map is stored in WebRequestCommitStatusEnvironmentStatus and on the next reconcile is passed
+// back into templateData.TriggerData for the trigger expression and into the CommitStatus description/URL
+// templates, so you can carry build IDs or other context across runs and into the SCM status link/description.
 type triggerResult struct {
 	TriggerData map[string]any
 	Trigger     bool
 }
 
-// httpValidationResult holds the result of HTTP request and validation.
+// httpValidationResult holds the outcome of handleHTTPRequestAndValidation. Phase (Success or Pending)
+// is derived from the validation expression and is written to the CommitStatus.
+//
+// ResponseDataJSON is set only in trigger mode when responseExpression is configured: it is the
+// JSON-serialized map returned by the response expression (extract/transform from the HTTP response).
+// It is stored in WebRequestCommitStatusEnvironmentStatus.ResponseData so it persists across
+// reconciles. On the next run it is unmarshalled into templateData.ResponseData, so the trigger
+// expression can read it (e.g. ResponseData.buildUrl). When upserting the CommitStatus it is also
+// passed into the description and URL templates as ResponseData, so the SCM status can show links
+// or text derived from the response (e.g. a link to the CI run).
 type httpValidationResult struct {
 	LastRequestTime        *metav1.Time
 	LastResponseStatusCode *int
@@ -111,8 +130,10 @@ type httpValidationResult struct {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
+// Reconcile fetches the WebRequestCommitStatus and its PromotionStrategy, processes each applicable
+// environment (evaluating trigger and optionally making the HTTP request and validation), upserts
+// CommitStatus resources, cleans up orphaned CommitStatuses, and touches ChangeTransferPolicies when
+// an environment transitions to success. Result status and requeue time are updated via the deferred handler.
 func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling WebRequestCommitStatus")
@@ -181,7 +202,9 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
+// SetupWithManager registers the controller with the manager: watch for WebRequestCommitStatus (and
+// PromotionStrategy so reconciles are triggered when strategy or environment SHAs change), and applies
+// rate limiting and max concurrent reconciles from ControllerConfiguration.
 func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// Initialize the HTTP client
 	r.httpClient = &http.Client{
@@ -212,8 +235,11 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 	return nil
 }
 
-// processEnvironments processes each applicable environment, making HTTP requests and evaluating expressions.
-// Returns the list of environments that transitioned to success, the CommitStatus objects, and the requeue duration.
+// processEnvironments iterates over environments that reference this WebRequestCommitStatus's key. For each,
+// it evaluates the trigger expression; if it fires (or in polling mode), it makes the HTTP request and
+// runs the validation expression, then upserts the CommitStatus. It updates wrcs.Status.Environments and
+// returns the list of branches that transitioned to success, all created/updated CommitStatuses, and the
+// requeue duration (from spec or default).
 //
 //nolint:gocyclo // Complex business logic, refactoring would reduce readability
 func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta namespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
@@ -438,7 +464,10 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 	return transitionedEnvironments, commitStatuses, requeueAfter, nil
 }
 
-// handleHTTPRequestAndValidation makes the HTTP request and evaluates the validation expression.
+// handleHTTPRequestAndValidation is called when the trigger allows (or in polling mode). It performs the
+// HTTP request, optionally runs the response expression to populate ResponseData, then runs the validation
+// expression to set Phase (Success or Pending). The returned httpValidationResult is used to update
+// environment status and to upsert the CommitStatus for that branch.
 func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData, branch string) (httpValidationResult, error) {
 	logger := log.FromContext(ctx)
 
@@ -495,10 +524,9 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 	}, nil
 }
 
-// getApplicableEnvironments returns the environments from the PromotionStrategy that this WebRequestCommitStatus applies to.
-// An environment is applicable if the WebRequestCommitStatus key is referenced in either:
-// - The global ps.Spec.ProposedCommitStatuses or ps.Spec.ActiveCommitStatuses, or
-// - The environment-specific psEnv.ProposedCommitStatuses or psEnv.ActiveCommitStatuses
+// getApplicableEnvironments returns the PromotionStrategy environments this WebRequestCommitStatus should run for.
+// An environment is included if its key is referenced in global or environment-specific ProposedCommitStatuses
+// or ActiveCommitStatuses. Used by processEnvironments to decide which branches to evaluate and report on.
 func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string) []promoterv1alpha1.Environment {
 	// Check if globally referenced in proposed commit statuses
 	globallyProposed := false
@@ -542,7 +570,10 @@ func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promote
 	return applicable
 }
 
-// makeHTTPRequest makes the HTTP request with the configured settings.
+// makeHTTPRequest builds and executes the HTTP request from the WebRequestCommitStatus spec. It renders
+// URL, body, and headers from templateData, applies authentication (basic, bearer, OAuth2, or TLS), uses the
+// configured timeout, and parses the response body as JSON or plain text. The returned httpResponse is used
+// for validation and response expression evaluation.
 func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (httpResponse, error) {
 	logger := log.FromContext(ctx)
 
@@ -640,8 +671,9 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	return response, nil
 }
 
-// applyAuthentication applies the configured authentication to the HTTP request.
-// Returns a custom HTTP client if TLS auth is used, otherwise nil.
+// applyAuthentication configures the request (or client) with the auth from spec: Basic, Bearer, OAuth2, or TLS.
+// For Basic/Bearer/OAuth2 it mutates the request and returns nil. For TLS it builds and returns a custom
+// http.Client; the caller uses that client for the request. Credentials are read from the referenced Secrets.
 func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, req *http.Request) (*http.Client, error) {
 	auth := wrcs.Spec.HTTPRequest.Authentication
 
@@ -914,8 +946,9 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 	return commitStatus, nil
 }
 
-// cleanupOrphanedCommitStatuses deletes CommitStatus resources that are owned by this WebRequestCommitStatus
-// but are not in the current list of valid CommitStatus resources.
+// cleanupOrphanedCommitStatuses removes CommitStatus resources that are owned by this WebRequestCommitStatus
+// and labeled with its key but are not in validCommitStatuses (e.g. branches no longer in the strategy).
+// Called after processEnvironments so the cluster state matches the current set of applicable environments.
 //
 //nolint:dupl // Similar to cleanupOrphanedChangeTransferPolicies but operates on different types
 func (r *WebRequestCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, validCommitStatuses []*promoterv1alpha1.CommitStatus) error {
@@ -972,8 +1005,9 @@ func (r *WebRequestCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx con
 	return nil
 }
 
-// touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
-// for the environments that had validations transition to success.
+// touchChangeTransferPolicies enqueues the ChangeTransferPolicy for each environment in transitionedEnvironments,
+// so the CTP controller re-runs and can merge the PR now that this WebRequestCommitStatus has reported success.
+// Called from Reconcile when at least one environment's validation has just transitioned to success.
 func (r *WebRequestCommitStatusReconciler) touchChangeTransferPolicies(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, transitionedEnvironments []string) {
 	logger := log.FromContext(ctx)
 
@@ -993,8 +1027,9 @@ func (r *WebRequestCommitStatusReconciler) touchChangeTransferPolicies(ctx conte
 	}
 }
 
-// enqueueWebRequestCommitStatusForPromotionStrategy returns a handler that enqueues all WebRequestCommitStatus resources
-// that reference a PromotionStrategy when that PromotionStrategy changes.
+// enqueueWebRequestCommitStatusForPromotionStrategy returns the watch handler for PromotionStrategy. When a
+// PromotionStrategy is created/updated (e.g. environment SHAs or status change), it enqueues every
+// WebRequestCommitStatus in the same namespace that references that strategy, so they reconcile with fresh data.
 func (r *WebRequestCommitStatusReconciler) enqueueWebRequestCommitStatusForPromotionStrategy() handler.EventHandler {
 	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
 		ps, ok := obj.(*promoterv1alpha1.PromotionStrategy)
@@ -1023,7 +1058,9 @@ func (r *WebRequestCommitStatusReconciler) enqueueWebRequestCommitStatusForPromo
 	})
 }
 
-// getNamespaceMetadata retrieves the labels and annotations from the namespace.
+// getNamespaceMetadata fetches the namespace's labels and annotations for use in templateData, so URL, header,
+// body, and description templates can reference them. Called at the start of Reconcile for the
+// WebRequestCommitStatus's namespace.
 func (r *WebRequestCommitStatusReconciler) getNamespaceMetadata(ctx context.Context, namespace string) (namespaceMetadata, error) {
 	var ns corev1.Namespace
 	if err := r.Get(ctx, client.ObjectKey{Name: namespace}, &ns); err != nil {
