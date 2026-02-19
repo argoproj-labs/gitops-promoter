@@ -682,7 +682,9 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 	return nil, nil
 }
 
-// evaluateTriggerExpression evaluates the trigger expression to determine if the HTTP request should be made.
+// evaluateTriggerExpression runs the trigger expression to decide whether to perform the HTTP request for this environment.
+// It is called before each potential request; the expression has access to ReportedSha, LastSuccessfulSha, Phase, PromotionStrategy, Environment, TriggerData, and ResponseData.
+// Returns a bool (and optional triggerData map). When true, the controller issues the request; when false, it keeps the previous phase (e.g. Pending) and skips the request.
 func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context.Context, expression string, td templateData) (triggerResult, error) {
 	logger := log.FromContext(ctx)
 
@@ -738,7 +740,9 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 	return triggerResult{}, fmt.Errorf("trigger expression must return bool or {trigger: bool, ...}, got %T", output)
 }
 
-// evaluateValidationExpression evaluates the validation expression against the HTTP response.
+// evaluateValidationExpression runs the validation expression against the HTTP response to determine the commit status phase.
+// The expression receives Response.StatusCode, Response.Body, and Response.Headers. Its boolean return is used directly:
+// true sets the CommitStatus phase to Success, false sets it to Pending. Used when deciding whether promotion can proceed.
 func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(_ context.Context, expression string, resp httpResponse) (bool, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledValidationExpression(expression)
@@ -770,7 +774,9 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(_ contex
 	return result, nil
 }
 
-// evaluateResponseExpression evaluates the response expression to extract/transform response data.
+// evaluateResponseExpression runs the response expression to extract or transform data from the HTTP response.
+// The expression receives Response.StatusCode, Response.Body, and Response.Headers and must return a map.
+// The returned map is stored as ResponseData and is available to the trigger expression and to description/URL templates.
 func (r *WebRequestCommitStatusReconciler) evaluateResponseExpression(_ context.Context, expression string, resp httpResponse) (map[string]any, error) {
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledResponseExpression(expression)
@@ -802,9 +808,9 @@ func (r *WebRequestCommitStatusReconciler) evaluateResponseExpression(_ context.
 	return result, nil
 }
 
-// getCompiledExpression retrieves a compiled expression from the cache or compiles and caches it.
-// cacheKeyPrefix distinguishes expression kinds (e.g. "trigger:", "validation:") so the same
-// expression string can be compiled with different options. opts are passed to expr.Compile.
+// getCompiledExpression returns a compiled expr program from the reconciler's cache, or compiles the expression and caches it.
+// cacheKeyPrefix (e.g. "trigger:", "validation:", "response:") ensures the same expression string compiled with different
+// options (e.g. expr.AsBool() for validation) gets distinct cache entries. opts are passed through to expr.Compile.
 func (r *WebRequestCommitStatusReconciler) getCompiledExpression(expression string, cacheKeyPrefix string, opts ...expr.Option) (*vm.Program, error) {
 	cacheKey := cacheKeyPrefix + expression
 
@@ -825,22 +831,27 @@ func (r *WebRequestCommitStatusReconciler) getCompiledExpression(expression stri
 	return program, nil
 }
 
-// getCompiledTriggerExpression retrieves a compiled trigger expression from the cache or compiles and caches it.
+// getCompiledTriggerExpression returns a cached or newly compiled trigger expression program.
+// Used by evaluateTriggerExpression. Compiled without a result type constraint (expression may return bool or a map with "trigger" and other fields).
 func (r *WebRequestCommitStatusReconciler) getCompiledTriggerExpression(expression string) (*vm.Program, error) {
 	return r.getCompiledExpression(expression, "trigger:")
 }
 
-// getCompiledValidationExpression retrieves a compiled validation expression from the cache or compiles and caches it.
+// getCompiledValidationExpression returns a cached or newly compiled validation expression program.
+// Used by evaluateValidationExpression. Compiled with expr.AsBool() so the expression must return a boolean.
 func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpression(expression string) (*vm.Program, error) {
 	return r.getCompiledExpression(expression, "validation:", expr.AsBool())
 }
 
-// getCompiledResponseExpression retrieves a compiled response expression from the cache or compiles and caches it.
+// getCompiledResponseExpression returns a cached or newly compiled response expression program.
+// Used by evaluateResponseExpression. Compiled without a result type constraint; the expression is expected to return a map for ResponseData.
 func (r *WebRequestCommitStatusReconciler) getCompiledResponseExpression(expression string) (*vm.Program, error) {
 	return r.getCompiledExpression(expression, "response:")
 }
 
-// upsertCommitStatus creates or updates a CommitStatus resource for the validation result.
+// upsertCommitStatus creates or updates the CommitStatus resource that reports this WebRequestCommitStatus's result to the SCM.
+// The phase (Success or Pending) and sha are set from the validation outcome; description and URL are rendered from templateData.
+// The created resource is owned by the WebRequestCommitStatus so it is cleaned up when the WebRequestCommitStatus is deleted.
 func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData templateData) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch))
