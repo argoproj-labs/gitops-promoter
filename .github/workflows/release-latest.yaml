@@ -26,18 +26,23 @@ jobs:
     name: Push Latest Docker Image
     steps:
       - name: Checkout
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Set up Docker
+        uses: docker/setup-docker-action@206b75dbd282c4008313f59196a28caf84eb4198
+        with:
+          version: type=image,tag=29.1.5
+    
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Setup Go
-        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
         with:
           go-version: "1.25"
 
       - name: Docker Login to quay.io
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
@@ -56,7 +61,8 @@ jobs:
         run: |
           docker push quay.io/argoprojlabs/gitops-promoter:latest-amd64
           docker push quay.io/argoprojlabs/gitops-promoter:latest-arm64
-          docker manifest create quay.io/argoprojlabs/gitops-promoter:latest \
+          docker inspect quay.io/argoprojlabs/gitops-promoter:latest-amd64
+          docker inspect quay.io/argoprojlabs/gitops-promoter:latest-arm64
+          docker buildx imagetools create -t quay.io/argoprojlabs/gitops-promoter:latest \
             quay.io/argoprojlabs/gitops-promoter:latest-amd64 \
             quay.io/argoprojlabs/gitops-promoter:latest-arm64
-          docker manifest push quay.io/argoprojlabs/gitops-promoter:latest

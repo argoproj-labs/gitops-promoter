@@ -71,7 +71,7 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) applyconfiguration:headerFile="hack/boilerplate.go.txt" object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 .PHONY: mockery-gen
 mockery-gen:
@@ -160,11 +160,11 @@ run-dashboard: build-dashboard
 
 .PHONY: lint-dashboard
 lint-dashboard: ## Run dashboard type-check, lint and audit checks
-	cd ui/dashboard && npm run type-check && npm run lint && npm audit
+	cd ui/dashboard && npm run type-check && npm run lint && npm audit --omit=dev
 
 .PHONY: lint-extension
 lint-extension: ## Run extension type-check, lint and audit checks
-	cd ui/extension && npm run type-check && npm run lint && npm audit
+	cd ui/extension && npm run type-check && npm run lint && npm audit --omit=dev
 
 .PHONY: lint-ui
 lint-ui: lint-dashboard lint-extension ## Run all UI checks
@@ -259,9 +259,9 @@ GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.3.0
-CONTROLLER_TOOLS_VERSION ?= v0.19.0
+CONTROLLER_TOOLS_VERSION ?= v0.20.0
 ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v2.7.2
+GOLANGCI_LINT_VERSION ?= v2.10.0
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')

@@ -105,28 +105,47 @@ func (cs *ArgoCDCommitStatus) GetConditions() *[]metav1.Condition {
 	return &cs.Status.Conditions
 }
 
-// ApplicationsSelected represents the Argo CD applications that are selected by the commit status.
+// ApplicationsSelected represents the Argo CD applications that are selected by the commit status. The fields in this
+// struct are all required, since the controller should always fully construct this information.
 type ApplicationsSelected struct {
 	// Namespace is the namespace of the Argo CD application.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	Namespace string `json:"namespace"`
 	// Name is the name of the Argo CD application.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	Name string `json:"name"`
 	// Phase is the current phase of the commit status.
+	// +required
+	// +kubebuilder:validation:Enum:=pending;success;failure
 	Phase CommitStatusPhase `json:"phase"`
-	// Sha is the commit SHA that this status is associated with.
+	// Sha is the commit SHA that the application is synced to.
+	// This field is only populated when the application's sync status is Synced.
+	// When the sync status is OutOfSync or Unknown, this field will be empty because
+	// Status.Sync.Revision may contain a branch name instead of a SHA.
+	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
+	// +required
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^(|[a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha"`
 	// LastTransitionTime is the last time the phase transitioned.
-	// +kubebuilder:validation:Optional
-	LastTransitionTime *metav1.Time `json:"lastTransitionTime"`
+	// +optional
+	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty"`
 	// Environment is the syncSource.targetBranch of the Argo CD application (in effect, its environment).
 	// +required
 	// +kubebuilder:validation:MinLength=1
-	Environment string `json:"environment,omitempty"`
+	Environment string `json:"environment"`
 	// ClusterName is the name of the cluster that the application manifest is deployed to. An empty string indicates
-	// the local cluster.
+	// the local cluster. There is no minimum length, since the local cluster is represented by an empty string.
 	ClusterName string `json:"clusterName"`
 }
 
+// +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 

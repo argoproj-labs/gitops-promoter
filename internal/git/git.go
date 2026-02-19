@@ -328,7 +328,8 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 	logger := log.FromContext(ctx)
 
 	start := time.Now()
-	args := []string{"ls-remote", "--heads", gap.GetGitHttpsRepoUrl(*gitRepo)}
+	args := make([]string, 0, 3+len(branches))
+	args = append(args, "ls-remote", "--heads", gap.GetGitHttpsRepoUrl(*gitRepo))
 	args = append(args, branches...)
 	stdout, stderr, err := runCmd(ctx, gap, "", args...)
 	metrics.RecordGitOperation(gitRepo, metrics.GitOperationLsRemote, metrics.GitOperationResultFromError(err), time.Since(start))
@@ -339,7 +340,25 @@ func LsRemote(ctx context.Context, gap scms.GitOperationsProvider, gitRepo *v1al
 	stdout = strings.TrimSpace(stdout)
 	lines := strings.Split(stdout, "\n")
 	if len(lines) != len(branches) {
-		return nil, fmt.Errorf("expected %d lines from ls-remote, got %d: %s", len(branches), len(lines), stdout)
+		// Determine which branches are missing
+		foundBranches := make(map[string]bool)
+		for _, line := range lines {
+			if line == "" {
+				continue
+			}
+			_, ref, found := strings.Cut(line, "\t")
+			if found {
+				branch := strings.TrimPrefix(ref, "refs/heads/")
+				foundBranches[branch] = true
+			}
+		}
+		missingBranches := make([]string, 0)
+		for _, branch := range branches {
+			if !foundBranches[branch] {
+				missingBranches = append(missingBranches, branch)
+			}
+		}
+		return nil, fmt.Errorf("missing branches: [%s] (these branches may not exist yet - check your PromotionStrategy to verify the environment branches have been created)", strings.Join(missingBranches, ", "))
 	}
 	shas := make(map[string]string, len(branches))
 	for i := range lines {
@@ -470,7 +489,8 @@ func (g *EnvironmentOperations) GetRevListFirstParent(ctx context.Context, branc
 		return nil, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
 	}
 
-	args := []string{"rev-list", "--first-parent"}
+	args := make([]string, 0, 4)
+	args = append(args, "rev-list", "--first-parent")
 	args = append(args, "--max-count="+strconv.Itoa(maxCount))
 	args = append(args, branch)
 

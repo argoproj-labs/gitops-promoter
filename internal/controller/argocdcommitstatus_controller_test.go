@@ -33,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
@@ -126,13 +127,118 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 
 				c := meta.FindStatusCondition(updated.Status.Conditions, string(promoterConditions.Ready))
 				g.Expect(c).ToNot(BeNil())
-				g.Expect(c.Message).To(ContainSubstring("spec.sourceHydrator.syncSource.targetBranch must not be empty"))
+				g.Expect(c.Message).To(ContainSubstring("spec.sourceHydrator.syncSource.targetBranch or spec.source.targetRevision"))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			// Clean up
 			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
 			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+		})
+
+		It("should work with applications that use spec.source instead of spec.sourceHydrator", func() {
+			ctx := context.TODO()
+
+			// Create required dependencies
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "non-hydrator-test", "default")
+
+			// Set up a real git repository on the test server
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+
+			// Simplify to just one environment for this test
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchStaging},
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+
+			// Clone the repo to get the HEAD SHA
+			workTreePath, err := os.MkdirTemp("", "*")
+			Expect(err).ToNot(HaveOccurred())
+			defer func() {
+				_ = os.RemoveAll(workTreePath)
+			}()
+
+			_, err = runGitCmd(ctx, workTreePath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name), ".")
+			Expect(err).ToNot(HaveOccurred())
+			_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
+			Expect(err).ToNot(HaveOccurred())
+
+			sha, err := runGitCmd(ctx, workTreePath, "rev-parse", "HEAD")
+			Expect(err).ToNot(HaveOccurred())
+			sha = strings.TrimSpace(sha)
+
+			// Create Application WITHOUT SourceHydrator, using spec.source instead
+			app := &argocd.Application{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Application",
+					APIVersion: "argoproj.io/v1alpha1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      "test-app-non-hydrator",
+					Labels: map[string]string{
+						"test": "non-hydrator",
+					},
+				},
+				Spec: argocd.ApplicationSpec{
+					Source: &argocd.Source{
+						RepoURL:        fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name),
+						TargetRevision: testBranchStaging,
+					},
+				},
+				Status: argocd.ApplicationStatus{
+					Health: argocd.HealthStatus{
+						Status:             argocd.HealthStatusHealthy,
+						LastTransitionTime: nil,
+					},
+					Sync: argocd.SyncStatus{
+						Status:   argocd.SyncStatusCodeSynced,
+						Revision: sha,
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, app)).To(Succeed())
+
+			// Create ArgoCDCommitStatus
+			commitStatus := &promoterv1alpha1.ArgoCDCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "default",
+					Name:      name,
+				},
+				Spec: promoterv1alpha1.ArgoCDCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					ApplicationSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"test": "non-hydrator"},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+
+			// Verify the application is selected and status is correct
+			Eventually(func(g Gomega) {
+				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, updated)
+				g.Expect(err).ToNot(HaveOccurred())
+
+				// Verify application is selected
+				g.Expect(updated.Status.ApplicationsSelected).To(HaveLen(1))
+				g.Expect(updated.Status.ApplicationsSelected[0].Name).To(Equal("test-app-non-hydrator"))
+				g.Expect(updated.Status.ApplicationsSelected[0].Environment).To(Equal(testBranchStaging))
+				g.Expect(updated.Status.ApplicationsSelected[0].Sha).To(Equal(sha))
+				g.Expect(updated.Status.ApplicationsSelected[0].Phase).To(Equal(promoterv1alpha1.CommitPhaseSuccess))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Clean up
+			Expect(k8sClient.Delete(ctx, app)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, promotionStrategy)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
 		})
 
 		It("should reconcile when sync status changes but health status and LastTransitionTime do not change", func() {
@@ -166,6 +272,116 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 						WorkQueue: promoterv1alpha1.WorkQueue{
 							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000}, // 5 minutes in nanoseconds
 							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					PromotionStrategy: promoterv1alpha1.PromotionStrategyConfiguration{
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					ChangeTransferPolicy: promoterv1alpha1.ChangeTransferPolicyConfiguration{
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					PullRequest: promoterv1alpha1.PullRequestConfiguration{
+						Template: promoterv1alpha1.PullRequestTemplate{
+							Title:       "Test PR",
+							Description: "Test Description",
+						},
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					CommitStatus: promoterv1alpha1.CommitStatusConfiguration{
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					TimedCommitStatus: promoterv1alpha1.TimedCommitStatusConfiguration{
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
+						},
+					},
+					GitCommitStatus: promoterv1alpha1.GitCommitStatusConfiguration{
+						WorkQueue: promoterv1alpha1.WorkQueue{
+							RequeueDuration:         metav1.Duration{Duration: 5 * 60 * 1000000000},
+							MaxConcurrentReconciles: 10,
+							RateLimiter: promoterv1alpha1.RateLimiter{
+								MaxOf: []promoterv1alpha1.RateLimiterTypes{
+									{
+										Bucket: &promoterv1alpha1.Bucket{
+											Qps:    100,
+											Bucket: 1000,
+										},
+									},
+								},
+							},
 						},
 					},
 				},
@@ -288,13 +504,16 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			newSha = strings.TrimSpace(newSha)
 
 			// Step 3: Simulate a new commit being detected
-			// Update the Application with new revision and OutOfSync status
+			// Update the Application with OutOfSync status
+			// In some cases, when the sync status changes to OutOfSync, Argo CD may set
+			// the Revision field to a branch name instead of a SHA (the original bug scenario).
 			// (Application CRD has no status subresource, so Argo CD patches the whole CR)
 			appToUpdate := &argocd.Application{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: "test-app-sync-bug", Namespace: "default"}, appToUpdate)
 			Expect(err).ToNot(HaveOccurred())
 
-			appToUpdate.Status.Sync.Revision = newSha
+			// Set revision to branch name (the bug scenario), status changes to OutOfSync
+			appToUpdate.Status.Sync.Revision = testBranchStaging
 			appToUpdate.Status.Sync.Status = argocd.SyncStatusCodeOutOfSync
 			// Health status and LastTransitionTime remain unchanged (no health checks)
 			appToUpdate.Status.Health.Status = argocd.HealthStatusHealthy
@@ -303,26 +522,36 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			err = k8sClient.Update(ctx, appToUpdate)
 			Expect(err).ToNot(HaveOccurred())
 
+			// Verify the application status was actually updated to OutOfSync
+			Eventually(func(g Gomega) {
+				verifyApp := &argocd.Application{}
+				err := k8sClient.Get(ctx, types.NamespacedName{Name: "test-app-sync-bug", Namespace: "default"}, verifyApp)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(verifyApp.Status.Sync.Status).To(Equal(argocd.SyncStatusCodeOutOfSync))
+				g.Expect(verifyApp.Status.Sync.Revision).To(Equal(testBranchStaging))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			// Step 4: Verify OutOfSync state is recorded (Healthy + OutOfSync = Pending)
+			// Since sync status is OutOfSync (and revision is a branch name), the SHA field should be empty
 			Eventually(func(g Gomega) {
 				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
 				err := k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, updated)
 				g.Expect(err).ToNot(HaveOccurred())
 
-				// Verify that the application is updated with new revision and is in Pending phase
+				// Verify that the application shows OutOfSync with empty SHA
 				g.Expect(updated.Status.ApplicationsSelected).To(HaveLen(1))
-				g.Expect(updated.Status.ApplicationsSelected[0].Sha).To(Equal(newSha))
+				g.Expect(updated.Status.ApplicationsSelected[0].Sha).To(Equal(""))
 				g.Expect(updated.Status.ApplicationsSelected[0].Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			// Step 5: Simulate sync completing
-			// Update the Application: sync status goes to Synced (revision stays at newSha)
+			// Update the Application: sync status goes to Synced and revision is updated to newSha
 			appToUpdate = &argocd.Application{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: "test-app-sync-bug", Namespace: "default"}, appToUpdate)
 			Expect(err).ToNot(HaveOccurred())
 
 			appToUpdate.Status.Sync.Status = argocd.SyncStatusCodeSynced
-			// Revision stays the same (newSha)
+			appToUpdate.Status.Sync.Revision = newSha
 			// Health status and LastTransitionTime remain unchanged - KEY TO BUG
 			appToUpdate.Status.Health.Status = argocd.HealthStatusHealthy
 			appToUpdate.Status.Health.LastTransitionTime = nil
@@ -361,6 +590,18 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 		It("should produce a deterministic, sorted branch list across multiple reconciliations", func() {
 			ctx := context.TODO()
 
+			// Create a secret for the SCM provider
+			scmSecret := &v1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "fake-scm-secret",
+					Namespace: "default",
+				},
+				Data: map[string][]byte{
+					"token": []byte("fake-token"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+
 			// Create a fake SCM provider
 			scmProvider := &promoterv1alpha1.ScmProvider{
 				ObjectMeta: metav1.ObjectMeta{
@@ -375,18 +616,6 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-
-			// Create a secret for the SCM provider
-			scmSecret := &v1.Secret{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "fake-scm-secret",
-					Namespace: "default",
-				},
-				Data: map[string][]byte{
-					"token": []byte("fake-token"),
-				},
-			}
-			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 
 			// Create a GitRepository with an INVALID URL to trigger ls-remote error
 			gitRepo := &promoterv1alpha1.GitRepository{
@@ -465,7 +694,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 						},
 						Sync: argocd.SyncStatus{
 							Status:   "Synced",
-							Revision: "abc123",
+							Revision: "abc1230000000000000000000000000000000123",
 						},
 					},
 				}
@@ -514,17 +743,23 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			// Force multiple reconciliations and verify they ALL produce identical error messages
 			// This catches nondeterministic behavior that the controller's map iteration would cause
 			for i := 0; i < 5; i++ {
-				updated := &promoterv1alpha1.ArgoCDCommitStatus{}
-				Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "sorting-test", Namespace: "default"}, updated)).To(Succeed())
+				// Use retry on conflict since the controller may update the status concurrently
+				err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+					updated := &promoterv1alpha1.ArgoCDCommitStatus{}
+					if err := k8sClient.Get(ctx, types.NamespacedName{Name: "sorting-test", Namespace: "default"}, updated); err != nil {
+						return fmt.Errorf("failed to get ArgoCDCommitStatus: %w", err)
+					}
 
-				// Trigger reconciliation by updating the spec (annotations won't work due to GenerationChangedPredicate)
-				// We toggle the URL template field to force generation increment
-				if i%2 == 0 {
-					updated.Spec.URL.Template = "http://example.com/test-" + strconv.Itoa(i)
-				} else {
-					updated.Spec.URL.Template = "http://example.com/test-alt-" + strconv.Itoa(i)
-				}
-				Expect(k8sClient.Update(ctx, updated)).To(Succeed())
+					// Trigger reconciliation by updating the spec (annotations won't work due to GenerationChangedPredicate)
+					// We toggle the URL template field to force generation increment
+					if i%2 == 0 {
+						updated.Spec.URL.Template = "http://example.com/test-" + strconv.Itoa(i)
+					} else {
+						updated.Spec.URL.Template = "http://example.com/test-alt-" + strconv.Itoa(i)
+					}
+					return k8sClient.Update(ctx, updated)
+				})
+				Expect(err).ToNot(HaveOccurred())
 
 				// Wait for reconciliation and verify error message is IDENTICAL to the first one
 				Eventually(func(g Gomega) {

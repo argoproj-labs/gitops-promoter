@@ -17,6 +17,7 @@ __debug_bin*
 
 # Go workspace file
 go.work
+go.work.sum
 
 # Kubernetes Generated files - skip generated files, except for vendored files
 !vendor/**/zz_generated.*
@@ -50,6 +51,8 @@ out/
 *.d.ts
 *.d.ts.map
 *.js.map
+# Allow eslint.config.js files
+!**/eslint.config.js
 
 # Node.js
 node_modules/

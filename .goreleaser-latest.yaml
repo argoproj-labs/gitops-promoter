@@ -64,12 +64,6 @@ dockers:
       - "--platform=linux/arm64"
       - "--provenance=false"
 
-docker_manifests:
-  - name_template: "quay.io/argoprojlabs/gitops-promoter:latest"
-    image_templates:
-      - "quay.io/argoprojlabs/gitops-promoter:latest-amd64"
-      - "quay.io/argoprojlabs/gitops-promoter:latest-arm64"
-
 # No archives for latest builds
 archives: []
 

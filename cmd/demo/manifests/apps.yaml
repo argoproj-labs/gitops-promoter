@@ -1,0 +1,138 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dev-helm-guestbook
+  namespace: argocd
+  labels:
+    # This label allows the ArgoCDCommitStatus to find the applications.
+    app-name: helm-guestbook
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: development
+  sourceHydrator:
+    drySource:
+      repoURL: https://github.com/<GITHUB_ORG_USERNAME>/<REPO_NAME>
+      path: helm-guestbook
+      targetRevision: HEAD
+      helm:
+        valueFiles:
+          - values.yaml
+    hydrateTo:
+      targetBranch: environment/development-next
+    syncSource:
+      targetBranch: environment/development
+      path: helm-guestbook
+  syncPolicy:
+    automated:
+      prune: true
+      allowEmpty: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: staging-helm-guestbook
+  namespace: argocd
+  labels:
+    # This label allows the ArgoCDCommitStatus to find the applications.
+    app-name: helm-guestbook
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  sourceHydrator:
+    drySource:
+      repoURL: https://github.com/<GITHUB_ORG_USERNAME>/<REPO_NAME>
+      path: helm-guestbook
+      targetRevision: HEAD
+      helm:
+        valueFiles:
+          - values.yaml
+          - staging-values.yaml
+    hydrateTo:
+      targetBranch: environment/staging-next
+    syncSource:
+      targetBranch: environment/staging
+      path: helm-guestbook
+  syncPolicy:
+    automated:
+      prune: true
+      allowEmpty: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prod-helm-guestbook-west
+  namespace: argocd
+  labels:
+    # This label allows the ArgoCDCommitStatus to find the applications.
+    app-name: helm-guestbook
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prod
+  sourceHydrator:
+    drySource:
+      repoURL: https://github.com/<GITHUB_ORG_USERNAME>/<REPO_NAME>
+      path: helm-guestbook
+      targetRevision: HEAD
+      helm:
+        valueFiles:
+          - values.yaml
+          - values-production-west.yaml
+    hydrateTo:
+      targetBranch: environment/prod-next
+    syncSource:
+      targetBranch: environment/prod
+      path: helm-guestbook/hydrate-west
+  syncPolicy:
+    automated:
+      prune: true
+      allowEmpty: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prod-helm-guestbook-east
+  namespace: argocd
+  labels:
+    # This label allows the ArgoCDCommitStatus to find the applications.
+    app-name: helm-guestbook
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prod
+  sourceHydrator:
+    drySource:
+      repoURL: https://github.com/<GITHUB_ORG_USERNAME>/<REPO_NAME>
+      path: helm-guestbook
+      targetRevision: HEAD
+      helm:
+        valueFiles:
+          - values.yaml
+          - values-production-east.yaml
+    hydrateTo:
+      targetBranch: environment/prod-next
+    syncSource:
+      targetBranch: environment/prod
+      path: helm-guestbook/hydrate-east
+  syncPolicy:
+    automated:
+      prune: true
+      allowEmpty: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
