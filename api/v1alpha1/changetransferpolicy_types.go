@@ -234,7 +234,10 @@ func (ps *ChangeTransferPolicy) GetConditions() *[]metav1.Condition {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// ChangeTransferPolicy is the Schema for the changetransferpolicies API
+// ChangeTransferPolicy represents a pair of hydrated environment branches: the proposed branch and the active
+// branch. When a new commit appears in the proposed branch, the controller opens a PR against the active branch.
+// When all configured proposed commit status checks pass, the controller merges the PR. Active checks are
+// continuously monitored, and their states are saved to the ChangeTransferPolicy status.
 // +kubebuilder:printcolumn:name="Active Dry Sha",type=string,JSONPath=`.status.active.dry.sha`
 // +kubebuilder:printcolumn:name="Proposed Dry Sha",type=string,JSONPath=`.status.proposed.dry.sha`
 // +kubebuilder:printcolumn:name="Proposed Note Dry Sha",type=string,JSONPath=`.status.proposed.note.drySha`

@@ -26,7 +26,8 @@ import (
 // ScmProviderApplyConfiguration represents a declarative configuration of the ScmProvider type for use
 // with apply.
 //
-// ScmProvider is the Schema for the scmproviders API
+// ScmProvider represents an SCM instance (e.g. GitHub, GitLab). It references a Secret in the same namespace
+// to supply credentials for API access.
 type ScmProviderApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`
