@@ -802,11 +802,12 @@ func (r *WebRequestCommitStatusReconciler) evaluateResponseExpression(_ context.
 	return result, nil
 }
 
-// getCompiledTriggerExpression retrieves a compiled trigger expression from the cache or compiles and caches it.
-func (r *WebRequestCommitStatusReconciler) getCompiledTriggerExpression(expression string) (*vm.Program, error) {
-	cacheKey := "trigger:" + expression
+// getCompiledExpression retrieves a compiled expression from the cache or compiles and caches it.
+// cacheKeyPrefix distinguishes expression kinds (e.g. "trigger:", "validation:") so the same
+// expression string can be compiled with different options. opts are passed to expr.Compile.
+func (r *WebRequestCommitStatusReconciler) getCompiledExpression(expression string, cacheKeyPrefix string, opts ...expr.Option) (*vm.Program, error) {
+	cacheKey := cacheKeyPrefix + expression
 
-	// Check cache first
 	if cached, ok := r.expressionCache.Load(cacheKey); ok {
 		program, ok := cached.(*vm.Program)
 		if !ok {
@@ -815,63 +816,28 @@ func (r *WebRequestCommitStatusReconciler) getCompiledTriggerExpression(expressi
 		return program, nil
 	}
 
-	// Compile without type constraints since we allow bool or map return
-	program, err := expr.Compile(expression)
+	program, err := expr.Compile(expression, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile expression: %w", err)
 	}
 
-	// Store in cache
 	r.expressionCache.Store(cacheKey, program)
 	return program, nil
+}
+
+// getCompiledTriggerExpression retrieves a compiled trigger expression from the cache or compiles and caches it.
+func (r *WebRequestCommitStatusReconciler) getCompiledTriggerExpression(expression string) (*vm.Program, error) {
+	return r.getCompiledExpression(expression, "trigger:")
 }
 
 // getCompiledValidationExpression retrieves a compiled validation expression from the cache or compiles and caches it.
 func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpression(expression string) (*vm.Program, error) {
-	cacheKey := "validation:" + expression
-
-	// Check cache first
-	if cached, ok := r.expressionCache.Load(cacheKey); ok {
-		program, ok := cached.(*vm.Program)
-		if !ok {
-			return nil, errors.New("cached value is not a *vm.Program")
-		}
-		return program, nil
-	}
-
-	// Compile with bool return type constraint
-	program, err := expr.Compile(expression, expr.AsBool())
-	if err != nil {
-		return nil, fmt.Errorf("failed to compile expression: %w", err)
-	}
-
-	// Store in cache
-	r.expressionCache.Store(cacheKey, program)
-	return program, nil
+	return r.getCompiledExpression(expression, "validation:", expr.AsBool())
 }
 
 // getCompiledResponseExpression retrieves a compiled response expression from the cache or compiles and caches it.
 func (r *WebRequestCommitStatusReconciler) getCompiledResponseExpression(expression string) (*vm.Program, error) {
-	cacheKey := "response:" + expression
-
-	// Check cache first
-	if cached, ok := r.expressionCache.Load(cacheKey); ok {
-		program, ok := cached.(*vm.Program)
-		if !ok {
-			return nil, errors.New("cached value is not a *vm.Program")
-		}
-		return program, nil
-	}
-
-	// Compile without type constraints since we expect a map return
-	program, err := expr.Compile(expression)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compile expression: %w", err)
-	}
-
-	// Store in cache
-	r.expressionCache.Store(cacheKey, program)
-	return program, nil
+	return r.getCompiledExpression(expression, "response:")
 }
 
 // upsertCommitStatus creates or updates a CommitStatus resource for the validation result.
