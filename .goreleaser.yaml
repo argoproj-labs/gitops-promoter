@@ -52,6 +52,7 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--platform=linux/amd64"
+      - "--provenance=false"
   - image_templates:
       - quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}-arm64
     dockerfile: release.Dockerfile
@@ -67,6 +68,7 @@ dockers:
       - "--label=org.opencontainers.image.revision={{.FullCommit}}"
       - "--label=org.opencontainers.image.version={{.Version}}"
       - "--platform=linux/arm64"
+      - "--provenance=false"
 docker_manifests:
   - name_template: "quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}"
     image_templates:
