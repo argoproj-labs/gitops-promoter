@@ -166,6 +166,19 @@ Key features:
 - Reports pending until the required duration is met
 - Prevents promotions when there are pending changes in lower environments
 
+### Web Request (HTTP) Validation
+
+The [WebRequestCommitStatus](commit-status-controllers/web-request.md) controller gates promotions on external HTTP/HTTPS APIs. It calls configurable endpoints, evaluates the response with expressions, and creates CommitStatus resources so the SCM shows success or pending.
+
+Key features:
+- **Polling or trigger mode:** Poll at an interval or only when a trigger expression fires (e.g. when SHA changes)
+- **Validation expression:** Uses the [expr](https://github.com/expr-lang/expr) language; `true` means validation passed (CommitStatus phase success), `false` means pending
+- **Optional response expression:** Extract a subset of the HTTP response into `ResponseData` for use in the next trigger evaluation and in description/URL templates
+- **TriggerData:** Trigger expression can return extra fields that are stored and available on the next run and in templates
+- **Templated URL, headers, body:** Go templates with `ReportedSha`, `Environment`, `TriggerData`, `ResponseData`, namespace metadata, etc.
+- **Authentication:** Basic, Bearer, OAuth2, or mutual TLS via Secrets
+- **reportOn:** Report on the proposed commit (default) or the active (deployed) commit
+
 ### Custom Controllers
 
 You can also create your own controllers that manage CommitStatus resources. Any system that can create Kubernetes resources can participate in the gating logic by creating CommitStatus resources with the appropriate SHAs and phases.

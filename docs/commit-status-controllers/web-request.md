@@ -482,6 +482,11 @@ The following fields support Go templates and all receive the **same template da
 | `spec.descriptionTemplate`, `spec.urlTemplate` | **Latest** — from the most recent HTTP request and trigger evaluation (what you see in status is up to date). |
 | `spec.httpRequest.urlTemplate`, `headerTemplates`, `bodyTemplate` | **Previous attempt** — from the last run. These are rendered *before* making the current HTTP request, so they never contain the response from the request being built. |
 
+**TriggerData and ResponseData lifecycle (trigger mode):**
+
+- **TriggerData** comes from the trigger expression when it returns an object: all keys except `trigger` are stored. That map is persisted in `status.environments[].triggerData` and on the next reconciliation is passed back into the trigger expression and into all templates as `TriggerData`. Use it to track state (e.g. last checked SHA, attempt count) and to build description/URL from that state.
+- **ResponseData** is set only when `responseExpression` is configured. The expression runs after the HTTP request and its returned map is stored in `status.environments[].responseData`. On the next run it is available to the trigger expression and to description/URL templates as `ResponseData`. Use it to drive retry logic or to show response-derived links/counts in the SCM status.
+
 **Template functions:** All standard [Sprig](https://masterminds.github.io/sprig/) functions except `env`, `expandenv`, and `getHostByName`.
 
 **Examples:**
@@ -799,7 +804,7 @@ status:
 - `branch`: Environment branch name
 - `reportedSha`: Commit SHA being reported on (based on `reportOn` setting)
 - `lastSuccessfulSha`: Last SHA that achieved success status
-- `phase`: Current validation phase (`pending`, `success`, or `failure`)
+- `phase`: Current validation phase. This controller sets only `pending` or `success` (never `failure`) based on the validation expression.
 - `lastRequestTime`: When the last HTTP request was made
 - `lastResponseStatusCode`: HTTP status code from last request
 - `triggerData`: Custom data from trigger expression (trigger mode only)
