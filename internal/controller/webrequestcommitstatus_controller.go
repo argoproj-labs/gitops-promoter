@@ -250,13 +250,20 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 	// Track all CommitStatus objects created/updated
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0)
 
-	// Save the previous status before clearing it, so we can detect transitions
+	// Save the previous status before we clear wrcs.Status.Environments and rebuild it below.
+	// We need this copy because:
+	// - Transition detection: identify when an environment first reaches Success (pending -> success).
+	// - Polling optimization: skip HTTP when we already succeeded for this SHA (reportOn proposed).
+	// - Trigger mode: when the trigger expression returns false, we keep the previous phase and
+	//   request metadata instead of making a new HTTP request.
+	// - Template/trigger input: URL, body, trigger expression, and descriptions can use previous
+	//   phase, lastSuccessfulSha, triggerData, and response data from the last run.
 	previousStatus := wrcs.Status.DeepCopy()
 	if previousStatus == nil {
 		previousStatus = &promoterv1alpha1.WebRequestCommitStatusStatus{}
 	}
 
-	// Build a map of previous environment statuses from WebRequestCommitStatus for efficient lookup
+	// Map branch -> previous environment status for quick lookup when processing each environment.
 	wrcsEnvStatusMap := make(map[string]*promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, len(previousStatus.Environments))
 	for i := range previousStatus.Environments {
 		wrcsEnvStatusMap[previousStatus.Environments[i].Branch] = &previousStatus.Environments[i]
@@ -293,7 +300,24 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			return nil, nil, 0, fmt.Errorf("no SHA available for environment %q (reportOn: %q)", branch, wrcs.Spec.ReportOn)
 		}
 
-		// Get previous status for this environment
+		// --- Previous environment status (from last reconciliation) ---
+		// We use the last run's status for this branch for:
+		//
+		// 1. previousPhase: Last reported phase (Success/Pending). Used to:
+		//    - Feed into templateData so URL/body/trigger/description templates can branch on it.
+		//    - In polling mode: skip the HTTP request when we already succeeded for this SHA.
+		//    - In trigger mode: when the trigger expression is false, we keep previousPhase instead of making a new request.
+		//    - Detect "transition to success" (previousPhase != Success && new phase == Success) for downstream logic.
+		//
+		// 2. lastSuccessfulSha: SHA that last passed validation. Used to:
+		//    - Expose in templateData (e.g. "last known good" in descriptions or trigger logic).
+		//    - In polling mode: skip request when reportedSha == lastSuccessfulSha and phase is already Success.
+		//
+		// 3. triggerData: Output from the last trigger expression evaluation (when it returned true). Used to:
+		//    - Feed into templateData so the next trigger expression and request templates can use it (e.g. cursor, token).
+		//
+		// 4. previousResponseData: Body of the last HTTP response (after response expression). Used to:
+		//    - Feed into templateData so the trigger expression can decide whether to re-request (e.g. "re-run only if previous result was pending").
 		prevEnvStatus := wrcsEnvStatusMap[branch]
 		previousPhase := ""
 		lastSuccessfulSha := ""
@@ -302,7 +326,6 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		if prevEnvStatus != nil {
 			previousPhase = prevEnvStatus.Phase
 			lastSuccessfulSha = prevEnvStatus.LastSuccessfulSha
-			// Parse trigger data from JSON
 			if prevEnvStatus.TriggerData != nil {
 				triggerData = make(map[string]any)
 				if err := json.Unmarshal(prevEnvStatus.TriggerData.Raw, &triggerData); err != nil {
@@ -311,7 +334,6 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			}
 		}
 
-		// Parse previous response data for trigger expression
 		var previousResponseData map[string]any
 		if prevEnvStatus != nil && prevEnvStatus.ResponseData != nil {
 			if err := json.Unmarshal(prevEnvStatus.ResponseData.Raw, &previousResponseData); err != nil {

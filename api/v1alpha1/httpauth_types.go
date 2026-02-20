@@ -33,6 +33,8 @@ package v1alpha1
 //
 //  4. TLS - Mutual TLS authentication using client certificates
 //     Applied at: Transport layer (not as HTTP header)
+//
+// +kubebuilder:validation:AtMostOneOf=basic;bearer;oauth2;tls
 type HttpAuthentication struct {
 	// Basic specifies HTTP Basic Authentication.
 	// Credentials can be provided inline (with secret references) or via secretRef.

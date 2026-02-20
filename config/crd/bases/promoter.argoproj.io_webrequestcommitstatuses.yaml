@@ -222,6 +222,11 @@ spec:
                         - secretRef
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: at most one of the fields in [basic bearer oauth2 tls]
+                        may be set
+                      rule: '[has(self.basic),has(self.bearer),has(self.oauth2),has(self.tls)].filter(x,x==true).size()
+                        <= 1'
                   bodyTemplate:
                     description: |-
                       BodyTemplate is the request body to send.
