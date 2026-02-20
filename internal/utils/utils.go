@@ -259,8 +259,8 @@ func HandleReconciliationResult(
 	err *error,
 ) {
 	// Recover from any panic and convert it to an error.
-	// This function is always called as defer from the Reconcile function, which means recover() will work correctly here.
-	//revive:disable
+	// This function is always called as a defer from the Reconcile function, which means recover() will work correctly here.
+	//nolint:revive // False positive: recover() works in a deferred function, and this function is always deferred by callers
 	if r := recover(); r != nil {
 		logger := log.FromContext(ctx)
 		logger.Error(nil, "recovered from panic in reconciliation", "panic", r, "trace", string(debug.Stack()))
