@@ -6685,15 +6685,21 @@ spec:
                           Credentials can be provided inline (with secret references) or via secretRef.
                         properties:
                           secretRef:
-                            description: SecretRef references a secret containing
-                              username and password.
+                            description: |-
+                              SecretRef references a secret containing username and password.
+                              The secret must contain keys "username" and "password".
                             properties:
                               name:
-                                description: Name of the secret.
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                                 type: string
-                            required:
-                            - name
                             type: object
+                            x-kubernetes-map-type: atomic
                         required:
                         - secretRef
                         type: object
@@ -6703,15 +6709,21 @@ spec:
                           Token can be provided inline (with secret reference) or via secretRef.
                         properties:
                           secretRef:
-                            description: SecretRef references a secret containing
-                              the bearer token.
+                            description: |-
+                              SecretRef references a secret containing the bearer token.
+                              The secret must contain key "token".
                             properties:
                               name:
-                                description: Name of the secret.
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                                 type: string
-                            required:
-                            - name
                             type: object
+                            x-kubernetes-map-type: atomic
                         required:
                         - secretRef
                         type: object
@@ -6729,15 +6741,21 @@ spec:
                               type: string
                             type: array
                           secretRef:
-                            description: SecretRef references a secret containing
-                              clientID and clientSecret.
+                            description: |-
+                              SecretRef references a secret containing clientID and clientSecret.
+                              The secret must contain keys "clientID" and "clientSecret".
                             properties:
                               name:
-                                description: Name of the secret.
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                                 type: string
-                            required:
-                            - name
                             type: object
+                            x-kubernetes-map-type: atomic
                           tokenURL:
                             description: |-
                               TokenURL is the OAuth2 token endpoint where access tokens are obtained.
@@ -6755,18 +6773,28 @@ spec:
                           secretRef:
                             description: |-
                               SecretRef references a secret containing TLS certificate and key.
-                              The secret should be of type kubernetes.io/tls or contain the required keys.
+                              The secret should be of type kubernetes.io/tls or contain keys "tls.crt" and "tls.key", and optionally "ca.crt".
                             properties:
                               name:
-                                description: Name of the secret.
+                                default: ""
+                                description: |-
+                                  Name of the referent.
+                                  This field is effectively required, but due to backwards compatibility is
+                                  allowed to be empty. Instances of this type with an empty value here are
+                                  almost certainly wrong.
+                                  More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
                                 type: string
-                            required:
-                            - name
                             type: object
+                            x-kubernetes-map-type: atomic
                         required:
                         - secretRef
                         type: object
                     type: object
+                    x-kubernetes-validations:
+                    - message: at most one of the fields in [basic bearer oauth2 tls]
+                        may be set
+                      rule: '[has(self.basic),has(self.bearer),has(self.oauth2),has(self.tls)].filter(x,x==true).size()
+                        <= 1'
                   bodyTemplate:
                     description: |-
                       BodyTemplate is the request body to send.
