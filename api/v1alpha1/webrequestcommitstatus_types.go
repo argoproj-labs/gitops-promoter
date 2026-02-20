@@ -126,6 +126,8 @@ type WebRequestCommitStatusSpec struct {
 
 // ModeSpec defines the operating mode for the WebRequestCommitStatus controller.
 // Exactly one of Polling or Trigger must be specified.
+//
+// +kubebuilder:validation:ExactlyOneOf=polling;trigger
 type ModeSpec struct {
 	// Polling enables interval-based polling mode.
 	// The controller will poll the HTTP endpoint at the specified interval.

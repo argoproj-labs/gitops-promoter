@@ -6967,6 +6967,11 @@ spec:
                     - triggerExpression
                     type: object
                 type: object
+                x-kubernetes-validations:
+                - message: exactly one of the fields in [polling trigger] must be
+                    set
+                  rule: '[has(self.polling),has(self.trigger)].filter(x,x==true).size()
+                    == 1'
               promotionStrategyRef:
                 description: |-
                   PromotionStrategyRef references the PromotionStrategy this applies to.
