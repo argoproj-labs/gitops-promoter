@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	v1 "k8s.io/api/core/v1"
+)
+
 // BasicAuthApplyConfiguration represents a declarative configuration of the BasicAuth type for use
 // with apply.
 //
@@ -32,7 +36,8 @@ package v1alpha1
 // name: my-basic-auth-secret  # secret must contain keys "username" and "password"
 type BasicAuthApplyConfiguration struct {
 	// SecretRef references a secret containing username and password.
-	SecretRef *BasicAuthSecretRefApplyConfiguration `json:"secretRef,omitempty"`
+	// The secret must contain keys "username" and "password".
+	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
 }
 
 // BasicAuthApplyConfiguration constructs a declarative configuration of the BasicAuth type for use with
@@ -44,7 +49,7 @@ func BasicAuth() *BasicAuthApplyConfiguration {
 // WithSecretRef sets the SecretRef field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SecretRef field is set to the value of the last call.
-func (b *BasicAuthApplyConfiguration) WithSecretRef(value *BasicAuthSecretRefApplyConfiguration) *BasicAuthApplyConfiguration {
-	b.SecretRef = value
+func (b *BasicAuthApplyConfiguration) WithSecretRef(value v1.LocalObjectReference) *BasicAuthApplyConfiguration {
+	b.SecretRef = &value
 	return b
 }

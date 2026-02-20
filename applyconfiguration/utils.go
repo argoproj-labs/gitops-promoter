@@ -47,12 +47,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.AzureDevOpsRepoApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BasicAuth"):
 		return &apiv1alpha1.BasicAuthApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("BasicAuthSecretRef"):
-		return &apiv1alpha1.BasicAuthSecretRefApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BearerAuth"):
 		return &apiv1alpha1.BearerAuthApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("BearerAuthSecretRef"):
-		return &apiv1alpha1.BearerAuthSecretRefApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("BitbucketCloudRepo"):
 		return &apiv1alpha1.BitbucketCloudRepoApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("Bucket"):
@@ -151,8 +147,6 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ModeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("OAuth2Auth"):
 		return &apiv1alpha1.OAuth2AuthApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("OAuth2AuthSecretRef"):
-		return &apiv1alpha1.OAuth2AuthSecretRefApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectReference"):
 		return &apiv1alpha1.ObjectReferenceApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PollingModeSpec"):
@@ -209,8 +203,6 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.TimedCommitStatusStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TLSAuth"):
 		return &apiv1alpha1.TLSAuthApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("TLSAuthSecretRef"):
-		return &apiv1alpha1.TLSAuthSecretRefApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TriggerModeSpec"):
 		return &apiv1alpha1.TriggerModeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("URLConfig"):

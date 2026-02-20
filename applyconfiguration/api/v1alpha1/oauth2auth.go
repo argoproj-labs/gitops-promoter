@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	v1 "k8s.io/api/core/v1"
+)
+
 // OAuth2AuthApplyConfiguration represents a declarative configuration of the OAuth2Auth type for use
 // with apply.
 //
@@ -53,7 +57,8 @@ type OAuth2AuthApplyConfiguration struct {
 	// Example: ["read:api", "write:api"]
 	Scopes []string `json:"scopes,omitempty"`
 	// SecretRef references a secret containing clientID and clientSecret.
-	SecretRef *OAuth2AuthSecretRefApplyConfiguration `json:"secretRef,omitempty"`
+	// The secret must contain keys "clientID" and "clientSecret".
+	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
 }
 
 // OAuth2AuthApplyConfiguration constructs a declarative configuration of the OAuth2Auth type for use with
@@ -83,7 +88,7 @@ func (b *OAuth2AuthApplyConfiguration) WithScopes(values ...string) *OAuth2AuthA
 // WithSecretRef sets the SecretRef field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SecretRef field is set to the value of the last call.
-func (b *OAuth2AuthApplyConfiguration) WithSecretRef(value *OAuth2AuthSecretRefApplyConfiguration) *OAuth2AuthApplyConfiguration {
-	b.SecretRef = value
+func (b *OAuth2AuthApplyConfiguration) WithSecretRef(value v1.LocalObjectReference) *OAuth2AuthApplyConfiguration {
+	b.SecretRef = &value
 	return b
 }

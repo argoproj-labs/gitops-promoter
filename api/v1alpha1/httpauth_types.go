@@ -16,6 +16,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	corev1 "k8s.io/api/core/v1"
+)
+
 // HttpAuthentication defines authentication options for HTTP requests.
 //
 // Only one authentication method should be specified.
@@ -69,16 +73,9 @@ type HttpAuthentication struct {
 //	    name: my-basic-auth-secret  # secret must contain keys "username" and "password"
 type BasicAuth struct {
 	// SecretRef references a secret containing username and password.
+	// The secret must contain keys "username" and "password".
 	// +required
-	SecretRef BasicAuthSecretRef `json:"secretRef"`
-}
-
-// BasicAuthSecretRef references a secret for basic authentication.
-// The secret must contain keys "username" and "password".
-type BasicAuthSecretRef struct {
-	// Name of the secret.
-	// +required
-	Name string `json:"name"`
+	SecretRef *corev1.LocalObjectReference `json:"secretRef"`
 }
 
 // BearerAuth defines Bearer token authentication.
@@ -99,16 +96,9 @@ type BasicAuthSecretRef struct {
 //	    name: my-bearer-token-secret  # secret must contain key "token"
 type BearerAuth struct {
 	// SecretRef references a secret containing the bearer token.
+	// The secret must contain key "token".
 	// +required
-	SecretRef BearerAuthSecretRef `json:"secretRef"`
-}
-
-// BearerAuthSecretRef references a secret for bearer token authentication.
-// The secret must contain a key "token".
-type BearerAuthSecretRef struct {
-	// Name of the secret.
-	// +required
-	Name string `json:"name"`
+	SecretRef *corev1.LocalObjectReference `json:"secretRef"`
 }
 
 // OAuth2Auth defines OAuth2 client credentials authentication.
@@ -148,16 +138,9 @@ type OAuth2Auth struct {
 	Scopes []string `json:"scopes,omitempty"`
 
 	// SecretRef references a secret containing clientID and clientSecret.
+	// The secret must contain keys "clientID" and "clientSecret".
 	// +required
-	SecretRef OAuth2AuthSecretRef `json:"secretRef"`
-}
-
-// OAuth2AuthSecretRef references a secret for OAuth2 authentication.
-// The secret must contain keys "clientID" and "clientSecret".
-type OAuth2AuthSecretRef struct {
-	// Name of the secret.
-	// +required
-	Name string `json:"name"`
+	SecretRef *corev1.LocalObjectReference `json:"secretRef"`
 }
 
 // TLSAuth defines TLS client certificate authentication (mutual TLS / mTLS).
@@ -187,15 +170,7 @@ type OAuth2AuthSecretRef struct {
 // authentication methods which are applied as HTTP headers.
 type TLSAuth struct {
 	// SecretRef references a secret containing TLS certificate and key.
-	// The secret should be of type kubernetes.io/tls or contain the required keys.
+	// The secret should be of type kubernetes.io/tls or contain keys "tls.crt" and "tls.key", and optionally "ca.crt".
 	// +required
-	SecretRef TLSAuthSecretRef `json:"secretRef"`
-}
-
-// TLSAuthSecretRef references a secret for TLS client certificate authentication.
-// The secret must contain keys "tls.crt" and "tls.key", and optionally "ca.crt".
-type TLSAuthSecretRef struct {
-	// Name of the secret.
-	// +required
-	Name string `json:"name"`
+	SecretRef *corev1.LocalObjectReference `json:"secretRef"`
 }

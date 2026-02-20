@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	v1 "k8s.io/api/core/v1"
+)
+
 // BearerAuthApplyConfiguration represents a declarative configuration of the BearerAuth type for use
 // with apply.
 //
@@ -38,7 +42,8 @@ package v1alpha1
 // name: my-bearer-token-secret  # secret must contain key "token"
 type BearerAuthApplyConfiguration struct {
 	// SecretRef references a secret containing the bearer token.
-	SecretRef *BearerAuthSecretRefApplyConfiguration `json:"secretRef,omitempty"`
+	// The secret must contain key "token".
+	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
 }
 
 // BearerAuthApplyConfiguration constructs a declarative configuration of the BearerAuth type for use with
@@ -50,7 +55,7 @@ func BearerAuth() *BearerAuthApplyConfiguration {
 // WithSecretRef sets the SecretRef field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SecretRef field is set to the value of the last call.
-func (b *BearerAuthApplyConfiguration) WithSecretRef(value *BearerAuthSecretRefApplyConfiguration) *BearerAuthApplyConfiguration {
-	b.SecretRef = value
+func (b *BearerAuthApplyConfiguration) WithSecretRef(value v1.LocalObjectReference) *BearerAuthApplyConfiguration {
+	b.SecretRef = &value
 	return b
 }

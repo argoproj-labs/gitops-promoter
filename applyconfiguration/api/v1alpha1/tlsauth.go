@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	v1 "k8s.io/api/core/v1"
+)
+
 // TLSAuthApplyConfiguration represents a declarative configuration of the TLSAuth type for use
 // with apply.
 //
@@ -47,8 +51,8 @@ package v1alpha1
 // authentication methods which are applied as HTTP headers.
 type TLSAuthApplyConfiguration struct {
 	// SecretRef references a secret containing TLS certificate and key.
-	// The secret should be of type kubernetes.io/tls or contain the required keys.
-	SecretRef *TLSAuthSecretRefApplyConfiguration `json:"secretRef,omitempty"`
+	// The secret should be of type kubernetes.io/tls or contain keys "tls.crt" and "tls.key", and optionally "ca.crt".
+	SecretRef *v1.LocalObjectReference `json:"secretRef,omitempty"`
 }
 
 // TLSAuthApplyConfiguration constructs a declarative configuration of the TLSAuth type for use with
@@ -60,7 +64,7 @@ func TLSAuth() *TLSAuthApplyConfiguration {
 // WithSecretRef sets the SecretRef field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the SecretRef field is set to the value of the last call.
-func (b *TLSAuthApplyConfiguration) WithSecretRef(value *TLSAuthSecretRefApplyConfiguration) *TLSAuthApplyConfiguration {
-	b.SecretRef = value
+func (b *TLSAuthApplyConfiguration) WithSecretRef(value v1.LocalObjectReference) *TLSAuthApplyConfiguration {
+	b.SecretRef = &value
 	return b
 }
