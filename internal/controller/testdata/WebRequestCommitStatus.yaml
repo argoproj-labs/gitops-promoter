@@ -1,0 +1,66 @@
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: external-approval
+  namespace: default
+spec:
+  # Reference to the PromotionStrategy this WebRequestCommitStatus applies to
+  promotionStrategyRef:
+    name: my-app
+
+  # Unique key for this validation; matched against proposedCommitStatuses or activeCommitStatuses
+  key: external-approval
+
+  # Human-readable description shown in the SCM (Go templates supported). Optional.
+  descriptionTemplate: "Waiting for external approval"
+
+  # URL for the commit status target link in the SCM (Go templates supported). Optional.
+  urlTemplate: ""
+
+  # Which SHA to report on: "proposed" (default) or "active". Optional.
+  reportOn: proposed
+
+  # HTTP request configuration; URL, headers, and body support Go templates
+  httpRequest:
+    urlTemplate: "https://approvals.example.com/api/check/{{ .ReportedSha }}"
+    method: GET
+    # Optional: header name -> template value
+    headerTemplates: {}
+    # Optional: request body template
+    bodyTemplate: ""
+    timeout: 30s
+    # Optional: authentication (basic, bearer, oauth2, or tls with secretRef); omit if none
+
+  # expr expression evaluated against the HTTP response; true = validation passed (phase success)
+  expression: "Response.StatusCode == 200 && Response.Body.approved == true"
+
+  # Exactly one of polling or trigger must be set.
+  mode:
+    # Polling: single optional field. Interval (default 1m) controls how often the HTTP request runs.
+    polling:
+      interval: 2m
+    # Trigger: use this instead of polling for expression-based triggering.
+    # trigger:
+    #   requeueDuration: 1m     # optional, default 1m
+    #   triggerExpression: ""  # required; expr returning bool or {trigger: bool, ...}
+    #   responseExpression: "" # optional; expr returning map, stored in status.responseData
+
+status:
+  conditions:
+    # The Ready condition indicates that the resource has been successfully reconciled.
+    - type: Ready
+      lastTransitionTime: 2023-10-01T00:00:00Z
+      message: Reconciliation succeeded
+      reason: ReconciliationSuccess
+      status: "True"
+      observedGeneration: 1
+  # Status per environment; populated by the controller
+  environments:
+    - branch: environment/development
+      reportedSha: abc123def456789012345678901234567890abcd
+      lastSuccessfulSha: abc123def456789012345678901234567890abcd
+      phase: success
+      lastRequestTime: "2024-01-15T10:30:00Z"
+      lastResponseStatusCode: 200
+      # triggerData (trigger mode): custom data from trigger expression
+      # responseData (trigger + responseExpression): extracted response map
