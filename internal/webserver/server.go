@@ -119,7 +119,7 @@ func (ws *WebServer) sendDeleteEvent(e client.Object) {
 func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 	err := ctrl.NewControllerManagedBy(mgr).
 		Named("webServer").
-		Watches(&promoterv1alpha1.PromotionStrategy{}, handler.Funcs{ //nolint:dupl
+		Watches(&promoterv1alpha1.PromotionStrategy{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if ps, ok := e.Object.(*promoterv1alpha1.PromotionStrategy); ok {
 					ps.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PromotionStrategy"))
@@ -139,7 +139,7 @@ func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 				}
 			},
 		}).
-		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, handler.Funcs{ //nolint:dupl
+		Watches(&promoterv1alpha1.ChangeTransferPolicy{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if ctp, ok := e.Object.(*promoterv1alpha1.ChangeTransferPolicy); ok {
 					ctp.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("ChangeTransferPolicy"))
@@ -159,7 +159,7 @@ func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 				}
 			},
 		}).
-		Watches(&promoterv1alpha1.PullRequest{}, handler.Funcs{ //nolint:dupl
+		Watches(&promoterv1alpha1.PullRequest{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if pr, ok := e.Object.(*promoterv1alpha1.PullRequest); ok {
 					pr.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("PullRequest"))
@@ -179,7 +179,7 @@ func (ws *WebServer) SetupWithManager(mgr ctrl.Manager) error {
 				}
 			},
 		}).
-		Watches(&promoterv1alpha1.CommitStatus{}, handler.Funcs{ //nolint:dupl
+		Watches(&promoterv1alpha1.CommitStatus{}, handler.Funcs{ //nolint:dupl // similar watch handlers are intentional for different resource types
 			CreateFunc: func(ctx context.Context, e event.TypedCreateEvent[client.Object], w workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 				if cs, ok := e.Object.(*promoterv1alpha1.CommitStatus); ok {
 					cs.SetGroupVersionKind(promoterv1alpha1.GroupVersion.WithKind("CommitStatus"))
