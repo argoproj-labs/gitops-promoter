@@ -209,8 +209,8 @@ type TriggerModeSpec struct {
 	// ResponseExpression is an optional expr expression that extracts and transforms data from the HTTP response
 	// before storing it in ResponseData. This allows you to store only the fields you need instead of the entire response.
 	//
-	// The expression is evaluated AFTER a successful HTTP request and its result is stored in status.responseData.
-	// If not specified, the full response (statusCode, body, headers) is stored.
+	// The expression is evaluated after the HTTP request completes (for any response status) and its result is stored in status.responseData.
+	// If not specified, no response data is stored for that request (status.responseData is not updated).
 	//
 	// Available variables in the expression context:
 	//   - Response.StatusCode (int): HTTP response status code
