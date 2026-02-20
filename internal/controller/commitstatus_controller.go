@@ -190,7 +190,7 @@ func (r *CommitStatusReconciler) getCommitStatusProvider(ctx context.Context, co
 		}
 		return p, nil
 	case scmProvider.GetSpec().Fake != nil:
-		//nolint: wrapcheck
+		//nolint:wrapcheck // error wrapping not needed for fake provider
 		return fake.NewFakeCommitStatusProvider(*secret)
 	default:
 		return nil, nil
