@@ -5,11 +5,7 @@ metadata:
   namespace: system
   labels:
     control-plane: controller-manager
-    app.kubernetes.io/name: deployment
-    app.kubernetes.io/instance: controller-manager
-    app.kubernetes.io/component: manager
-    app.kubernetes.io/created-by: promoter
-    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
@@ -72,11 +68,5 @@ spec:
               podAffinityTerm:
                 labelSelector:
                   matchLabels:
-                    app.kubernetes.io/component: manager
-                topologyKey: kubernetes.io/hostname
-            - weight: 5
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: deployment
+                    control-plane: controller-manager
                 topologyKey: kubernetes.io/hostname
