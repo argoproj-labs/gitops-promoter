@@ -149,36 +149,34 @@ spec:
         }
 ```
 
-### Trigger Mode - Conditional on Previous Environment
+### Trigger Mode - Only when another commit status is success
 
-Only trigger validation once the previous environment is healthy:
+Only run the HTTP request when a particular commit status (for example Argo CD health) is already success. This gates your validation on another gate so you avoid calling the API until it is relevant:
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: WebRequestCommitStatus
 metadata:
-  name: staged-validation
+  name: validate-after-argocd
 spec:
   promotionStrategyRef:
     name: my-app
-  key: staged-validation
-  descriptionTemplate: "Waiting for staging environment"
+  key: validate-after-argocd
+  descriptionTemplate: "External validation for {{ .ReportedSha }}"
   reportOn: proposed
   httpRequest:
     urlTemplate: "https://api.example.com/validate/{{ .ReportedSha }}"
-    method: POST
-    bodyTemplate: |
-      {
-        "sha": "{{ .ReportedSha }}",
-        "environment": "{{ .Environment.Branch }}"
-      }
+    method: GET
   expression: "Response.StatusCode == 200"
   mode:
     trigger:
       requeueDuration: 30s
       triggerExpression: |
-        len(filter(PromotionStrategy.Status.Environments, {.Branch == "environment/staging"})[0].LastHealthyDryShas) > 0
+        size(filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})) > 0 &&
+        filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})[0].Phase == "success"
 ```
+
+Use the same `Key` as in your PromotionStrategy's proposed or active commit statuses (e.g. `argocd-health`, `timer`).
 
 ### Trigger Mode with Response Data Tracking
 
@@ -741,6 +739,11 @@ triggerExpression: "true"
 
 # Only trigger when SHA changes
 triggerExpression: "ReportedSha != TriggerData['lastCheckedSha']"
+
+# Only trigger when a particular commit status is success (e.g. after Argo CD health passes)
+triggerExpression: |
+  size(filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})) > 0 &&
+  filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})[0].Phase == "success"
 
 # Track state and trigger on changes
 triggerExpression: |

@@ -189,8 +189,8 @@ type TriggerModeSpec struct {
 	//   # Only trigger when SHA changes from what we last tracked
 	//   - "ReportedSha != TriggerData['lastCheckedSha']"
 	//
-	//   # Only trigger when previous environment is healthy
-	//   - "len(filter(PromotionStrategy.Status.Environments, {.Branch == 'environment/staging'})[0].LastHealthyDryShas) > 0"
+	//   # Only trigger when a particular commit status is success (e.g. argocd-health)
+	//   - "size(filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})) > 0 && filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})[0].Phase == 'success'"
 	//
 	//   # Only retry if previous response indicated we should
 	//   - "ResponseData == nil || ResponseData.status == 'retry'"
