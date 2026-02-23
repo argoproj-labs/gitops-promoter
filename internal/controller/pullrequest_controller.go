@@ -318,10 +318,15 @@ func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 }
 
 // pullRequestTemplateChangedPredicate returns a predicate that only allows ControllerConfiguration
-// events through when the pullRequest.template field has changed.
+// events through when the pullRequest.template field has changed, and only for the
+// ControllerConfiguration resource used by this controller (matched by name and namespace).
 func (r *PullRequestReconciler) pullRequestTemplateChangedPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
+			if e.ObjectNew.GetName() != settings.ControllerConfigurationName ||
+				e.ObjectNew.GetNamespace() != r.SettingsMgr.GetControllerNamespace() {
+				return false
+			}
 			oldCC, oldOk := e.ObjectOld.(*promoterv1alpha1.ControllerConfiguration)
 			newCC, newOk := e.ObjectNew.(*promoterv1alpha1.ControllerConfiguration)
 			if !oldOk || !newOk {
