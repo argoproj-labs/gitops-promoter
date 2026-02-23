@@ -3,11 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    app.kubernetes.io/name: clusterrole
-    app.kubernetes.io/instance: promotionstrategy-editor-role
-    app.kubernetes.io/component: rbac
-    app.kubernetes.io/created-by: promoter
-    app.kubernetes.io/part-of: promoter
+    app.kubernetes.io/name: promoter
     app.kubernetes.io/managed-by: kustomize
   name: promotionstrategy-editor-role
 rules:

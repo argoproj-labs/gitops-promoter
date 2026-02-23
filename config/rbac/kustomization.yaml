@@ -9,37 +9,44 @@ resources:
 - role_binding.yaml
 - leader_election_role.yaml
 - leader_election_role_binding.yaml
-# Comment the following 4 lines if you want to disable
-# the auth proxy (https://github.com/brancz/kube-rbac-proxy)
-# which protects your /metrics endpoint.
-- auth_proxy_service.yaml
-- auth_proxy_role.yaml
-- auth_proxy_role_binding.yaml
-- auth_proxy_client_clusterrole.yaml
-# For each CRD, "Editor" and "Viewer" roles are scaffolded by
-# default, aiding admins in cluster management. Those roles are
-# not used by the Project itself. You can comment the following lines
-# if you do not want those helpers be installed with your Project.
-- argocdcommitstatus_editor_role.yaml
-- argocdcommitstatus_viewer_role.yaml
-
-# For each CRD, "Admin", "Editor" and "Viewer" roles are scaffolded by
-# default, aiding admins in cluster management. Those roles are
-# not used by the {{ .ProjectName }} itself. You can comment the following lines
-# if you do not want those helpers be installed with your Project.
-- clusterscmprovider_admin_role.yaml
-- clusterscmprovider_editor_role.yaml
-- clusterscmprovider_viewer_role.yaml
-- controllerconfiguration_admin_role.yaml
-- controllerconfiguration_editor_role.yaml
-- controllerconfiguration_viewer_role.yaml
+# The following RBAC configurations are used to protect
+# the metrics endpoint with authn/authz. These configurations
+# ensure that only authorized users and service accounts
+# can access the metrics endpoint. Comment the following
+# permissions if you want to disable this protection.
+# More info: https://book.kubebuilder.io/reference/metrics.html
+- metrics_auth_role.yaml
+- metrics_auth_role_binding.yaml
+- metrics_reader_role.yaml
 # For each CRD, "Admin", "Editor" and "Viewer" roles are scaffolded by
 # default, aiding admins in cluster management. Those roles are
 # not used by the promoter itself. You can comment the following lines
 # if you do not want those helpers be installed with your Project.
+- argocdcommitstatus_editor_role.yaml
+- argocdcommitstatus_viewer_role.yaml
+- changetransferpolicy_editor_role.yaml
+- changetransferpolicy_viewer_role.yaml
+- clusterscmprovider_admin_role.yaml
+- clusterscmprovider_editor_role.yaml
+- clusterscmprovider_viewer_role.yaml
+- commitstatus_editor_role.yaml
+- commitstatus_viewer_role.yaml
+- controllerconfiguration_admin_role.yaml
+- controllerconfiguration_editor_role.yaml
+- controllerconfiguration_viewer_role.yaml
 - gitcommitstatus_admin_role.yaml
 - gitcommitstatus_editor_role.yaml
 - gitcommitstatus_viewer_role.yaml
+- gitrepository_editor_role.yaml
+- gitrepository_viewer_role.yaml
+- promotionstrategy_editor_role.yaml
+- promotionstrategy_viewer_role.yaml
+- pullrequest_editor_role.yaml
+- pullrequest_viewer_role.yaml
+- revertcommit_editor_role.yaml
+- revertcommit_viewer_role.yaml
+- scmprovider_editor_role.yaml
+- scmprovider_viewer_role.yaml
 - timedcommitstatus_admin_role.yaml
 - timedcommitstatus_editor_role.yaml
 - timedcommitstatus_viewer_role.yaml

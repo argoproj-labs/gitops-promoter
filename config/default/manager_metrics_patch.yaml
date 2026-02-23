@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          args:
+            - controller
+            - --leader-elect
+            - --metrics-bind-address=:8443
+            - --metrics-secure=true
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
