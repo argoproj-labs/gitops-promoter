@@ -27,6 +27,8 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
@@ -304,12 +306,53 @@ func (r *PullRequestReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PullRequest{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&promoterv1alpha1.ControllerConfiguration{},
+			r.enqueueAllPullRequestsForControllerConfiguration(),
+			builder.WithPredicates(r.pullRequestTemplateChangedPredicate())).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
+}
+
+// pullRequestTemplateChangedPredicate returns a predicate that only allows ControllerConfiguration
+// events through when the pullRequest.template field has changed.
+func (r *PullRequestReconciler) pullRequestTemplateChangedPredicate() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldCC, oldOk := e.ObjectOld.(*promoterv1alpha1.ControllerConfiguration)
+			newCC, newOk := e.ObjectNew.(*promoterv1alpha1.ControllerConfiguration)
+			if !oldOk || !newOk {
+				return false
+			}
+			return oldCC.Spec.PullRequest.Template != newCC.Spec.PullRequest.Template
+		},
+		CreateFunc:  func(event.CreateEvent) bool { return false },
+		DeleteFunc:  func(event.DeleteEvent) bool { return false },
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
+}
+
+// enqueueAllPullRequestsForControllerConfiguration returns a handler that enqueues all PullRequest resources
+// when a ControllerConfiguration changes. This ensures that template config changes are applied promptly.
+func (r *PullRequestReconciler) enqueueAllPullRequestsForControllerConfiguration() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, _ client.Object) []ctrl.Request {
+		var prList promoterv1alpha1.PullRequestList
+		if err := r.List(ctx, &prList); err != nil {
+			log.FromContext(ctx).Error(err, "failed to list PullRequests for ControllerConfiguration watch")
+			return nil
+		}
+
+		requests := make([]ctrl.Request, len(prList.Items))
+		for i := range prList.Items {
+			requests[i] = ctrl.Request{
+				NamespacedName: client.ObjectKeyFromObject(&prList.Items[i]),
+			}
+		}
+		return requests
+	})
 }
 
 func (r *PullRequestReconciler) getPullRequestProvider(ctx context.Context, pr promoterv1alpha1.PullRequest) (scms.PullRequestProvider, error) {
