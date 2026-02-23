@@ -41,6 +41,12 @@ var testChangeTransferPolicyYAML string
 const healthCheckCSKey = "health-check"
 
 var _ = Describe("ChangeTransferPolicy Controller", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the ChangeTransferPolicy resource", func() {
 			err := unmarshalYamlStrict(testChangeTransferPolicyYAML, &promoterv1alpha1.ChangeTransferPolicy{})
@@ -49,8 +55,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 	})
 
 	Context("When reconciling a resource", func() {
-		ctx := context.Background()
-
 		Context("When no commit status checks are configured", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -696,7 +700,7 @@ var _ = Describe("tooManyPRsError", func() {
 	})
 })
 
-//nolint:unparam
+//nolint:unparam // namespace is always "default" in tests but kept for consistency with other test helpers
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 	setupInitialTestGitRepoOnServer(ctx, name, name)

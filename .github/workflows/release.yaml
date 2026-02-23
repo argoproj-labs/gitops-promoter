@@ -35,6 +35,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Docker
+        uses: docker/setup-docker-action@206b75dbd282c4008313f59196a28caf84eb4198
+        with:
+          version: type=image,tag=29.1.5
+
       - name: Extract version from commit message
         id: extract_version
         env:
@@ -64,7 +69,7 @@ jobs:
           password: ${{ secrets.QUAY_TOKEN }}
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
         with:
           distribution: goreleaser
           version: v2.13.2
