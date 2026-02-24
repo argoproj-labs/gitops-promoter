@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // GetScmProviderFromGitRepository retrieves the ScmProvider from the GitRepository reference.
@@ -250,12 +251,15 @@ type StatusConditionUpdater interface {
 }
 
 // HandleReconciliationResult handles reconciliation results for any object with status conditions.
+// If result is non-nil and this function sets an error (e.g. status update failed), it clears any
+// Requeue/RequeueAfter in *result so the caller does not return both a requeue and an error.
 func HandleReconciliationResult(
 	ctx context.Context,
 	startTime time.Time,
 	obj StatusConditionUpdater,
 	client client.Client,
 	recorder events.EventRecorder,
+	result *reconcile.Result,
 	err *error,
 ) {
 	// Recover from any panic and convert it to an error.
@@ -265,6 +269,9 @@ func HandleReconciliationResult(
 		logger := log.FromContext(ctx)
 		logger.Error(nil, "recovered from panic in reconciliation", "panic", r, "trace", string(debug.Stack()))
 		*err = fmt.Errorf("panic in reconciliation: %v", r)
+		if result != nil {
+			*result = reconcile.Result{}
+		}
 	}
 
 	logger := log.FromContext(ctx)
@@ -323,9 +330,15 @@ func HandleReconciliationResult(
 	if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
 		if *err == nil {
 			*err = fmt.Errorf("failed to update status: %w", updateErr)
+			if result != nil {
+				*result = reconcile.Result{}
+			}
 		} else {
 			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
 			*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
+			if result != nil {
+				*result = reconcile.Result{}
+			}
 		}
 	}
 }
