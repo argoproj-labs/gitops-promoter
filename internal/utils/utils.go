@@ -330,15 +330,12 @@ func HandleReconciliationResult(
 	if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
 		if *err == nil {
 			*err = fmt.Errorf("failed to update status: %w", updateErr)
-			if result != nil {
-				*result = reconcile.Result{}
-			}
 		} else {
 			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
 			*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
-			if result != nil {
-				*result = reconcile.Result{}
-			}
+		}
+		if result != nil {
+			*result = reconcile.Result{}
 		}
 	}
 }
