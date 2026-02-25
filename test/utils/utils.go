@@ -36,7 +36,8 @@ const (
 )
 
 func warnError(err error) {
-	fmt.Fprintf(ginkgov2.GinkgoWriter, "warning: %v\n", err) //nolint:errcheck
+	//nolint:errcheck // logging to test output, error not critical
+	fmt.Fprintf(ginkgov2.GinkgoWriter, "warning: %v\n", err)
 }
 
 // InstallPrometheusOperator installs the prometheus Operator to be used to export the enabled metrics.
@@ -53,13 +54,15 @@ func Run(cmd *exec.Cmd) ([]byte, error) {
 	cmd.Dir = dir
 
 	if err := os.Chdir(cmd.Dir); err != nil {
-		fmt.Fprintf(ginkgov2.GinkgoWriter, "chdir dir: %s\n", err) //nolint:errcheck
+		//nolint:errcheck // logging to test output, error not critical
+		fmt.Fprintf(ginkgov2.GinkgoWriter, "chdir dir: %s\n", err)
 	}
 
 	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
 
-	fmt.Fprintf(ginkgov2.GinkgoWriter, "running: %s\n", command) //nolint:errcheck
+	//nolint:errcheck // logging to test output, error not critical
+	fmt.Fprintf(ginkgov2.GinkgoWriter, "running: %s\n", command)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return output, fmt.Errorf("%s failed with error: (%w) %s", command, err, string(output))
