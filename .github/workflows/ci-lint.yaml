@@ -34,8 +34,8 @@ jobs:
           cache: 'npm'
           cache-dependency-path: ui/dashboard/package-lock.json
 
-      - name: Create Kind cluster
-        uses: helm/kind-action@0d5a96f64efea5b6d2e17dcd34802b3bb1bf15db # pin@v1
+      - name: Create k8s Kind Cluster
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
           version: v0.30.0
 
