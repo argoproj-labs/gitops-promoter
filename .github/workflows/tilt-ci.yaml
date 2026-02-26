@@ -1,0 +1,41 @@
+name: tilt-ci.yaml
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile*'
+      - 'config/**'
+      - 'Tiltfile'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Dockerfile*'
+      - 'config/**'
+      - 'Tiltfile'
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  run-lint-ci:
+    name: Run Tilt CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          version: v0.30.0
+
+      - name: Install Tilt
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
+
+      - name: Run Tilt CI
+        run: tilt ci
