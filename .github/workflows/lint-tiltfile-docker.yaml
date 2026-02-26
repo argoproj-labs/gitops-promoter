@@ -1,0 +1,54 @@
+name: Lint Tiltfile and Dockerfiles
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Tiltfile'
+      - 'Dockerfile'
+      - 'Dockerfile.tilt'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Tiltfile'
+      - 'Dockerfile'
+      - 'Dockerfile.tilt'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint-dockerfiles:
+    name: Lint Dockerfiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+        with:
+          dockerfile: Dockerfile
+      - name: Lint Dockerfile.tilt
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+        with:
+          dockerfile: Dockerfile.tilt
+
+  lint-tiltfile:
+    name: Lint Tiltfile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+      - name: Set up Go
+        uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
+        with:
+          go-version: "1.25"
+      - name: Install buildifier
+        run: go install github.com/bazelbuild/buildtools/buildifier@latest
+      - name: Lint Tiltfile
+        run: buildifier --lint=warn --mode=check Tiltfile
