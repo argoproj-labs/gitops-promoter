@@ -1278,12 +1278,7 @@ var _ = Describe("GitCommitStatus SHA-only transition enqueues CTP", func() {
 
 	BeforeEach(func() {
 		ctx = context.Background()
-		var unused1, unused2 *promoterv1alpha1.CommitStatus
-		var unusedPS *promoterv1alpha1.PromotionStrategy
-		psName, scmSecret, scmProvider, gitRepo, unused1, unused2, unusedPS = promotionStrategyResource(ctx, "gcs-sha-transition", "default")
-		_ = unused1
-		_ = unused2
-		_ = unusedPS
+		psName, scmSecret, scmProvider, gitRepo, _, _, _ = promotionStrategyResource(ctx, "gcs-sha-transition", "default")
 
 		// Use only 2 environments (dev + staging) with auto-merge enabled.
 		trueVal := true
