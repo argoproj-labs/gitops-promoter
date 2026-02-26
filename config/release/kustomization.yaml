@@ -3,5 +3,7 @@ resources:
 
 images:
 - name: quay.io/argoprojlabs/gitops-promoter
+  newName: quay.io/argoprojlabs/gitops-promoter
+  newTag: latest
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
