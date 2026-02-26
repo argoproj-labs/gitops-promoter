@@ -6,22 +6,15 @@ permissions:
 on:
   push:
     branches: [main]
-    paths:
-      - 'Dockerfile*'
-      - 'config/**'
-      - 'Tiltfile'
   pull_request:
     branches: [main]
-    paths:
-      - 'Dockerfile*'
-      - 'config/**'
-      - 'Tiltfile'
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  run-lint-ci:
+  tilt-ci:
     name: Run Tilt CI
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -42,13 +35,16 @@ jobs:
           cache-dependency-path: ui/dashboard/package-lock.json
 
       - name: Create Kind cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@0d5a96f64efea5b6d2e17dcd34802b3bb1bf15db # pin@v1
         with:
           version: v0.30.0
 
       - name: Install Tilt
         run: |
-          curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
+          TILT_VERSION=v0.33.15
+          curl -fsSL "https://raw.githubusercontent.com/tilt-dev/tilt/${TILT_VERSION}/scripts/install.sh" -o /tmp/tilt-install.sh
+          chmod +x /tmp/tilt-install.sh
+          /tmp/tilt-install.sh
 
       - name: Run Tilt CI
         run: tilt ci
