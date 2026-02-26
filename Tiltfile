@@ -142,8 +142,8 @@ k8s_resource(
         'promoter-timedcommitstatus-admin-role:clusterrole',
         'promoter-timedcommitstatus-editor-role:clusterrole',
         'promoter-timedcommitstatus-viewer-role:clusterrole',
-        'promoter-metrics-auth-role:role',
-        'promoter-metrics-auth-rolebinding:rolebinding',
+        'promoter-metrics-auth-role:clusterrole',
+        'promoter-metrics-auth-rolebinding:clusterrolebinding',
         'promoter-metrics-reader:clusterrole',
         'promoter-controller-configuration:controllerconfiguration',
     ]
