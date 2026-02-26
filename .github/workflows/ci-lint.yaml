@@ -29,4 +29,4 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
 
       - name: Run Tilt CI
-        run: tilt ci --watch=false --stream=false
+        run: tilt ci
