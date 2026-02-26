@@ -261,19 +261,26 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 			return nil, nil, fmt.Errorf("failed to evaluate expression for branch %q: %w", branch, err)
 		}
 
-		// Check if this validation transitioned to success
-		var previousPhase string
+		// Check if this validation should trigger CTP reconciliation:
+		// - phase transitions from non-success to success, OR
+		// - phase is success and the proposed SHA has changed (SHA-only transition).
+		// Both cases require the CTP to re-evaluate its proposed commit statuses.
+		var previousPhase, previousSha string
 		for _, prevEnv := range previousStatus.Environments {
 			if prevEnv.Branch == branch {
 				previousPhase = prevEnv.Phase
+				previousSha = prevEnv.ProposedHydratedSha
 				break
 			}
 		}
-		if previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) && phase == string(promoterv1alpha1.CommitPhaseSuccess) {
+		if phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
+			(previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) || previousSha != proposedSha) {
 			transitionedEnvironments = append(transitionedEnvironments, branch)
-			logger.Info("Validation transitioned to success",
+			logger.Info("Validation is success and state changed, triggering CTP reconciliation",
 				"branch", branch,
-				"sha", proposedSha)
+				"sha", proposedSha,
+				"previousPhase", previousPhase,
+				"previousSha", previousSha)
 		}
 
 		// Update status for this environment

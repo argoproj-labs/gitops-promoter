@@ -1260,3 +1260,106 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 		})
 	})
 })
+
+// GitCommitStatus second-commit auto-merge test.
+// This test reproduces the scenario where a GitCommitStatus always evaluates to success
+// and a second commit is pushed. The fix ensures the CTP is enqueued even when the phase
+// stays at success but the proposed SHA changes.
+var _ = Describe("GitCommitStatus SHA-only transition enqueues CTP", func() {
+	var (
+		ctx         context.Context
+		psName      string
+		scmSecret   *v1.Secret
+		scmProvider *promoterv1alpha1.ScmProvider
+		gitRepo     *promoterv1alpha1.GitRepository
+		ps          *promoterv1alpha1.PromotionStrategy
+		gcs         *promoterv1alpha1.GitCommitStatus
+	)
+
+	BeforeEach(func() {
+		ctx = context.Background()
+		var unused1, unused2 *promoterv1alpha1.CommitStatus
+		var unusedPS *promoterv1alpha1.PromotionStrategy
+		psName, scmSecret, scmProvider, gitRepo, unused1, unused2, unusedPS = promotionStrategyResource(ctx, "gcs-sha-transition", "default")
+		_ = unused1
+		_ = unused2
+		_ = unusedPS
+
+		// Use only 2 environments (dev + staging) with auto-merge enabled.
+		trueVal := true
+		ps = &promoterv1alpha1.PromotionStrategy{}
+		ps.Name = psName
+		ps.Namespace = "default"
+		ps.Spec.RepositoryReference = promoterv1alpha1.ObjectReference{Name: psName}
+		ps.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{{Key: "always-success"}}
+		ps.Spec.Environments = []promoterv1alpha1.Environment{
+			{Branch: testBranchDevelopment, AutoMerge: &trueVal},
+			{Branch: testBranchStaging, AutoMerge: &trueVal},
+		}
+
+		gcs = &promoterv1alpha1.GitCommitStatus{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      psName + "-always-success",
+				Namespace: "default",
+			},
+			Spec: promoterv1alpha1.GitCommitStatusSpec{
+				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: psName},
+				Key:                  "always-success",
+				Expression:           `true`,
+			},
+		}
+
+		setupInitialTestGitRepoOnServer(ctx, psName, psName)
+		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+		Expect(k8sClient.Create(ctx, ps)).To(Succeed())
+		Expect(k8sClient.Create(ctx, gcs)).To(Succeed())
+	})
+
+	AfterEach(func() {
+		_ = k8sClient.Delete(ctx, ps)
+		_ = k8sClient.Delete(ctx, gcs)
+	})
+
+	It("should auto-merge for both the first and second commit", func() {
+		ctpDevName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(psName, testBranchDevelopment))
+		ctpStagingName := utils.KubeSafeUniqueName(ctx, utils.GetChangeTransferPolicyName(psName, testBranchStaging))
+
+		By("Making first commit C1 and verifying dev and staging auto-merge")
+		gitPath1, err := os.MkdirTemp("", "*")
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = os.RemoveAll(gitPath1) }()
+		firstDrySha, _ := makeChangeAndHydrateRepo(gitPath1, psName, psName, "first commit", "")
+
+		Eventually(func(g Gomega) {
+			var ctpDev, ctpStaging promoterv1alpha1.ChangeTransferPolicy
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ctpDevName, Namespace: "default"}, &ctpDev)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ctpStagingName, Namespace: "default"}, &ctpStaging)).To(Succeed())
+			// Both environments should have merged the first commit.
+			g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(firstDrySha), "dev should auto-merge first commit")
+			g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(firstDrySha), "staging should auto-merge first commit")
+		}, constants.EventuallyTimeout).Should(Succeed())
+
+		By("Making second commit C2 and verifying dev and staging auto-merge again")
+		// This is the critical case: the GitCommitStatus expression stays `true` (no phase
+		// transition from non-success to success), but the proposed SHA changes. Without the
+		// fix, touchChangeTransferPolicies is not called and the CTP may not be re-enqueued
+		// directly, relying solely on the CommitStatus controller's SHA-based lookup path.
+		gitPath2, err := os.MkdirTemp("", "*")
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = os.RemoveAll(gitPath2) }()
+		secondDrySha, _ := makeChangeAndHydrateRepo(gitPath2, psName, psName, "second commit", "")
+
+		Expect(secondDrySha).NotTo(Equal(firstDrySha))
+
+		Eventually(func(g Gomega) {
+			var ctpDev, ctpStaging promoterv1alpha1.ChangeTransferPolicy
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ctpDevName, Namespace: "default"}, &ctpDev)).To(Succeed())
+			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: ctpStagingName, Namespace: "default"}, &ctpStaging)).To(Succeed())
+			// Both environments should have merged the second commit.
+			g.Expect(ctpDev.Status.Active.Dry.Sha).To(Equal(secondDrySha), "dev should auto-merge second commit")
+			g.Expect(ctpStaging.Status.Active.Dry.Sha).To(Equal(secondDrySha), "staging should auto-merge second commit")
+		}, constants.EventuallyTimeout).Should(Succeed())
+	})
+})
