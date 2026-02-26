@@ -13,7 +13,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-
 jobs:
   run-lint-ci:
     name: Run Tilt CI
@@ -21,5 +20,13 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        
+      - name: Install Tilt
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
+
       - name: Run Tilt CI
         run: tilt ci --watch=false --stream=false
