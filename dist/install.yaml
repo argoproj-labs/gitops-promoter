@@ -6548,7 +6548,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: webrequestcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -6873,8 +6873,8 @@ spec:
                           ResponseExpression is an optional expr expression that extracts and transforms data from the HTTP response
                           before storing it in ResponseData. This allows you to store only the fields you need instead of the entire response.
 
-                          The expression is evaluated AFTER a successful HTTP request and its result is stored in status.responseData.
-                          If not specified, the full response (statusCode, body, headers) is stored.
+                          The expression is evaluated after the HTTP request completes (for any response status) and its result is stored in status.responseData.
+                          If not specified, no response data is stored for that request (status.responseData is not updated).
 
                           Available variables in the expression context:
                             - Response.StatusCode (int): HTTP response status code
@@ -6949,8 +6949,8 @@ spec:
                             # Only trigger when SHA changes from what we last tracked
                             - "ReportedSha != TriggerData['lastCheckedSha']"
 
-                            # Only trigger when previous environment is healthy
-                            - "len(filter(PromotionStrategy.Status.Environments, {.Branch == 'environment/staging'})[0].LastHealthyDryShas) > 0"
+                            # Only trigger when a particular commit status is success (e.g. argocd-health)
+                            - "size(filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})) > 0 && filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})[0].Phase == 'success'"
 
                             # Only retry if previous response indicated we should
                             - "ResponseData == nil || ResponseData.status == 'retry'"
