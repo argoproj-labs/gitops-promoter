@@ -70,7 +70,8 @@ jobs:
         with:
           version: v2.10.0
           args: --timeout=5m
-          skip-cache: true
+          skip-cache: false
+          cache-invalidation-interval: 1 # day, default 7
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
