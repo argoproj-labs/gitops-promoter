@@ -161,7 +161,6 @@ func runController(
 
 	// Create the provider first, then the manager with the provider
 	provider := kubeconfigprovider.New(providerOpts)
-	fmt.Println("metrics", metricsAddr)
 	metricsOpts := metricsserver.Options{
 		BindAddress:   metricsAddr,
 		SecureServing: secureMetrics,
