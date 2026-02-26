@@ -14,19 +14,37 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  run-lint-ci:
+  tilt-ci:
     name: Run Tilt CI
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout Repo
         uses: actions/checkout@0c366fd6a839edf440554fa01a7085ccba70ac98 # pin@v4
 
+      - name: Setup Go
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v6.2.0
+        with:
+          go-version: "1.25"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ui/dashboard/package-lock.json
+
       - name: Create Kind cluster
-        uses: helm/kind-action@v1
-        
+        uses: helm/kind-action@0d5a96f64efea5b6d2e17dcd34802b3bb1bf15db # pin@v1
+        with:
+          version: v0.30.0
+
       - name: Install Tilt
         run: |
-          curl -fsSL https://raw.githubusercontent.com/tilt-dev/tilt/master/scripts/install.sh | bash
+          TILT_VERSION=v0.33.15
+          curl -fsSL "https://raw.githubusercontent.com/tilt-dev/tilt/${TILT_VERSION}/scripts/install.sh" -o /tmp/tilt-install.sh
+          chmod +x /tmp/tilt-install.sh
+          /tmp/tilt-install.sh
 
       - name: Run Tilt CI
         run: tilt ci
