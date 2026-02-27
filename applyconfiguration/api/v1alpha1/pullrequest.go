@@ -26,7 +26,7 @@ import (
 // PullRequestApplyConfiguration represents a declarative configuration of the PullRequest type for use
 // with apply.
 //
-// PullRequest is the Schema for the pullrequests API
+// PullRequest is a thin wrapper around the SCM's pull request API.
 type PullRequestApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

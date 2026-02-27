@@ -1,3 +1,6 @@
+# TimedCommitStatus provides time-based gating for environment promotions. It monitors how long commits have been
+# running in specified environments and creates CommitStatus resources (as active commit statuses) based on configured
+# duration requirements. This enables "soak time" or "bake time" policies.
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: TimedCommitStatus
 metadata:
@@ -8,7 +11,7 @@ spec:
   promotionStrategyRef:
     name: webservice-tier-1
 
-  # List of environments to monitor for time-based gating
+  # List of environments to monitor for time-based gating.
   # For each environment, the controller will:
   # 1. Check how long the active commit has been running
   # 2. Create a CommitStatus for the CURRENT environment's active SHA
@@ -31,10 +34,17 @@ spec:
 
 status:
   # Status is populated by the controller
+  conditions:
+    - type: Ready
+      lastTransitionTime: 2024-01-15T10:00:00Z
+      message: All environments satisfied
+      reason: ReconciliationSuccess
+      status: "True"
+      observedGeneration: 1
   environments:
     - branch: environment/development
       # The active commit SHA being monitored
-      sha: abc123def456
+      sha: abc123def456789012345678901234567890abcd
       # When this commit was deployed to the environment
       commitTime: "2024-01-15T10:00:00Z"
       # The configured required duration
@@ -43,10 +53,12 @@ status:
       timeElapsed: 45m30s
       # Current gate status: "pending" or "success"
       phase: pending
+      # Maximum time remaining until the gate is satisfied
+      atMostDurationRemaining: 14m30s
     - branch: environment/staging
-      sha: def456ghi789
+      sha: def456789012345678901234567890abcdef123456
       commitTime: "2024-01-14T06:00:00Z"
       requiredDuration: 4h
       timeElapsed: 5h15m20s
       phase: success
-
+      atMostDurationRemaining: 0s

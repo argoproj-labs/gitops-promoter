@@ -26,7 +26,9 @@ import (
 // PromotionStrategyApplyConfiguration represents a declarative configuration of the PromotionStrategy type for use
 // with apply.
 //
-// PromotionStrategy is the Schema for the promotionstrategies API
+// PromotionStrategy is the user's interface to controlling how changes are promoted through environments.
+// In this resource you configure the list of live hydrated environment branches in promotion order and the
+// checks (active and proposed commit statuses) that must pass between promotion steps.
 type PromotionStrategyApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

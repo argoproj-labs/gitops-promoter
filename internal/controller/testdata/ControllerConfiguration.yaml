@@ -81,3 +81,23 @@ spec:
         bucket:
           qps: 20
           bucket: 50
+
+  # TimedCommitStatus controller provides time-based gating for promotions
+  timedCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 3
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "1s"
+          maxDelay: "1m"
+
+  # GitCommitStatus controller validates commits with expressions and creates CommitStatuses
+  gitCommitStatus:
+    workQueue:
+      requeueDuration: "5m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"

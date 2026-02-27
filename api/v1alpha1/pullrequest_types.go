@@ -69,30 +69,29 @@ type CommitConfiguration struct {
 	Message string `json:"message"`
 }
 
-// PullRequestStatus defines the observed state of PullRequest
+// PullRequestStatus defines the observed state of PullRequest.
 type PullRequestStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// ID the id of the pull request
+	// ID is the unique identifier of the pull request, set by the SCM.
 	ID string `json:"id,omitempty"`
-	// State of the merge request closed/merged/open
+	// State is the state of the pull request (closed, merged, or open).
 	// +kubebuilder:validation:Enum="";closed;merged;open
 	State PullRequestState `json:"state,omitempty"`
-	// PRCreationTime the time the PR was created
+	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`
+	// PRMergeTime is the time when the pull request was merged. This is set when the controller
+	// sets the PR to merged; it may vary slightly from the SCM's actual merge time.
+	PRMergeTime metav1.Time `json:"prMergeTime,omitempty"`
 	// Url is the URL of the pull request.
 	// +kubebuilder:validation:XValidation:rule="self == '' || isURL(self)",message="must be a valid URL"
 	// +kubebuilder:validation:Pattern="^(https?://.*)?$"
 	Url string `json:"url,omitempty"`
-	// ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-	// This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-	// When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
-	// The PullRequest resource will be deleted after this flag is set, but the status is preserved in
-	// the owning ChangeTransferPolicy to maintain a record of the external action.
+	// ExternallyMergedOrClosed indicates that the pull request was merged or closed outside the controller
+	// (e.g. via the SCM UI). Set to true when the resource has an ID but is no longer found on the SCM.
+	// When true, State may be empty since we cannot determine if it was merged or closed. The PullRequest
+	// resource may be deleted after this is set; the owning ChangeTransferPolicy preserves the status.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 
-	// Conditions Represents the observations of the current state.
+	// Conditions represent the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
@@ -109,7 +108,7 @@ func (ps *PullRequest) GetConditions() *[]metav1.Condition {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// PullRequest is the Schema for the pullrequests API
+// PullRequest is a thin wrapper around the SCM's pull request API.
 // +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.state`
 // +kubebuilder:printcolumn:name="ID",type=string,JSONPath=`.status.id`
 // +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.spec.sourceBranch`,priority=1

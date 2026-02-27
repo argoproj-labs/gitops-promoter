@@ -31,6 +31,8 @@ nav:
   - Custom Hydrator: custom-hydrator.md
   - CRD Specs: crd-specs.md
   - Gating Promotions: gating-promotions.md
+  - Developers:
+      - CRD Best Practices: developers/crd-best-practices.md
   - CommitStatus Controllers:
       - Argo CD: commit-status-controllers/argocd.md
       - Git Commit: commit-status-controllers/git-commit.md

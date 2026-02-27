@@ -26,7 +26,8 @@ import (
 // GitRepositoryApplyConfiguration represents a declarative configuration of the GitRepository type for use
 // with apply.
 //
-// GitRepository is the Schema for the gitrepositories API
+// GitRepository represents a single git repository. It references an ScmProvider (or ClusterScmProvider)
+// to enable access via some configured auth mechanism.
 type GitRepositoryApplyConfiguration struct {
 	v1.TypeMetaApplyConfiguration    `json:",inline"`
 	*v1.ObjectMetaApplyConfiguration `json:"metadata,omitempty"`

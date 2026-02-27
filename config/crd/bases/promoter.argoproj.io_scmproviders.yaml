@@ -21,7 +21,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ScmProvider is the Schema for the scmproviders API
+        description: |-
+          ScmProvider represents an SCM instance (e.g. GitHub, GitLab). It references a Secret in the same namespace
+          to supply credentials for API access.
         properties:
           apiVersion:
             description: |-

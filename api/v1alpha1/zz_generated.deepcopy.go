@@ -1645,6 +1645,7 @@ func (in *PullRequestSpec) DeepCopy() *PullRequestSpec {
 func (in *PullRequestStatus) DeepCopyInto(out *PullRequestStatus) {
 	*out = *in
 	in.PRCreationTime.DeepCopyInto(&out.PRCreationTime)
+	in.PRMergeTime.DeepCopyInto(&out.PRMergeTime)
 	if in.ExternallyMergedOrClosed != nil {
 		in, out := &in.ExternallyMergedOrClosed, &out.ExternallyMergedOrClosed
 		*out = new(bool)
