@@ -110,7 +110,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Name: name,
 					},
 					Key:      "external-approval",
-					ReportOn: "proposed",
+					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate/{{ .ReportedSha }}",
 						Method:      "GET",
@@ -204,7 +204,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Name: name,
 					},
 					Key:      "external-approval",
-					ReportOn: "proposed",
+					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
 						Method:      "GET",
@@ -387,7 +387,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Name: name,
 					},
 					Key:      "external-approval",
-					ReportOn: "proposed",
+					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
 						Method:      "GET",
@@ -515,7 +515,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Name: name,
 					},
 					Key:                 "external-approval",
-					ReportOn:            "proposed",
+					ReportOn:            constants.CommitRefProposed,
 					DescriptionTemplate: "Checking {{ .Environment.Branch }} at {{ .ReportedSha | trunc 7 }}",
 					UrlTemplate:         "https://example.com/status/{{ .ReportedSha }}",
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
@@ -624,7 +624,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Name: name,
 					},
 					Key:      "cleanup-test",
-					ReportOn: "proposed",
+					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
 						Method:      "GET",
@@ -736,7 +736,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Name: name,
 					},
 					Key:      "external-approval",
-					ReportOn: "proposed",
+					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
 						Method:      "GET",
@@ -884,7 +884,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 						Name: name,
 					},
 					Key:      "responsedata-test",
-					ReportOn: "active",
+					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
 						Method:      "GET",
@@ -952,7 +952,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 						Name: name,
 					},
 					Key:      "responsedata-test",
-					ReportOn: "active",
+					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
 						Method:      "GET",
@@ -1043,7 +1043,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 						Name: name,
 					},
 					Key:      "responsedata-test",
-					ReportOn: "active",
+					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
 						Method:      "GET",
@@ -1122,7 +1122,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 						Name: name,
 					},
 					Key:      "responsedata-test",
-					ReportOn: "active",
+					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
 						Method:      "GET",
@@ -1211,7 +1211,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 						Name: name,
 					},
 					Key:      "responsedata-test",
-					ReportOn: "active",
+					ReportOn: constants.CommitRefActive,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: testServer.URL + "/validate",
 						Method:      "GET",
@@ -1272,7 +1272,7 @@ var _ = Describe("WebRequestCommitStatus Controller - Missing PromotionStrategy"
 						Name: "non-existent",
 					},
 					Key:      "external-approval",
-					ReportOn: "proposed",
+					ReportOn: constants.CommitRefProposed,
 					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
 						URLTemplate: "http://example.com/validate",
 						Method:      "GET",

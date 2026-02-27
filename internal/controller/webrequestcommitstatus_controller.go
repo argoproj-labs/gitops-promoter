@@ -292,7 +292,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 
 		// Determine which SHA to report on based on reportOn setting
 		reportedSha := envStatus.Proposed.Hydrated.Sha
-		if wrcs.Spec.ReportOn == targetActive {
+		if wrcs.Spec.ReportOn == constants.CommitRefActive {
 			reportedSha = envStatus.Active.Hydrated.Sha
 		}
 
@@ -355,7 +355,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 
 		// For polling mode with reportOn "proposed", skip HTTP request if already succeeded for this SHA
 		// but still ensure CommitStatus exists
-		if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == targetProposed {
+		if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed {
 			if prevEnvStatus != nil && previousPhase == string(promoterv1alpha1.CommitPhaseSuccess) && lastSuccessfulSha == reportedSha {
 				logger.V(4).Info("Skipping already successful SHA in polling mode", "branch", branch, "sha", reportedSha)
 				// Keep the previous status
