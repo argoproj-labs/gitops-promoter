@@ -26,13 +26,13 @@ import (
 	"runtime/debug"
 	"syscall"
 
-	"go.uber.org/zap/zapcore"
-	"sigs.k8s.io/controller-runtime/pkg/cluster"
-
 	"github.com/argoproj-labs/gitops-promoter/cmd/demo"
 	"github.com/argoproj-labs/gitops-promoter/internal/controller"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/webserver"
+	"go.uber.org/zap/zapcore"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -161,14 +161,17 @@ func runController(
 
 	// Create the provider first, then the manager with the provider
 	provider := kubeconfigprovider.New(providerOpts)
-
+	metricsOpts := metricsserver.Options{
+		BindAddress:   metricsAddr,
+		SecureServing: secureMetrics,
+		TLSOpts:       tlsOpts,
+	}
+	if secureMetrics {
+		metricsOpts.FilterProvider = filters.WithAuthenticationAndAuthorization
+	}
 	mcMgr, err := mcmanager.New(ctrl.GetConfigOrDie(), provider, ctrl.Options{
-		Scheme: scheme,
-		Metrics: metricsserver.Options{
-			BindAddress:   metricsAddr,
-			SecureServing: secureMetrics,
-			TLSOpts:       tlsOpts,
-		},
+		Scheme:                 scheme,
+		Metrics:                metricsOpts,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		PprofBindAddress:       pprofAddr,
