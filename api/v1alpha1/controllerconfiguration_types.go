@@ -322,11 +322,25 @@ type PullRequestTemplate struct {
 }
 
 // ControllerConfigurationStatus defines the observed state of ControllerConfiguration.
-//
-// Currently, this resource does not maintain any status information as it is a configuration-only
-// resource. Status fields may be added in the future to track configuration validation or
-// controller health metrics.
-type ControllerConfigurationStatus struct{}
+type ControllerConfigurationStatus struct {
+	// ArgoCDCommitStatus contains status related to the ArgoCDCommitStatus controller's cluster engagement.
+	ArgoCDCommitStatus ArgoCDCommitStatusControllerStatus `json:"argocdCommitStatus,omitempty"`
+
+	// Conditions represents the observations of the current state.
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// ArgoCDCommitStatusControllerStatus contains status related to the ArgoCDCommitStatus controller.
+type ArgoCDCommitStatusControllerStatus struct {
+	// LocalClusterEngaged indicates whether the local cluster is currently engaged
+	// for watching Argo CD Applications. This reflects the runtime state of the
+	// WatchLocalApplications configuration.
+	LocalClusterEngaged bool `json:"localClusterEngaged"`
+}
 
 // +kubebuilder:ac:generate=true
 // +kubebuilder:object:root=true
@@ -339,6 +353,11 @@ type ControllerConfiguration struct {
 
 	Spec   ControllerConfigurationSpec   `json:"spec,omitempty"`
 	Status ControllerConfigurationStatus `json:"status,omitempty"`
+}
+
+// GetConditions returns the conditions of the ControllerConfiguration.
+func (cc *ControllerConfiguration) GetConditions() *[]metav1.Condition {
+	return &cc.Status.Conditions
 }
 
 // +kubebuilder:object:root=true
