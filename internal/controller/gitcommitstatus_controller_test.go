@@ -520,7 +520,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 						Name: name,
 					},
 					Key:    "test-validation",
-					Target: "active",
+					Target: constants.CommitRefActive,
 					// Check if commit subject startsWith "feat:"
 					Expression: `Commit.Subject startsWith "feat:"`,
 				},
@@ -579,7 +579,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 						Name: name,
 					},
 					Key:    "test-validation",
-					Target: "proposed",
+					Target: constants.CommitRefProposed,
 					// Check if commit subject starts with "feat:"
 					Expression: `Commit.Subject startsWith "feat:"`,
 				},
@@ -638,7 +638,7 @@ var _ = Describe("GitCommitStatus Controller", Ordered, func() {
 						Name: name,
 					},
 					Key:    "test-validation",
-					Target: "active",
+					Target: constants.CommitRefActive,
 					// Check if commit subject does NOT start with "Revert" - if it does, fail
 					Expression: `!(Commit.Subject startsWith "Revert")`,
 				},

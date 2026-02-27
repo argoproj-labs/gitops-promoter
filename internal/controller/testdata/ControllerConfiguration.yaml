@@ -81,3 +81,13 @@ spec:
         bucket:
           qps: 20
           bucket: 50
+
+  # WebRequestCommitStatus controller runs HTTP requests and reports commit status from response
+  webRequestCommitStatus:
+    workQueue:
+      requeueDuration: "2m"
+      maxConcurrentReconciles: 5
+      rateLimiter:
+        exponentialFailure:
+          baseDelay: "500ms"
+          maxDelay: "1m"

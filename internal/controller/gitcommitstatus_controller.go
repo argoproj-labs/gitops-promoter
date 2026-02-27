@@ -26,6 +26,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
@@ -239,7 +240,7 @@ func (r *GitCommitStatusReconciler) processEnvironments(ctx context.Context, gcs
 		// Determine which commit SHA to validate based on the Target field
 		// The field is defaulted to "active" by the API server and validated to be "active" or "proposed"
 		shaToValidate := activeHydratedSha
-		if gcs.Spec.Target == "proposed" {
+		if gcs.Spec.Target == constants.CommitRefProposed {
 			shaToValidate = proposedSha
 		}
 
@@ -327,7 +328,7 @@ func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *prom
 
 	// Determine which commit state to use based on the target
 	var commitState *promoterv1alpha1.CommitShaState
-	if gcs.Spec.Target == "proposed" {
+	if gcs.Spec.Target == constants.CommitRefProposed {
 		commitState = &envStatus.Proposed.Hydrated
 	} else {
 		// Default to active
