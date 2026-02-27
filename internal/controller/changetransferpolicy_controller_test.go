@@ -904,7 +904,7 @@ var _ = Describe("tooManyPRsError", func() {
 	})
 })
 
-//nolint:unparam
+//nolint:unparam // namespace is always "default" in tests but kept for consistency with other test helpers
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 	setupInitialTestGitRepoOnServer(ctx, name, name)

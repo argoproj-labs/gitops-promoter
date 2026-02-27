@@ -1545,7 +1545,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Key: "no-deployments-allowed",
 					},
 				}
-				proposedCommitStatusDevelopment.Spec.Name = "no-deployments-allowed" //nolint:goconst
+				proposedCommitStatusDevelopment.Spec.Name = "no-deployments-allowed" //nolint:goconst // test value used only in this context
 				proposedCommitStatusDevelopment.Labels = map[string]string{
 					promoterv1alpha1.CommitStatusLabel: "no-deployments-allowed",
 				}
@@ -2801,7 +2801,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 })
 
-func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) { //nolint:unparam
+func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) { //nolint:unparam // namespace is always "default" in tests but kept for consistency
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 
 	scmSecret := &v1.Secret{

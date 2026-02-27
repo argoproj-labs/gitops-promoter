@@ -154,7 +154,7 @@ var _ = BeforeSuite(func() {
 		},
 	})
 
-	//nolint:fatcontext
+	//nolint:fatcontext // ctx is intentionally reassigned in test setup
 	ctx, cancel = context.WithCancel(context.Background())
 
 	// Create kubeconfig secret for dev and staging test environments in the local cluster
