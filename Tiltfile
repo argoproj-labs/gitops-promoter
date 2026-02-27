@@ -145,6 +145,7 @@ k8s_resource(
         'promoter-metrics-auth-role:clusterrole',
         'promoter-metrics-auth-rolebinding:clusterrolebinding',
         'promoter-metrics-reader:clusterrole',
+        'promoter-metrics-reader-rolebinding:clusterrolebinding',
         'promoter-controller-configuration:controllerconfiguration',
     ]
 )
