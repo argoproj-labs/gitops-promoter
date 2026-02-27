@@ -682,6 +682,90 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 	})
 
+	Context("When a controller-initiated merge already completed on provider but status update was lost", func() {
+		var ctx context.Context
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var pullRequest *promoterv1alpha1.PullRequest
+		var typeNamespacedName types.NamespacedName
+
+		BeforeEach(func() {
+			ctx = context.Background()
+
+			By("Creating test resources")
+			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "merge-already-completed")
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be open")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+				g.Expect(pullRequest.Status.ID).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should recover when PR is no longer open on provider and spec.state is merged", func() {
+			By("Simulating: merge succeeded on provider but status update was lost")
+			// Delete the PR from the fake provider to simulate that it was already merged
+			// on the provider side (FindOpen will return false)
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
+
+			By("Setting spec.state to merged (simulating CTP controller's merge request)")
+			// This simulates the CTP controller having patched spec.state to "merged",
+			// but the PR controller's status update failing after a successful provider merge.
+			// On the next reconcile, the controller should detect that the PR is no longer
+			// open and set status.state to "merged" instead of retrying the merge.
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				pullRequest.Spec.State = promoterv1alpha1.PullRequestMerged
+				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the PullRequest is cleaned up (not stuck in error loop)")
+			// Before the fix, the controller would try to merge again on the provider,
+			// get "already closed" error, and loop forever with Ready=False.
+			// After the fix, syncStateFromProvider detects the PR is gone, sets
+			// status.state="merged", and requeues for cleanup.
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should recover when PR is no longer open on provider and spec.state is closed", func() {
+			By("Simulating: close succeeded on provider but status update was lost")
+			fakeProvider := fake.NewFakePullRequestProvider(k8sClient)
+			Expect(fakeProvider.DeletePullRequest(ctx, *pullRequest)).To(Succeed())
+
+			By("Setting spec.state to closed")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				pullRequest.Spec.State = promoterv1alpha1.PullRequestClosed
+				g.Expect(k8sClient.Update(ctx, pullRequest)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the PullRequest is cleaned up")
+			Eventually(func(g Gomega) {
+				err := k8sClient.Get(ctx, typeNamespacedName, pullRequest)
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(ContainSubstring("pullrequests.promoter.argoproj.io \"" + name + "\" not found"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Context("When a PullRequest is externally merged or closed", func() {
 		var name string
 		var scmSecret *v1.Secret

@@ -236,10 +236,16 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 			pr.Status.State = ""
 			return true, nil
 		}
-		// If spec.state is "merged" or "closed", the controller is in the process of merging/closing.
-		// The PR may not be found as "open" because it's already transitioned on the provider.
-		// This is normal - let handleStateTransitions continue to process the spec.state.
-		logger.V(4).Info("PR not found open, but controller initiated the action", "specState", pr.Spec.State)
+		// The controller initiated a merge or close (spec.state is "merged" or "closed"),
+		// and the PR is no longer found as open on the provider. This means the action
+		// has already been applied on the provider side. Set status to match spec and
+		// requeue for cleanup. This handles the case where a previous merge/close
+		// succeeded on the provider but the k8s status update failed (e.g., due to a
+		// conflict), which would otherwise cause an infinite retry loop where the
+		// controller attempts to re-merge an already-merged PR.
+		logger.V(4).Info("PR not found open after controller-initiated action, marking as completed", "specState", pr.Spec.State)
+		pr.Status.State = pr.Spec.State
+		return true, nil
 	}
 
 	return false, nil
