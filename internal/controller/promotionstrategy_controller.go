@@ -127,6 +127,12 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned ChangeTransferPolicies: %w", err)
 	}
 
+	// Clean up orphaned CommitStatuses (previous-environment checks) that are no longer needed
+	err = r.cleanupOrphanedPreviousEnvironmentCommitStatuses(ctx, &ps, ctps)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatuses: %w", err)
+	}
+
 	// Calculate the status of the PromotionStrategy. Updates ps in place.
 	r.calculateStatus(&ps, ctps)
 
@@ -179,6 +185,7 @@ func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr 
 	err = ctrl.NewControllerManagedBy(mgr).
 		For(&promoterv1alpha1.PromotionStrategy{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&promoterv1alpha1.ChangeTransferPolicy{}).
+		Owns(&promoterv1alpha1.CommitStatus{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: maxConcurrentReconciles, RateLimiter: rateLimiter}).
 		Complete(r)
 	if err != nil {
@@ -324,6 +331,66 @@ func (r *PromotionStrategyReconciler) cleanupOrphanedChangeTransferPolicies(ctx 
 		}
 
 		r.Recorder.Eventf(ps, nil, "Normal", constants.OrphanedChangeTransferPolicyDeletedReason, "CleaningOrphanedResources", constants.OrphanedChangeTransferPolicyDeletedMessage, ctp.Name)
+	}
+
+	return nil
+}
+
+// cleanupOrphanedPreviousEnvironmentCommitStatuses deletes previous-environment CommitStatuses that are owned by this PromotionStrategy
+// but are not in the current list of valid CTPs (i.e., they correspond to removed or renamed environments).
+//
+
+func (r *PromotionStrategyReconciler) cleanupOrphanedPreviousEnvironmentCommitStatuses(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, validCtps []*promoterv1alpha1.ChangeTransferPolicy) error {
+	logger := log.FromContext(ctx)
+
+	// Create a set of valid CommitStatus names for quick lookup
+	// CommitStatus names are based on CTP names, so we need to know which CTPs are valid
+	validCsNames := make(map[string]bool)
+	for _, ctp := range validCtps {
+		csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
+		validCsNames[csName] = true
+	}
+
+	// List all previous-environment CommitStatuses in the namespace
+	var csList promoterv1alpha1.CommitStatusList
+	err := r.List(ctx, &csList, client.InNamespace(ps.Namespace), client.MatchingLabels{
+		promoterv1alpha1.CommitStatusLabel: promoterv1alpha1.PreviousEnvironmentCommitStatusKey,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list CommitStatuses: %w", err)
+	}
+
+	// Delete CommitStatuses that are not in the valid list
+	for _, cs := range csList.Items {
+		// Skip if this CommitStatus is in the valid list
+		if validCsNames[cs.Name] {
+			continue
+		}
+
+		// Verify this CommitStatus is owned by this PromotionStrategy before deleting
+		if !metav1.IsControlledBy(&cs, ps) {
+			logger.V(4).Info("Skipping CommitStatus not owned by this PromotionStrategy",
+				"csName", cs.Name,
+				"promotionStrategy", ps.Name)
+			continue
+		}
+
+		// Delete the orphaned CommitStatus
+		logger.Info("Deleting orphaned previous-environment CommitStatus",
+			"csName", cs.Name,
+			"promotionStrategy", ps.Name,
+			"namespace", ps.Namespace)
+
+		if err := r.Delete(ctx, &cs); err != nil {
+			if k8serrors.IsNotFound(err) {
+				// Already deleted, which is fine
+				logger.V(4).Info("CommitStatus already deleted", "csName", cs.Name)
+				continue
+			}
+			return fmt.Errorf("failed to delete orphaned CommitStatus %q: %w", cs.Name, err)
+		}
+
+		r.Recorder.Eventf(ps, nil, "Normal", constants.OrphanedCommitStatusDeletedReason, "CleaningOrphanedResources", constants.OrphanedCommitStatusDeletedMessage, cs.Name)
 	}
 
 	return nil
@@ -551,13 +618,13 @@ func (r *PromotionStrategyReconciler) handleRateLimitedEnqueue(
 	}
 }
 
-func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
+func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitStatus(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, ctp *promoterv1alpha1.ChangeTransferPolicy, phase promoterv1alpha1.CommitStatusPhase, pendingReason string, previousEnvironmentBranch string, previousCRPCSPhases []promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase) (*promoterv1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 
 	// TODO: do we like this name proposed-<name>?
 	csName := utils.KubeSafeUniqueName(ctx, promoterv1alpha1.PreviousEnvProposedCommitPrefixNameLabel+ctp.Name)
 
-	kind := reflect.TypeOf(promoterv1alpha1.ChangeTransferPolicy{}).Name()
+	kind := reflect.TypeOf(promoterv1alpha1.PromotionStrategy{}).Name()
 	gvk := promoterv1alpha1.GroupVersion.WithKind(kind)
 
 	// If there is only one commit status, use the URL from that commit status.
@@ -591,8 +658,8 @@ func (r *PromotionStrategyReconciler) createOrUpdatePreviousEnvironmentCommitSta
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
 			WithKind(gvk.Kind).
-			WithName(ctp.Name).
-			WithUID(ctp.UID).
+			WithName(ps.Name).
+			WithUID(ps.UID).
 			WithController(true).
 			WithBlockOwnerDeletion(true)).
 		WithSpec(acv1alpha1.CommitStatusSpec().
@@ -690,8 +757,8 @@ func (r *PromotionStrategyReconciler) updatePreviousEnvironmentCommitStatus(ctx 
 			"previousEnvironmentActiveBranch", previousEnvironmentStatus.Branch)
 
 		// Since there is at least one configured active check, and since this is not the first environment,
-		// we should not create a commit status for the previous environment.
-		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
+		// we should create a commit status for the previous environment.
+		cs, err := r.createOrUpdatePreviousEnvironmentCommitStatus(ctx, ps, ctp, commitStatusPhase, pendingReason, previousEnvironmentStatus.Branch, ctps[i-1].Status.Active.CommitStatuses)
 		if err != nil {
 			return fmt.Errorf("failed to create or update previous environment commit status for branch %s: %w", ctp.Spec.ActiveBranch, err)
 		}
