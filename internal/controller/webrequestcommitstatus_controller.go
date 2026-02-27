@@ -630,15 +630,17 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		req.Header.Set(headerName, headerValue)
 	}
 
-	// Apply authentication if configured
+	// Use shared default client unless authentication returns a per-request client (e.g. TLS).
+	// Never assign to r.httpClient here: concurrent reconciliations share the reconciler, and
+	// overwriting r.httpClient would create a data race and wrong client usage across goroutines.
+	clientToUse := r.httpClient
 	if wrcs.Spec.HTTPRequest.Authentication != nil {
-		httpClient, err := r.applyAuthentication(ctx, wrcs, req)
+		authClient, err := r.applyAuthentication(ctx, wrcs, req)
 		if err != nil {
 			return httpResponse{}, fmt.Errorf("failed to apply authentication: %w", err)
 		}
-		if httpClient != nil {
-			// Use the custom client (e.g., for TLS)
-			r.httpClient = httpClient
+		if authClient != nil {
+			clientToUse = authClient
 		}
 	}
 
@@ -656,7 +658,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	logger.V(4).Info("Making HTTP request", "method", wrcs.Spec.HTTPRequest.Method, "url", url)
 
 	// Execute request
-	resp, err := r.httpClient.Do(req)
+	resp, err := clientToUse.Do(req)
 	if err != nil {
 		return httpResponse{}, fmt.Errorf("HTTP request failed: %w", err)
 	}
