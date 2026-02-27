@@ -70,7 +70,8 @@ jobs:
         with:
           version: v2.10.0
           args: --timeout=5m
-          skip-cache: true
+          skip-cache: false
+          cache-invalidation-interval: 1 # day, default 7
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
@@ -78,7 +79,7 @@ jobs:
         run: make test-parallel
       - name: Generate code coverage artifacts
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: code-coverage
           path: cover.out
