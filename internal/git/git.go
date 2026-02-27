@@ -474,36 +474,59 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	return false, nil
 }
 
-// MergeWithOursStrategy merges the proposed branch into the active branch using the "ours" strategy.
+// MergeWithOursStrategy reconciles diverged branch histories after a squash merge.
 // This assumes that both branches have already been fetched via GetBranchShas earlier in the reconciliation,
 // ensuring we merge the exact same refs that were checked for conflicts.
+//
+// After a squash merge, the proposed branch's commits are no longer ancestors of the active branch.
+// This function creates a new commit on the proposed branch that:
+// 1. Keeps the exact same tree (file contents) as the proposed branch
+// 2. Has ONLY the active branch commit as its parent (NOT the old proposed commits)
+// 3. Results in a clean PR that only shows the actual differences, not old squashed commits
+//
+// This is essentially "rebasing" the proposed branch's content onto active without carrying
+// the old commit history. Future PRs will be clean because the old commits are no longer
+// in the proposed branch's ancestry.
 func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
 	logger := log.FromContext(ctx)
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
 
-	// Checkout the proposed branch from the already-fetched origin ref
-	// We use the origin ref to ensure we're working with the same commits that were checked for conflicts
-	_, stderr, err := g.runCmd(ctx, gitPath, "checkout", "-B", proposedBranch, "origin/"+proposedBranch)
+	// Get the tree SHA from the proposed branch (we want to keep this exact content)
+	treeStdout, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", "origin/"+proposedBranch+"^{tree}")
 	if err != nil {
-		logger.Error(err, "Failed to checkout branch", "branch", proposedBranch, "stderr", stderr)
-		return fmt.Errorf("failed to checkout branch %q: %w", proposedBranch, err)
+		logger.Error(err, "Failed to get tree SHA", "branch", proposedBranch, "stderr", stderr)
+		return fmt.Errorf("failed to get tree SHA for branch %q: %w", proposedBranch, err)
+	}
+	treeSha := strings.TrimSpace(treeStdout)
+
+	// Get the commit SHA of the active branch (this will be the ONLY parent)
+	activeShaStdout, stderr, err := g.runCmd(ctx, gitPath, "rev-parse", "origin/"+activeBranch)
+	if err != nil {
+		logger.Error(err, "Failed to get active branch SHA", "branch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to get SHA for branch %q: %w", activeBranch, err)
+	}
+	activeSha := strings.TrimSpace(activeShaStdout)
+
+	// Create a new commit using git commit-tree
+	// Only ONE parent: the active branch. This means the old proposed commits are NOT ancestors.
+	// The tree is from the proposed branch, so content stays the same.
+	commitMsg := fmt.Sprintf("Reconcile %s with %s after squash merge\n\nReset branch history to align with squash-merged changes.", proposedBranch, activeBranch)
+	newCommitStdout, stderr, err := g.runCmd(ctx, gitPath, "commit-tree", treeSha, "-p", activeSha, "-m", commitMsg)
+	if err != nil {
+		logger.Error(err, "Failed to create commit", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to create commit: %w", err)
+	}
+	newCommitSha := strings.TrimSpace(newCommitStdout)
+
+	// Force push the proposed branch to point to the new commit
+	// We use --force because we're rewriting history (the old commits are no longer ancestors)
+	_, stderr, err = g.runCmd(ctx, gitPath, "push", "--force", "origin", newCommitSha+":refs/heads/"+proposedBranch)
+	if err != nil {
+		logger.Error(err, "Failed to force push branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
+		return fmt.Errorf("failed to push branch %q: %w", proposedBranch, err)
 	}
 
-	// Perform the merge with "ours" strategy using the already-fetched origin ref
-	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "-s", "ours", "origin/"+activeBranch)
-	if err != nil {
-		logger.Error(err, "Failed to merge branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
-		return fmt.Errorf("failed to merge branch %q into %q with 'ours' strategy: %w", activeBranch, proposedBranch, err)
-	}
-
-	// Push the changes to the remote repository
-	_, stderr, err = g.runCmd(ctx, gitPath, "push", "origin", proposedBranch)
-	if err != nil {
-		logger.Error(err, "Failed to push merged branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
-		return fmt.Errorf("failed to push merged branch %q: %w", proposedBranch, err)
-	}
-
-	logger.Info("Successfully merged branches with 'ours' strategy", "proposedBranch", proposedBranch, "activeBranch", activeBranch)
+	logger.Info("Successfully reconciled branch histories", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "newCommit", newCommitSha)
 	return nil
 }
 
