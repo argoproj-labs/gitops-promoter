@@ -62,6 +62,20 @@ make run-dashboard     # Run dashboard locally
 - Use controller-runtime patterns for Kubernetes interactions
 - Avoid naked returns and follow error wrapping conventions
 
+### Linting Workflow
+Before committing any Go code changes, always run:
+```bash
+# Check for common issues
+go vet ./...
+
+# Verify formatting
+gofmt -l <changed_files>
+
+# Ensure test files compile
+go test -c -o /tmp/test_output <package_path>
+```
+This ensures code quality and catches issues before they reach CI/CD.
+
 ### TypeScript/React Code
 - Use TypeScript for all new code
 - Follow ESLint rules
@@ -113,6 +127,7 @@ make test-e2e          # Run end-to-end tests
 - Test both success and error paths
 - Use `Eventually` for async operations in controller tests
 - Clean up resources in `AfterEach` blocks
+- **Always add tests for new code**: Every new feature, bug fix, or code change should include corresponding test coverage to validate behavior and prevent regressions
 
 ## Custom Resources
 
@@ -176,6 +191,8 @@ Key environment variables:
 5. **Dependencies**: Avoid adding new dependencies unless necessary
 6. **Documentation**: Update docs when changing behavior or APIs
 7. **Backwards Compatibility**: While in v1alpha1, breaking changes are allowed but should be avoided if possible
+8. **Code Coverage**: Always add test coverage for new code. When implementing features or fixes, include tests that cover the new logic, edge cases, and error handling paths. Tests should validate the expected behavior and prevent regressions.
+9. **Linting**: Always run linting before committing code changes. Use `go vet ./...` to check for common issues, `gofmt -l` to verify formatting, and `go test -c` to ensure test files compile without errors. This catches issues early and maintains code quality.
 
 ## Pull Request Titles
 

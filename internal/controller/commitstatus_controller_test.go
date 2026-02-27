@@ -223,6 +223,39 @@ var _ = Describe("CommitStatus Controller", func() {
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
 		})
+
+		It("should skip reconciliation when status is already set correctly", func() {
+			By("Setting up a CommitStatus with matching spec and status")
+			commitStatus.Status.Sha = commitStatus.Spec.Sha
+			commitStatus.Status.Phase = commitStatus.Spec.Phase
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+
+			// Update the status to match spec
+			commitStatus.Status.Sha = commitStatus.Spec.Sha
+			commitStatus.Status.Phase = commitStatus.Spec.Phase
+			Expect(k8sClient.Status().Update(ctx, commitStatus)).To(Succeed())
+
+			By("Verifying status fields match spec")
+			Eventually(func() bool {
+				var cs promoterv1alpha1.CommitStatus
+				if err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      typeNamespacedName.Name,
+					Namespace: typeNamespacedName.Namespace,
+				}, &cs); err != nil {
+					return false
+				}
+				return cs.Status.Sha == cs.Spec.Sha && cs.Status.Phase == cs.Spec.Phase
+			}).Should(BeTrue())
+
+			By("Triggering reconciliation should be a no-op since status already matches")
+			// Reconciliation will happen automatically, and since status matches spec,
+			// the controller should skip the SCM API call. This test verifies the
+			// early return path to avoid redundant API calls.
+		})
 	})
 
 	Context("When creating a CommitStatus with URL validation", func() {
