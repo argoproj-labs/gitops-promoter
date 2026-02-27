@@ -682,6 +682,96 @@ var _ = Describe("PullRequest Controller", func() {
 		})
 	})
 
+	Context("When ControllerConfiguration pullRequest.template changes", func() {
+		var name string
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var pullRequest *promoterv1alpha1.PullRequest
+		var typeNamespacedName types.NamespacedName
+		var controllerConfig promoterv1alpha1.ControllerConfiguration
+		var originalTemplate promoterv1alpha1.PullRequestTemplate
+
+		BeforeEach(func() {
+			By("Creating test resources")
+			name, scmSecret, scmProvider, gitRepo, pullRequest = pullRequestResources(ctx, "config-template-change")
+
+			typeNamespacedName = types.NamespacedName{
+				Name:      name,
+				Namespace: "default",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, pullRequest)).To(Succeed())
+
+			By("Waiting for PullRequest to be open")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				g.Expect(pullRequest.Status.State).To(Equal(promoterv1alpha1.PullRequestOpen))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Saving the original ControllerConfiguration template")
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "promoter-controller-configuration",
+				Namespace: "default",
+			}, &controllerConfig)).To(Succeed())
+			originalTemplate = controllerConfig.Spec.PullRequest.Template
+		})
+
+		AfterEach(func() {
+			By("Restoring the original ControllerConfiguration template")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "promoter-controller-configuration",
+					Namespace: "default",
+				}, &controllerConfig)).To(Succeed())
+				controllerConfig.Spec.PullRequest.Template = originalTemplate
+				g.Expect(k8sClient.Update(ctx, &controllerConfig)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+
+		It("should reconcile all PullRequests when ControllerConfiguration pullRequest.template changes", func() {
+			By("Recording the current Ready condition LastTransitionTime")
+			var initialTransitionTime metav1.Time
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				cond := meta.FindStatusCondition(pullRequest.Status.Conditions, string(conditions.Ready))
+				g.Expect(cond).ToNot(BeNil())
+				initialTransitionTime = cond.LastTransitionTime
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			// Sleep slightly more than 1 second to ensure the next reconcile's LastTransitionTime
+			// differs from initialTransitionTime. This is necessary because metav1.Time has
+			// second-level precision, so two reconciles within the same second would have the
+			// same LastTransitionTime even though separate reconciles occurred.
+			time.Sleep(1100 * time.Millisecond)
+
+			By("Updating the ControllerConfiguration pullRequest.template")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "promoter-controller-configuration",
+					Namespace: "default",
+				}, &controllerConfig)).To(Succeed())
+				controllerConfig.Spec.PullRequest.Template = promoterv1alpha1.PullRequestTemplate{
+					Title:       "Updated template title",
+					Description: "Updated template description",
+				}
+				g.Expect(k8sClient.Update(ctx, &controllerConfig)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying the PullRequest is reconciled (Ready condition LastTransitionTime is updated)")
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, pullRequest)).To(Succeed())
+				cond := meta.FindStatusCondition(pullRequest.Status.Conditions, string(conditions.Ready))
+				g.Expect(cond).ToNot(BeNil())
+				g.Expect(cond.LastTransitionTime.After(initialTransitionTime.Time)).To(BeTrue(),
+					"Ready condition LastTransitionTime should be updated after ControllerConfiguration change")
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
+	})
+
 	Context("When a PullRequest is externally merged or closed", func() {
 		var name string
 		var scmSecret *v1.Secret
