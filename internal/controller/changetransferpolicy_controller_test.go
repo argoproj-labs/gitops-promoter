@@ -672,7 +672,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 				// Make a new dry commit
 				f, err := os.Create(path.Join(squashDir, "manifests-fake.yaml"))
 				Expect(err).NotTo(HaveOccurred())
-				_, err = f.WriteString(fmt.Sprintf(`{"time": "%s"}`, time.Now().Format(time.RFC3339Nano)))
+				_, err = fmt.Fprintf(f, `{"time": "%s"}`, time.Now().Format(time.RFC3339Nano))
 				Expect(err).NotTo(HaveOccurred())
 				err = f.Close()
 				Expect(err).NotTo(HaveOccurred())
@@ -719,7 +719,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 				f, err = os.Create(path.Join(squashDir, "manifests-fake.yaml"))
 				Expect(err).NotTo(HaveOccurred())
-				_, err = f.WriteString(fmt.Sprintf(`{"time": "%s"}`, time.Now().Format(time.RFC3339Nano)))
+				_, err = fmt.Fprintf(f, `{"time": "%s"}`, time.Now().Format(time.RFC3339Nano))
 				Expect(err).NotTo(HaveOccurred())
 				err = f.Close()
 				Expect(err).NotTo(HaveOccurred())
@@ -904,7 +904,7 @@ var _ = Describe("tooManyPRsError", func() {
 	})
 })
 
-//nolint:unparam // namespace is always "default" in tests but kept for consistency with other test helpers
+//nolint:unparam // ctx is required for test helper signature consistency
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 	setupInitialTestGitRepoOnServer(ctx, name, name)
