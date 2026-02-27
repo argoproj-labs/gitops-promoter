@@ -63,6 +63,8 @@ type GitCommitStatusReconciler struct {
 }
 
 const (
+	// targetActive is the value for Spec.Target indicating the active/deployed commit
+	targetActive = "active"
 	// targetProposed is the value for Spec.Target indicating proposed commit
 	targetProposed = "proposed"
 )
@@ -332,7 +334,7 @@ func (r *GitCommitStatusReconciler) getCommitData(ctx context.Context, gcs *prom
 
 	// Determine which commit state to use based on the target
 	var commitState *promoterv1alpha1.CommitShaState
-	if gcs.Spec.Target == "proposed" {
+	if gcs.Spec.Target == targetProposed {
 		commitState = &envStatus.Proposed.Hydrated
 	} else {
 		// Default to active
