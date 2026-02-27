@@ -1,0 +1,53 @@
+# Example: Manual approval on pull requests (Environment-based)
+# Copy to your repo as .github/workflows/approve-pr.example.yml
+#
+# Setup (one-time):
+# 1. Settings → Environments → New environment (e.g. "production" or "deploy-preview")
+# 2. Add "Required reviewers" so only they can approve the deploy job
+#
+# Flow:
+# - On every push to a PR (or when PR is opened/updated), build runs.
+# - The "deploy" job uses environment: production → GitHub shows "Review pending".
+# - A required reviewer approves in the Actions UI → deploy job runs.
+# - Works with pull requests: the same run is tied to the PR; approval gates the deploy.
+
+name: Build and deploy (PR approval)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  # Optional: also run on push to main so you can gate releases from main
+  # push:
+  #   branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Build
+        run: |
+          echo "Building PR #${{ github.event.pull_request.number }}..."
+          echo "Build complete. Ready for approval."
+
+  # Waits for Environment approval; then runs (e.g. deploy preview or promote)
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Deploy
+        run: |
+          echo "Approved. Deploying PR #${{ github.event.pull_request.number }}..."
+          # Your deploy steps (e.g. deploy preview, or promote after merge)

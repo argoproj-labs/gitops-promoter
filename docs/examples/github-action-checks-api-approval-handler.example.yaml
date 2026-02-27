@@ -1,0 +1,55 @@
+# Example: Handle Approve/Reject from the Checks API (button click)
+# Copy to your repo as .github/workflows/checks-approval-handler.yml
+#
+# NOTE: This is only triggered when the check run was created by a GITHUB APP,
+# not by another Actions workflow. GitHub does not trigger workflows on
+# requested_action when the check run's check suite was created by Actions
+# (to prevent loops). For approval gates from Actions, use Environment
+# approval (github-action-manual-approval.example.yaml) instead.
+#
+# When it does run: triggered by check_run with action requested_action;
+# requested_action.identifier is 'approve' or 'reject'.
+
+name: Handle approval (button click)
+
+on:
+  check_run:
+    types: [requested_action]
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  handle-approval:
+    runs-on: ubuntu-latest
+    if: github.event.requested_action.identifier == 'approve' || github.event.requested_action.identifier == 'reject'
+    steps:
+      - name: Approve or Reject
+        id: decision
+        run: |
+          echo "identifier=${{ github.event.requested_action.identifier }}" >> $GITHUB_OUTPUT
+          echo "User clicked: ${{ github.event.requested_action.identifier }}"
+
+      - name: Update check run conclusion
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const identifier = '${{ github.event.requested_action.identifier }}';
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: github.event.check_run.id,
+              status: 'completed',
+              conclusion: identifier === 'approve' ? 'success' : 'cancelled',
+              output: {
+                title: identifier === 'approve' ? 'Approved' : 'Rejected',
+                summary: identifier === 'approve' ? 'Deployment approved.' : 'Deployment cancelled.'
+              }
+            });
+
+      - name: Deploy (only on Approve)
+        if: steps.decision.outputs.identifier == 'approve'
+        run: |
+          echo "Deploying..."
+          # Your deploy steps here

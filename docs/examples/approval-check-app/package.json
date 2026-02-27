@@ -1,0 +1,17 @@
+{
+  "name": "pr-approval-check-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub App that adds an approval check to PRs with Approve button; clicking it sets the check to success.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "dependencies": {
+    "@octokit/auth-app": "^4.0.0",
+    "@octokit/rest": "^20.0.0",
+    "@octokit/webhooks": "^12.0.0",
+    "express": "^4.21.0"
+  }
+}

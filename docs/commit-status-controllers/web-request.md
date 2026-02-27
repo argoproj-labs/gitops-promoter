@@ -56,6 +56,24 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 - Can access previous HTTP response data via `ResponseData`
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
+## Security Considerations
+
+The WebRequestCommitStatus controller renders URLs (and optionally headers and body) from Go templates and makes HTTP requests on behalf of the cluster. Although URLs are typically admin-controlled via CRDs, no validation is performed on the rendered URL. Malicious or misconfigured templates could potentially make requests to internal services, cloud metadata endpoints (e.g. `169.254.169.254`), or other sensitive targets (SSRF risk). The following practices help reduce risk.
+
+**Recommendations for administrators:**
+
+- **Restrict who can create or modify WebRequestCommitStatus resources** using RBAC. Only trusted actors should be able to set or change `spec.httpRequest.urlTemplate` and related fields.
+- **Be cautious with templates that include user-controlled or namespace-controlled data.** Template variables such as `NamespaceMetadata.Labels`, `NamespaceMetadata.Annotations`, and data from `TriggerData` or `ResponseData` can influence the rendered URL. If those values are controllable by less-trusted users, they could push the URL toward internal or metadata endpoints.
+- **Consider network policies** to limit egress traffic from the controller (e.g. only to approved external APIs). This helps limit which destinations the controller can reach even if a CRD is misconfigured or compromised.
+
+### Summary for administrators
+
+| Control | Recommendation |
+|--------|----------------|
+| **RBAC** | Restrict create/update/patch of `webrequestcommitstatuses` to trusted admins. |
+| **Templates** | Avoid putting user- or tenant-controlled data into URL (or host) templates when possible. |
+| **Network** | Use network policies or similar mechanisms to restrict controller egress to intended destinations. |
+
 ## Example Configurations
 
 ### Basic Polling Mode

@@ -1,0 +1,50 @@
+# Example: Check run with Approve/Reject buttons (Checks API)
+# Copy to your repo as .github/workflows/checks-approval-example.yml
+#
+# LIMITATION: When a check run is created by GitHub Actions, GitHub does NOT
+# trigger workflows on requested_action (button clicks). So the Approve/Reject
+# buttons will not start another workflow. Use this for display/visibility only,
+# or use a GitHub App to create the check run if you need button-triggered workflows.
+#
+# For real approval gates that block and then proceed, use Environment approval
+# instead: see github-action-manual-approval.example.yaml (environment: production
+# with required reviewers in Settings → Environments).
+#
+# This workflow creates a check run with buttons in the PR/commit Checks UI.
+# Requires: default GITHUB_TOKEN has checks: write (grant in workflow permissions).
+
+name: Request deployment approval (Checks API)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  request-approval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create check run with Approve / Reject buttons
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: run } = await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Deployment approval',
+              head_sha: context.sha,
+              status: 'in_progress',
+              output: {
+                title: 'Deployment is ready — approval required',
+                summary: 'This deployment will run against the **production** environment.\n\nPlease review the changes and choose an action below:\n- **Approve** — proceed with deployment to production.\n- **Reject** — cancel this deployment (no changes will be applied).\n\nClick one of the buttons below to continue.'
+              },
+              actions: [
+                { label: 'Approve', identifier: 'approve', description: 'Deploy to production' },
+                { label: 'Reject',  identifier: 'reject',  description: 'Cancel deployment' }
+              ]
+            });
+            core.info(`Check run created: ${run.id}. Buttons visible in Checks UI.`);
