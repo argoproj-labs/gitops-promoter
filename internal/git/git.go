@@ -421,6 +421,33 @@ func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory strin
 	return stdoutBuf.String(), stderrBuf.String(), nil
 }
 
+// IsAncestor checks if ancestorBranch is an ancestor of descendantBranch using git merge-base --is-ancestor.
+// Returns true if ancestorBranch is reachable from descendantBranch (normal state), false if not (e.g., after a squash merge).
+// This assumes that origin/<branch> refs are already fetched via GetBranchShas earlier in the reconcile.
+func (g *EnvironmentOperations) IsAncestor(ctx context.Context, ancestorBranch, descendantBranch string) (bool, error) {
+	logger := log.FromContext(ctx)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	_, stderr, err := g.runCmd(ctx, gitPath, "merge-base", "--is-ancestor", "origin/"+ancestorBranch, "origin/"+descendantBranch)
+	if err != nil {
+		// Exit code 1 means ancestorBranch is NOT an ancestor of descendantBranch.
+		// This is a normal condition (e.g., after a squash merge), not an error.
+		// We distinguish this from actual git errors by checking stderr for unexpected messages.
+		if stderr == "" || strings.Contains(stderr, "exit status 1") {
+			logger.V(4).Info("Branch is not an ancestor", "ancestor", ancestorBranch, "descendant", descendantBranch)
+			return false, nil
+		}
+		logger.Error(err, "could not run merge-base --is-ancestor", "ancestor", ancestorBranch, "descendant", descendantBranch, "stderr", stderr)
+		return false, fmt.Errorf("failed to check ancestry between %q and %q: %w", ancestorBranch, descendantBranch, err)
+	}
+
+	logger.V(4).Info("Branch is an ancestor", "ancestor", ancestorBranch, "descendant", descendantBranch)
+	return true, nil
+}
+
 // HasConflict checks if there is a merge conflict between the proposed branch and the active branch using git merge-tree.
 // This performs a stateless merge check without modifying the working directory. It assumes that origin/<branch> is
 // currently fetched and updated in the local repository. This should happen via GetBranchShas function earlier in the reconcile.
