@@ -46,6 +46,10 @@ type ChangeTransferPolicySpec struct {
 	// +kubebuilder:default:=true
 	AutoMerge *bool `json:"autoMerge,omitempty"`
 
+	// Commit contains configuration for how the pull request will be merged.
+	// +kubebuilder:validation:Optional
+	Commit CommitConfiguration `json:"commit,omitempty"`
+
 	// ActiveCommitStatuses lists the statuses to be monitored on the active branch
 	// +kubebuilder:validation:Optional
 	// +listType:=map
