@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -254,7 +255,7 @@ func HandleReconciliationResult(
 	ctx context.Context,
 	startTime time.Time,
 	obj StatusConditionUpdater,
-	client client.Client,
+	k8sClient client.Client,
 	recorder events.EventRecorder,
 	err *error,
 ) {
@@ -320,7 +321,21 @@ func HandleReconciliationResult(
 	}
 
 	// Single status update. This is the only place Status().Update() is called for reconciled resources.
-	if updateErr := client.Status().Update(ctx, obj); updateErr != nil {
+	// Retry conflicts by refreshing resourceVersion from the latest object.
+	updateErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latestObj, ok := obj.DeepCopyObject().(client.Object)
+		if !ok {
+			return errors.New("failed to deep copy object for status update: object does not implement client.Object")
+		}
+
+		if getErr := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), latestObj); getErr != nil {
+			return fmt.Errorf("failed to get latest object for status update: %w", getErr)
+		}
+
+		obj.SetResourceVersion(latestObj.GetResourceVersion())
+		return k8sClient.Status().Update(ctx, obj)
+	})
+	if updateErr != nil {
 		if *err == nil {
 			*err = fmt.Errorf("failed to update status: %w", updateErr)
 		} else {

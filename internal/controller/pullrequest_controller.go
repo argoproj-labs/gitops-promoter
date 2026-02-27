@@ -223,7 +223,9 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 	}
 
 	// If we don't find the PR, but we have an ID, check if it was merged/closed externally or by the controller.
-	// If spec.state is "merged" or "closed", the controller initiated the action and we should NOT mark as external.
+	// If spec.state is "merged" or "closed", the controller initiated the action and the PR has already
+	// transitioned out of open on the provider. In this case, advance status to the terminal desired state
+	// and requeue so cleanupTerminalStates can delete on the next reconciliation.
 	// Only mark as external if spec.state is "open" (controller didn't initiate the closure/merge).
 	if pr.Status.ID != "" {
 		if pr.Spec.State == promoterv1alpha1.PullRequestOpen {
@@ -236,10 +238,12 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 			pr.Status.State = ""
 			return true, nil
 		}
-		// If spec.state is "merged" or "closed", the controller is in the process of merging/closing.
-		// The PR may not be found as "open" because it's already transitioned on the provider.
-		// This is normal - let handleStateTransitions continue to process the spec.state.
-		logger.V(4).Info("PR not found open, but controller initiated the action", "specState", pr.Spec.State)
+		// If spec.state is "merged" or "closed", the PR is no longer open on provider.
+		// Advance status so we do not re-attempt merge/close against SCM and instead move to cleanup.
+		pr.Status.State = pr.Spec.State
+		logger.V(4).Info("PR not found open and controller initiated terminal action; advancing status to terminal state",
+			"specState", pr.Spec.State, "statusState", pr.Status.State)
+		return true, nil
 	}
 
 	return false, nil
