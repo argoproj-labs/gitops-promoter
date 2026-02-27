@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -89,6 +90,24 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Remove any existing Ready condition. We want to start fresh.
 	meta.RemoveStatusCondition(tcs.GetConditions(), string(promoterConditions.Ready))
 
+	// Check if the TimedCommitStatus is being deleted
+	if !tcs.DeletionTimestamp.IsZero() {
+		if err := r.handleFinalizerCleanup(ctx, &tcs); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Add finalizer if it doesn't exist
+	if !controllerutil.ContainsFinalizer(&tcs, promoterv1alpha1.TimedCommitStatusFinalizer) {
+		controllerutil.AddFinalizer(&tcs, promoterv1alpha1.TimedCommitStatusFinalizer)
+		if err := r.Update(ctx, &tcs); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to add finalizer: %w", err)
+		}
+		// Return and requeue - the update will trigger another reconciliation
+		return ctrl.Result{}, nil
+	}
+
 	// 2. Fetch the referenced PromotionStrategy
 	var ps promoterv1alpha1.PromotionStrategy
 	psKey := client.ObjectKey{
@@ -105,23 +124,29 @@ func (r *TimedCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, fmt.Errorf("failed to get PromotionStrategy %q: %w", tcs.Spec.PromotionStrategyRef.Name, err)
 	}
 
-	// 3. Process each environment defined in the TimedCommitStatus
+	// 3. Auto-configure the timer active commit status on the PromotionStrategy environments
+	err = r.autoConfigureTimerCheck(ctx, &tcs, &ps)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to auto-configure timer check: %w", err)
+	}
+
+	// 4. Process each environment defined in the TimedCommitStatus
 	// Returns the list of environments that transitioned to success and the CommitStatus objects
 	transitionedEnvironments, commitStatuses, err := r.processEnvironments(ctx, &tcs, &ps)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
 
-	// 4. Clean up orphaned CommitStatus resources that are no longer in the environment list
+	// 5. Clean up orphaned CommitStatus resources that are no longer in the environment list
 	err = r.cleanupOrphanedCommitStatuses(ctx, &tcs, commitStatuses)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to cleanup orphaned CommitStatus resources: %w", err)
 	}
 
-	// 5. Inherit conditions from CommitStatus objects
+	// 6. Inherit conditions from CommitStatus objects
 	utils.InheritNotReadyConditionFromObjects(&tcs, promoterConditions.CommitStatusesNotReady, commitStatuses...)
 
-	// 6. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
+	// 7. If any time gates transitioned to success, touch the corresponding ChangeTransferPolicies to trigger reconciliation
 	if len(transitionedEnvironments) > 0 {
 		r.touchChangeTransferPolicies(ctx, &ps, transitionedEnvironments)
 	}
@@ -352,7 +377,7 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 		WithLabels(map[string]string{
 			promoterv1alpha1.TimedCommitStatusLabel: utils.KubeSafeLabel(tcs.Name),
 			promoterv1alpha1.EnvironmentLabel:       utils.KubeSafeLabel(branch),
-			promoterv1alpha1.CommitStatusLabel:      "timer",
+			promoterv1alpha1.CommitStatusLabel:      promoterv1alpha1.TimerCommitStatusKey,
 		}).
 		WithOwnerReferences(acmetav1.OwnerReference().
 			WithAPIVersion(gvk.GroupVersion().String()).
@@ -363,7 +388,7 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 			WithBlockOwnerDeletion(true)).
 		WithSpec(acv1alpha1.CommitStatusSpec().
 			WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
-			WithName("timer/" + envBranch).
+			WithName(promoterv1alpha1.TimerCommitStatusKey + "/" + envBranch).
 			WithDescription(message).
 			WithPhase(phase).
 			WithSha(sha))
@@ -377,6 +402,141 @@ func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tc
 	}
 
 	return commitStatus, nil
+}
+
+// autoConfigureTimerCheck uses server-side apply to add the "timer" active commit status
+// to each environment configured in the TimedCommitStatus. This eliminates the need for users
+// to manually add `activeCommitStatuses: [{key: "timer"}]` to their PromotionStrategy.
+func (r *TimedCommitStatusReconciler) autoConfigureTimerCheck(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
+	logger := log.FromContext(ctx)
+
+	// Build a map of branches configured in the TimedCommitStatus for quick lookup
+	timedBranches := make(map[string]bool, len(tcs.Spec.Environments))
+	for _, env := range tcs.Spec.Environments {
+		timedBranches[env.Branch] = true
+	}
+
+	// Build the apply configuration for the PromotionStrategy
+	// We only touch the spec.environments field to add activeCommitStatuses to environments
+	// that have timed gates configured
+	psApply := acv1alpha1.PromotionStrategy(ps.Name, ps.Namespace)
+
+	specApply := acv1alpha1.PromotionStrategySpec()
+	envApplyConfigs := make([]*acv1alpha1.EnvironmentApplyConfiguration, 0, len(ps.Spec.Environments))
+
+	for _, env := range ps.Spec.Environments {
+		// Only apply activeCommitStatuses to environments that are configured in the TimedCommitStatus
+		if timedBranches[env.Branch] {
+			envApply := acv1alpha1.Environment().
+				WithBranch(env.Branch).
+				WithActiveCommitStatuses(acv1alpha1.CommitStatusSelector().WithKey(promoterv1alpha1.TimerCommitStatusKey))
+
+			envApplyConfigs = append(envApplyConfigs, envApply)
+		}
+	}
+
+	// Only apply if we have environments to configure
+	if len(envApplyConfigs) > 0 {
+		specApply = specApply.WithEnvironments(envApplyConfigs...)
+		psApply = psApply.WithSpec(specApply)
+
+		// Apply using Server-Side Apply
+		if err := r.Patch(ctx, ps, utils.ApplyPatch{ApplyConfig: psApply}, client.FieldOwner(constants.TimedCommitStatusControllerFieldOwner), client.ForceOwnership); err != nil {
+			return fmt.Errorf("failed to apply timer check to PromotionStrategy: %w", err)
+		}
+
+		logger.V(4).Info("Auto-configured timer check on PromotionStrategy environments",
+			"promotionStrategy", ps.Name,
+			"configuredEnvironments", len(envApplyConfigs))
+	}
+
+	return nil
+}
+
+// cleanupTimerCheck removes the auto-configured "timer" active commit status
+// from PromotionStrategy environments when the TimedCommitStatus is deleted.
+func (r *TimedCommitStatusReconciler) cleanupTimerCheck(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy) error {
+	logger := log.FromContext(ctx)
+
+	// Build a map of branches configured in the TimedCommitStatus for quick lookup
+	timedBranches := make(map[string]bool, len(tcs.Spec.Environments))
+	for _, env := range tcs.Spec.Environments {
+		timedBranches[env.Branch] = true
+	}
+
+	// Build the apply configuration to remove timer check from environments
+	psApply := acv1alpha1.PromotionStrategy(ps.Name, ps.Namespace)
+	specApply := acv1alpha1.PromotionStrategySpec()
+	envApplyConfigs := make([]*acv1alpha1.EnvironmentApplyConfiguration, 0)
+
+	for _, env := range ps.Spec.Environments {
+		// Only clean up environments that were configured in the TimedCommitStatus
+		if timedBranches[env.Branch] {
+			// Create environment config with empty activeCommitStatuses to remove the timer check
+			// Server-side apply with our field owner will remove our managed field
+			envApply := acv1alpha1.Environment().
+				WithBranch(env.Branch).
+				WithActiveCommitStatuses() // Empty slice removes the field we manage
+
+			envApplyConfigs = append(envApplyConfigs, envApply)
+		}
+	}
+
+	// Only apply if we have environments to clean up
+	if len(envApplyConfigs) > 0 {
+		specApply = specApply.WithEnvironments(envApplyConfigs...)
+		psApply = psApply.WithSpec(specApply)
+
+		// Apply using Server-Side Apply - this will remove the fields managed by our field owner
+		if err := r.Patch(ctx, ps, utils.ApplyPatch{ApplyConfig: psApply}, client.FieldOwner(constants.TimedCommitStatusControllerFieldOwner)); err != nil {
+			return fmt.Errorf("failed to cleanup timer check from PromotionStrategy: %w", err)
+		}
+
+		logger.Info("Cleaned up timer check from PromotionStrategy environments",
+			"promotionStrategy", ps.Name,
+			"cleanedEnvironments", len(envApplyConfigs))
+	}
+
+	return nil
+}
+
+// handleFinalizerCleanup handles the cleanup process when a TimedCommitStatus is being deleted.
+// It removes the auto-configured timer check from the PromotionStrategy and removes the finalizer.
+func (r *TimedCommitStatusReconciler) handleFinalizerCleanup(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus) error {
+	logger := log.FromContext(ctx)
+
+	// Only proceed if finalizer exists
+	if !controllerutil.ContainsFinalizer(tcs, promoterv1alpha1.TimedCommitStatusFinalizer) {
+		return nil
+	}
+
+	// Fetch the PromotionStrategy to clean up auto-configured fields
+	var ps promoterv1alpha1.PromotionStrategy
+	psKey := client.ObjectKey{
+		Namespace: tcs.Namespace,
+		Name:      tcs.Spec.PromotionStrategyRef.Name,
+	}
+	err := r.Get(ctx, psKey, &ps)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get PromotionStrategy during cleanup: %w", err)
+		}
+		// PromotionStrategy already deleted, just remove finalizer
+		logger.Info("PromotionStrategy not found during cleanup, removing finalizer")
+	} else {
+		// Clean up the auto-configured timer check
+		if err = r.cleanupTimerCheck(ctx, tcs, &ps); err != nil {
+			return fmt.Errorf("failed to cleanup timer check: %w", err)
+		}
+	}
+
+	// Remove finalizer
+	controllerutil.RemoveFinalizer(tcs, promoterv1alpha1.TimedCommitStatusFinalizer)
+	if err := r.Update(ctx, tcs); err != nil {
+		return fmt.Errorf("failed to remove finalizer: %w", err)
+	}
+
+	return nil
 }
 
 // touchChangeTransferPolicies triggers reconciliation of the ChangeTransferPolicies
