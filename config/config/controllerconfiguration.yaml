@@ -89,6 +89,19 @@ spec:
               fastDelay: "1s"
               slowDelay: "5m"
               maxFastAttempts: 3
+  scheduledCommitStatus:
+    workQueue:
+      maxConcurrentReconciles: 10
+      requeueDuration: "1h"
+      rateLimiter:
+        maxOf:
+          - bucket:
+              qps: 10
+              bucket: 100
+          - fastSlow:
+              fastDelay: "1s"
+              slowDelay: "5m"
+              maxFastAttempts: 3
   gitCommitStatus:
     workQueue:
       maxConcurrentReconciles: 10

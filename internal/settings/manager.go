@@ -36,6 +36,7 @@ type ControllerConfigurationTypes interface {
 		promoterv1alpha1.CommitStatusConfiguration |
 		promoterv1alpha1.ArgoCDCommitStatusConfiguration |
 		promoterv1alpha1.TimedCommitStatusConfiguration |
+		promoterv1alpha1.ScheduledCommitStatusConfiguration |
 		promoterv1alpha1.GitCommitStatusConfiguration
 }
 
@@ -279,6 +280,8 @@ func getWorkQueueForController[T ControllerConfigurationTypes](ctx context.Conte
 		return config.Spec.ArgoCDCommitStatus.WorkQueue, nil
 	case promoterv1alpha1.TimedCommitStatusConfiguration:
 		return config.Spec.TimedCommitStatus.WorkQueue, nil
+	case promoterv1alpha1.ScheduledCommitStatusConfiguration:
+		return config.Spec.ScheduledCommitStatus.WorkQueue, nil
 	case promoterv1alpha1.GitCommitStatusConfiguration:
 		return config.Spec.GitCommitStatus.WorkQueue, nil
 	default:
