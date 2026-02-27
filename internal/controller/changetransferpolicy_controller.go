@@ -101,7 +101,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
