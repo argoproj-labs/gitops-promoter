@@ -82,6 +82,26 @@ spec:
               autoMerge:
                 default: true
                 type: boolean
+              commit:
+                description: Commit contains configuration for how the pull request
+                  will be merged.
+                properties:
+                  mergeStrategy:
+                    default: merge
+                    description: |-
+                      MergeStrategy is the strategy to use when merging the pull request. Can be "merge" or "squash".
+                      Defaults to "merge" if not specified.
+                    enum:
+                    - merge
+                    - squash
+                    type: string
+                  message:
+                    description: Message is the commit message that will be written
+                      for the commit that's made when merging the PR.
+                    type: string
+                required:
+                - message
+                type: object
               gitRepositoryRef:
                 description: RepositoryReference what repository to open the PR on.
                 properties:
