@@ -115,17 +115,22 @@ gitops-promoter-demo/
 │   ├── argocd.yaml          # Argo CD self-managed Application
 │   ├── gitops-promoter.yaml # GitOps Promoter Application
 │   ├── demo-config.yaml     # Demo workloads & GitOps Promoter CRs
-│   └── cronjob.yaml         # Synthetic commit CronJob Application
+│   ├── cronjob.yaml         # Synthetic commit CronJob Application
+│   └── monitoring.yaml      # Prometheus + Grafana Application
 ├── charts/                  # Helm values overrides
 │   ├── argocd/
 │   │   └── values.yaml
-│   └── gitops-promoter/
+│   ├── gitops-promoter/
+│   │   └── values.yaml
+│   └── kube-prometheus-stack/
 │       └── values.yaml
 ├── manifests/               # Plain Kubernetes manifests not managed by Helm
 │   ├── namespaces.yaml
 │   ├── rbac.yaml
-│   └── cronjob/
-│       └── cronjob.yaml
+│   ├── cronjob/
+│   │   └── cronjob.yaml
+│   └── monitoring/
+│       └── gitops-promoter-dashboard.yaml  # Grafana dashboard ConfigMap
 ├── promoter-config/         # GitOps Promoter CRDs (GitRepository, PromotionStrategy, etc.)
 │   ├── scm-provider.yaml
 │   ├── git-repository.yaml
@@ -755,7 +760,7 @@ Add `renovate.json5` to the infrastructure repository:
   "packageRules": [
     {
       "matchManagers": ["helmv3"],
-      "matchPackageNames": ["gitops-promoter", "argo-cd"],
+      "matchPackageNames": ["gitops-promoter", "argo-cd", "kube-prometheus-stack"],
       "automerge": true
     },
     {
@@ -803,14 +808,240 @@ webhookReceiver:
       key: webhookSecret
 ```
 
-### Phase 10 — Monitoring and Alerting
+### Phase 10 — Monitoring with Prometheus and Grafana
 
-Deploy the GitOps Promoter Prometheus metrics endpoint and configure a lightweight alerting rule (e.g., via the
-Prometheus Alertmanager or a free tier of Grafana Cloud) to page the maintainers if:
+Deploy the [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack)
+Helm chart (Prometheus Operator + Grafana bundled together) via Argo CD. This is the only monitoring scope required:
+scraping GitOps Promoter controller metrics and displaying them on a publicly accessible Grafana dashboard.
 
-- The cluster becomes unreachable.
-- No promotion cycle completes within 30 minutes (indicating the CronJob or hydrator is broken).
-- Argo CD application health degrades.
+#### Step 10a — Argo CD Application
+
+Add a monitoring Application to the App of Apps:
+
+```yaml
+# apps/monitoring.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: "61.9.0"   # kept up to date by Renovate
+      helm:
+        valueFiles:
+          - $values/charts/kube-prometheus-stack/values.yaml
+    - repoURL: https://github.com/argoproj-labs/gitops-promoter-demo
+      targetRevision: HEAD
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true   # required for kube-prometheus-stack CRDs
+```
+
+#### Step 10b — Helm Values
+
+Store Grafana and Prometheus configuration in `charts/kube-prometheus-stack/values.yaml`. Grafana is exposed
+publicly (unauthenticated read-only) via an Ingress on the demo domain. Dashboards are provisioned declaratively
+from a ConfigMap so they are committed to the repository and self-heal:
+
+```yaml
+# charts/kube-prometheus-stack/values.yaml
+
+# Scope: monitor GitOps Promoter only, no node/Kubernetes metrics needed
+defaultRules:
+  create: false
+
+alertmanager:
+  enabled: false
+
+nodeExporter:
+  enabled: false
+
+kubeStateMetrics:
+  enabled: false
+
+kubeApiServer:
+  enabled: false
+
+kubelet:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeProxy:
+  enabled: false
+
+# --- Prometheus ---
+prometheus:
+  prometheusSpec:
+    # Discover ServiceMonitors in all namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelector: {}
+    retention: 7d
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+# --- Grafana ---
+grafana:
+  # Allow anonymous read-only access so visitors can see the dashboard without logging in
+  grafana.ini:
+    auth.anonymous:
+      enabled: true
+      org_role: Viewer
+    auth:
+      disable_login_form: false   # maintainers can still log in via the /login page
+    server:
+      root_url: https://grafana.gitops-promoter.io
+
+  adminPassword: ""   # set via SealedSecret (see step 10c)
+  admin:
+    existingSecret: grafana-admin-credentials
+    userKey: admin-user
+    passwordKey: admin-password
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - grafana.gitops-promoter.io
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.gitops-promoter.io
+
+  # Declaratively provision the GitOps Promoter dashboard from a ConfigMap
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+```
+
+#### Step 10c — Seal the Grafana Admin Secret
+
+```bash
+kubectl create secret generic grafana-admin-credentials \
+  --namespace monitoring \
+  --from-literal=admin-user=admin \
+  --from-literal=admin-password=<STRONG_RANDOM_PASSWORD> \
+  --dry-run=client -o yaml \
+  | kubeseal --cert /tmp/sealed-secrets-pub.pem -o yaml \
+  > manifests/grafana-admin-credentials-sealed.yaml
+
+git add manifests/grafana-admin-credentials-sealed.yaml
+git commit -m "chore: add sealed Grafana admin credentials"
+```
+
+#### Step 10d — GitOps Promoter ServiceMonitor
+
+GitOps Promoter's controller exposes a `/metrics` endpoint on port `https` of the `controller-manager-metrics-service`.
+A `ServiceMonitor` resource tells Prometheus to scrape it. Commit this to `promoter-config/`:
+
+```yaml
+# promoter-config/service-monitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gitops-promoter
+  namespace: gitops-promoter
+  labels:
+    release: monitoring   # matches the kube-prometheus-stack Helm release name
+spec:
+  endpoints:
+    - path: /metrics
+      port: https
+      scheme: https
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tlsConfig:
+        insecureSkipVerify: true
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  namespaceSelector:
+    matchNames:
+      - gitops-promoter
+```
+
+#### Step 10e — Grafana Dashboard ConfigMap
+
+Create a ConfigMap containing the dashboard JSON and label it so Grafana's sidecar picks it up automatically.
+Commit it to `manifests/monitoring/`:
+
+```yaml
+# manifests/monitoring/gitops-promoter-dashboard.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitops-promoter-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  gitops-promoter.json: |
+    {
+      "title": "GitOps Promoter",
+      "uid": "gitops-promoter",
+      "panels": [
+        {
+          "title": "SCM API Calls (rate)",
+          "type": "timeseries",
+          "targets": [{ "expr": "rate(scm_calls_total[5m])" }]
+        },
+        {
+          "title": "SCM API Call Duration (p99)",
+          "type": "timeseries",
+          "targets": [{ "expr": "histogram_quantile(0.99, rate(scm_calls_duration_seconds_bucket[5m]))" }]
+        },
+        {
+          "title": "GitHub API Rate Limit Remaining",
+          "type": "stat",
+          "targets": [{ "expr": "scm_calls_rate_limit_remaining" }]
+        },
+        {
+          "title": "Git Operations (rate)",
+          "type": "timeseries",
+          "targets": [{ "expr": "rate(git_operations_total[5m])" }]
+        },
+        {
+          "title": "Webhook Calls (rate)",
+          "type": "timeseries",
+          "targets": [{ "expr": "rate(webhook_calls_total[5m])" }]
+        }
+      ],
+      "schemaVersion": 39,
+      "version": 1
+    }
+```
+
+> [!NOTE]
+> The JSON above is illustrative. Replace it with an exported Grafana dashboard JSON that includes proper panel
+> layouts, thresholds, and time ranges. The full list of available metrics is documented in
+> [`docs/monitoring/metrics.md`](monitoring/metrics.md).
+
+Renovate automatically updates the `kube-prometheus-stack` chart version in `apps/monitoring.yaml`, keeping
+Prometheus and Grafana up to date with no manual action required.
 
 ### Phase 11 — Maintenance Documentation
 
@@ -820,6 +1051,7 @@ The infrastructure repository should include a `docs/` directory with runbooks f
 |---|---|
 | `docs/secret-rotation.md` | Step-by-step guide for rotating the GitHub App private key and updating the Sealed Secret in the cluster. Covers generating a new key, re-encrypting with `kubeseal`, committing the updated SealedSecret, and verifying the rollout. |
 | `docs/github-oauth-rotation.md` | Instructions for rotating the Dex GitHub OAuth client secret used for Argo CD SSO. |
+| `docs/grafana-password-rotation.md` | Instructions for generating a new Grafana admin password, re-sealing the `grafana-admin-credentials` secret with `kubeseal`, committing the update, and verifying Grafana can be logged into. |
 | `docs/cluster-bootstrap.md` | How to provision a brand-new EKS cluster using the ACK management cluster and bootstrap Argo CD from scratch using the root App of Apps. |
 | `docs/break-glass.md` | Procedure for obtaining temporary admin access to the cluster in an emergency (e.g., Argo CD is unreachable). |
 | `docs/renovate-troubleshooting.md` | What to do when a Renovate automerge PR fails and manual intervention is required to update a dependency. |
