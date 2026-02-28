@@ -75,6 +75,8 @@ jobs:
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
+      - name: Run Dashboard Tests
+        run: cd ui/dashboard && npm test
       - name: Run Integration Tests
         run: make test-parallel
       - name: Generate code coverage artifacts

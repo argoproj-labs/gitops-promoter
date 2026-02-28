@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "npx vite build",
@@ -10,19 +13,27 @@
     "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
     "type-check": "tsc --noEmit",
     "preview": "vite preview",
-    "build:embed": "npm run build && mkdir -p ../web/static && cp -r dist/* ../web/static/"
+    "build:embed": "npm run build && mkdir -p ../web/static && cp -r dist/* ../web/static/",
+    "test": "mocha --require ./test/register.cjs 'test/**/*.test.ts'"
   },
   "devDependencies": {
+    "@types/chai": "^5.0.0",
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "chai": "^5.0.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-react": "^7.34.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "jsdom": "^26.0.0",
+    "mocha": "^11.0.0",
+    "tsx": "^4.0.0",
     "typescript": "^5.2.2",
     "vite": "^7.1.5"
   },
