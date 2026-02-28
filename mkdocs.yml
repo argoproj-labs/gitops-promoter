@@ -47,6 +47,7 @@ nav:
   - Tutorials:
       - Argo CD Apps: tutorial-argocd-apps.md
   - Argo CD Integrations: argocd-integrations.md
+  - Demo Instance Proposal: demo-instance-proposal.md
 plugins:
   - gh-admonitions
   - redirects:
