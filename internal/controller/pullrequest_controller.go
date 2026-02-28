@@ -116,18 +116,18 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Sync state from provider
-	externallyMergedOrClosed, err := r.syncStateFromProvider(ctx, &pr, provider, found, prID, prCreationTime)
+	needsImmediateRequeue, err := r.syncStateFromProvider(ctx, &pr, provider, found, prID, prCreationTime)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	// If ExternallyMergedOrClosed was set, requeue immediately to trigger cleanup on the next reconciliation.
-	// The flow is:
-	// 1. syncStateFromProvider updates pr.Status.ExternallyMergedOrClosed to true in memory
-	// 2. We return here with RequeueAfter
-	// 3. The deferred HandleReconciliationResult persists the status update to the cluster
-	// 4. The next reconciliation sees the persisted ExternallyMergedOrClosed flag
-	// 5. cleanupTerminalStates (which runs earlier in the loop) handles deletion
-	if externallyMergedOrClosed {
+	// Requeue immediately so that the deferred HandleReconciliationResult persists the in-memory
+	// status change, then the following reconciliation's cleanupTerminalStates handles deletion.
+	// This covers two cases:
+	// 1. ExternallyMergedOrClosed was set (PR vanished on provider while spec.state was still "open")
+	// 2. The PR is gone from the provider and spec.state is a terminal state, but a prior status
+	//    update was lost (e.g. conflict error) — syncStateFromProvider sets status.state = spec.state
+	//    so cleanup can proceed once the status is persisted.
+	if needsImmediateRequeue {
 		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 	}
 
@@ -203,7 +203,9 @@ func (r *PullRequestReconciler) cleanupTerminalStates(ctx context.Context, pr *p
 }
 
 // syncStateFromProvider syncs the PullRequest state from the SCM provider.
-// Returns (externallyMergedOrClosed=true, nil) if ExternallyMergedOrClosed was set (requeue needed), (false, nil) if successful, or (false, err) on error.
+// Returns (needsImmediateRequeue=true, nil) when an in-memory status change was made that must be
+// persisted before the next reconcile can proceed (e.g. ExternallyMergedOrClosed set, or terminal
+// state recovered after a lost status update). Returns (false, nil) if no requeue is needed.
 func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *promoterv1alpha1.PullRequest, provider scms.PullRequestProvider, found bool, prID string, prCreationTime time.Time) (bool, error) {
 	logger := log.FromContext(ctx)
 
@@ -236,10 +238,20 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 			pr.Status.State = ""
 			return true, nil
 		}
-		// If spec.state is "merged" or "closed", the controller is in the process of merging/closing.
-		// The PR may not be found as "open" because it's already transitioned on the provider.
-		// This is normal - let handleStateTransitions continue to process the spec.state.
-		logger.V(4).Info("PR not found open, but controller initiated the action", "specState", pr.Spec.State)
+		// spec.state is "merged" or "closed" (controller initiated the action) and the PR is no longer
+		// open on the provider, meaning the merge/close already completed on the SCM side.
+		// If status.state doesn't yet reflect the terminal state it means a prior status update was lost
+		// (e.g. due to a resource conflict error). Treat the action as complete: set status to match spec
+		// so that cleanupTerminalStates can delete the PullRequest object after this status is persisted.
+		// Without this, handleStateTransitions would attempt to merge/close again and hit a provider error
+		// (e.g. "405 Merge already in progress"), leaving the PR object stuck and never cleaned up.
+		if pr.Status.State != pr.Spec.State {
+			logger.V(4).Info("PR not found open; controller-initiated action already completed on provider but status was not persisted — recovering terminal state",
+				"specState", pr.Spec.State, "statusState", pr.Status.State)
+			pr.Status.State = pr.Spec.State
+			return true, nil
+		}
+		logger.V(4).Info("PR not found open, controller initiated the action, status already reflects terminal state", "specState", pr.Spec.State)
 	}
 
 	return false, nil
