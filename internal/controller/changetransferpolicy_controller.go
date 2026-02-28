@@ -1180,49 +1180,62 @@ func (r *ChangeTransferPolicyReconciler) gitMergeStrategyOurs(ctx context.Contex
 	logger := log.FromContext(ctx)
 	logger.Info("Testing for conflicts and divergence between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
 
-	// First, check if the active branch is an ancestor of the proposed branch.
-	// If not, the branches have diverged (e.g., due to a squash merge on the SCM).
-	// In that case, we merge active into proposed with "ours" strategy to make active
-	// an ancestor of proposed, so future PRs only show genuinely new commits.
-	isAncestor, err := gitOperations.IsAncestor(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch)
+	// Check if the active branch is an ancestor of the proposed branch.
+	// This is the normal state where proposed has new commits on top of active.
+	activeIsAncestorOfProposed, err := gitOperations.IsAncestor(ctx, ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch)
 	if err != nil {
 		return fmt.Errorf("failed to check ancestry between branches %q and %q: %w", ctp.Spec.ActiveBranch, ctp.Spec.ProposedBranch, err)
 	}
 
-	if !isAncestor {
-		logger.Info("Branch divergence detected (possible squash merge), performing merge with 'ours' strategy",
-			"proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+	if activeIsAncestorOfProposed {
+		// Normal state: active is an ancestor of proposed. Check for content conflicts.
+		hasConflict, err := gitOperations.HasConflict(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+		if err != nil {
+			return fmt.Errorf("failed to check for conflicts between branches %q and %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+		}
+
+		if !hasConflict {
+			logger.V(4).Info("No conflicts detected between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+			return nil // No conflict, nothing to do
+		}
+
+		// If we have a conflict, perform a merge with "ours" strategy
+		logger.Info("Conflicts detected, performing merge with 'ours' strategy", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
 
 		err = gitOperations.MergeWithOursStrategy(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 		if err != nil {
-			return fmt.Errorf("failed to merge diverged branches %q and %q with 'ours' strategy: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+			return fmt.Errorf("failed to merge branches %q and %q with 'ours' strategy: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 		}
 
-		r.Recorder.Eventf(ctp, nil, "Normal", constants.ResolvedDivergenceReason, "ResolvingDivergence", constants.ResolvedDivergenceMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+		r.Recorder.Eventf(ctp, nil, "Normal", constants.ResolvedConflictReason, "ResolvingConflict", constants.ResolvedConflictMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 		return nil
 	}
 
-	// Active is an ancestor of proposed (normal state). Check for content conflicts.
-	hasConflict, err := gitOperations.HasConflict(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
+	// Active is NOT an ancestor of proposed. Check if proposed is an ancestor of active.
+	// This happens after a normal merge where active now contains proposed's changes.
+	proposedIsAncestorOfActive, err := gitOperations.IsAncestor(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	if err != nil {
-		return fmt.Errorf("failed to check for conflicts between branches %q and %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+		return fmt.Errorf("failed to check ancestry between branches %q and %q: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 	}
 
-	if !hasConflict {
-		logger.V(4).Info("No conflicts detected between branches", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
-		return nil // No conflict, nothing to do
+	if proposedIsAncestorOfActive {
+		// Normal post-merge state: proposed is an ancestor of active (active contains all of proposed's changes).
+		// Nothing to do - the next promotion cycle will update proposed with new changes.
+		logger.V(4).Info("Proposed branch is ancestor of active (normal post-merge state)", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+		return nil
 	}
 
-	// If we have a conflict, perform a merge with "ours" strategy
-	logger.Info("Conflicts detected, performing merge with 'ours' strategy", "proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
+	// Neither branch is an ancestor of the other - true divergence (e.g., squash merge on SCM).
+	// We need to merge active into proposed with "ours" strategy to reconcile the histories.
+	logger.Info("Branch divergence detected (possible squash merge), performing merge with 'ours' strategy",
+		"proposed", ctp.Spec.ProposedBranch, "active", ctp.Spec.ActiveBranch)
 
 	err = gitOperations.MergeWithOursStrategy(ctx, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	if err != nil {
-		return fmt.Errorf("failed to merge branches %q and %q with 'ours' strategy: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
+		return fmt.Errorf("failed to merge diverged branches %q and %q with 'ours' strategy: %w", ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch, err)
 	}
 
-	r.Recorder.Eventf(ctp, nil, "Normal", constants.ResolvedConflictReason, "ResolvingConflict", constants.ResolvedConflictMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
-
+	r.Recorder.Eventf(ctp, nil, "Normal", constants.ResolvedDivergenceReason, "ResolvingDivergence", constants.ResolvedDivergenceMessage, ctp.Spec.ProposedBranch, ctp.Spec.ActiveBranch)
 	return nil
 }
 
