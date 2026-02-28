@@ -18,6 +18,8 @@ To install GitOps Promoter, you can use the following command:
 kubectl apply -f https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.22.6/install.yaml
 ```
 
+Alternatively, you can install GitOps Promoter using Helm. See the [ArtifactHub page](https://artifacthub.io/packages/helm/gitops-promoter/gitops-promoter) for instructions.
+
 ## GitHub App Configuration
 
 You will need to [create a GitHub App](https://docs.github.com/en/developers/apps/creating-a-github-app) and configure
