@@ -421,6 +421,33 @@ func runCmd(ctx context.Context, gap scms.GitOperationsProvider, directory strin
 	return stdoutBuf.String(), stderrBuf.String(), nil
 }
 
+// IsAncestor checks if ancestorBranch is an ancestor of descendantBranch using git merge-base --is-ancestor.
+// Returns true if ancestorBranch is reachable from descendantBranch (normal state), false if not (e.g., after a squash merge).
+// This assumes that origin/<branch> refs are already fetched via GetBranchShas earlier in the reconcile.
+func (g *EnvironmentOperations) IsAncestor(ctx context.Context, ancestorBranch, descendantBranch string) (bool, error) {
+	logger := log.FromContext(ctx)
+	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
+	if gitPath == "" {
+		return false, fmt.Errorf("no repo path found for repo %q", g.gitRepo.Name)
+	}
+
+	_, stderr, err := g.runCmd(ctx, gitPath, "merge-base", "--is-ancestor", "origin/"+ancestorBranch, "origin/"+descendantBranch)
+	if err != nil {
+		// Exit code 1 means ancestorBranch is NOT an ancestor of descendantBranch.
+		// This is a normal condition (e.g., after a squash merge), not an error.
+		// We distinguish this from actual git errors by checking stderr for unexpected messages.
+		if stderr == "" || strings.Contains(stderr, "exit status 1") {
+			logger.V(4).Info("Branch is not an ancestor", "ancestor", ancestorBranch, "descendant", descendantBranch)
+			return false, nil
+		}
+		logger.Error(err, "could not run merge-base --is-ancestor", "ancestor", ancestorBranch, "descendant", descendantBranch, "stderr", stderr)
+		return false, fmt.Errorf("failed to check ancestry between %q and %q: %w", ancestorBranch, descendantBranch, err)
+	}
+
+	logger.V(4).Info("Branch is an ancestor", "ancestor", ancestorBranch, "descendant", descendantBranch)
+	return true, nil
+}
+
 // HasConflict checks if there is a merge conflict between the proposed branch and the active branch using git merge-tree.
 // This performs a stateless merge check without modifying the working directory. It assumes that origin/<branch> is
 // currently fetched and updated in the local repository. This should happen via GetBranchShas function earlier in the reconcile.
@@ -447,9 +474,16 @@ func (g *EnvironmentOperations) HasConflict(ctx context.Context, proposedBranch,
 	return false, nil
 }
 
-// MergeWithOursStrategy merges the proposed branch into the active branch using the "ours" strategy.
+// MergeWithOursStrategy merges the active branch into the proposed branch using the "ours" strategy.
 // This assumes that both branches have already been fetched via GetBranchShas earlier in the reconciliation,
 // ensuring we merge the exact same refs that were checked for conflicts.
+//
+// The "ours" strategy keeps the content of the proposed branch unchanged while creating a merge commit
+// that acknowledges the active branch's history. This is used to:
+// 1. Resolve branch divergence after a squash merge on the SCM
+// 2. Resolve content conflicts by keeping the proposed branch's content
+//
+// The resulting merge commit has two parents: proposed (first) and active (second).
 func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, proposedBranch, activeBranch string) error {
 	logger := log.FromContext(ctx)
 	gitPath := gitpaths.Get(g.gap.GetGitHttpsRepoUrl(*g.gitRepo) + g.activeBranch)
@@ -463,7 +497,9 @@ func (g *EnvironmentOperations) MergeWithOursStrategy(ctx context.Context, propo
 	}
 
 	// Perform the merge with "ours" strategy using the already-fetched origin ref
-	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "-s", "ours", "origin/"+activeBranch)
+	// The -m flag provides a commit message for the merge commit
+	commitMsg := fmt.Sprintf("Merge branch '%s' into %s (ours strategy)", activeBranch, proposedBranch)
+	_, stderr, err = g.runCmd(ctx, gitPath, "merge", "-s", "ours", "-m", commitMsg, "origin/"+activeBranch)
 	if err != nil {
 		logger.Error(err, "Failed to merge branch", "proposedBranch", proposedBranch, "activeBranch", activeBranch, "stderr", stderr)
 		return fmt.Errorf("failed to merge branch %q into %q with 'ours' strategy: %w", activeBranch, proposedBranch, err)

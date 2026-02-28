@@ -8,6 +8,11 @@ const (
 	// ResolvedConflictMessage is the message for a resolved conflict event.
 	ResolvedConflictMessage = "Merged %s into %s with 'ours' strategy to resolve conflicts"
 
+	// ResolvedDivergenceReason is the reason for a resolved branch divergence event (e.g., after a squash merge on the SCM).
+	ResolvedDivergenceReason = "ResolvedDivergence"
+	// ResolvedDivergenceMessage is the message for a resolved branch divergence event.
+	ResolvedDivergenceMessage = "Merged %s into %s with 'ours' strategy to resolve branch divergence (possible squash merge)"
+
 	// TooManyMatchingShaReason indicates that there are too many matching SHAs for the active or proposed commit status.
 	TooManyMatchingShaReason = "TooManyMatchingSha"
 	// TooManyMatchingShaActiveMessage is the message for too many matching SHAs for the active commit status.
