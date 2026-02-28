@@ -87,6 +87,20 @@ cluster self-heals if resources drift.
 
 ---
 
+## Prerequisites
+
+Before beginning the implementation, the following must be in place:
+
+| Prerequisite | Notes |
+|---|---|
+| **AWS account** | An `argoproj-labs` AWS account (or dedicated sub-account). Requires IAM permissions to manage VPCs, EKS clusters, IAM roles, and Route 53 records. |
+| **Route 53 hosted zone** | A hosted zone for the demo domain (e.g. `gitops-promoter.io`) in the target AWS account. The domain registrar's nameservers must point at this hosted zone so that cert-manager can solve DNS-01 ACME challenges automatically. |
+| **GitHub org access** | Admin access to `argoproj-labs` to create repositories, a GitHub App, and a GitHub OAuth App. |
+| **GitHub team** | A `gitops-promoter-maintainers` team in `argoproj-labs` whose members receive Argo CD write access. |
+| **Local tools** | `kubectl`, `helm` (≥ 3.x), `aws` CLI configured with credentials for the target account, `kubeseal` (matching the Sealed Secrets controller version installed in the cluster), `git`, and `kind` (used to bootstrap the ACK management cluster). |
+
+---
+
 ## Implementation Plan
 
 ### Phase 1 — Infrastructure Repository
@@ -123,6 +137,10 @@ gitops-promoter-demo/
 ├── demo-dry/                # (or a separate repo) DRY branch source configs
 │   └── app/
 │       └── Chart.yaml       # Trivial Helm chart representing the demo app
+├── infra/                   # ACK manifests for EKS cluster
+│   ├── cluster.yaml         # ACK EKS Cluster CR
+│   ├── nodegroup.yaml       # ACK EKS ManagedNodeGroup CR
+│   └── vpc.yaml             # ACK EC2 VPC, Subnet, and InternetGateway CRs
 ├── renovate.json5
 └── README.md
 ```
@@ -140,10 +158,9 @@ Prefer Kubernetes controllers over imperative scripts wherever possible:
 
 - **Cluster provisioning** — Use
   [AWS Controllers for Kubernetes (ACK)](https://aws-controllers-k8s.github.io/community/) with the EKS and EC2
-  service controllers to declare and reconcile the EKS cluster itself as Kubernetes resources. ACK runs on a small,
-  long-lived management cluster (or even a local `kind` cluster used only for bootstrapping). The `Cluster` and
-  `NodeGroup` manifests are committed to the infrastructure repository and ACK keeps the real cluster in sync with
-  them, making the cluster fully re-creatable without any imperative tooling.
+  service controllers to declare and reconcile the EKS cluster itself as Kubernetes resources. The cluster manifests
+  are committed to the infrastructure repository under `infra/` and ACK keeps the real cluster in sync with them,
+  making the cluster fully re-creatable without any imperative tooling.
 - **TLS certificates** — Install [cert-manager](https://cert-manager.io/) with the Route 53 DNS solver. A single
   `Certificate` CR issues a wildcard certificate for the demo domain; cert-manager renews it automatically.
 - **Ingress** — Deploy the [ingress-nginx](https://kubernetes.github.io/ingress-nginx/) controller via its Helm chart
@@ -151,7 +168,132 @@ Prefer Kubernetes controllers over imperative scripts wherever possible:
 - **Secrets** — [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) (already planned for Phase 4) is
   deployed as a Kubernetes controller and manages all sensitive values declaratively.
 
+#### One-Time ACK Bootstrap
+
+ACK itself needs a cluster to run on before it can create the target EKS cluster. Use a temporary local `kind`
+cluster as the management cluster:
+
+```bash
+# 1. Create a local management cluster
+kind create cluster --name ack-bootstrap
+
+# 2. Create an IAM user or role for ACK and export credentials
+export AWS_ACCESS_KEY_ID=...
+export AWS_SECRET_ACCESS_KEY=...
+export AWS_REGION=us-east-1   # choose the deployment region
+
+# 3. Install the ACK EKS and EC2 service controllers
+helm install ack-eks-controller \
+  oci://public.ecr.aws/aws-controllers-k8s/eks-chart \
+  --namespace ack-system --create-namespace \
+  --set aws.region=$AWS_REGION
+
+helm install ack-ec2-controller \
+  oci://public.ecr.aws/aws-controllers-k8s/ec2-chart \
+  --namespace ack-system \
+  --set aws.region=$AWS_REGION
+
+# 4. Apply the infra/ manifests (VPC first, then the cluster and node group)
+kubectl apply -f infra/vpc.yaml
+kubectl wait --for=condition=ACK.ResourceSynced vpc/demo-vpc --timeout=120s
+
+kubectl apply -f infra/cluster.yaml
+kubectl wait --for=condition=ACK.ResourceSynced cluster/gitops-promoter-demo --timeout=15m
+
+kubectl apply -f infra/nodegroup.yaml
+kubectl wait --for=condition=ACK.ResourceSynced managednodegroup/demo-nodes --timeout=10m
+
+# 5. Retrieve kubeconfig for the new EKS cluster
+aws eks update-kubeconfig --name gitops-promoter-demo --region $AWS_REGION
+
+# 6. Tear down the temporary management cluster
+kind delete cluster --name ack-bootstrap
+```
+
+The `infra/` manifests should specify the VPC CIDR, subnets (at least two availability zones for EKS), the
+Kubernetes version, and the node group instance type and desired capacity. Store the AWS region and cluster name
+as comments or a README in the `infra/` directory so they are easy to find during disaster recovery.
+
+> [!NOTE]
+> For future cluster changes (Kubernetes version upgrades, node group scaling), re-run the ACK bootstrap process
+> from a fresh `kind` cluster, apply the updated `infra/` manifests, and tear down the `kind` cluster when done.
+
 ### Phase 3 — Bootstrap Argo CD
+
+#### Step 3a — Create a GitHub OAuth App for Argo CD SSO
+
+In the `argoproj-labs` GitHub organisation settings, create a new OAuth App:
+
+| Field | Value |
+|---|---|
+| Application name | `GitOps Promoter Demo` |
+| Homepage URL | `https://demo.gitops-promoter.io` |
+| Authorization callback URL | `https://demo.gitops-promoter.io/api/dex/callback` |
+
+Note the generated **Client ID** and **Client Secret** — they are needed when creating the Sealed Secret in
+Step 3c.
+
+#### Step 3b — Install Prerequisites
+
+Before Argo CD is installed, the following controllers must be running:
+
+```bash
+# cert-manager (for TLS certificates)
+helm upgrade --install cert-manager jetstack/cert-manager \
+  --namespace cert-manager --create-namespace \
+  --set installCRDs=true
+
+# Create a ClusterIssuer for Let's Encrypt (DNS-01 via Route 53)
+kubectl apply -f - <<EOF
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: maintainers@argoproj-labs.io   # replace with actual address
+    privateKeySecretRef:
+      name: letsencrypt-prod
+    solvers:
+      - dns01:
+          route53:
+            region: us-east-1
+            hostedZoneID: <HOSTED_ZONE_ID>
+EOF
+
+# ingress-nginx
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx --create-namespace
+
+# Sealed Secrets controller
+helm upgrade --install sealed-secrets sealed-secrets/sealed-secrets \
+  --namespace kube-system
+```
+
+#### Step 3c — Seal Initial Secrets
+
+With Sealed Secrets running, fetch the controller's public key and seal the two secrets Argo CD needs:
+
+```bash
+# Fetch the public key (needed for offline sealing)
+kubeseal --fetch-cert > /tmp/sealed-secrets-pub.pem
+
+# Seal the Dex GitHub OAuth secret
+kubectl create secret generic argocd-dex-github-oauth \
+  --namespace argocd \
+  --from-literal=clientID=<OAUTH_CLIENT_ID> \
+  --from-literal=clientSecret=<OAUTH_CLIENT_SECRET> \
+  --dry-run=client -o yaml \
+  | kubeseal --cert /tmp/sealed-secrets-pub.pem -o yaml \
+  > manifests/argocd-dex-github-oauth-sealed.yaml
+
+# Commit the SealedSecret (plaintext values are never stored)
+git add manifests/argocd-dex-github-oauth-sealed.yaml
+git commit -m "chore: add sealed Dex OAuth secret"
+```
+
+#### Step 3d — Install Argo CD
 
 Install Argo CD into the cluster using its Helm chart:
 
@@ -205,9 +347,52 @@ configs:
 Install the GitOps Promoter Argo CD extension. The extension sidecar or backend service should be deployed alongside
 Argo CD.
 
+Once Argo CD is running, apply the root App of Apps to hand off all remaining resource management to Argo CD:
+
+```bash
+kubectl apply -f apps/root-app.yaml
+```
+
+From this point on, all changes to the cluster are made by editing files in the repository and letting Argo CD
+reconcile them.
+
 ### Phase 4 — Install GitOps Promoter
 
-Create the Argo CD Application that manages GitOps Promoter via its Helm chart:
+#### Step 4a — Create the GitHub App
+
+In the `argoproj-labs` GitHub organisation settings, create a new GitHub App with the following permissions:
+
+| Permission | Level |
+|---|---|
+| `Contents` | Read and write |
+| `Pull requests` | Read and write |
+| `Checks` | Read and write |
+
+Install the App on the `gitops-promoter-demo-config` repository only. After installation:
+
+1. Note the **App ID** shown on the App's settings page.
+2. Note the **Installation ID** from the URL when viewing the installation
+   (`https://github.com/organizations/argoproj-labs/settings/installations/<installation-id>`).
+3. Generate and download a **private key** (`.pem` file) from the App's settings page.
+
+#### Step 4b — Seal the GitHub App Secret
+
+```bash
+kubectl create secret generic github-app-credentials \
+  --namespace gitops-promoter \
+  --from-file=githubAppPrivateKey=<path-to-private-key.pem> \
+  --dry-run=client -o yaml \
+  | kubeseal --cert /tmp/sealed-secrets-pub.pem -o yaml \
+  > manifests/github-app-credentials-sealed.yaml
+
+git add manifests/github-app-credentials-sealed.yaml
+git commit -m "chore: add sealed GitHub App credentials"
+```
+
+#### Step 4c — Deploy GitOps Promoter via Argo CD
+
+Create the Argo CD Application that manages GitOps Promoter via its Helm chart. This is a multi-source Application
+that pulls chart values from the infrastructure repository:
 
 ```yaml
 # apps/gitops-promoter.yaml
@@ -218,13 +403,16 @@ metadata:
   namespace: argocd
 spec:
   project: default
-  source:
-    repoURL: https://argoproj-labs.github.io/gitops-promoter
-    chart: gitops-promoter
-    targetRevision: "0.22.6"   # kept up to date by Renovate
-    helm:
-      valueFiles:
-        - $values/charts/gitops-promoter/values.yaml
+  sources:
+    - repoURL: https://argoproj-labs.github.io/gitops-promoter
+      chart: gitops-promoter
+      targetRevision: "0.22.6"   # kept up to date by Renovate
+      helm:
+        valueFiles:
+          - $values/charts/gitops-promoter/values.yaml
+    - repoURL: https://github.com/argoproj-labs/gitops-promoter-demo
+      targetRevision: HEAD
+      ref: values   # makes this source available as $values in the first source
   destination:
     server: https://kubernetes.default.svc
     namespace: gitops-promoter
@@ -248,7 +436,8 @@ webhookReceiver:
 
 Store SCM credentials (GitHub App private key, App ID, installation ID) and Dex OAuth secrets in Kubernetes Secrets
 managed by [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) so they are safe to commit to the
-infrastructure repository in encrypted form.
+infrastructure repository in encrypted form. See Phase 7 for the complete `kubeseal` command that creates the
+`github-app-credentials` SealedSecret used by both GitOps Promoter and the CronJob.
 
 ### Phase 5 — Demo Workload Repository
 
@@ -264,6 +453,24 @@ gitops-promoter-demo-config/  (main branch — DRY)
         └── deployment.yaml  # trivial nginx or similar
 ```
 
+#### Initialize the Branch Structure
+
+The environment branches must exist before GitOps Promoter and the Argo CD Source Hydrator will work. Create them
+as empty branches from `main`:
+
+```bash
+git clone https://github.com/argoproj-labs/gitops-promoter-demo-config
+cd gitops-promoter-demo-config
+
+for branch in env/dev/next env/dev/live env/staging/next env/staging/live env/production/next env/production/live; do
+  git checkout --orphan "$branch"
+  git rm -rf .
+  git commit --allow-empty -m "chore: initialize $branch"
+  git push origin "$branch"
+  git checkout main
+done
+```
+
 Branches in this repository:
 
 | Branch | Purpose |
@@ -277,11 +484,63 @@ Branches in this repository:
 | `env/production/live` | Production live branch |
 
 The [Argo CD Source Hydrator](https://argo-cd.readthedocs.io/en/stable/user-guide/source-hydrator/) is configured for
-each environment to produce hydrated commits from `main` → `env/*/next`.
+each environment to produce hydrated commits from `main` → `env/*/next`. Each environment needs an Argo CD
+`Application` that uses `sourceHydrator` to hydrate DRY source and sync from the live branch. Commit these
+Application manifests to the infrastructure repository under `manifests/apps/`:
+
+```yaml
+# manifests/apps/demo-dev.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-dev
+  namespace: argocd
+  labels:
+    app-name: demo   # used by ArgoCDCommitStatus selector
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo-dev
+  sourceHydrator:
+    drySource:
+      repoURL: https://github.com/argoproj-labs/gitops-promoter-demo-config
+      path: app
+      targetRevision: main
+    hydrateTo:
+      targetBranch: env/dev/next
+    syncSource:
+      targetBranch: env/dev/live
+      path: app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+```
+
+Repeat with `demo-staging` (using `env/staging/next` / `env/staging/live`) and `demo-production` (using
+`env/production/next` / `env/production/live`), adjusting the namespace and branch names accordingly.
 
 ### Phase 6 — GitOps Promoter Configuration
 
 Define the core GitOps Promoter CRDs in `promoter-config/`:
+
+**`scm-provider.yaml`**
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ScmProvider
+metadata:
+  name: demo-scm
+  namespace: gitops-promoter
+spec:
+  github:
+    appID: 12345          # replace with actual App ID
+    # installationID is optional; omit to auto-discover from repo owner
+  secretRef:
+    name: github-app-credentials  # SealedSecret created in Phase 4b
+```
 
 **`git-repository.yaml`**
 ```yaml
@@ -292,12 +551,11 @@ metadata:
   namespace: gitops-promoter
 spec:
   github:
-    appID: "<app-id>"
-    installationID: "<installation-id>"
     owner: argoproj-labs
     name: gitops-promoter-demo-config
-  secretRef:
-    name: github-app-credentials
+  scmProviderRef:
+    kind: ScmProvider
+    name: demo-scm
 ```
 
 **`promotion-strategy.yaml`**
@@ -328,6 +586,7 @@ spec:
 
 **`commit-statuses/argocd-commit-status.yaml`**
 ```yaml
+# Gates staging promotion: dev app must be Healthy+Synced
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: ArgoCDCommitStatus
 metadata:
@@ -336,22 +595,67 @@ metadata:
 spec:
   promotionStrategyRef:
     name: demo
-  environmentBranch: env/dev/live
-  argocdApp:
-    name: demo-dev
-    namespace: argocd
+  applicationSelector:
+    matchLabels:
+      app-name: demo
+---
+# Gates production promotion: staging app must be Healthy+Synced
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: ArgoCDCommitStatus
+metadata:
+  name: argocd-staging-healthy
+  namespace: gitops-promoter
+spec:
+  promotionStrategyRef:
+    name: demo
+  applicationSelector:
+    matchLabels:
+      app-name: demo
 ```
 
-**`commit-statuses/timed-commit-status.yaml`** — uses the built-in `TimedCommitStatus` to require a five-minute soak
-before promoting to the next environment.
+> [!NOTE]
+> GitOps Promoter needs permission to read Argo CD `Application` resources. Create a `ClusterRole` and
+> `ClusterRoleBinding` granting the `gitops-promoter-controller-manager` ServiceAccount `get`/`list`/`watch` on
+> `argoproj.io` `applications`.
 
-**`commit-statuses/git-commit-status.yaml`** — uses the built-in `GitCommitStatus` to verify that the hydrated commit
-message matches the expected format (e.g., contains the DRY SHA reference placed there by the hydrator).
+**`commit-statuses/timed-commit-status.yaml`**
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: TimedCommitStatus
+metadata:
+  name: timed-5m
+  namespace: gitops-promoter
+spec:
+  promotionStrategyRef:
+    name: demo
+  environments:
+    - branch: env/staging/live
+      duration: 5m
+    - branch: env/production/live
+      duration: 5m
+```
+
+**`commit-statuses/git-commit-status.yaml`**
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: GitCommitStatus
+metadata:
+  name: git-commit-check
+  namespace: gitops-promoter
+spec:
+  promotionStrategyRef:
+    name: demo
+  key: git-commit-check
+  description: "Commit subject must start with 'chore:'"
+  target: proposed
+  expression: 'Commit.Subject.startsWith("chore:")'
+```
 
 ### Phase 7 — Synthetic Commit CronJob
 
 A Kubernetes CronJob runs every ten minutes and makes a trivial change to the DRY branch to trigger a new promotion
-cycle:
+cycle. Because GitHub App installation tokens are short-lived (≤ 1 hour), an init container generates a fresh token
+before each run and writes it to a shared `emptyDir` volume:
 
 ```yaml
 apiVersion: batch/v1
@@ -366,6 +670,41 @@ spec:
       template:
         spec:
           serviceAccountName: demo-promoter
+          volumes:
+            - name: token
+              emptyDir: {}
+            - name: app-credentials
+              secret:
+                secretName: github-app-credentials
+          initContainers:
+            - name: generate-token
+              image: alpine:3.20   # kept up to date by Renovate
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  apk add --no-cache curl openssl
+                  APP_ID=$(cat /secrets/githubAppID)
+                  INSTALL_ID=$(cat /secrets/githubAppInstallationID)
+                  NOW=$(date +%s); EXP=$((NOW + 540))
+                  HEADER=$(printf '{"alg":"RS256","typ":"JWT"}' | base64 | tr -d '=' | tr '+/' '-_')
+                  PAYLOAD=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$NOW" "$EXP" "$APP_ID" | base64 | tr -d '=' | tr '+/' '-_')
+                  SIG=$(printf '%s.%s' "$HEADER" "$PAYLOAD" \
+                    | openssl dgst -binary -sha256 -sign /secrets/githubAppPrivateKey \
+                    | base64 | tr -d '=' | tr '+/' '-_')
+                  JWT="$HEADER.$PAYLOAD.$SIG"
+                  curl -sf -X POST \
+                    -H "Authorization: Bearer $JWT" \
+                    -H "Accept: application/vnd.github.v3+json" \
+                    "https://api.github.com/app/installations/$INSTALL_ID/access_tokens" \
+                    | grep -o '"token":"[^"]*"' | cut -d'"' -f4 \
+                    > /token/GITHUB_TOKEN
+              volumeMounts:
+                - name: app-credentials
+                  mountPath: /secrets
+                  readOnly: true
+                - name: token
+                  mountPath: /token
           containers:
             - name: git
               image: alpine/git:2.45.2   # kept up to date by Renovate
@@ -373,7 +712,8 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  git clone https://x-access-token:$(GITHUB_TOKEN)@github.com/argoproj-labs/gitops-promoter-demo-config /work
+                  export GITHUB_TOKEN=$(cat /token/GITHUB_TOKEN)
+                  git clone https://x-access-token:${GITHUB_TOKEN}@github.com/argoproj-labs/gitops-promoter-demo-config /work
                   cd /work
                   git config user.email "demo-bot@gitops-promoter.io"
                   git config user.name "Demo Bot"
@@ -381,18 +721,26 @@ spec:
                   git add timestamp.txt
                   git commit -m "chore: automated demo cycle $(date -u +%Y-%m-%dT%H:%M:%SZ)"
                   git push origin main
-              env:
-                - name: GITHUB_TOKEN
-                  valueFrom:
-                    secretKeyRef:
-                      name: github-app-credentials
-                      key: token
+              volumeMounts:
+                - name: token
+                  mountPath: /token
+                  readOnly: true
           restartPolicy: OnFailure
 ```
 
-> [!NOTE]
-> The CronJob uses a short-lived GitHub App installation token (generated by a small init container or a token
-> vending sidecar) rather than a long-lived personal access token.
+The `github-app-credentials` Secret must contain three keys: `githubAppPrivateKey` (the PEM private key),
+`githubAppID`, and `githubAppInstallationID`. Seal all three together in one SealedSecret:
+
+```bash
+kubectl create secret generic github-app-credentials \
+  --namespace gitops-promoter \
+  --from-file=githubAppPrivateKey=<path-to-private-key.pem> \
+  --from-literal=githubAppID=<APP_ID> \
+  --from-literal=githubAppInstallationID=<INSTALLATION_ID> \
+  --dry-run=client -o yaml \
+  | kubeseal --cert /tmp/sealed-secrets-pub.pem -o yaml \
+  > manifests/github-app-credentials-sealed.yaml
+```
 
 ### Phase 8 — Renovate Configuration
 
@@ -423,9 +771,37 @@ Enable the [Renovate GitHub App](https://github.com/apps/renovate) on the infras
 
 ### Phase 9 — Webhook Integration
 
-Configure a GitHub App webhook pointing at the GitOps Promoter webhook receiver Ingress
-(`https://promoter-webhook.gitops-promoter.io/`). This ensures promotion PRs are opened within seconds of a new
-hydrated commit arriving, rather than waiting for the next reconcile loop.
+Configure the GitHub App's webhook to point at the GitOps Promoter webhook receiver Ingress. This ensures
+promotion PRs are opened within seconds of a new hydrated commit arriving, rather than waiting for the next
+reconcile loop.
+
+In the GitHub App settings, set:
+
+| Field | Value |
+|---|---|
+| Webhook URL | `https://promoter-webhook.gitops-promoter.io/` |
+| Webhook secret | A random string (store in a SealedSecret as `webhookSecret` in the `gitops-promoter` namespace) |
+| SSL verification | Enabled |
+
+Subscribe to the following events:
+
+- **Push** — triggers hydration when a new commit lands on `main`
+- **Pull request** — updates promotion PR status when a PR is opened, closed, or merged
+- **Check run** / **Check suite** — required if commit status checks are surfaced as GitHub Checks
+
+Configure GitOps Promoter to verify the webhook secret by setting `webhookSecret.secretRef` in
+`charts/gitops-promoter/values.yaml`:
+
+```yaml
+webhookReceiver:
+  ingress:
+    enabled: true
+    hostname: promoter-webhook.gitops-promoter.io
+  webhookSecret:
+    secretRef:
+      name: promoter-webhook-secret
+      key: webhookSecret
+```
 
 ### Phase 10 — Monitoring and Alerting
 
