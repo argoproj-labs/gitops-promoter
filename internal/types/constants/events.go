@@ -11,7 +11,7 @@ const (
 	// ResolvedDivergenceReason is the reason for a resolved branch divergence event (e.g., after a squash merge on the SCM).
 	ResolvedDivergenceReason = "ResolvedDivergence"
 	// ResolvedDivergenceMessage is the message for a resolved branch divergence event.
-	ResolvedDivergenceMessage = "Merged %s into %s with 'ours' strategy to resolve branch divergence (possible squash merge)"
+	ResolvedDivergenceMessage = "Rewrote proposed branch %s onto active branch %s to resolve branch divergence (possible squash merge)"
 
 	// TooManyMatchingShaReason indicates that there are too many matching SHAs for the active or proposed commit status.
 	TooManyMatchingShaReason = "TooManyMatchingSha"
