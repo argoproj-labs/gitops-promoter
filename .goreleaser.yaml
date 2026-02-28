@@ -113,6 +113,12 @@ release:
   footer: |
     **Full Changelog**: https://github.com/argoproj-labs/gitops-promoter/compare/{{ .PreviousTag }}...{{ .Tag }}
 
+    ---
+
+    If you're using GitOps Promoter, please add yourself to [USERS.md](https://github.com/argoproj-labs/gitops-promoter/blob/main/USERS.md)!
+
+    If you're evaluating GitOps Promoter, we'd love to hear from you — please [open a discussion](https://github.com/argoproj-labs/gitops-promoter/discussions) to share your feedback.
+
 changelog:
   use:
     github

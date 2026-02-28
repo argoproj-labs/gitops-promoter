@@ -50,3 +50,9 @@ spec:
 
 The project is currently experimental, please use with caution. See the 
 [docs site](https://gitops-promoter.readthedocs.io/en/latest/getting-started/) for setup instructions.
+
+## Users
+
+If you're using GitOps Promoter, please add yourself to [USERS.md](USERS.md)!
+
+If you're evaluating GitOps Promoter, we'd love to hear from you — please [open a discussion](https://github.com/argoproj-labs/gitops-promoter/discussions) to share your feedback.
