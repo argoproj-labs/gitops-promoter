@@ -46,6 +46,11 @@ real-time.
 The demo repository should define at least three environments, for example `dev`, `staging`, and `production`. Each
 environment has its own Staging branch and Live branch. Visitors can see PRs opened and merged in sequence.
 
+> [!NOTE]
+> The project already ships demo manifests used by the `gitops-promoter demo` CLI command (see `cmd/demo/manifests/`).
+> Those manifests may serve as a starting point for the hosted demo configuration. Changes to the hosted demo config and
+> the CLI demo manifests should be kept in sync to avoid divergence.
+
 ### 4. Commit Status Managers
 
 The demo should exercise as many built-in commit-status controllers as possible:
@@ -54,7 +59,7 @@ The demo should exercise as many built-in commit-status controllers as possible:
 |---|---|
 | **Argo CD** | Gates promotion on the Argo CD application reaching `Healthy + Synced` in the previous environment. |
 | **Timed** | Enforces a mandatory wait (e.g., five minutes) between environment promotions. |
-| **Git Commit** | Verifies that specific files are present in the hydrated commit before allowing promotion. |
+| **Git Commit** | Verifies that the hydrated commit message matches the expected format before allowing promotion. |
 
 ### 5. Helm Chart Deployment
 
@@ -128,19 +133,23 @@ keeping the cluster config separate from the workload config.
 
 ### Phase 2 — Kubernetes Cluster
 
-Provision a small, cost-efficient Kubernetes cluster. Suggested options:
+Run the demo on **EKS (Amazon Elastic Kubernetes Service)**. A managed node group with two `t3.medium` nodes is
+sufficient for the demo workloads.
 
-| Provider | Recommended Tier |
-|---|---|
-| AWS EKS | `t3.medium` × 2 nodes |
-| GCP GKE Autopilot | — |
-| Hetzner Cloud + k3s | `CX21` × 3 nodes (lowest cost) |
+Prefer Kubernetes controllers over imperative scripts wherever possible:
 
-Cluster provisioning should be automated with Terraform or Pulumi, stored in the infrastructure repository under an
-`infra/` directory. This makes the cluster fully re-creatable if it needs to be torn down.
-
-A wildcard TLS certificate (e.g., via cert-manager + Let's Encrypt) should be issued so both the Argo CD UI and any
-demo webhook receivers get HTTPS automatically.
+- **Cluster provisioning** — Use
+  [Cluster API with the AWS provider (CAPA)](https://cluster-api-aws.sigs.k8s.io/) to declare and reconcile the EKS
+  cluster itself as Kubernetes resources. CAPA runs on a small, long-lived management cluster (or even a local
+  `kind` cluster used only for bootstrapping). The `AWSManagedControlPlane` and `MachinePool` manifests are committed
+  to the infrastructure repository and CAPA keeps the real cluster in sync with them, making the cluster fully
+  re-creatable without any imperative tooling.
+- **TLS certificates** — Install [cert-manager](https://cert-manager.io/) with the Route 53 DNS solver. A single
+  `Certificate` CR issues a wildcard certificate for the demo domain; cert-manager renews it automatically.
+- **Ingress** — Deploy the [ingress-nginx](https://kubernetes.github.io/ingress-nginx/) controller via its Helm chart
+  (managed by Argo CD). All `Ingress` resources are declared in the infrastructure repository.
+- **Secrets** — [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) (already planned for Phase 4) is
+  deployed as a Kubernetes controller and manages all sensitive values declaratively.
 
 ### Phase 3 — Bootstrap Argo CD
 
@@ -167,8 +176,24 @@ configs:
   params:
     server.disable.auth: false
   rbac:
-    policy.default: role:readonly  # public gets read-only
+    policy.default: role:readonly  # unauthenticated public gets read-only
+    policy.csv: |
+      # Maintainers of argoproj-labs/gitops-promoter get write access
+      g, argoproj-labs:gitops-promoter-maintainers, role:admin
   cm:
+    # GitHub SSO — maintainers log in with their GitHub accounts
+    dex.config: |
+      connectors:
+        - type: github
+          id: github
+          name: GitHub
+          config:
+            clientID: $dex.github.clientID
+            clientSecret: $dex.github.clientSecret
+            orgs:
+              - name: argoproj-labs
+                teams:
+                  - gitops-promoter-maintainers
     extension.config: |
       extensions:
         - name: gitops-promoter
@@ -221,8 +246,9 @@ webhookReceiver:
     hostname: promoter-webhook.gitops-promoter.io
 ```
 
-Store SCM credentials (GitHub App private key, App ID, installation ID) in a Kubernetes Secret created out-of-band
-(e.g., via Sealed Secrets or External Secrets Operator) so they are never committed in plaintext.
+Store SCM credentials (GitHub App private key, App ID, installation ID) and Dex OAuth secrets in Kubernetes Secrets
+managed by [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) so they are safe to commit to the
+infrastructure repository in encrypted form.
 
 ### Phase 5 — Demo Workload Repository
 
@@ -319,8 +345,8 @@ spec:
 **`commit-statuses/timed-commit-status.yaml`** — uses the built-in `TimedCommitStatus` to require a five-minute soak
 before promoting to the next environment.
 
-**`commit-statuses/git-commit-status.yaml`** — uses the built-in `GitCommitStatus` to verify that the hydrator placed
-the expected `hydrator.metadata` file in the hydrated commit.
+**`commit-statuses/git-commit-status.yaml`** — uses the built-in `GitCommitStatus` to verify that the hydrated commit
+message matches the expected format (e.g., contains the DRY SHA reference placed there by the hydrator).
 
 ### Phase 7 — Synthetic Commit CronJob
 
@@ -410,6 +436,20 @@ Prometheus Alertmanager or a free tier of Grafana Cloud) to page the maintainers
 - No promotion cycle completes within 30 minutes (indicating the CronJob or hydrator is broken).
 - Argo CD application health degrades.
 
+### Phase 11 — Maintenance Documentation
+
+The infrastructure repository should include a `docs/` directory with runbooks for routine operational tasks:
+
+| Document | Contents |
+|---|---|
+| `docs/secret-rotation.md` | Step-by-step guide for rotating the GitHub App private key and updating the Sealed Secret in the cluster. Covers generating a new key, re-encrypting with `kubeseal`, committing the updated SealedSecret, and verifying the rollout. |
+| `docs/github-oauth-rotation.md` | Instructions for rotating the Dex GitHub OAuth client secret used for Argo CD SSO. |
+| `docs/cluster-bootstrap.md` | How to provision a brand-new EKS cluster using the Cluster API management cluster and bootstrap Argo CD from scratch using the root App of Apps. |
+| `docs/break-glass.md` | Procedure for obtaining temporary admin access to the cluster in an emergency (e.g., Argo CD is unreachable). |
+| `docs/renovate-troubleshooting.md` | What to do when a Renovate automerge PR fails and manual intervention is required to update a dependency. |
+
+These documents should be reviewed and updated whenever the corresponding infrastructure changes.
+
 ---
 
 ## Security Considerations
@@ -417,7 +457,7 @@ Prometheus Alertmanager or a free tier of Grafana Cloud) to page the maintainers
 | Risk | Mitigation |
 |---|---|
 | Public users performing destructive Argo CD actions | `role:readonly` is set as the Argo CD default policy; no write permissions are granted to unauthenticated users. |
-| Exposed Git credentials in CronJob | Credentials are stored in Kubernetes Secrets (managed via Sealed Secrets or External Secrets Operator) and never committed to the repository. |
+| Exposed Git credentials in CronJob | Credentials are stored in Sealed Secrets and never committed in plaintext. |
 | Cluster over-privilege | The CronJob ServiceAccount is limited to the `gitops-promoter` namespace with minimal RBAC. |
 | Unintended public writes to demo config repo | The GitHub App is scoped to the demo config repository only, and only the CronJob automation uses it for commits. |
 
@@ -425,9 +465,8 @@ Prometheus Alertmanager or a free tier of Grafana Cloud) to page the maintainers
 
 ## Cost Estimate
 
-Running the demo on a small Hetzner Cloud k3s cluster is estimated at approximately **€15–30 per month** for three
-`CX21` nodes (2 vCPU, 4 GB RAM each). Larger managed Kubernetes options (EKS, GKE) will cost more but reduce
-operational overhead.
+Running the demo on EKS with two `t3.medium` nodes is estimated at approximately **$70–100 per month** (On-Demand
+pricing). Switching to Reserved Instances or Savings Plans can reduce this by 30–40%.
 
 ---
 
@@ -444,9 +483,3 @@ operational overhead.
 
 1. **Domain name.** Should the demo live at `demo.gitops-promoter.io` or under the `argoproj-labs` DNS? Who controls
    DNS for the project?
-2. **Cloud provider.** Should we prefer a provider that existing maintainers already have credits or accounts with?
-3. **GitHub App ownership.** Should the GitHub App be owned by the `argoproj-labs` organisation or a dedicated bot
-   account?
-4. **Secrets management backend.** Is there a preferred tool for secrets in `argoproj-labs` clusters (Sealed Secrets,
-   External Secrets, Vault)?
-5. **Access for maintainers.** How many maintainers need cluster admin access, and how will credentials be distributed?
