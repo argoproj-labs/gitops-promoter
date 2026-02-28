@@ -139,11 +139,11 @@ sufficient for the demo workloads.
 Prefer Kubernetes controllers over imperative scripts wherever possible:
 
 - **Cluster provisioning** — Use
-  [Cluster API with the AWS provider (CAPA)](https://cluster-api-aws.sigs.k8s.io/) to declare and reconcile the EKS
-  cluster itself as Kubernetes resources. CAPA runs on a small, long-lived management cluster (or even a local
-  `kind` cluster used only for bootstrapping). The `AWSManagedControlPlane` and `MachinePool` manifests are committed
-  to the infrastructure repository and CAPA keeps the real cluster in sync with them, making the cluster fully
-  re-creatable without any imperative tooling.
+  [AWS Controllers for Kubernetes (ACK)](https://aws-controllers-k8s.github.io/community/) with the EKS and EC2
+  service controllers to declare and reconcile the EKS cluster itself as Kubernetes resources. ACK runs on a small,
+  long-lived management cluster (or even a local `kind` cluster used only for bootstrapping). The `Cluster` and
+  `NodeGroup` manifests are committed to the infrastructure repository and ACK keeps the real cluster in sync with
+  them, making the cluster fully re-creatable without any imperative tooling.
 - **TLS certificates** — Install [cert-manager](https://cert-manager.io/) with the Route 53 DNS solver. A single
   `Certificate` CR issues a wildcard certificate for the demo domain; cert-manager renews it automatically.
 - **Ingress** — Deploy the [ingress-nginx](https://kubernetes.github.io/ingress-nginx/) controller via its Helm chart
@@ -444,7 +444,7 @@ The infrastructure repository should include a `docs/` directory with runbooks f
 |---|---|
 | `docs/secret-rotation.md` | Step-by-step guide for rotating the GitHub App private key and updating the Sealed Secret in the cluster. Covers generating a new key, re-encrypting with `kubeseal`, committing the updated SealedSecret, and verifying the rollout. |
 | `docs/github-oauth-rotation.md` | Instructions for rotating the Dex GitHub OAuth client secret used for Argo CD SSO. |
-| `docs/cluster-bootstrap.md` | How to provision a brand-new EKS cluster using the Cluster API management cluster and bootstrap Argo CD from scratch using the root App of Apps. |
+| `docs/cluster-bootstrap.md` | How to provision a brand-new EKS cluster using the ACK management cluster and bootstrap Argo CD from scratch using the root App of Apps. |
 | `docs/break-glass.md` | Procedure for obtaining temporary admin access to the cluster in an emergency (e.g., Argo CD is unreachable). |
 | `docs/renovate-troubleshooting.md` | What to do when a Renovate automerge PR fails and manual intervention is required to update a dependency. |
 
