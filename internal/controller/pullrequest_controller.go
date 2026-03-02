@@ -146,7 +146,7 @@ func (r *PullRequestReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Previously, merge/close would delete inline, but this was problematic because the status
 	// update would be lost. Now we ensure the status is persisted before deletion occurs.
 	if cleanupRequired {
-		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, err
+		return ctrl.Result{RequeueAfter: 1 * time.Microsecond}, nil
 	}
 
 	logger.Info("no known state transitions needed", "specState", pr.Spec.State, "statusState", pr.Status.State)
