@@ -302,28 +302,6 @@ func GetSecretValue(secret *corev1.Secret, key string) (string, error) {
 	return string(value), nil
 }
 
-// CreateOAuth2TokenSource creates a token source for OAuth2 client credentials flow.
-// This can be used for more advanced OAuth2 scenarios where you need direct access
-// to the token source.
-//
-// Parameters:
-//   - ctx: Context for the OAuth2 requests
-//   - tokenURL: The OAuth2 token endpoint
-//   - clientID: The client ID
-//   - clientSecret: The client secret
-//   - scopes: OAuth2 scopes to request
-//
-// Returns an oauth2.TokenSource that handles token caching and refresh.
-func CreateOAuth2TokenSource(ctx context.Context, tokenURL, clientID, clientSecret string, scopes []string) oauth2.TokenSource {
-	config := &clientcredentials.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		TokenURL:     tokenURL,
-		Scopes:       scopes,
-	}
-	return config.TokenSource(ctx)
-}
-
 // -----------------------------------------------------------------------------
 // Convenience functions that combine secret fetching with authentication
 // -----------------------------------------------------------------------------
