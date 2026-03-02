@@ -246,12 +246,12 @@ func (r *PullRequestReconciler) syncStateFromProvider(ctx context.Context, pr *p
 		// Without this, handleStateTransitions would attempt to merge/close again and hit a provider error
 		// (e.g. "405 Merge already in progress"), leaving the PR object stuck and never cleaned up.
 		if pr.Status.State != pr.Spec.State {
-			logger.V(4).Info("PR not found open; controller-initiated action already completed on provider but status was not persisted — recovering terminal state",
+			logger.V(4).Info("PR not found open, spec and status state are different",
 				"specState", pr.Spec.State, "statusState", pr.Status.State)
 			pr.Status.State = pr.Spec.State
 			return true, nil
 		}
-		logger.V(4).Info("PR not found open, controller initiated the action, status already reflects terminal state", "specState", pr.Spec.State)
+		logger.V(4).Info("PR not found open, spec and status state are equal", "specState", pr.Spec.State)
 	}
 
 	return false, nil
