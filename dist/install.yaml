@@ -15,7 +15,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: argocdcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -303,7 +303,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: changetransferpolicies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -1579,7 +1579,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: clusterscmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -1818,7 +1818,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: commitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -2024,7 +2024,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: controllerconfigurations.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -3586,7 +3586,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: gitcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -3896,7 +3896,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: gitrepositories.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -4173,7 +4173,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: promotionstrategies.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -5595,7 +5595,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: pullrequests.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -5836,7 +5836,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: revertcommits.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -5890,7 +5890,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: scmproviders.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
@@ -6128,7 +6128,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.20.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: timedcommitstatuses.promoter.argoproj.io
 spec:
   group: promoter.argoproj.io
