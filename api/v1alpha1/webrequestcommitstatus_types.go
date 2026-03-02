@@ -331,7 +331,7 @@ type HTTPRequestSpec struct {
 	//         name: my-tls-cert
 	//
 	// +optional
-	Authentication *HttpAuthentication `json:"authentication,omitempty"`
+	Authentication *HTTPAuthentication `json:"authentication,omitempty"`
 }
 
 // WebRequestCommitStatusStatus defines the observed state of WebRequestCommitStatus.

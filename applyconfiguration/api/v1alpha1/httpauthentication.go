@@ -17,10 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
-// HttpAuthenticationApplyConfiguration represents a declarative configuration of the HttpAuthentication type for use
+// HTTPAuthenticationApplyConfiguration represents a declarative configuration of the HTTPAuthentication type for use
 // with apply.
 //
-// HttpAuthentication defines authentication options for HTTP requests.
+// HTTPAuthentication defines authentication options for HTTP requests.
 //
 // Only one authentication method should be specified.
 //
@@ -37,7 +37,7 @@ package v1alpha1
 //
 // 4. TLS - Mutual TLS authentication using client certificates
 // Applied at: Transport layer (not as HTTP header)
-type HttpAuthenticationApplyConfiguration struct {
+type HTTPAuthenticationApplyConfiguration struct {
 	// Basic specifies HTTP Basic Authentication.
 	// Credentials can be provided inline (with secret references) or via secretRef.
 	Basic *BasicAuthApplyConfiguration `json:"basic,omitempty"`
@@ -52,16 +52,16 @@ type HttpAuthenticationApplyConfiguration struct {
 	TLS *TLSAuthApplyConfiguration `json:"tls,omitempty"`
 }
 
-// HttpAuthenticationApplyConfiguration constructs a declarative configuration of the HttpAuthentication type for use with
+// HTTPAuthenticationApplyConfiguration constructs a declarative configuration of the HTTPAuthentication type for use with
 // apply.
-func HttpAuthentication() *HttpAuthenticationApplyConfiguration {
-	return &HttpAuthenticationApplyConfiguration{}
+func HTTPAuthentication() *HTTPAuthenticationApplyConfiguration {
+	return &HTTPAuthenticationApplyConfiguration{}
 }
 
 // WithBasic sets the Basic field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Basic field is set to the value of the last call.
-func (b *HttpAuthenticationApplyConfiguration) WithBasic(value *BasicAuthApplyConfiguration) *HttpAuthenticationApplyConfiguration {
+func (b *HTTPAuthenticationApplyConfiguration) WithBasic(value *BasicAuthApplyConfiguration) *HTTPAuthenticationApplyConfiguration {
 	b.Basic = value
 	return b
 }
@@ -69,7 +69,7 @@ func (b *HttpAuthenticationApplyConfiguration) WithBasic(value *BasicAuthApplyCo
 // WithBearer sets the Bearer field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Bearer field is set to the value of the last call.
-func (b *HttpAuthenticationApplyConfiguration) WithBearer(value *BearerAuthApplyConfiguration) *HttpAuthenticationApplyConfiguration {
+func (b *HTTPAuthenticationApplyConfiguration) WithBearer(value *BearerAuthApplyConfiguration) *HTTPAuthenticationApplyConfiguration {
 	b.Bearer = value
 	return b
 }
@@ -77,7 +77,7 @@ func (b *HttpAuthenticationApplyConfiguration) WithBearer(value *BearerAuthApply
 // WithOAuth2 sets the OAuth2 field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the OAuth2 field is set to the value of the last call.
-func (b *HttpAuthenticationApplyConfiguration) WithOAuth2(value *OAuth2AuthApplyConfiguration) *HttpAuthenticationApplyConfiguration {
+func (b *HTTPAuthenticationApplyConfiguration) WithOAuth2(value *OAuth2AuthApplyConfiguration) *HTTPAuthenticationApplyConfiguration {
 	b.OAuth2 = value
 	return b
 }
@@ -85,7 +85,7 @@ func (b *HttpAuthenticationApplyConfiguration) WithOAuth2(value *OAuth2AuthApply
 // WithTLS sets the TLS field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the TLS field is set to the value of the last call.
-func (b *HttpAuthenticationApplyConfiguration) WithTLS(value *TLSAuthApplyConfiguration) *HttpAuthenticationApplyConfiguration {
+func (b *HTTPAuthenticationApplyConfiguration) WithTLS(value *TLSAuthApplyConfiguration) *HTTPAuthenticationApplyConfiguration {
 	b.TLS = value
 	return b
 }

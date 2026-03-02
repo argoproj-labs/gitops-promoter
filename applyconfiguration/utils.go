@@ -137,8 +137,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.HealthyDryShasApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("History"):
 		return &apiv1alpha1.HistoryApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("HttpAuthentication"):
-		return &apiv1alpha1.HttpAuthenticationApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("HTTPAuthentication"):
+		return &apiv1alpha1.HTTPAuthenticationApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("HTTPRequestSpec"):
 		return &apiv1alpha1.HTTPRequestSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("HydratorMetadata"):

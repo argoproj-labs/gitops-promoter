@@ -20,7 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// HttpAuthentication defines authentication options for HTTP requests.
+// HTTPAuthentication defines authentication options for HTTP requests.
 //
 // Only one authentication method should be specified.
 //
@@ -39,7 +39,7 @@ import (
 //     Applied at: Transport layer (not as HTTP header)
 //
 // +kubebuilder:validation:AtMostOneOf=basic;bearer;oauth2;tls
-type HttpAuthentication struct {
+type HTTPAuthentication struct {
 	// Basic specifies HTTP Basic Authentication.
 	// Credentials can be provided inline (with secret references) or via secretRef.
 	// +optional
