@@ -81,7 +81,6 @@ import (
 	"net/http"
 	"time"
 
-	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
