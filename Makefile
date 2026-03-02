@@ -169,6 +169,9 @@ lint-extension: ## Run extension type-check, lint and audit checks
 .PHONY: lint-ui
 lint-ui: lint-dashboard lint-extension ## Run all UI checks
 
+.PHONY: test-unit-test
+test-unit-test: ## Run unit tests for the dashboard and extension
+	cd ui/dashboard && npm test
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
