@@ -141,7 +141,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 
 	var wrcs promoterv1alpha1.WebRequestCommitStatus
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, &result, &err)
 
 	// 1. Fetch the WebRequestCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &wrcs)
