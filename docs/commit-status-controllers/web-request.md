@@ -52,8 +52,8 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 **Behavior:**
 - Evaluates trigger expression on each reconciliation
 - Only makes HTTP request if trigger expression returns true
-- Can store and access custom state via `TriggerData`
-- Can access previous HTTP response data via `ResponseData`
+- Can store and access custom state via `TriggerData` (via `trigger.dataExpression`)
+- Can access previous HTTP response data via `ResponseData` (via `response.dataExpression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
 ## Security Considerations
@@ -160,11 +160,9 @@ spec:
   mode:
     trigger:
       requeueDuration: 1m
-      triggerExpression: |
-        {
-          trigger: ReportedSha != TriggerData["lastCheckedSha"],
-          lastCheckedSha: ReportedSha
-        }
+      trigger:
+        expression: "ReportedSha != TriggerData[\"lastCheckedSha\"]"
+        dataExpression: "{ lastCheckedSha: ReportedSha }"
 ```
 
 ### Trigger Mode - Only when another commit status is success
@@ -189,9 +187,10 @@ spec:
   mode:
     trigger:
       requeueDuration: 30s
-      triggerExpression: |
-        size(filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})) > 0 &&
-        filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})[0].Phase == "success"
+      trigger:
+        expression: |
+          size(filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})) > 0 &&
+          filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})[0].Phase == "success"
 ```
 
 Use the same `Key` as in your PromotionStrategy's proposed or active commit statuses (e.g. `argocd-health`, `timer`).
@@ -217,19 +216,20 @@ spec:
   mode:
     trigger:
       requeueDuration: 1m
-      triggerExpression: |
-        {
-          trigger: ResponseData == nil || 
-                   ResponseData.status == "retry" || 
-                   ResponseData.validated == false,
-          attemptCount: (TriggerData["attemptCount"] ?? 0) + 1
-        }
-      responseExpression: |
-        {
-          status: Response.Body.status,
-          validated: Response.Body.validated,
-          retryAfter: Response.Body.retryAfter
-        }
+      trigger:
+        expression: |
+          ResponseData == nil || 
+          ResponseData.status == "retry" || 
+          ResponseData.validated == false
+        dataExpression: |
+          { attemptCount: (TriggerData["attemptCount"] ?? 0) + 1 }
+      response:
+        dataExpression: |
+          {
+            status: Response.Body.status,
+            validated: Response.Body.validated,
+            retryAfter: Response.Body.retryAfter
+          }
 ```
 
 ### POST Request with JSON Body
@@ -488,8 +488,8 @@ The following fields support Go templates and all receive the **same template da
 | `Environment` | object | Current environment status (branch, Proposed, Active, PullRequest, etc.) |
 | `NamespaceMetadata.Labels` | map[string]string | Labels on the WebRequestCommitStatus namespace |
 | `NamespaceMetadata.Annotations` | map[string]string | Annotations on the namespace |
-| `TriggerData` | map[string]any | Custom data from the trigger expression (trigger mode only). Use `{{ index .TriggerData "key" }}` for a value. |
-| `ResponseData` | map[string]any | Data from the last HTTP response when using `responseExpression` (trigger mode only). Keys match what your response expression returns (e.g. `approvedCount`, `lastCheckedAt`). |
+| `TriggerData` | map[string]any | Custom data from the trigger data expression (trigger mode only). Use `{{ index .TriggerData "key" }}` for a value. |
+| `ResponseData` | map[string]any | Data from the last HTTP response when using `response.dataExpression` (trigger mode only). Keys match what your data expression returns (e.g. `approvedCount`, `lastCheckedAt`). |
 
 **When is ResponseData / TriggerData from?**
 
@@ -500,8 +500,8 @@ The following fields support Go templates and all receive the **same template da
 
 **TriggerData and ResponseData lifecycle (trigger mode):**
 
-- **TriggerData** comes from the trigger expression when it returns an object: all keys except `trigger` are stored. That map is persisted in `status.environments[].triggerData` and on the next reconciliation is passed back into the trigger expression and into all templates as `TriggerData`. Use it to track state (e.g. last checked SHA, attempt count) and to build description/URL from that state.
-- **ResponseData** is set only when `responseExpression` is configured. The expression runs after the HTTP request and its returned map is stored in `status.environments[].responseData`. On the next run it is available to the trigger expression and to description/URL templates as `ResponseData`. Use it to drive retry logic or to show response-derived links/counts in the SCM status.
+- **TriggerData** comes from `trigger.dataExpression` when it is configured. The expression runs on every reconcile (whether or not the HTTP request fires) and must return a map. That map is persisted in `status.environments[].triggerData` and on the next reconciliation is passed back into both the `trigger.expression` and `trigger.dataExpression` as `TriggerData`, and into all templates. Use it to track state (e.g. last checked SHA, attempt count) and to build description/URL from that state.
+- **ResponseData** is set only when `response.dataExpression` is configured. The expression runs after the HTTP request and its returned map is stored in `status.environments[].responseData`. On the next run it is available to the trigger expression and to description/URL templates as `ResponseData`. Use it to drive retry logic or to show response-derived links/counts in the SCM status.
 
 **Template functions:** All standard [Sprig](https://masterminds.github.io/sprig/) functions except `env`, `expandenv`, and `getHostByName`.
 
@@ -731,13 +731,13 @@ How long to wait before requeuing to re-evaluate the trigger expression.
 
 **Optional:** Yes
 
-##### spec.mode.trigger.triggerExpression
+##### spec.mode.trigger.trigger
 
-Expression that dynamically controls whether the HTTP request should be made. Evaluated BEFORE each potential HTTP request.
+Configures the boolean guard expression and optional data-tracking expression. **Required.**
 
-**Return types:**
-1. **Boolean:** `true` to make HTTP request, `false` to skip
-2. **Object with trigger field:** `{trigger: bool, ...customData}` where additional fields are stored in `TriggerData`
+###### spec.mode.trigger.trigger.expression
+
+Boolean expression that controls whether the HTTP request should be made. Evaluated BEFORE each potential HTTP request. Must return `true` (fire the request) or `false` (skip).
 
 **Available variables:**
 - `PromotionStrategy` (PromotionStrategy): full PromotionStrategy spec and status
@@ -745,35 +745,73 @@ Expression that dynamically controls whether the HTTP request should be made. Ev
 - `Phase` (string): current phase (success/pending/failure)
 - `ReportedSha` (string): SHA being validated
 - `LastSuccessfulSha` (string): last SHA that achieved success
-- `TriggerData` (map[string]any): custom data from previous trigger evaluation
-- `ResponseData` (map[string]any): response data from previous HTTP request
+- `TriggerData` (map[string]any): data from previous `dataExpression` evaluation
+- `ResponseData` (map[string]any): data from previous `response.dataExpression` evaluation
 
 **Required:** Yes
 
 **Examples:**
 ```yaml
 # Always trigger (equivalent to polling)
-triggerExpression: "true"
+trigger:
+  expression: "true"
 
 # Only trigger when SHA changes
-triggerExpression: "ReportedSha != TriggerData['lastCheckedSha']"
+trigger:
+  expression: "ReportedSha != TriggerData['lastCheckedSha']"
 
 # Only trigger when a particular commit status is success (e.g. after Argo CD health passes)
-triggerExpression: |
-  size(filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})) > 0 &&
-  filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})[0].Phase == "success"
+trigger:
+  expression: |
+    size(filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})) > 0 &&
+    filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})[0].Phase == "success"
 
-# Track state and trigger on changes
-triggerExpression: |
-  {
-    trigger: ReportedSha != TriggerData["trackedSha"],
-    trackedSha: ReportedSha
-  }
+# Only retry if the previous response indicated we should
+trigger:
+  expression: "ResponseData == nil || ResponseData.status == \"retry\""
 ```
 
-##### spec.mode.trigger.responseExpression
+###### spec.mode.trigger.trigger.dataExpression
 
-Optional expression that extracts and transforms data from the HTTP response before storing it in `ResponseData`. Allows storing only needed fields instead of the entire response.
+Optional expression that produces a map of data to persist across reconcile cycles. The map is stored in `status.environments[].triggerData` and available as `TriggerData` on the next reconcile. Use it to carry state such as last-seen SHAs, attempt counts, or timestamps.
+
+**Available variables:** same as `expression` above.
+
+**Return type:** Must return a map/object. Every key in the map is stored in `TriggerData`.
+
+**Optional:** Yes
+
+**Examples:**
+```yaml
+# Track last-seen SHA
+trigger:
+  expression: "ReportedSha != TriggerData[\"lastCheckedSha\"]"
+  dataExpression: "{ lastCheckedSha: ReportedSha }"
+
+# Increment attempt counter
+trigger:
+  expression: "true"
+  dataExpression: "{ attemptCount: (TriggerData[\"attemptCount\"] ?? 0) + 1 }"
+
+# Multiple fields
+trigger:
+  expression: "true"
+  dataExpression: |
+    {
+      trackedSha: ReportedSha,
+      lastRequestTime: string(now())
+    }
+```
+
+##### spec.mode.trigger.response
+
+Optional sub-object configuring how data from the HTTP response is extracted and stored.
+
+**Optional:** Yes
+
+###### spec.mode.trigger.response.dataExpression
+
+Expression that extracts and transforms data from the HTTP response before storing it in `ResponseData`. Allows storing only needed fields instead of the entire response.
 
 **Available variables:**
 - `Response.StatusCode` (int): HTTP response status code
@@ -782,22 +820,24 @@ Optional expression that extracts and transforms data from the HTTP response bef
 
 **Return type:** Must return an object/map that will be stored as `ResponseData`
 
-**Optional:** Yes
+**Required** (when `response` is specified)**:** Yes
 
 **Examples:**
 ```yaml
 # Store specific fields
-responseExpression: |
-  {
-    status: Response.Body.status,
-    retryAfter: Response.Body.retryAfter
-  }
+response:
+  dataExpression: |
+    {
+      status: Response.Body.status,
+      retryAfter: Response.Body.retryAfter
+    }
 
 # Conditional extraction
-responseExpression: |
-  Response.StatusCode == 200 ?
-    {status: "success", data: Response.Body.result} :
-    {status: "error", error: Response.Body.error}
+response:
+  dataExpression: |
+    Response.StatusCode == 200 ?
+      {status: "success", data: Response.Body.result} :
+      {status: "error", error: Response.Body.error}
 ```
 
 ### Status Fields
@@ -828,8 +868,8 @@ status:
 - `phase`: Current validation phase. This controller sets only `pending` or `success` (never `failure`) based on the validation expression.
 - `lastRequestTime`: When the last HTTP request was made
 - `lastResponseStatusCode`: HTTP status code from last request
-- `triggerData`: Custom data from trigger expression (trigger mode only)
-- `responseData`: Extracted response data (trigger mode with `responseExpression` only)
+- `triggerData`: Data from `trigger.dataExpression` (trigger mode with `dataExpression` only)
+- `responseData`: Extracted response data (trigger mode with `response.dataExpression` only)
 
 ## Expression Language
 

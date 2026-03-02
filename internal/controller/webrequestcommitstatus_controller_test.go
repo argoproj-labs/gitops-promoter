@@ -398,7 +398,10 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
 							// Only trigger when SHA changes from what we tracked
-							TriggerExpression: `{trigger: ReportedSha != TriggerData["trackedSha"], trackedSha: ReportedSha}`,
+							Trigger: promoterv1alpha1.TriggerExpressionSpec{
+								Expression:     "ReportedSha != TriggerData[\"trackedSha\"]",
+								DataExpression: `{ trackedSha: ReportedSha }`,
+							},
 						},
 					},
 				},
@@ -862,7 +865,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 	})
 
 	Context("Trigger Mode", func() {
-		It("should NOT store response data without responseExpression", func() {
+		It("should NOT store response data without response.dataExpression", func() {
 			By("Creating a test HTTP server")
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -873,7 +876,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				})
 			}))
 
-			By("Creating a WebRequestCommitStatus in trigger mode WITHOUT responseExpression")
+			By("Creating a WebRequestCommitStatus in trigger mode WITHOUT response.dataExpression")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -893,16 +896,18 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 					Expression: "Response.StatusCode == 200",
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
-							RequeueDuration:   metav1.Duration{Duration: 10 * time.Second},
-							TriggerExpression: "true",
-							// NO responseExpression
+							RequeueDuration: metav1.Duration{Duration: 10 * time.Second},
+							Trigger: promoterv1alpha1.TriggerExpressionSpec{
+								Expression: "true",
+							},
+							// NO response field
 						},
 					},
 				},
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
 
-			By("Verifying ResponseData is NOT populated without responseExpression")
+			By("Verifying ResponseData is NOT populated without response.dataExpression")
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -917,8 +922,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				// Verify validation succeeded
 				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
-				// Verify ResponseData is nil without responseExpression
-				g.Expect(devEnv.ResponseData).To(BeNil(), "ResponseData should be nil without responseExpression")
+				// Verify ResponseData is nil without response.dataExpression
+				g.Expect(devEnv.ResponseData).To(BeNil(), "ResponseData should be nil without response.dataExpression")
 
 				// But lastResponseStatusCode should still be populated
 				g.Expect(devEnv.LastResponseStatusCode).NotTo(BeNil())
@@ -962,15 +967,17 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
-							ResponseExpression: `{
+							Trigger: promoterv1alpha1.TriggerExpressionSpec{
+								Expression:     "TriggerData == nil || TriggerData[\"triggered\"] != true",
+								DataExpression: `{ triggered: true }`,
+							},
+							Response: &promoterv1alpha1.ResponseExpressionSpec{
+								DataExpression: `{
 								statusCode: Response.StatusCode,
 								approved: Response.Body.approved,
 								count: Response.Body.count
 							}`,
-							TriggerExpression: `{
-								trigger: TriggerData == nil || TriggerData["triggered"] != true,
-								triggered: true
-							}`,
+							},
 						},
 					},
 				},
@@ -1053,12 +1060,16 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 3 * time.Second},
-							ResponseExpression: `{
+							Trigger: promoterv1alpha1.TriggerExpressionSpec{
+								// Trigger if no response data or if previous response said to retry
+								Expression: `ResponseData == nil || ResponseData.status == "retry"`,
+							},
+							Response: &promoterv1alpha1.ResponseExpressionSpec{
+								DataExpression: `{
 								statusCode: Response.StatusCode,
 								status: Response.Body.status
 							}`,
-							// Trigger if no response data or if previous response said to retry
-							TriggerExpression: `ResponseData == nil || ResponseData.status == "retry"`,
+							},
 						},
 					},
 				},
@@ -1090,7 +1101,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 			}, 30*time.Second).Should(Succeed())
 		})
 
-		It("should extract custom fields using responseExpression", func() {
+		It("should extract custom fields using response.dataExpression", func() {
 			By("Creating a test HTTP server with complex response")
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -1111,7 +1122,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				})
 			}))
 
-			By("Creating WebRequestCommitStatus with responseExpression")
+			By("Creating WebRequestCommitStatus with response.dataExpression")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -1131,16 +1142,20 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 					Expression: "Response.StatusCode == 200",
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
-							RequeueDuration:   metav1.Duration{Duration: 10 * time.Second},
-							TriggerExpression: "true",
+							RequeueDuration: metav1.Duration{Duration: 10 * time.Second},
+							Trigger: promoterv1alpha1.TriggerExpressionSpec{
+								Expression: "true",
+							},
 							// Extract only the fields we care about
-							ResponseExpression: `{
+							Response: &promoterv1alpha1.ResponseExpressionSpec{
+								DataExpression: `{
 								statusCode: Response.StatusCode,
 								approved: Response.Body.approved,
 								nestedField: Response.Body.nested.field1,
 								rateLimit: int(Response.Headers["X-Rate-Limit-Remaining"][0]),
 								timestamp: Response.Body.metadata.timestamp
 							}`,
+							},
 						},
 					},
 				},

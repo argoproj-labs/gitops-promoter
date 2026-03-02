@@ -175,6 +175,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.RateLimiterApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RateLimiterTypes"):
 		return &apiv1alpha1.RateLimiterTypesApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ResponseExpressionSpec"):
+		return &apiv1alpha1.ResponseExpressionSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommit"):
 		return &apiv1alpha1.RevertCommitApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommitSpec"):
@@ -203,6 +205,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.TimedCommitStatusStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TLSAuth"):
 		return &apiv1alpha1.TLSAuthApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("TriggerExpressionSpec"):
+		return &apiv1alpha1.TriggerExpressionSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TriggerModeSpec"):
 		return &apiv1alpha1.TriggerModeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("URLConfig"):

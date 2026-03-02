@@ -157,24 +157,31 @@ type TriggerModeSpec struct {
 	// +kubebuilder:default="1m"
 	RequeueDuration metav1.Duration `json:"requeueDuration,omitempty"`
 
-	// TriggerExpression is an expr expression that dynamically controls whether the HTTP request should be made.
-	// When specified, this expression is evaluated BEFORE each HTTP request to determine if the controller should
-	// make the request at all.
+	// Trigger configures the boolean guard expression and optional data-tracking expression that together
+	// control whether the HTTP request is made on each reconcile cycle.
+	// +required
+	Trigger TriggerExpressionSpec `json:"trigger"`
+
+	// Response optionally configures an expression that extracts and transforms data from the HTTP response
+	// for storage in ResponseData, which persists across reconcile cycles.
+	// +optional
+	Response *ResponseExpressionSpec `json:"response,omitempty"`
+}
+
+// TriggerExpressionSpec holds the expressions that control when the HTTP request is fired.
+type TriggerExpressionSpec struct {
+	// Expression is a boolean expr expression that decides whether the HTTP request should be made.
+	// It is evaluated BEFORE each potential HTTP request. When it returns true the request is made;
+	// when false the controller keeps the previous phase and skips the request.
 	//
-	// The expression can return:
-	//  1. Boolean: true/false to control whether to make the HTTP request
-	//  2. Object with 'trigger' field: {trigger: true/false, ...customData}
-	//     - The 'trigger' field controls whether to make the HTTP request
-	//     - Any additional fields are stored and available in the next reconcile as 'TriggerData'
-	//
-	// Available variables in the expression context:
+	// Available variables:
 	//   - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
 	//   - Environment (EnvironmentStatus): current environment's status from PromotionStrategy
 	//   - Phase (string): current phase (success/pending/failure)
 	//   - ReportedSha (string): the SHA being validated
 	//   - LastSuccessfulSha (string): last SHA that achieved success for this environment
-	//   - TriggerData (map[string]any): custom data from previous trigger expression evaluation
-	//   - ResponseData (map[string]any): response data from previous HTTP request (if any)
+	//   - TriggerData (map[string]any): custom data from the previous dataExpression evaluation
+	//   - ResponseData (map[string]any): response data from the previous HTTP request (if any)
 	//
 	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
 	// Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
@@ -182,7 +189,7 @@ type TriggerModeSpec struct {
 	//   currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Environment.Branch})
 	//   previousEnv = currentIdx > 0 ? PromotionStrategy.Status.Environments[currentIdx-1] : nil
 	//
-	// Examples (Boolean return):
+	// Examples:
 	//   # Always trigger (equivalent to polling mode)
 	//   - "true"
 	//
@@ -192,32 +199,55 @@ type TriggerModeSpec struct {
 	//   # Only trigger when a particular commit status is success (e.g. argocd-health)
 	//   - "size(filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})) > 0 && filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})[0].Phase == 'success'"
 	//
-	//   # Only retry if previous response indicated we should
+	//   # Only retry if the previous response indicated we should
 	//   - "ResponseData == nil || ResponseData.status == 'retry'"
 	//
-	// Examples (Object return with state tracking):
-	//   # Track SHA and only trigger when it changes
-	//   - |
-	//     {
-	//       trigger: ReportedSha != TriggerData["trackedSha"],
-	//       trackedSha: ReportedSha
-	//     }
-	//
 	// +required
-	TriggerExpression string `json:"triggerExpression"`
+	Expression string `json:"expression"`
 
-	// ResponseExpression is an optional expr expression that extracts and transforms data from the HTTP response
-	// before storing it in ResponseData. This allows you to store only the fields you need instead of the entire response.
+	// DataExpression is an optional expr expression that produces a map of data to persist across
+	// reconcile cycles. Its result is stored in status.environments[].triggerData and is available
+	// in the next reconcile as the TriggerData variable (in both this expression and in the trigger
+	// expression). Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
 	//
-	// The expression is evaluated after the HTTP request completes (for any response status) and its result is stored in status.responseData.
-	// If not specified, no response data is stored for that request (status.responseData is not updated).
+	// Available variables (same as Expression):
+	//   - PromotionStrategy, Environment, Phase, ReportedSha, LastSuccessfulSha, TriggerData, ResponseData
 	//
-	// Available variables in the expression context:
+	// The expression must return a map/object. Every key in the returned map is stored in TriggerData.
+	//
+	// Examples:
+	//   # Track SHA to detect changes
+	//   - "{ trackedSha: ReportedSha }"
+	//
+	//   # Increment attempt counter
+	//   - "{ attemptCount: (TriggerData[\"attemptCount\"] ?? 0) + 1 }"
+	//
+	//   # Store last request timestamp
+	//   - "{ lastRequestTime: string(now()) }"
+	//
+	// +optional
+	DataExpression string `json:"dataExpression,omitempty"`
+}
+
+// ResponseExpressionSpec holds the expression that extracts data from the HTTP response.
+type ResponseExpressionSpec struct {
+	// DataExpression is an expr expression that extracts and transforms data from the HTTP response
+	// before storing it in ResponseData. This allows you to store only the fields you need instead
+	// of the entire response body.
+	//
+	// The expression is evaluated after the HTTP request completes (for any response status) and its
+	// result is stored in status.environments[].responseData. On the next reconcile that value is
+	// available as the ResponseData variable, so trigger expressions can read it (e.g. to implement
+	// retry-on-response-status logic) and description/URL templates can reference it.
+	//
+	// If this field is omitted no response data is stored (status.environments[].responseData is not updated).
+	//
+	// Available variables:
 	//   - Response.StatusCode (int): HTTP response status code
 	//   - Response.Body (any): parsed JSON as map[string]any, or raw string if not JSON
 	//   - Response.Headers (map[string][]string): HTTP response headers
 	//
-	// The expression should return an object/map that will be stored as ResponseData.
+	// The expression must return a map/object that will be stored as ResponseData.
 	//
 	// Examples:
 	//   # Store only specific fields from response body
@@ -245,14 +275,14 @@ type TriggerModeSpec struct {
 	//       }
 	//     }
 	//
-	//   # Conditional extraction based on status
+	//   # Conditional extraction based on status code
 	//   - |
 	//     Response.StatusCode == 200 ?
 	//       {status: "success", data: Response.Body.result} :
 	//       {status: "error", error: Response.Body.error}
 	//
-	// +optional
-	ResponseExpression string `json:"responseExpression,omitempty"`
+	// +required
+	DataExpression string `json:"dataExpression"`
 }
 
 // HTTPRequestSpec defines the HTTP request configuration.
@@ -384,8 +414,10 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	// +optional
 	LastResponseStatusCode *int `json:"lastResponseStatusCode,omitempty"`
 
-	// TriggerData stores custom data returned from the trigger expression.
-	// This data is passed to the next trigger expression evaluation.
+	// TriggerData stores the map returned by spec.mode.trigger.trigger.dataExpression.
+	// It is passed back into the next reconcile as the TriggerData variable, making it available
+	// to both the trigger expression and the data expression. Use it to track state across
+	// reconcile cycles (e.g. last-seen SHA, attempt counter, last request timestamp).
 	// The data is preserved as arbitrary JSON.
 	// +optional
 	// +kubebuilder:validation:Schemaless
@@ -393,16 +425,16 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	TriggerData *apiextensionsv1.JSON `json:"triggerData,omitempty"`
 
-	// ResponseData stores data from the HTTP response body (trigger mode with responseExpression only).
-	// This field is ONLY populated when spec.mode.trigger.responseExpression is provided.
-	// The responseExpression is evaluated after each HTTP request and its result is stored here,
-	// allowing trigger expressions to inspect response data from previous requests when
-	// deciding whether to trigger the next request.
+	// ResponseData stores the map returned by spec.mode.trigger.response.dataExpression.
+	// This field is ONLY populated when spec.mode.trigger.response is provided.
+	// The response dataExpression is evaluated after each HTTP request and its result is stored here,
+	// allowing subsequent trigger expressions to inspect data from the previous response when
+	// deciding whether to issue the next request.
 	//
-	// Without responseExpression, this field will always be nil.
+	// Without spec.mode.trigger.response, this field will always be nil.
 	//
 	// Available in trigger expressions as: ResponseData.field1, ResponseData.field2, etc.
-	// (where fields depend on what your responseExpression returns)
+	// (where fields depend on what your response.dataExpression returns)
 	//
 	// +optional
 	// +kubebuilder:validation:Schemaless

@@ -42,8 +42,11 @@ spec:
     # Trigger: use this instead of polling for expression-based triggering.
     # trigger:
     #   requeueDuration: 1m     # optional, default 1m
-    #   triggerExpression: ""  # required; expr returning bool or {trigger: bool, ...}
-    #   responseExpression: "" # optional; expr returning map, stored in status.responseData
+    #   trigger:
+    #     expression: ""        # required; boolean expr deciding whether to fire the request
+    #     dataExpression: ""    # optional; expr returning map, stored in status.triggerData
+    #   response:               # optional
+    #     dataExpression: ""    # optional; expr returning map, stored in status.responseData
 
 status:
   conditions:

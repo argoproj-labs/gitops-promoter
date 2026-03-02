@@ -28,97 +28,12 @@ import (
 type TriggerModeSpecApplyConfiguration struct {
 	// RequeueDuration specifies how long to wait before requeuing to re-evaluate the trigger expression.
 	RequeueDuration *v1.Duration `json:"requeueDuration,omitempty"`
-	// TriggerExpression is an expr expression that dynamically controls whether the HTTP request should be made.
-	// When specified, this expression is evaluated BEFORE each HTTP request to determine if the controller should
-	// make the request at all.
-	//
-	// The expression can return:
-	// 1. Boolean: true/false to control whether to make the HTTP request
-	// 2. Object with 'trigger' field: {trigger: true/false, ...customData}
-	// - The 'trigger' field controls whether to make the HTTP request
-	// - Any additional fields are stored and available in the next reconcile as 'TriggerData'
-	//
-	// Available variables in the expression context:
-	// - PromotionStrategy (PromotionStrategy): the full PromotionStrategy spec and status
-	// - Environment (EnvironmentStatus): current environment's status from PromotionStrategy
-	// - Phase (string): current phase (success/pending/failure)
-	// - ReportedSha (string): the SHA being validated
-	// - LastSuccessfulSha (string): last SHA that achieved success for this environment
-	// - TriggerData (map[string]any): custom data from previous trigger expression evaluation
-	// - ResponseData (map[string]any): response data from previous HTTP request (if any)
-	//
-	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
-	// Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
-	// Changes flow through the array in order. To access the previous environment, use array indexing:
-	// currentIdx = findIndex(PromotionStrategy.Status.Environments, {.Branch == Environment.Branch})
-	// previousEnv = currentIdx > 0 ? PromotionStrategy.Status.Environments[currentIdx-1] : nil
-	//
-	// Examples (Boolean return):
-	// # Always trigger (equivalent to polling mode)
-	// - "true"
-	//
-	// # Only trigger when SHA changes from what we last tracked
-	// - "ReportedSha != TriggerData['lastCheckedSha']"
-	//
-	// # Only trigger when a particular commit status is success (e.g. argocd-health)
-	// - "size(filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})) > 0 && filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})[0].Phase == 'success'"
-	//
-	// # Only retry if previous response indicated we should
-	// - "ResponseData == nil || ResponseData.status == 'retry'"
-	//
-	// Examples (Object return with state tracking):
-	// # Track SHA and only trigger when it changes
-	// - |
-	// {
-	// trigger: ReportedSha != TriggerData["trackedSha"],
-	// trackedSha: ReportedSha
-	// }
-	TriggerExpression *string `json:"triggerExpression,omitempty"`
-	// ResponseExpression is an optional expr expression that extracts and transforms data from the HTTP response
-	// before storing it in ResponseData. This allows you to store only the fields you need instead of the entire response.
-	//
-	// The expression is evaluated after the HTTP request completes (for any response status) and its result is stored in status.responseData.
-	// If not specified, no response data is stored for that request (status.responseData is not updated).
-	//
-	// Available variables in the expression context:
-	// - Response.StatusCode (int): HTTP response status code
-	// - Response.Body (any): parsed JSON as map[string]any, or raw string if not JSON
-	// - Response.Headers (map[string][]string): HTTP response headers
-	//
-	// The expression should return an object/map that will be stored as ResponseData.
-	//
-	// Examples:
-	// # Store only specific fields from response body
-	// - |
-	// {
-	// status: Response.Body.status,
-	// retryAfter: Response.Body.retryAfter,
-	// message: Response.Body.message
-	// }
-	//
-	// # Store status code and a single field
-	// - |
-	// {
-	// statusCode: Response.StatusCode,
-	// approved: Response.Body.approved
-	// }
-	//
-	// # Extract rate limit info from headers
-	// - |
-	// {
-	// statusCode: Response.StatusCode,
-	// rateLimit: {
-	// remaining: int(Response.Headers["X-RateLimit-Remaining"][0]),
-	// reset: Response.Headers["X-RateLimit-Reset"][0]
-	// }
-	// }
-	//
-	// # Conditional extraction based on status
-	// - |
-	// Response.StatusCode == 200 ?
-	// {status: "success", data: Response.Body.result} :
-	// {status: "error", error: Response.Body.error}
-	ResponseExpression *string `json:"responseExpression,omitempty"`
+	// Trigger configures the boolean guard expression and optional data-tracking expression that together
+	// control whether the HTTP request is made on each reconcile cycle.
+	Trigger *TriggerExpressionSpecApplyConfiguration `json:"trigger,omitempty"`
+	// Response optionally configures an expression that extracts and transforms data from the HTTP response
+	// for storage in ResponseData, which persists across reconcile cycles.
+	Response *ResponseExpressionSpecApplyConfiguration `json:"response,omitempty"`
 }
 
 // TriggerModeSpecApplyConfiguration constructs a declarative configuration of the TriggerModeSpec type for use with
@@ -135,18 +50,18 @@ func (b *TriggerModeSpecApplyConfiguration) WithRequeueDuration(value v1.Duratio
 	return b
 }
 
-// WithTriggerExpression sets the TriggerExpression field in the declarative configuration to the given value
+// WithTrigger sets the Trigger field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the TriggerExpression field is set to the value of the last call.
-func (b *TriggerModeSpecApplyConfiguration) WithTriggerExpression(value string) *TriggerModeSpecApplyConfiguration {
-	b.TriggerExpression = &value
+// If called multiple times, the Trigger field is set to the value of the last call.
+func (b *TriggerModeSpecApplyConfiguration) WithTrigger(value *TriggerExpressionSpecApplyConfiguration) *TriggerModeSpecApplyConfiguration {
+	b.Trigger = value
 	return b
 }
 
-// WithResponseExpression sets the ResponseExpression field in the declarative configuration to the given value
+// WithResponse sets the Response field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ResponseExpression field is set to the value of the last call.
-func (b *TriggerModeSpecApplyConfiguration) WithResponseExpression(value string) *TriggerModeSpecApplyConfiguration {
-	b.ResponseExpression = &value
+// If called multiple times, the Response field is set to the value of the last call.
+func (b *TriggerModeSpecApplyConfiguration) WithResponse(value *ResponseExpressionSpecApplyConfiguration) *TriggerModeSpecApplyConfiguration {
+	b.Response = value
 	return b
 }
