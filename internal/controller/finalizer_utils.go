@@ -69,9 +69,9 @@ func ensureSecretFinalizerForProvider(
 		return nil
 	}
 
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
 		if err := c.Get(ctx, secretKey, &secret); err != nil {
-			return err //nolint:wrapcheck
+			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
 		// Check again after getting the secret in case it was deleted during the retry
 		if !secret.DeletionTimestamp.IsZero() {
@@ -126,9 +126,9 @@ func removeSecretFinalizerForProvider(
 		return nil
 	}
 
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
 		if err := c.Get(ctx, secretKey, &secret); err != nil {
-			return err //nolint:wrapcheck
+			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
 		if controllerutil.RemoveFinalizer(&secret, finalizer) {
 			return c.Update(ctx, &secret)
@@ -161,9 +161,9 @@ func handleResourceFinalizerWithDependencies(
 		}
 
 		// Add finalizer with retry logic
-		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck
+		return false, retry.RetryOnConflict(retry.DefaultRetry, func() error { //nolint:wrapcheck // RetryOnConflict returns wrapped error
 			if err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
-				return err //nolint:wrapcheck
+				return err //nolint:wrapcheck // error will be wrapped by caller
 			}
 			if controllerutil.AddFinalizer(obj, finalizer) {
 				return c.Update(ctx, obj)
@@ -212,7 +212,7 @@ func handleResourceFinalizerWithDependencies(
 	// No dependencies, remove finalizer with retry logic
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := c.Get(ctx, client.ObjectKeyFromObject(obj), obj); err != nil {
-			return err //nolint:wrapcheck
+			return err //nolint:wrapcheck // error will be wrapped by caller
 		}
 		if controllerutil.RemoveFinalizer(obj, finalizer) {
 			return c.Update(ctx, obj)

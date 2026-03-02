@@ -54,6 +54,15 @@ linters:
     govet:
       enable:
         - fieldalignment
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-no-explanation:
+        - misspell
+      # We are temporarily allowing unused nolints due to apparently
+      # false failures in CI. See
+      # https://github.com/golangci/golangci-lint/issues/3228
+      allow-unused: true
     revive:
       enable-all-rules: true
       rules:

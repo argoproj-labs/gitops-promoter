@@ -101,7 +101,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
@@ -439,7 +439,7 @@ func removeKnownTrailers(input string) string {
 func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
-		//nolint:forcetypeassert
+		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Proposed.Hydrated.Sha}
 	}); err != nil {
@@ -448,7 +448,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 
 	// This gets used by the CommitStatus controller to find the ChangeTransferPolicy to trigger reconcile
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
-		//nolint:forcetypeassert
+		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Active.Hydrated.Sha}
 	}); err != nil {
