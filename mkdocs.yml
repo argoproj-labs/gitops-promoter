@@ -54,4 +54,3 @@ plugins:
   - redirects:
       redirect_maps:
         'metrics.md': 'monitoring/metrics.md' # Page was moved to a subdirectory.
-        'argocd-integrations.md': 'argocd-integrations/index.md' # Page moved into section.
