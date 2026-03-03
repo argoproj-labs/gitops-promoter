@@ -128,7 +128,7 @@ type httpValidationResult struct {
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=promoter.argoproj.io,resources=webrequestcommitstatuses/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
-// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get
 
 // Reconcile fetches the WebRequestCommitStatus and its PromotionStrategy, processes each applicable
 // environment (evaluating trigger and optionally making the HTTP request and validation), upserts
