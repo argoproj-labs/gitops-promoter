@@ -329,6 +329,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			if prevEnvStatus.TriggerData != nil {
 				triggerData = make(map[string]any)
 				if err := json.Unmarshal(prevEnvStatus.TriggerData.Raw, &triggerData); err != nil {
+					// Log but do not return: corrupted or legacy-format data should not block reconciliation.
+					// We continue with nil triggerData; the next successful run will overwrite status.
 					logger.Error(err, "Failed to unmarshal trigger data", "branch", branch)
 				}
 			}
@@ -337,6 +339,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		var previousResponseData map[string]any
 		if prevEnvStatus != nil && prevEnvStatus.ResponseData != nil {
 			if err := json.Unmarshal(prevEnvStatus.ResponseData.Raw, &previousResponseData); err != nil {
+				// Log but do not return: same resilience as trigger data; continue with nil previousResponseData.
 				logger.Error(err, "Failed to unmarshal response data", "branch", branch)
 			}
 		}
@@ -371,9 +374,21 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			}
 		}
 
-		// For trigger mode, evaluate the trigger expression first
+		// Decide whether to make the HTTP request this reconcile
 		shouldTrigger := true
 		var newTriggerData map[string]any
+
+		// In polling mode: only make a request when the configured interval has elapsed since last request.
+		// Other events (e.g. PromotionStrategy update) can trigger reconcile; we respect the interval.
+		if wrcs.Spec.Mode.Polling != nil {
+			if prevEnvStatus != nil && prevEnvStatus.LastRequestTime != nil {
+				elapsed := time.Since(prevEnvStatus.LastRequestTime.Time)
+				if elapsed < wrcs.Spec.Mode.Polling.Interval.Duration {
+					logger.V(4).Info("Within polling interval, skipping HTTP request", "branch", branch, "elapsed", elapsed, "interval", wrcs.Spec.Mode.Polling.Interval.Duration)
+					shouldTrigger = false
+				}
+			}
+		}
 
 		if wrcs.Spec.Mode.Trigger != nil {
 			tr, err := r.evaluateTriggerExpression(ctx, wrcs.Spec.Mode.Trigger.Trigger.Expression, templateData)
@@ -412,8 +427,10 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 				lastSuccessfulSha = reportedSha
 			}
 		} else {
-			// Trigger expression returned false, keep previous phase or default to pending
-			logger.V(3).Info("Trigger expression returned false, not making HTTP request", "branch", branch, "triggerExpression", wrcs.Spec.Mode.Trigger.Trigger.Expression)
+			// Not making HTTP request: either trigger expression returned false or (polling mode) within interval
+			if wrcs.Spec.Mode.Trigger != nil {
+				logger.V(4).Info("Trigger expression returned false, not making HTTP request", "branch", branch, "triggerExpression", wrcs.Spec.Mode.Trigger.Trigger.Expression)
+			}
 			if previousPhase != "" {
 				phase = promoterv1alpha1.CommitStatusPhase(previousPhase)
 			} else {
@@ -510,12 +527,7 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 	lastRequestTime := &now
 	lastResponseStatusCode := &response.StatusCode
 
-	// Log response details for debugging
-	bodyPreview := fmt.Sprintf("%v", response.Body)
-	if len(bodyPreview) > 200 {
-		bodyPreview = bodyPreview[:200] + "..."
-	}
-	logger.V(3).Info("HTTP response received", "branch", branch, "statusCode", response.StatusCode, "bodyPreview", bodyPreview)
+	logger.V(4).Info("HTTP response received", "branch", branch, "statusCode", response.StatusCode)
 
 	// Store response data (only in trigger mode with response.dataExpression)
 	var responseDataJSON *apiextensionsv1.JSON
