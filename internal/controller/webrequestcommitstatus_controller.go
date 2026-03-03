@@ -273,8 +273,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		psEnvStatusMap[ps.Status.Environments[i].Branch] = &ps.Status.Environments[i]
 	}
 
-	// Get applicable environments based on the key
-	applicableEnvs := r.getApplicableEnvironments(ps, wrcs.Spec.Key)
+	// Get applicable environments based on the key and reportOn (only proposed lists when reportOn is proposed, only active when reportOn is active)
+	applicableEnvs := r.getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
 
 	// Initialize or clear the environments status
 	wrcs.Status.Environments = make([]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, 0, len(applicableEnvs))
@@ -565,45 +565,29 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 
 // getApplicableEnvironments returns the PromotionStrategy environments this WebRequestCommitStatus should run for.
 // An environment is included if its key is referenced in global or environment-specific ProposedCommitStatuses
-// or ActiveCommitStatuses. Used by processEnvironments to decide which branches to evaluate and report on.
-func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string) []promoterv1alpha1.Environment {
-	// Check if globally referenced in proposed commit statuses
-	globallyProposed := false
-	for _, selector := range ps.Spec.ProposedCommitStatuses {
-		if selector.Key == key {
-			globallyProposed = true
-			break
-		}
+// (when reportOn is "proposed" or default) or ActiveCommitStatuses (when reportOn is "active").
+func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string, reportOn string) []promoterv1alpha1.Environment {
+	globalSelectors := ps.Spec.ProposedCommitStatuses
+	getEnvSelectors := func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector { return e.ProposedCommitStatuses }
+	if reportOn == constants.CommitRefActive {
+		globalSelectors = ps.Spec.ActiveCommitStatuses
+		getEnvSelectors = func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector { return e.ActiveCommitStatuses }
 	}
 
-	// Check if globally referenced in active commit statuses
-	globallyActive := false
-	for _, selector := range ps.Spec.ActiveCommitStatuses {
-		if selector.Key == key {
-			globallyActive = true
-			break
+	keyInSelectors := func(selectors []promoterv1alpha1.CommitStatusSelector) bool {
+		for _, sel := range selectors {
+			if sel.Key == key {
+				return true
+			}
 		}
+		return false
 	}
+	keyInGlobal := keyInSelectors(globalSelectors)
 
 	applicable := make([]promoterv1alpha1.Environment, 0, len(ps.Spec.Environments))
 	for _, env := range ps.Spec.Environments {
-		if globallyProposed || globallyActive {
+		if keyInGlobal || keyInSelectors(getEnvSelectors(env)) {
 			applicable = append(applicable, env)
-			continue
-		}
-		// Check environment-specific proposed commit statuses
-		for _, selector := range env.ProposedCommitStatuses {
-			if selector.Key == key {
-				applicable = append(applicable, env)
-				break
-			}
-		}
-		// Check environment-specific active commit statuses
-		for _, selector := range env.ActiveCommitStatuses {
-			if selector.Key == key {
-				applicable = append(applicable, env)
-				break
-			}
 		}
 	}
 	return applicable
