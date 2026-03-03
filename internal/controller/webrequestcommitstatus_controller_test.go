@@ -286,7 +286,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 
 			BeforeEach(func() {
 				requestCount = 0
-				By("Creating a test HTTP server that counts requests")
+				By("Creating a test HTTP server that counts requests and never returns approved (so we hit interval short-circuit path, not 'already successful SHA')")
 				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					requestMu.Lock()
 					requestCount++
@@ -294,8 +294,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusOK)
 					_ = json.NewEncoder(w).Encode(map[string]any{
-						"approved": true,
-						"status":   "approved",
+						"approved": false,
+						"status":   "pending",
 					})
 				}))
 
@@ -335,8 +335,10 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				_ = k8sClient.Delete(ctx, webRequestCommitStatus)
 			})
 
+			// Success = with short-circuit code in place, a second reconcile within the polling interval must not call the HTTP server.
+			// Server returns approved: false so validation stays Pending and we exercise the interval short-circuit path (not "already successful SHA").
 			It("should skip HTTP request when reconcile runs within polling interval", func() {
-				By("Waiting for first reconcile to complete (one HTTP request per environment) and set LastRequestTime")
+				By("Waiting for first reconcile to complete (one HTTP request per environment) and set LastRequestTime; phase stays Pending (approved: false)")
 				var initialRequestCount int
 				Eventually(func(g Gomega) {
 					var wrcs promoterv1alpha1.WebRequestCommitStatus
@@ -348,7 +350,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
 					for i := range wrcs.Status.Environments {
 						g.Expect(wrcs.Status.Environments[i].LastRequestTime).ToNot(BeNil(), "LastRequestTime should be set after first request")
-						g.Expect(wrcs.Status.Environments[i].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+						g.Expect(wrcs.Status.Environments[i].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)), "validation fails (approved: false) so phase stays Pending")
 					}
 					requestMu.Lock()
 					initialRequestCount = requestCount
@@ -356,30 +358,29 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					g.Expect(initialRequestCount).To(BeNumerically(">=", 1), "Should have made at least one HTTP request on first reconcile")
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Triggering another reconcile by updating the PromotionStrategy (e.g. annotation)")
+				By("Triggering another reconcile by updating the WebRequestCommitStatus (annotation)")
 				Eventually(func(g Gomega) {
-					var ps promoterv1alpha1.PromotionStrategy
+					var wrcs promoterv1alpha1.WebRequestCommitStatus
 					err := k8sClient.Get(ctx, types.NamespacedName{
-						Name:      name,
+						Name:      name + "-polling-interval-shortcircuit",
 						Namespace: "default",
-					}, &ps)
+					}, &wrcs)
 					g.Expect(err).NotTo(HaveOccurred())
-					if ps.Annotations == nil {
-						ps.Annotations = make(map[string]string)
+					if wrcs.Annotations == nil {
+						wrcs.Annotations = make(map[string]string)
 					}
-					ps.Annotations["test-reconcile-trigger"] = strconv.FormatInt(time.Now().UnixNano(), 10)
-					err = k8sClient.Update(ctx, &ps)
+					wrcs.Annotations["test-reconcile-trigger"] = strconv.FormatInt(time.Now().UnixNano(), 10)
+					err = k8sClient.Update(ctx, &wrcs)
 					g.Expect(err).NotTo(HaveOccurred())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
-				By("Waiting for controller to process the enqueued reconcile")
-				time.Sleep(3 * time.Second)
-
-				By("Verifying no additional HTTP request was made (short-circuit within interval)")
-				requestMu.Lock()
-				count := requestCount
-				requestMu.Unlock()
-				Expect(count).To(Equal(initialRequestCount), "HTTP endpoint should not be called again; second reconcile should have skipped the request within polling interval")
+				By("Success: no additional HTTP request for 10s — controller must not hit the server on second reconcile within interval")
+				Consistently(func(g Gomega) {
+					requestMu.Lock()
+					count := requestCount
+					requestMu.Unlock()
+					g.Expect(count).To(Equal(initialRequestCount), "controller must not call HTTP server when reconcile runs within polling interval (short-circuit success)")
+				}, 10*time.Second).Should(Succeed())
 			})
 		})
 
