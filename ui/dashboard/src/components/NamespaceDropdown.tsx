@@ -24,10 +24,22 @@ const NamespaceDropdown: React.FC = () => {
 
   // Fetching namespace from API
   useEffect(() => {
-    fetch('/list?kind=namespace')
-      .then(res => res.json())
-      .then(data => setNamespaces(Array.isArray(data) ? data : []))
-      .catch(() => setNamespace('default'));
+    const fetchNamespaces = () => {
+      fetch('/list?kind=namespace')
+        .then(res => res.json())
+        .then(data => setNamespaces(Array.isArray(data) ? data : []))
+        .catch(() => setNamespace('default'));
+    };
+
+    fetchNamespaces();
+
+    // Subscribe to PromotionStrategy events across all namespaces to detect new namespaces
+    const eventSource = new EventSource('/watch?kind=PromotionStrategy');
+    eventSource.addEventListener('PromotionStrategy', fetchNamespaces);
+
+    return () => {
+      eventSource.close();
+    };
   }, [setNamespaces, setNamespace]);
 
   const options = Array.isArray(namespaces) ? namespaces.map((ns: string) => ({
