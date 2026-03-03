@@ -150,7 +150,9 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx con
 // evaluateValidationExpression runs the validation expression against the HTTP response to determine the commit status phase.
 // The expression receives Response.StatusCode, Response.Body, and Response.Headers. Its boolean return is used directly:
 // true sets the CommitStatus phase to Success, false sets it to Pending. Used when deciding whether promotion can proceed.
-func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(_ context.Context, expression string, resp httpResponse) (bool, error) {
+func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx context.Context, expression string, resp httpResponse) (bool, error) {
+	logger := log.FromContext(ctx)
+
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledValidationExpression(expression)
 	if err != nil {
@@ -178,13 +180,16 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(_ contex
 		return false, fmt.Errorf("validation expression must return boolean, got %T", output)
 	}
 
+	logger.V(4).Info("Validation expression evaluated", "passed", result)
 	return result, nil
 }
 
 // evaluateResponseDataExpression runs the response data expression to extract or transform data from the HTTP response.
 // The expression receives Response.StatusCode, Response.Body, and Response.Headers and must return a map.
 // The returned map is stored as ResponseData and is available to the trigger expression and to description/URL templates.
-func (r *WebRequestCommitStatusReconciler) evaluateResponseDataExpression(_ context.Context, expression string, resp httpResponse) (map[string]any, error) {
+func (r *WebRequestCommitStatusReconciler) evaluateResponseDataExpression(ctx context.Context, expression string, resp httpResponse) (map[string]any, error) {
+	logger := log.FromContext(ctx)
+
 	// Get compiled expression from cache or compile it
 	program, err := r.getCompiledResponseDataExpression(expression)
 	if err != nil {
@@ -212,5 +217,6 @@ func (r *WebRequestCommitStatusReconciler) evaluateResponseDataExpression(_ cont
 		return nil, fmt.Errorf("response data expression must return a map/object, got %T", output)
 	}
 
+	logger.V(4).Info("Response data expression evaluated", "responseData", result)
 	return result, nil
 }
