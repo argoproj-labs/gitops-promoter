@@ -21,7 +21,7 @@ To complete this tutorial, you will need the following:
 
 > [!NOTE]
 > GitOps Promoter provides several opt-in Argo CD integrations that improve the user experience. Check out the 
-> [Argo CD Integrations](./argocd-integrations.md) page for more information.
+> [Argo CD Integrations](argocd-integrations/index.md) page for more information.
 
 > [!TIP]
 > For the impatient, the steps below are also available as a command `./gitops-promoter demo` 
