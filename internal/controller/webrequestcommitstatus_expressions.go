@@ -26,11 +26,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// expressionCacheKey identifies a compiled expression in the cache. Prefix (e.g. "trigger:", "validation:")
+// ensures the same expression compiled with different options gets distinct cache entries.
+type expressionCacheKey struct {
+	Prefix     string
+	Expression string
+}
+
+func (k expressionCacheKey) String() string { return k.Prefix + k.Expression }
+
 // getCompiledExpression returns a compiled expr program from the reconciler's cache, or compiles the expression and caches it.
-// cacheKeyPrefix (e.g. "trigger:", "validation:", "response:") ensures the same expression string compiled with different
-// options (e.g. expr.AsBool() for validation) gets distinct cache entries. opts are passed through to expr.Compile.
-func (r *WebRequestCommitStatusReconciler) getCompiledExpression(expression string, cacheKeyPrefix string, opts ...expr.Option) (*vm.Program, error) {
-	cacheKey := cacheKeyPrefix + expression
+// key.Prefix distinguishes cache entries (e.g. trigger vs validation); opts are passed through to expr.Compile.
+func (r *WebRequestCommitStatusReconciler) getCompiledExpression(key expressionCacheKey, opts ...expr.Option) (*vm.Program, error) {
+	cacheKey := key.String()
 
 	if cached, ok := r.expressionCache.Load(cacheKey); ok {
 		program, ok := cached.(*vm.Program)
@@ -40,7 +48,7 @@ func (r *WebRequestCommitStatusReconciler) getCompiledExpression(expression stri
 		return program, nil
 	}
 
-	program, err := expr.Compile(expression, opts...)
+	program, err := expr.Compile(key.Expression, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile expression: %w", err)
 	}
@@ -52,25 +60,25 @@ func (r *WebRequestCommitStatusReconciler) getCompiledExpression(expression stri
 // getCompiledTriggerExpression returns a cached or newly compiled trigger expression program.
 // Used by evaluateTriggerExpression. Compiled with expr.AsBool() so the expression must return a boolean.
 func (r *WebRequestCommitStatusReconciler) getCompiledTriggerExpression(expression string) (*vm.Program, error) {
-	return r.getCompiledExpression(expression, "trigger:", expr.AsBool())
+	return r.getCompiledExpression(expressionCacheKey{Prefix: "trigger", Expression: expression}, expr.AsBool())
 }
 
 // getCompiledTriggerDataExpression returns a cached or newly compiled trigger data expression program.
 // Used by evaluateTriggerDataExpression. Compiled without a result type constraint; the expression is expected to return a map.
 func (r *WebRequestCommitStatusReconciler) getCompiledTriggerDataExpression(expression string) (*vm.Program, error) {
-	return r.getCompiledExpression(expression, "triggerdata:")
+	return r.getCompiledExpression(expressionCacheKey{Prefix: "triggerdata", Expression: expression})
 }
 
 // getCompiledValidationExpression returns a cached or newly compiled validation expression program.
 // Used by evaluateValidationExpression. Compiled with expr.AsBool() so the expression must return a boolean.
 func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpression(expression string) (*vm.Program, error) {
-	return r.getCompiledExpression(expression, "validation:", expr.AsBool())
+	return r.getCompiledExpression(expressionCacheKey{Prefix: "validation", Expression: expression}, expr.AsBool())
 }
 
 // getCompiledResponseDataExpression returns a cached or newly compiled response data expression program.
 // Used by evaluateResponseDataExpression. Compiled without a result type constraint; the expression is expected to return a map for ResponseData.
 func (r *WebRequestCommitStatusReconciler) getCompiledResponseDataExpression(expression string) (*vm.Program, error) {
-	return r.getCompiledExpression(expression, "responsedata:")
+	return r.getCompiledExpression(expressionCacheKey{Prefix: "responsedata", Expression: expression})
 }
 
 // evaluateTriggerExpression runs the trigger expression to decide whether to perform the HTTP request for this environment.

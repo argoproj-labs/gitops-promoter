@@ -568,10 +568,14 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 // (when reportOn is "proposed" or default) or ActiveCommitStatuses (when reportOn is "active").
 func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promoterv1alpha1.PromotionStrategy, key string, reportOn string) []promoterv1alpha1.Environment {
 	globalSelectors := ps.Spec.ProposedCommitStatuses
-	getEnvSelectors := func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector { return e.ProposedCommitStatuses }
+	getEnvSelectors := func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector {
+		return e.ProposedCommitStatuses
+	}
 	if reportOn == constants.CommitRefActive {
 		globalSelectors = ps.Spec.ActiveCommitStatuses
-		getEnvSelectors = func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector { return e.ActiveCommitStatuses }
+		getEnvSelectors = func(e promoterv1alpha1.Environment) []promoterv1alpha1.CommitStatusSelector {
+			return e.ActiveCommitStatuses
+		}
 	}
 
 	keyInSelectors := func(selectors []promoterv1alpha1.CommitStatusSelector) bool {
