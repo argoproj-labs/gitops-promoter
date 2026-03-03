@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -366,7 +367,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					if ps.Annotations == nil {
 						ps.Annotations = make(map[string]string)
 					}
-					ps.Annotations["test-reconcile-trigger"] = fmt.Sprintf("%d", time.Now().UnixNano())
+					ps.Annotations["test-reconcile-trigger"] = strconv.FormatInt(time.Now().UnixNano(), 10)
 					err = k8sClient.Update(ctx, &ps)
 					g.Expect(err).NotTo(HaveOccurred())
 				}, constants.EventuallyTimeout).Should(Succeed())
