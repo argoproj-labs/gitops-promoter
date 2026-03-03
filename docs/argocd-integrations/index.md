@@ -84,7 +84,7 @@ server:
 > In order to see gitops-promoter CRDs and promoter UI in the ArgoCD UI, they must be deployed in an ArgoCD application
 
 Once applied, you should see a new gitops-promoter section in the Argo CD UI
-![Screenshot of Argo CD UI showing the Promoter section](assets/argocd-ui-extension.png)
+![Screenshot of Argo CD UI showing the Promoter section](../assets/argocd-ui-extension.png)
 
 ### Compatibility Matrix
 
@@ -98,10 +98,10 @@ The following table shows the compatibility between GitOps Promoter versions and
 ## Deep Links
 
 Argo CD supports [deep links](https://argo-cd.readthedocs.io/en/stable/operator-manual/deep_links/) from a resource's details
-page. This allows us to link directly from a [ChangeTransferPolicy](crd-specs.md#changetransferpolicy) or a
-[PullRequest](crd-specs.md#pullrequest) to the PR page in your SCM provider.
+page. This allows us to link directly from a [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) or a
+[PullRequest](../crd-specs.md#pullrequest) to the PR page in your SCM provider.
 
-![Screenshot of Argo CD resource details page. There are several rows of information, and the bottom one is "Links". There is a "Pull Request" link in the links section.](assets/argocd-deep-links.png)
+![Screenshot of Argo CD resource details page. There are several rows of information, and the bottom one is "Links". There is a "Pull Request" link in the links section.](../assets/argocd-deep-links.png)
 
 To enable these deep links, add the following to your `argocd-cm` ConfigMap:
 
@@ -140,7 +140,7 @@ configs:
 
 Argo CD supports [showing values of specific labels in the resource tree](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#resource-custom-labels).
 
-![Screenshot of Argo CD resource tree. The CommitStatus resources are labeled with their key.](assets/argocd-resource-tree-labels.png)
+![Screenshot of Argo CD resource tree. The CommitStatus resources are labeled with their key.](../assets/argocd-resource-tree-labels.png)
 
 To enable this, add the following to your `argocd-cm` ConfigMap:
 
