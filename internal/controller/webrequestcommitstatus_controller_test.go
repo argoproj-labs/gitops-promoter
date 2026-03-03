@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -39,7 +40,17 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
+//go:embed testdata/WebRequestCommitStatus.yaml
+var testWebRequestCommitStatusYAML string
+
 var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
+	Context("When unmarshalling the test data", func() {
+		It("should unmarshal the WebRequestCommitStatus resource", func() {
+			err := unmarshalYamlStrict(testWebRequestCommitStatusYAML, &promoterv1alpha1.WebRequestCommitStatus{})
+			Expect(err).ToNot(HaveOccurred())
+		})
+	})
+
 	var (
 		ctx               context.Context
 		name              string
