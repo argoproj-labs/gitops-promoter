@@ -276,6 +276,112 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 
+		Describe("Polling Mode - Interval Short-Circuit", func() {
+			var (
+				webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+				requestCount           int
+				requestMu              sync.Mutex
+			)
+
+			BeforeEach(func() {
+				requestCount = 0
+				By("Creating a test HTTP server that counts requests")
+				testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					requestMu.Lock()
+					requestCount++
+					requestMu.Unlock()
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"approved": true,
+						"status":   "approved",
+					})
+				}))
+
+				By("Creating a WebRequestCommitStatus in polling mode with long interval")
+				webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      name + "-polling-interval-shortcircuit",
+						Namespace: "default",
+					},
+					Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+						PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+							Name: name,
+						},
+						Key:      "external-approval",
+						ReportOn: constants.CommitRefProposed,
+						HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+							URLTemplate: testServer.URL + "/validate/{{ .ReportedSha }}",
+							Method:      "GET",
+							Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						},
+						Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+						Mode: promoterv1alpha1.ModeSpec{
+							Polling: &promoterv1alpha1.PollingModeSpec{
+								// Long interval so a second reconcile triggered by PS update is still "within interval"
+								Interval: metav1.Duration{Duration: 10 * time.Minute},
+							},
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+			})
+
+			AfterEach(func() {
+				if testServer != nil {
+					testServer.Close()
+				}
+				_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+			})
+
+			It("should skip HTTP request when reconcile runs within polling interval", func() {
+				By("Waiting for first reconcile to complete (one HTTP request per environment) and set LastRequestTime")
+				var initialRequestCount int
+				Eventually(func(g Gomega) {
+					var wrcs promoterv1alpha1.WebRequestCommitStatus
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      name + "-polling-interval-shortcircuit",
+						Namespace: "default",
+					}, &wrcs)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+					for i := range wrcs.Status.Environments {
+						g.Expect(wrcs.Status.Environments[i].LastRequestTime).ToNot(BeNil(), "LastRequestTime should be set after first request")
+						g.Expect(wrcs.Status.Environments[i].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+					}
+					requestMu.Lock()
+					initialRequestCount = requestCount
+					requestMu.Unlock()
+					g.Expect(initialRequestCount).To(BeNumerically(">=", 1), "Should have made at least one HTTP request on first reconcile")
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Triggering another reconcile by updating the PromotionStrategy (e.g. annotation)")
+				Eventually(func(g Gomega) {
+					var ps promoterv1alpha1.PromotionStrategy
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      name,
+						Namespace: "default",
+					}, &ps)
+					g.Expect(err).NotTo(HaveOccurred())
+					if ps.Annotations == nil {
+						ps.Annotations = make(map[string]string)
+					}
+					ps.Annotations["test-reconcile-trigger"] = fmt.Sprintf("%d", time.Now().UnixNano())
+					err = k8sClient.Update(ctx, &ps)
+					g.Expect(err).NotTo(HaveOccurred())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Waiting for controller to process the enqueued reconcile")
+				time.Sleep(3 * time.Second)
+
+				By("Verifying no additional HTTP request was made (short-circuit within interval)")
+				requestMu.Lock()
+				count := requestCount
+				requestMu.Unlock()
+				Expect(count).To(Equal(initialRequestCount), "HTTP endpoint should not be called again; second reconcile should have skipped the request within polling interval")
+			})
+		})
+
 		It("should only update lastSuccessfulSha when validation succeeds", func() {
 			By("Creating a test HTTP server that starts failing then succeeds")
 			var requestCount int
