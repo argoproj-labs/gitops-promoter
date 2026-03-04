@@ -40,8 +40,8 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
 }) => {
   const [showDeploymentTooltip, setShowDeploymentTooltip] = useState(false);
   const [showCodeTooltip, setShowCodeTooltip] = useState(false);
-  const deploymentTimeoutRef = useRef<number | null>(null);
-  const codeTimeoutRef = useRef<number | null>(null);
+  const deploymentTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const codeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getIcon = (iconType: 'file' | 'code') => {
     if (iconType === 'code') return <BsBraces className="commit-icon" />;
