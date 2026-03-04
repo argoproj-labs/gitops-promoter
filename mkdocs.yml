@@ -47,7 +47,9 @@ nav:
   - FAQs: faqs.md
   - Tutorials:
       - Argo CD Apps: tutorial-argocd-apps.md
-  - Argo CD Integrations: argocd-integrations.md
+  - Argo CD Integrations:
+      - Overview: argocd-integrations/index.md
+      - Extension Development: argocd-integrations/development.md
 plugins:
   - gh-admonitions
   - redirects:
