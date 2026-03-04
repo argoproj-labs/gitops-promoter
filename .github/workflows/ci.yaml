@@ -76,7 +76,7 @@ jobs:
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
       - name: Frontend Extension Unit Tests
-        run: make test-ui-test-extension
+        run: make test-unit-test-extension
       - name: Frontend Dashboard Unit Tests
         run: make test-ui-test-dashboard
       - name: Run Integration Tests
