@@ -77,7 +77,10 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	// - "active": Reports on the active hydrated commit SHA
 	//
 	// When "proposed": Polls until success, then stops polling for that SHA.
+	// Use "proposed" for checks that need to run just once before a change is promoted, like an approval step.
+	//
 	// When "active": Polls forever, even after success (active state can change).
+	// Use "active" for checks that monitor the change after it's released, for example a metrics monitoring service.
 	ReportOn *string `json:"reportOn,omitempty"`
 	// HTTPRequest defines the HTTP request configuration.
 	// Supports Go templates in URL, Headers, and Body fields.
