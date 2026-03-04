@@ -19,7 +19,6 @@ describe('Extension Page Load Tests', () => {
 
     describe('AppViewExtension Component', () => {
         it('should render without crashing when no PromotionStrategy nodes exist', () => {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
             const AppViewExtension = require('../AppViewExtension').default;
 
             const props = {
@@ -39,7 +38,6 @@ describe('Extension Page Load Tests', () => {
         });
 
         it('should render without crashing when one PromotionStrategy node exists', async () => {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
             const AppViewExtension = require('../AppViewExtension').default;
 
             const props = {
@@ -71,7 +69,6 @@ describe('Extension Page Load Tests', () => {
         });
 
         it('should render without crashing when multiple PromotionStrategy nodes exist', () => {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
             const AppViewExtension = require('../AppViewExtension').default;
 
             const props = {
@@ -110,7 +107,6 @@ describe('Extension Page Load Tests', () => {
 
     describe('ResourceExtension Component', () => {
         it('should render without crashing with an empty resource', () => {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
             const ResourceExtension = require('../resourceExtension').default;
 
             const props = {
@@ -145,7 +141,6 @@ describe('Extension Page Load Tests', () => {
         });
 
         it('should render without crashing with status environments', async () => {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
             const ResourceExtension = require('../resourceExtension').default;
 
             const props = {

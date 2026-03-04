@@ -9,7 +9,8 @@ const originalRequire = Module.prototype.require;
 const styleExtensions = ['.scss', '.css', '.sass', '.less'];
 const assetExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico'];
 
-// Resolve React and ReactDOM from the extension's node_modules to ensure a single instance
+// Packages that are external to the extension but used by shared components.
+// Matched by prefix to stub all icon sub-packages without listing each one.
 const extensionDir = path.resolve(__dirname, '..');
 const reactPath = require.resolve('react', { paths: [extensionDir] });
 const reactDomPath = require.resolve('react-dom/client', { paths: [extensionDir] });
@@ -26,6 +27,13 @@ Module.prototype.require = function(id) {
     // Return mock path string for asset files
     if (ext && assetExtensions.includes(ext)) {
         return id;
+    }
+
+    // Stub icon libraries used by shared components (react-icons/*)
+    if (id.startsWith('react-icons/')) {
+        return new Proxy({}, {
+            get: () => () => null,
+        });
     }
 
     // Ensure single React instance across all packages
