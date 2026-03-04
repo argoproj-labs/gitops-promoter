@@ -17,11 +17,11 @@ limitations under the License.
 
 package v1alpha1
 
-// TriggerExpressionSpecApplyConfiguration represents a declarative configuration of the TriggerExpressionSpec type for use
+// WhenWithOutputSpecApplyConfiguration represents a declarative configuration of the WhenWithOutputSpec type for use
 // with apply.
 //
-// TriggerExpressionSpec holds the expressions that control when the HTTP request is fired.
-type TriggerExpressionSpecApplyConfiguration struct {
+// WhenWithOutputSpec holds a when condition (boolean expression) and optional output (map expression).
+type WhenWithOutputSpecApplyConfiguration struct {
 	// Expression is a boolean expr expression that decides whether the HTTP request should be made.
 	// It is evaluated BEFORE each potential HTTP request. When it returns true the request is made;
 	// when false the controller keeps the previous phase and skips the request.
@@ -32,8 +32,8 @@ type TriggerExpressionSpecApplyConfiguration struct {
 	// - Phase (string): current phase (success/pending/failure)
 	// - ReportedSha (string): the SHA being validated
 	// - LastSuccessfulSha (string): last SHA that achieved success for this environment
-	// - TriggerData (map[string]any): custom data from the previous dataExpression evaluation
-	// - ResponseData (map[string]any): response data from the previous HTTP request (if any)
+	// - TriggerOutput (map[string]any): custom data from the previous when.output.expression evaluation
+	// - ResponseOutput (map[string]any): response data from the previous HTTP request (if any)
 	//
 	// Note: PromotionStrategy.Status.Environments is an ordered array representing the promotion sequence.
 	// Environments[0] is the first environment (e.g., dev), Environments[1] is second (e.g., staging), etc.
@@ -46,54 +46,50 @@ type TriggerExpressionSpecApplyConfiguration struct {
 	// - "true"
 	//
 	// # Only trigger when SHA changes from what we last tracked
-	// - "ReportedSha != TriggerData['lastCheckedSha']"
+	// - "ReportedSha != TriggerOutput['lastCheckedSha']"
 	//
 	// # Only trigger when a particular commit status is success (e.g. argocd-health)
 	// - "size(filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})) > 0 && filter(Environment.Proposed.CommitStatuses, {.Key == 'argocd-health'})[0].Phase == 'success'"
 	//
 	// # Only retry if the previous response indicated we should
-	// - "ResponseData == nil || ResponseData.status == 'retry'"
+	// - "ResponseOutput == nil || ResponseOutput.status == 'retry'"
 	Expression *string `json:"expression,omitempty"`
-	// DataExpression is an optional expr expression that produces a map of data to persist across
-	// reconcile cycles. Its result is stored in status.environments[].triggerData and is available
-	// in the next reconcile as the TriggerData variable (in both this expression and in the trigger
-	// expression). Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
+	// Output optionally holds an expression that produces a map of data to persist across reconcile cycles.
+	// Its result is stored in status.environments[].triggerOutput and is available in the next reconcile
+	// as the TriggerOutput variable. Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
 	//
 	// Available variables (same as Expression):
-	// - PromotionStrategy, Environment, Phase, ReportedSha, LastSuccessfulSha, TriggerData, ResponseData
+	// - PromotionStrategy, Environment, Phase, ReportedSha, LastSuccessfulSha, TriggerOutput, ResponseOutput
 	//
-	// The expression must return a map/object. Every key in the returned map is stored in TriggerData.
+	// The expression must return a map/object. Every key in the returned map is stored in TriggerOutput.
 	//
 	// Examples:
 	// # Track SHA to detect changes
 	// - "{ trackedSha: ReportedSha }"
 	//
 	// # Increment attempt counter
-	// - "{ attemptCount: (TriggerData[\"attemptCount\"] ?? 0) + 1 }"
-	//
-	// # Store last request timestamp
-	// - "{ lastRequestTime: string(now()) }"
-	DataExpression *string `json:"dataExpression,omitempty"`
+	// - "{ attemptCount: (TriggerOutput[\"attemptCount\"] ?? 0) + 1 }"
+	Output *OutputSpecApplyConfiguration `json:"output,omitempty"`
 }
 
-// TriggerExpressionSpecApplyConfiguration constructs a declarative configuration of the TriggerExpressionSpec type for use with
+// WhenWithOutputSpecApplyConfiguration constructs a declarative configuration of the WhenWithOutputSpec type for use with
 // apply.
-func TriggerExpressionSpec() *TriggerExpressionSpecApplyConfiguration {
-	return &TriggerExpressionSpecApplyConfiguration{}
+func WhenWithOutputSpec() *WhenWithOutputSpecApplyConfiguration {
+	return &WhenWithOutputSpecApplyConfiguration{}
 }
 
 // WithExpression sets the Expression field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Expression field is set to the value of the last call.
-func (b *TriggerExpressionSpecApplyConfiguration) WithExpression(value string) *TriggerExpressionSpecApplyConfiguration {
+func (b *WhenWithOutputSpecApplyConfiguration) WithExpression(value string) *WhenWithOutputSpecApplyConfiguration {
 	b.Expression = &value
 	return b
 }
 
-// WithDataExpression sets the DataExpression field in the declarative configuration to the given value
+// WithOutput sets the Output field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the DataExpression field is set to the value of the last call.
-func (b *TriggerExpressionSpecApplyConfiguration) WithDataExpression(value string) *TriggerExpressionSpecApplyConfiguration {
-	b.DataExpression = &value
+// If called multiple times, the Output field is set to the value of the last call.
+func (b *WhenWithOutputSpecApplyConfiguration) WithOutput(value *OutputSpecApplyConfiguration) *WhenWithOutputSpecApplyConfiguration {
+	b.Output = value
 	return b
 }

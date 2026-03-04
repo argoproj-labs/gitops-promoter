@@ -42,23 +42,23 @@ type WebRequestCommitStatusEnvironmentStatusApplyConfiguration struct {
 	LastRequestTime *v1.Time `json:"lastRequestTime,omitempty"`
 	// LastResponseStatusCode is the HTTP status code from the last request.
 	LastResponseStatusCode *int `json:"lastResponseStatusCode,omitempty"`
-	// TriggerData stores the map returned by spec.mode.trigger.trigger.dataExpression.
-	// It is passed back into the next reconcile as the TriggerData variable, making it available
-	// to both the trigger expression and the data expression. Use it to track state across
+	// TriggerOutput stores the map returned by spec.mode.trigger.when.output.expression.
+	// It is passed back into the next reconcile as the TriggerOutput variable (in expressions and templates), making it available
+	// to both the trigger when.expression and when.output.expression. Use it to track state across
 	// reconcile cycles (e.g. last-seen SHA, attempt counter, last request timestamp).
 	// The data is preserved as arbitrary JSON.
-	TriggerData *apiextensionsv1.JSON `json:"triggerData,omitempty"`
-	// ResponseData stores the map returned by spec.mode.trigger.response.dataExpression.
+	TriggerOutput *apiextensionsv1.JSON `json:"triggerOutput,omitempty"`
+	// ResponseOutput stores the map returned by spec.mode.trigger.response.output.expression.
 	// This field is ONLY populated when spec.mode.trigger.response is provided.
-	// The response dataExpression is evaluated after each HTTP request and its result is stored here,
+	// The response output expression is evaluated after each HTTP request and its result is stored here,
 	// allowing subsequent trigger expressions to inspect data from the previous response when
 	// deciding whether to issue the next request.
 	//
 	// Without spec.mode.trigger.response, this field will always be nil.
 	//
-	// Available in trigger expressions as: ResponseData.field1, ResponseData.field2, etc.
-	// (where fields depend on what your response.dataExpression returns)
-	ResponseData *apiextensionsv1.JSON `json:"responseData,omitempty"`
+	// Available in trigger expressions and templates as: ResponseOutput.field1, ResponseOutput.field2, etc.
+	// (where fields depend on what your response.output.expression returns)
+	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
 }
 
 // WebRequestCommitStatusEnvironmentStatusApplyConfiguration constructs a declarative configuration of the WebRequestCommitStatusEnvironmentStatus type for use with
@@ -115,18 +115,18 @@ func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithLastResp
 	return b
 }
 
-// WithTriggerData sets the TriggerData field in the declarative configuration to the given value
+// WithTriggerOutput sets the TriggerOutput field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the TriggerData field is set to the value of the last call.
-func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithTriggerData(value apiextensionsv1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
-	b.TriggerData = &value
+// If called multiple times, the TriggerOutput field is set to the value of the last call.
+func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithTriggerOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
+	b.TriggerOutput = &value
 	return b
 }
 
-// WithResponseData sets the ResponseData field in the declarative configuration to the given value
+// WithResponseOutput sets the ResponseOutput field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ResponseData field is set to the value of the last call.
-func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithResponseData(value apiextensionsv1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
-	b.ResponseData = &value
+// If called multiple times, the ResponseOutput field is set to the value of the last call.
+func (b *WebRequestCommitStatusEnvironmentStatusApplyConfiguration) WithResponseOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusEnvironmentStatusApplyConfiguration {
+	b.ResponseOutput = &value
 	return b
 }

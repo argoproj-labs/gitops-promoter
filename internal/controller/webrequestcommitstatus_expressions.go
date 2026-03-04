@@ -75,14 +75,14 @@ func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpression(expre
 	return r.getCompiledExpression(expressionCacheKey{Prefix: "validation", Expression: expression}, expr.AsBool())
 }
 
-// getCompiledResponseDataExpression returns a cached or newly compiled response data expression program.
-// Used by evaluateResponseDataExpression. Compiled without a result type constraint; the expression is expected to return a map for ResponseData.
+// getCompiledResponseDataExpression returns a cached or newly compiled response output expression program.
+// Used by evaluateResponseDataExpression. Compiled without a result type constraint; the expression is expected to return a map for ResponseOutput.
 func (r *WebRequestCommitStatusReconciler) getCompiledResponseDataExpression(expression string) (*vm.Program, error) {
 	return r.getCompiledExpression(expressionCacheKey{Prefix: "responsedata", Expression: expression})
 }
 
 // evaluateTriggerExpression runs the trigger expression to decide whether to perform the HTTP request for this environment.
-// It is called before each potential request; the expression has access to ReportedSha, LastSuccessfulSha, Phase, PromotionStrategy, Environment, TriggerData, and ResponseData.
+// It is called before each potential request; the expression has access to ReportedSha, LastSuccessfulSha, Phase, PromotionStrategy, Environment, TriggerOutput, and ResponseOutput.
 // Returns a bool: when true, the controller issues the request; when false, it keeps the previous phase (e.g. Pending) and skips the request.
 func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context.Context, expression string, td templateData) (triggerResult, error) {
 	logger := log.FromContext(ctx)
@@ -100,8 +100,8 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 		"Phase":             td.Phase,
 		"PromotionStrategy": td.PromotionStrategy,
 		"Environment":       td.Environment,
-		"TriggerData":       td.TriggerData,
-		"ResponseData":      td.ResponseData,
+		"TriggerOutput":     td.TriggerOutput,
+		"ResponseOutput":    td.ResponseOutput,
 	}
 
 	// Run the expression
@@ -120,9 +120,9 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 	return triggerResult{Trigger: boolResult}, nil
 }
 
-// evaluateTriggerDataExpression runs the trigger data expression to produce state that is persisted
-// across reconcile cycles as TriggerData. The expression has the same variable set as the trigger
-// expression. It must return a map[string]any; every key in that map is stored as TriggerData.
+// evaluateTriggerDataExpression runs the trigger when.output expression to produce state that is persisted
+// across reconcile cycles in status.triggerOutput. The expression has the same variable set as the trigger
+// expression. It must return a map[string]any; every key in that map is stored as TriggerOutput.
 func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx context.Context, expression string, td templateData) (map[string]any, error) {
 	logger := log.FromContext(ctx)
 
@@ -137,8 +137,8 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx con
 		"Phase":             td.Phase,
 		"PromotionStrategy": td.PromotionStrategy,
 		"Environment":       td.Environment,
-		"TriggerData":       td.TriggerData,
-		"ResponseData":      td.ResponseData,
+		"TriggerOutput":     td.TriggerOutput,
+		"ResponseOutput":    td.ResponseOutput,
 	}
 
 	output, err := expr.Run(program, env)
@@ -192,9 +192,9 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx cont
 	return result, nil
 }
 
-// evaluateResponseDataExpression runs the response data expression to extract or transform data from the HTTP response.
+// evaluateResponseDataExpression runs the response.output expression to extract or transform data from the HTTP response.
 // The expression receives Response.StatusCode, Response.Body, and Response.Headers and must return a map.
-// The returned map is stored as ResponseData and is available to the trigger expression and to description/URL templates.
+// The returned map is stored in status.responseOutput and is available to the trigger expression and to description/URL templates as ResponseOutput.
 func (r *WebRequestCommitStatusReconciler) evaluateResponseDataExpression(ctx context.Context, expression string, resp httpResponse) (map[string]any, error) {
 	logger := log.FromContext(ctx)
 

@@ -28,12 +28,10 @@ import (
 type TriggerModeSpecApplyConfiguration struct {
 	// RequeueDuration specifies how long to wait before requeuing to re-evaluate the trigger expression.
 	RequeueDuration *v1.Duration `json:"requeueDuration,omitempty"`
-	// Trigger configures the boolean guard expression and optional data-tracking expression that together
-	// control whether the HTTP request is made on each reconcile cycle.
-	Trigger *TriggerExpressionSpecApplyConfiguration `json:"trigger,omitempty"`
-	// Response optionally configures an expression that extracts and transforms data from the HTTP response
-	// for storage in ResponseData, which persists across reconcile cycles.
-	Response *ResponseExpressionSpecApplyConfiguration `json:"response,omitempty"`
+	// When configures the boolean guard and optional output expression that control whether the HTTP request is made.
+	When *WhenWithOutputSpecApplyConfiguration `json:"when,omitempty"`
+	// Response optionally configures an expression that extracts data from the HTTP response into ResponseOutput.
+	Response *ResponseOutputSpecApplyConfiguration `json:"response,omitempty"`
 }
 
 // TriggerModeSpecApplyConfiguration constructs a declarative configuration of the TriggerModeSpec type for use with
@@ -50,18 +48,18 @@ func (b *TriggerModeSpecApplyConfiguration) WithRequeueDuration(value v1.Duratio
 	return b
 }
 
-// WithTrigger sets the Trigger field in the declarative configuration to the given value
+// WithWhen sets the When field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the Trigger field is set to the value of the last call.
-func (b *TriggerModeSpecApplyConfiguration) WithTrigger(value *TriggerExpressionSpecApplyConfiguration) *TriggerModeSpecApplyConfiguration {
-	b.Trigger = value
+// If called multiple times, the When field is set to the value of the last call.
+func (b *TriggerModeSpecApplyConfiguration) WithWhen(value *WhenWithOutputSpecApplyConfiguration) *TriggerModeSpecApplyConfiguration {
+	b.When = value
 	return b
 }
 
 // WithResponse sets the Response field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the Response field is set to the value of the last call.
-func (b *TriggerModeSpecApplyConfiguration) WithResponse(value *ResponseExpressionSpecApplyConfiguration) *TriggerModeSpecApplyConfiguration {
+func (b *TriggerModeSpecApplyConfiguration) WithResponse(value *ResponseOutputSpecApplyConfiguration) *TriggerModeSpecApplyConfiguration {
 	b.Response = value
 	return b
 }

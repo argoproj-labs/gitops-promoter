@@ -15,7 +15,7 @@ For each environment configured via the PromotionStrategy:
    - `active`: Validates the currently deployed commit
 2. The controller evaluates whether to make an HTTP request (polling mode always makes requests, trigger mode evaluates a trigger expression first)
 3. If triggered, the controller makes an HTTP request to the configured endpoint using templated URL, headers, and body
-4. The controller evaluates the validation expression against the HTTP response
+4. The controller evaluates the success expression against the HTTP response
 5. The controller creates/updates a CommitStatus with the validation result
 6. The PromotionStrategy checks the CommitStatus before allowing promotion
 
@@ -52,8 +52,8 @@ Uses expressions to dynamically control when HTTP requests are made. Powerful fo
 **Behavior:**
 - Evaluates trigger expression on each reconciliation
 - Only makes HTTP request if trigger expression returns true
-- Can store and access custom state via `TriggerData` (via `trigger.dataExpression`)
-- Can access previous HTTP response data via `ResponseData` (via `response.dataExpression`)
+- Can store and access custom state via `TriggerOutput` (via `trigger.when.output.expression`)
+- Can access previous HTTP response data via `ResponseOutput` (via `response.output.expression`)
 - Always reconciles at `requeueDuration` interval (default: 1 minute)
 
 ## Security Considerations
@@ -63,7 +63,7 @@ The WebRequestCommitStatus controller renders URLs (and optionally headers and b
 **Recommendations for administrators:**
 
 - **Restrict who can create or modify WebRequestCommitStatus resources** using RBAC. Only trusted actors should be able to set or change `spec.httpRequest.urlTemplate` and related fields.
-- **Be cautious with templates that include user-controlled or namespace-controlled data.** Template variables such as `NamespaceMetadata.Labels`, `NamespaceMetadata.Annotations`, and data from `TriggerData` or `ResponseData` can influence the rendered URL. If those values are controllable by less-trusted users, they could push the URL toward internal or metadata endpoints.
+- **Be cautious with templates that include user-controlled or namespace-controlled data.** Template variables such as `NamespaceMetadata.Labels`, `NamespaceMetadata.Annotations`, and data from `TriggerOutput` or `ResponseOutput` can influence the rendered URL. If those values are controllable by less-trusted users, they could push the URL toward internal or metadata endpoints.
 - **Consider network policies** to limit egress traffic from the controller (e.g. only to approved external APIs). This helps limit which destinations the controller can reach even if a CRD is misconfigured or compromised.
 
 ### Summary for administrators
@@ -95,7 +95,9 @@ spec:
     urlTemplate: "https://approvals.example.com/api/check/{{ .ReportedSha }}"
     method: GET
     timeout: 30s
-  expression: "Response.StatusCode == 200 && Response.Body.approved == true"
+  success:
+    when:
+      expression: "Response.StatusCode == 200 && Response.Body.approved == true"
   mode:
     polling:
       interval: 2m
@@ -125,7 +127,9 @@ spec:
       bearer:
         secretRef:
           name: api-token-secret
-  expression: "Response.StatusCode == 200 && Response.Body.status == 'approved'"
+  success:
+    when:
+      expression: "Response.StatusCode == 200 && Response.Body.status == 'approved'"
   mode:
     polling:
       interval: 5m
@@ -156,13 +160,16 @@ spec:
   httpRequest:
     urlTemplate: "https://monitoring.example.com/api/deployment/{{ .ReportedSha }}"
     method: GET
-  expression: "Response.StatusCode == 200 && Response.Body.ready == true"
+  success:
+    when:
+      expression: "Response.StatusCode == 200 && Response.Body.ready == true"
   mode:
     trigger:
       requeueDuration: 1m
-      trigger:
-        expression: "ReportedSha != TriggerData[\"lastCheckedSha\"]"
-        dataExpression: "{ lastCheckedSha: ReportedSha }"
+      when:
+        expression: "ReportedSha != TriggerOutput[\"lastCheckedSha\"]"
+        output:
+          expression: "{ lastCheckedSha: ReportedSha }"
 ```
 
 ### Trigger Mode - Only when another commit status is success
@@ -183,11 +190,13 @@ spec:
   httpRequest:
     urlTemplate: "https://api.example.com/validate/{{ .ReportedSha }}"
     method: GET
-  expression: "Response.StatusCode == 200"
+  success:
+    when:
+      expression: "Response.StatusCode == 200"
   mode:
     trigger:
       requeueDuration: 30s
-      trigger:
+      when:
         expression: |
           size(filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})) > 0 &&
           filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})[0].Phase == "success"
@@ -208,28 +217,32 @@ spec:
   promotionStrategyRef:
     name: my-app
   key: progressive-check
-  descriptionTemplate: "Progressive validation (attempt {{ index .TriggerData \"attemptCount\" | default 0 }})"
+  descriptionTemplate: "Progressive validation (attempt {{ index .TriggerOutput \"attemptCount\" | default 0 }})"
   httpRequest:
     urlTemplate: "https://validation.example.com/api/check/{{ .ReportedSha }}"
     method: GET
-  expression: "Response.StatusCode == 200 && Response.Body.validated == true"
+  success:
+    when:
+      expression: "Response.StatusCode == 200 && Response.Body.validated == true"
   mode:
     trigger:
       requeueDuration: 1m
-      trigger:
+      when:
         expression: |
-          ResponseData == nil || 
-          ResponseData.status == "retry" || 
-          ResponseData.validated == false
-        dataExpression: |
-          { attemptCount: (TriggerData["attemptCount"] ?? 0) + 1 }
+          ResponseOutput == nil || 
+          ResponseOutput.status == "retry" || 
+          ResponseOutput.validated == false
+        output:
+          expression: |
+            { attemptCount: (TriggerOutput["attemptCount"] ?? 0) + 1 }
       response:
-        dataExpression: |
-          {
-            status: Response.Body.status,
-            validated: Response.Body.validated,
-            retryAfter: Response.Body.retryAfter
-          }
+        output:
+          expression: |
+            {
+              status: Response.Body.status,
+              validated: Response.Body.validated,
+              retryAfter: Response.Body.retryAfter
+            }
 ```
 
 ### POST Request with JSON Body
@@ -263,10 +276,12 @@ spec:
       basic:
         secretRef:
           name: compliance-api-creds
-  expression: |
-    Response.StatusCode == 200 && 
-    Response.Body.compliant == true &&
-    Response.Body.score >= 0.8
+  success:
+    when:
+      expression: |
+        Response.StatusCode == 200 && 
+        Response.Body.compliant == true &&
+        Response.Body.score >= 0.8
   mode:
     polling:
       interval: 5m
@@ -304,7 +319,9 @@ spec:
         scopes: ["deployments:read", "approvals:read"]
         secretRef:
           name: oauth-credentials
-  expression: "Response.StatusCode == 200 && Response.Body.approved == true"
+  success:
+    when:
+      expression: "Response.StatusCode == 200 && Response.Body.approved == true"
   mode:
     polling:
       interval: 3m
@@ -340,7 +357,9 @@ spec:
       tls:
         secretRef:
           name: mtls-client-cert
-  expression: "Response.StatusCode == 200"
+  success:
+    when:
+      expression: "Response.StatusCode == 200"
   mode:
     polling:
       interval: 2m
@@ -374,7 +393,9 @@ spec:
   httpRequest:
     urlTemplate: "https://monitoring.example.com/health/{{ .ReportedSha }}"
     method: GET
-  expression: "Response.StatusCode == 200 && Response.Body.errorRate < 0.01"
+  success:
+    when:
+      expression: "Response.StatusCode == 200 && Response.Body.errorRate < 0.01"
   mode:
     polling:
       interval: 1m  # Continuously monitor active deployment
@@ -397,13 +418,15 @@ spec:
   httpRequest:
     urlTemplate: "https://api.example.com/comprehensive-check/{{ .ReportedSha }}"
     method: GET
-  expression: |
-    Response.StatusCode == 200 &&
-    Response.Body.securityScan.passed == true &&
-    Response.Body.performanceTest.score >= 90 &&
-    len(Response.Body.criticalIssues) == 0 &&
-    Response.Body.approvals.managerApproval == true &&
-    Response.Body.approvals.securityApproval == true
+  success:
+    when:
+      expression: |
+        Response.StatusCode == 200 &&
+        Response.Body.securityScan.passed == true &&
+        Response.Body.performanceTest.score >= 90 &&
+        len(Response.Body.criticalIssues) == 0 &&
+        Response.Body.approvals.managerApproval == true &&
+        Response.Body.approvals.securityApproval == true
   mode:
     polling:
       interval: 5m
@@ -435,7 +458,9 @@ spec:
         "team": "{{ index .NamespaceMetadata.Labels \"team\" }}",
         "environment": "{{ .Environment.Branch }}"
       }
-  expression: "Response.StatusCode == 200 && Response.Body.approved == true"
+  success:
+    when:
+      expression: "Response.StatusCode == 200 && Response.Body.approved == true"
   mode:
     polling:
       interval: 2m
@@ -488,27 +513,27 @@ The following fields support Go templates and all receive the **same template da
 | `Environment` | object | Current environment status (branch, Proposed, Active, PullRequest, etc.) |
 | `NamespaceMetadata.Labels` | map[string]string | Labels on the WebRequestCommitStatus namespace |
 | `NamespaceMetadata.Annotations` | map[string]string | Annotations on the namespace |
-| `TriggerData` | map[string]any | Custom data from the trigger data expression (trigger mode only). Use `{{ index .TriggerData "key" }}` for a value. |
-| `ResponseData` | map[string]any | Data from the last HTTP response when using `response.dataExpression` (trigger mode only). Keys match what your data expression returns (e.g. `approvedCount`, `lastCheckedAt`). |
+| `TriggerOutput` | map[string]any | Output from `trigger.when.output.expression` (trigger mode only). Use `{{ index .TriggerOutput "key" }}` for a value. |
+| `ResponseOutput` | map[string]any | Output from `response.output.expression` (trigger mode only). Keys match what your expression returns (e.g. `approvedCount`, `lastCheckedAt`). |
 
-**When is ResponseData / TriggerData from?**
+**When is ResponseOutput / TriggerOutput from?**
 
 | Field | When data is from |
 |-------|-------------------|
 | `spec.descriptionTemplate`, `spec.urlTemplate` | **Latest** — from the most recent HTTP request and trigger evaluation (what you see in status is up to date). |
 | `spec.httpRequest.urlTemplate`, `headerTemplates`, `bodyTemplate` | **Previous attempt** — from the last run. These are rendered *before* making the current HTTP request, so they never contain the response from the request being built. |
 
-**TriggerData and ResponseData lifecycle (trigger mode):**
+**TriggerOutput and ResponseOutput lifecycle (trigger mode):**
 
-- **TriggerData** comes from `trigger.dataExpression` when it is configured. The expression runs on every reconcile (whether or not the HTTP request fires) and must return a map. That map is persisted in `status.environments[].triggerData` and on the next reconciliation is passed back into both the `trigger.expression` and `trigger.dataExpression` as `TriggerData`, and into all templates. Use it to track state (e.g. last checked SHA, attempt count) and to build description/URL from that state.
-- **ResponseData** is set only when `response.dataExpression` is configured. The expression runs after the HTTP request and its returned map is stored in `status.environments[].responseData`. On the next run it is available to the trigger expression and to description/URL templates as `ResponseData`. Use it to drive retry logic or to show response-derived links/counts in the SCM status.
+- **TriggerOutput** comes from `trigger.when.output.expression` when it is configured. The expression runs on every reconcile (whether or not the HTTP request fires) and must return a map. That map is persisted in `status.environments[].triggerOutput` and on the next reconciliation is passed back into both the `trigger.when.expression` and `trigger.when.output.expression` as `TriggerOutput`, and into all templates. Use it to track state (e.g. last checked SHA, attempt count) and to build description/URL from that state.
+- **ResponseOutput** is set only when `response.output.expression` is configured. The expression runs after the HTTP request and its returned map is stored in `status.environments[].responseOutput`. On the next run it is available to the trigger expression and to description/URL templates as `ResponseOutput`. Use it to drive retry logic or to show response-derived links/counts in the SCM status.
 
 **Template functions:** All standard [Sprig](https://masterminds.github.io/sprig/) functions except `env`, `expandenv`, and `getHostByName`.
 
 **Examples:**
 ```yaml
 # Description
-descriptionTemplate: "{{ .Phase }}: {{ .ResponseData.approvedCount }}/{{ .ResponseData.totalRecordCount }} approved"
+descriptionTemplate: "{{ .Phase }}: {{ .ResponseOutput.approvedCount }}/{{ .ResponseOutput.totalRecordCount }} approved"
 
 # URL
 urlTemplate: "https://dashboard.example.com/{{ .Environment.Branch }}/{{ .ReportedSha }}"
@@ -671,7 +696,13 @@ Authentication configuration for the HTTP request.
          name: tls-cert  # Must contain keys: tls.crt, tls.key, optionally ca.crt
    ```
 
-### spec.expression
+### spec.success
+
+Defines when the HTTP response is considered successful (commit status phase success).
+
+**Required:** Yes
+
+#### spec.success.when.expression
 
 Expression evaluated using the [expr](https://github.com/expr-lang/expr) library against the HTTP response. Must return a boolean value where `true` indicates validation passed.
 
@@ -684,17 +715,20 @@ Expression evaluated using the [expr](https://github.com/expr-lang/expr) library
 
 **Examples:**
 ```yaml
-# Simple status check
-expression: "Response.StatusCode == 200"
+success:
+  when:
+    expression: "Response.StatusCode == 200"
 
-# Status and body check
-expression: "Response.StatusCode == 200 && Response.Body.approved == true"
+success:
+  when:
+    expression: "Response.StatusCode == 200 && Response.Body.approved == true"
 
-# Complex validation
-expression: |
-  Response.StatusCode == 200 &&
-  Response.Body.status == "approved" &&
-  len(Response.Body.errors) == 0
+success:
+  when:
+    expression: |
+      Response.StatusCode == 200 &&
+      Response.Body.status == "approved" &&
+      len(Response.Body.errors) == 0
 ```
 
 ### spec.mode
@@ -731,11 +765,11 @@ How long to wait before requeuing to re-evaluate the trigger expression.
 
 **Optional:** Yes
 
-##### spec.mode.trigger.trigger
+##### spec.mode.trigger.when
 
-Configures the boolean guard expression and optional data-tracking expression. **Required.**
+Configures the boolean guard expression and optional output expression. **Required.**
 
-###### spec.mode.trigger.trigger.expression
+###### spec.mode.trigger.when.expression
 
 Boolean expression that controls whether the HTTP request should be made. Evaluated BEFORE each potential HTTP request. Must return `true` (fire the request) or `false` (skip).
 
@@ -745,62 +779,58 @@ Boolean expression that controls whether the HTTP request should be made. Evalua
 - `Phase` (string): current phase (success/pending/failure)
 - `ReportedSha` (string): SHA being validated
 - `LastSuccessfulSha` (string): last SHA that achieved success
-- `TriggerData` (map[string]any): data from previous `dataExpression` evaluation
-- `ResponseData` (map[string]any): data from previous `response.dataExpression` evaluation
+- `TriggerOutput` (map[string]any): data from previous `when.output.expression` evaluation
+- `ResponseOutput` (map[string]any): data from previous `response.output.expression` evaluation
 
 **Required:** Yes
 
 **Examples:**
 ```yaml
-# Always trigger (equivalent to polling)
-trigger:
+when:
   expression: "true"
 
-# Only trigger when SHA changes
-trigger:
-  expression: "ReportedSha != TriggerData['lastCheckedSha']"
+when:
+  expression: "ReportedSha != TriggerOutput['lastCheckedSha']"
 
-# Only trigger when a particular commit status is success (e.g. after Argo CD health passes)
-trigger:
+when:
   expression: |
     size(filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})) > 0 &&
     filter(Environment.Proposed.CommitStatuses, {.Key == "argocd-health"})[0].Phase == "success"
 
-# Only retry if the previous response indicated we should
-trigger:
-  expression: "ResponseData == nil || ResponseData.status == \"retry\""
+when:
+  expression: "ResponseOutput == nil || ResponseOutput.status == \"retry\""
 ```
 
-###### spec.mode.trigger.trigger.dataExpression
+###### spec.mode.trigger.when.output.expression
 
-Optional expression that produces a map of data to persist across reconcile cycles. The map is stored in `status.environments[].triggerData` and available as `TriggerData` on the next reconcile. Use it to carry state such as last-seen SHAs, attempt counts, or timestamps.
+Optional expression that produces a map of data to persist across reconcile cycles. The map is stored in `status.environments[].triggerOutput` and available as `TriggerOutput` on the next reconcile. Use it to carry state such as last-seen SHAs, attempt counts, or timestamps.
 
-**Available variables:** same as `expression` above.
+**Available variables:** same as `when.expression` above.
 
-**Return type:** Must return a map/object. Every key in the map is stored in `TriggerData`.
+**Return type:** Must return a map/object. Every key in the map is stored in `TriggerOutput`.
 
 **Optional:** Yes
 
 **Examples:**
 ```yaml
-# Track last-seen SHA
-trigger:
-  expression: "ReportedSha != TriggerData[\"lastCheckedSha\"]"
-  dataExpression: "{ lastCheckedSha: ReportedSha }"
+when:
+  expression: "ReportedSha != TriggerOutput[\"lastCheckedSha\"]"
+  output:
+    expression: "{ lastCheckedSha: ReportedSha }"
 
-# Increment attempt counter
-trigger:
+when:
   expression: "true"
-  dataExpression: "{ attemptCount: (TriggerData[\"attemptCount\"] ?? 0) + 1 }"
+  output:
+    expression: "{ attemptCount: (TriggerOutput[\"attemptCount\"] ?? 0) + 1 }"
 
-# Multiple fields
-trigger:
+when:
   expression: "true"
-  dataExpression: |
-    {
-      trackedSha: ReportedSha,
-      lastRequestTime: string(now())
-    }
+  output:
+    expression: |
+      {
+        trackedSha: ReportedSha,
+        lastRequestTime: string(now())
+      }
 ```
 
 ##### spec.mode.trigger.response
@@ -809,35 +839,35 @@ Optional sub-object configuring how data from the HTTP response is extracted and
 
 **Optional:** Yes
 
-###### spec.mode.trigger.response.dataExpression
+###### spec.mode.trigger.response.output.expression
 
-Expression that extracts and transforms data from the HTTP response before storing it in `ResponseData`. Allows storing only needed fields instead of the entire response.
+Expression that extracts and transforms data from the HTTP response before storing it in `status.environments[].responseOutput`. Allows storing only needed fields instead of the entire response. Available in expressions and templates as `ResponseOutput`.
 
 **Available variables:**
 - `Response.StatusCode` (int): HTTP response status code
 - `Response.Body` (any): parsed JSON response body
 - `Response.Headers` (map[string][]string): HTTP response headers
 
-**Return type:** Must return an object/map that will be stored as `ResponseData`
+**Return type:** Must return an object/map that will be stored as `ResponseOutput`
 
 **Required** (when `response` is specified)**:** Yes
 
 **Examples:**
 ```yaml
-# Store specific fields
 response:
-  dataExpression: |
-    {
-      status: Response.Body.status,
-      retryAfter: Response.Body.retryAfter
-    }
+  output:
+    expression: |
+      {
+        status: Response.Body.status,
+        retryAfter: Response.Body.retryAfter
+      }
 
-# Conditional extraction
 response:
-  dataExpression: |
-    Response.StatusCode == 200 ?
-      {status: "success", data: Response.Body.result} :
-      {status: "error", error: Response.Body.error}
+  output:
+    expression: |
+      Response.StatusCode == 200 ?
+        {status: "success", data: Response.Body.result} :
+        {status: "error", error: Response.Body.error}
 ```
 
 ### Status Fields
@@ -853,10 +883,10 @@ status:
       phase: success
       lastRequestTime: "2024-01-15T10:30:00Z"
       lastResponseStatusCode: 200
-      triggerData:
+      triggerOutput:
         lastCheckedSha: abc123def456
         attemptCount: 3
-      responseData:
+      responseOutput:
         status: approved
         approver: john.doe@example.com
 ```
@@ -868,8 +898,8 @@ status:
 - `phase`: Current validation phase. This controller sets only `pending` or `success` (never `failure`) based on the validation expression.
 - `lastRequestTime`: When the last HTTP request was made
 - `lastResponseStatusCode`: HTTP status code from last request
-- `triggerData`: Data from `trigger.dataExpression` (trigger mode with `dataExpression` only)
-- `responseData`: Extracted response data (trigger mode with `response.dataExpression` only)
+- `triggerOutput`: Output from `trigger.when.output.expression` (trigger mode with output only). Available in expressions and templates as `TriggerOutput`.
+- `responseOutput`: Output from `response.output.expression` (trigger mode with `response.output.expression` only). Available in expressions and templates as `ResponseOutput`.
 
 ## Expression Language
 

@@ -67,13 +67,13 @@ type WebRequestCommitStatusReconciler struct {
 }
 
 // templateData is the data passed to Go templates when rendering URL, headers, body, and description.
-// It is built per environment and includes ReportedSha, Phase, TriggerData, ResponseData, and namespace metadata.
+// It is built per environment and includes ReportedSha, Phase, TriggerOutput, ResponseOutput, and namespace metadata.
 type templateData struct {
 	NamespaceMetadata namespaceMetadata
 	PromotionStrategy *promoterv1alpha1.PromotionStrategy
 	Environment       *promoterv1alpha1.EnvironmentStatus
-	TriggerData       map[string]any
-	ResponseData      map[string]any
+	TriggerOutput     map[string]any
+	ResponseOutput    map[string]any
 	ReportedSha       string
 	LastSuccessfulSha string
 	Phase             string
@@ -95,25 +95,23 @@ type httpResponse struct {
 }
 
 // triggerResult holds the result of evaluateTriggerExpression. Trigger is true when the controller
-// should perform the HTTP request. TriggerData is optional: when dataExpression is configured its map
-// result is collected as TriggerData. That map is stored in WebRequestCommitStatusEnvironmentStatus and
-// on the next reconcile is passed back into templateData.TriggerData for both trigger expressions and
-// into the CommitStatus description/URL templates, so you can carry build IDs or other context across
-// runs and into the SCM status link/description.
+// should perform the HTTP request. When when.output.expression is configured its map result is
+// stored in WebRequestCommitStatusEnvironmentStatus.TriggerOutput and on the next reconcile is
+// passed back into templateData.TriggerOutput for both trigger expressions and into the CommitStatus
+// description/URL templates.
 type triggerResult struct {
-	TriggerData map[string]any
-	Trigger     bool
+	Trigger bool
 }
 
 // httpValidationResult holds the outcome of handleHTTPRequestAndValidation. Phase (Success or Pending)
 // is derived from the validation expression and is written to the CommitStatus.
 //
-// ResponseDataJSON is set only in trigger mode when response.dataExpression is configured: it is the
+// ResponseDataJSON is set only in trigger mode when response.output.expression is configured: it is the
 // JSON-serialized map returned by the data expression (extract/transform from the HTTP response).
-// It is stored in WebRequestCommitStatusEnvironmentStatus.ResponseData so it persists across
-// reconciles. On the next run it is unmarshalled into templateData.ResponseData, so the trigger
-// expression can read it (e.g. ResponseData.buildUrl). When upserting the CommitStatus it is also
-// passed into the description and URL templates as ResponseData, so the SCM status can show links
+// It is stored in WebRequestCommitStatusEnvironmentStatus.ResponseOutput so it persists across
+// reconciles. On the next run it is unmarshalled into templateData.ResponseOutput, so the trigger
+// expression can read it (e.g. ResponseOutput.buildUrl). When upserting the CommitStatus it is also
+// passed into the description and URL templates as ResponseOutput, so the SCM status can show links
 // or text derived from the response (e.g. a link to the CI run).
 type httpValidationResult struct {
 	LastRequestTime        *metav1.Time
@@ -255,7 +253,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 	// - Trigger mode: when the trigger expression returns false, we keep the previous phase and
 	//   request metadata instead of making a new HTTP request.
 	// - Template/trigger input: URL, body, trigger expression, and descriptions can use previous
-	//   phase, lastSuccessfulSha, triggerData, and response data from the last run.
+	//   phase, lastSuccessfulSha, triggerOutput, and response output from the last run.
 	previousStatus := wrcs.Status.DeepCopy()
 	if previousStatus == nil {
 		previousStatus = &promoterv1alpha1.WebRequestCommitStatusStatus{}
@@ -311,7 +309,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		//    - Expose in templateData (e.g. "last known good" in descriptions or trigger logic).
 		//    - In polling mode: skip request when reportedSha == lastSuccessfulSha and phase is already Success.
 		//
-		// 3. triggerData: Output from the last trigger expression evaluation (when it returned true). Used to:
+		// 3. triggerOutput: Output from the last when.output expression evaluation (when it ran). Used to:
 		//    - Feed into templateData so the next trigger expression and request templates can use it (e.g. cursor, token).
 		//
 		// 4. previousResponseData: Body of the last HTTP response (after response expression). Used to:
@@ -324,9 +322,9 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		if prevEnvStatus != nil {
 			previousPhase = prevEnvStatus.Phase
 			lastSuccessfulSha = prevEnvStatus.LastSuccessfulSha
-			if prevEnvStatus.TriggerData != nil {
+			if prevEnvStatus.TriggerOutput != nil {
 				triggerData = make(map[string]any)
-				if err := json.Unmarshal(prevEnvStatus.TriggerData.Raw, &triggerData); err != nil {
+				if err := json.Unmarshal(prevEnvStatus.TriggerOutput.Raw, &triggerData); err != nil {
 					// Log but do not return: corrupted or legacy-format data should not block reconciliation.
 					// We continue with nil triggerData; the next successful run will overwrite status.
 					logger.Error(err, "Failed to unmarshal trigger data", "branch", branch)
@@ -335,8 +333,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		}
 
 		var previousResponseData map[string]any
-		if prevEnvStatus != nil && prevEnvStatus.ResponseData != nil {
-			if err := json.Unmarshal(prevEnvStatus.ResponseData.Raw, &previousResponseData); err != nil {
+		if prevEnvStatus != nil && prevEnvStatus.ResponseOutput != nil {
+			if err := json.Unmarshal(prevEnvStatus.ResponseOutput.Raw, &previousResponseData); err != nil {
 				// Log but do not return: same resilience as trigger data; continue with nil previousResponseData.
 				logger.Error(err, "Failed to unmarshal response data", "branch", branch)
 			}
@@ -350,8 +348,8 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			PromotionStrategy: ps,
 			Environment:       envStatus,
 			NamespaceMetadata: namespaceMeta,
-			TriggerData:       triggerData,
-			ResponseData:      previousResponseData,
+			TriggerOutput:     triggerData,
+			ResponseOutput:    previousResponseData,
 		}
 
 		// For polling mode with reportOn "proposed", skip HTTP request if already succeeded for this SHA
@@ -389,15 +387,15 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		}
 
 		if wrcs.Spec.Mode.Trigger != nil {
-			tr, err := r.evaluateTriggerExpression(ctx, wrcs.Spec.Mode.Trigger.Trigger.Expression, templateData)
+			tr, err := r.evaluateTriggerExpression(ctx, wrcs.Spec.Mode.Trigger.When.Expression, templateData)
 			if err != nil {
 				return nil, nil, 0, fmt.Errorf("failed to evaluate trigger expression for environment %q: %w", branch, err)
 			}
 			shouldTrigger = tr.Trigger
 
-			// Evaluate the data expression (if configured) to produce TriggerData for the next reconcile.
-			if wrcs.Spec.Mode.Trigger.Trigger.DataExpression != "" {
-				newTriggerData, err = r.evaluateTriggerDataExpression(ctx, wrcs.Spec.Mode.Trigger.Trigger.DataExpression, templateData)
+			// Evaluate the when.output expression (if configured) to produce TriggerOutput for the next reconcile.
+			if wrcs.Spec.Mode.Trigger.When.Output != nil && wrcs.Spec.Mode.Trigger.When.Output.Expression != "" {
+				newTriggerData, err = r.evaluateTriggerDataExpression(ctx, wrcs.Spec.Mode.Trigger.When.Output.Expression, templateData)
 				if err != nil {
 					return nil, nil, 0, fmt.Errorf("failed to evaluate trigger data expression for environment %q: %w", branch, err)
 				}
@@ -427,7 +425,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		} else {
 			// Not making HTTP request: either trigger expression returned false or (polling mode) within interval
 			if wrcs.Spec.Mode.Trigger != nil {
-				logger.V(4).Info("Trigger expression returned false, not making HTTP request", "branch", branch, "triggerExpression", wrcs.Spec.Mode.Trigger.Trigger.Expression)
+				logger.V(4).Info("Trigger expression returned false, not making HTTP request", "branch", branch, "triggerExpression", wrcs.Spec.Mode.Trigger.When.Expression)
 			}
 			if previousPhase != "" {
 				phase = promoterv1alpha1.CommitStatusPhase(previousPhase)
@@ -438,7 +436,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			if prevEnvStatus != nil {
 				lastRequestTime = prevEnvStatus.LastRequestTime
 				lastResponseStatusCode = prevEnvStatus.LastResponseStatusCode
-				responseDataJSON = prevEnvStatus.ResponseData
+				responseDataJSON = prevEnvStatus.ResponseOutput
 			}
 		}
 
@@ -466,21 +464,21 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			Phase:                  string(phase),
 			LastRequestTime:        lastRequestTime,
 			LastResponseStatusCode: lastResponseStatusCode,
-			TriggerData:            triggerDataJSON,
-			ResponseData:           responseDataJSON,
+			TriggerOutput:          triggerDataJSON,
+			ResponseOutput:         responseDataJSON,
 		}
 		wrcs.Status.Environments = append(wrcs.Status.Environments, envWebRequestStatus)
 
-		// Use latest response and trigger data for commit status description template
+		// Use latest response and trigger output for commit status description template
 		commitTemplateData := templateData
 		if responseDataJSON != nil {
 			var latestResponseData map[string]any
 			if err := json.Unmarshal(responseDataJSON.Raw, &latestResponseData); err == nil {
-				commitTemplateData.ResponseData = latestResponseData
+				commitTemplateData.ResponseOutput = latestResponseData
 			}
 		}
 		if newTriggerData != nil {
-			commitTemplateData.TriggerData = newTriggerData
+			commitTemplateData.TriggerOutput = newTriggerData
 		}
 
 		// Create or update the CommitStatus
@@ -509,7 +507,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 }
 
 // handleHTTPRequestAndValidation is called when the trigger allows (or in polling mode). It performs the
-// HTTP request, optionally runs the response expression to populate ResponseData, then runs the validation
+// HTTP request, optionally runs the response expression to populate ResponseOutput, then runs the validation
 // expression to set Phase (Success or Pending). The returned httpValidationResult is used to update
 // environment status and to upsert the CommitStatus for that branch.
 func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData, branch string) (httpValidationResult, error) {
@@ -527,10 +525,10 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 
 	logger.V(4).Info("HTTP response received", "branch", branch, "statusCode", response.StatusCode)
 
-	// Store response data (only in trigger mode with response.dataExpression)
+	// Store response data (only in trigger mode with response.output.expression)
 	var responseDataJSON *apiextensionsv1.JSON
 	if wrcs.Spec.Mode.Trigger != nil && wrcs.Spec.Mode.Trigger.Response != nil {
-		extractedData, err := r.evaluateResponseDataExpression(ctx, wrcs.Spec.Mode.Trigger.Response.DataExpression, response)
+		extractedData, err := r.evaluateResponseDataExpression(ctx, wrcs.Spec.Mode.Trigger.Response.Output.Expression, response)
 		if err != nil {
 			return httpValidationResult{}, fmt.Errorf("failed to evaluate response data expression for environment %q: %w", branch, err)
 		}
@@ -542,8 +540,8 @@ func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx co
 		responseDataJSON = &apiextensionsv1.JSON{Raw: responseDataBytes}
 	}
 
-	// Evaluate the validation expression
-	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Expression, response)
+	// Evaluate the success expression
+	passed, err := r.evaluateValidationExpression(ctx, wrcs.Spec.Success.When.Expression, response)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to evaluate validation expression for environment %q: %w", branch, err)
 	}

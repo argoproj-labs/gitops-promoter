@@ -128,7 +128,11 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Polling: &promoterv1alpha1.PollingModeSpec{
 							Interval: metav1.Duration{Duration: 30 * time.Second},
@@ -222,7 +226,11 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Polling: &promoterv1alpha1.PollingModeSpec{
 							Interval: metav1.Duration{Duration: 30 * time.Second},
@@ -316,7 +324,11 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 							Method:      "GET",
 							Timeout:     metav1.Duration{Duration: 10 * time.Second},
 						},
-						Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+						Success: promoterv1alpha1.SuccessSpec{
+							When: promoterv1alpha1.WhenSpec{
+								Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+							},
+						},
 						Mode: promoterv1alpha1.ModeSpec{
 							Polling: &promoterv1alpha1.PollingModeSpec{
 								// Long interval so a second reconcile triggered by PS update is still "within interval"
@@ -420,7 +432,11 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Polling: &promoterv1alpha1.PollingModeSpec{
 							Interval: metav1.Duration{Duration: 2 * time.Second},
@@ -512,14 +528,18 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
 							// Only trigger when SHA changes from what we tracked
-							Trigger: promoterv1alpha1.TriggerExpressionSpec{
-								Expression:     "ReportedSha != TriggerData[\"trackedSha\"]",
-								DataExpression: `{ trackedSha: ReportedSha }`,
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Expression: "ReportedSha != TriggerOutput[\"trackedSha\"]",
+								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ trackedSha: ReportedSha }`},
 							},
 						},
 					},
@@ -555,10 +575,10 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 				var foundEnvWithData bool
 				for _, envStatus := range wrcs.Status.Environments {
 					if envStatus.Phase == string(promoterv1alpha1.CommitPhaseSuccess) &&
-						envStatus.TriggerData != nil {
+						envStatus.TriggerOutput != nil {
 						// Parse the trigger data
 						var trigData map[string]any
-						if err := json.Unmarshal(envStatus.TriggerData.Raw, &trigData); err == nil {
+						if err := json.Unmarshal(envStatus.TriggerOutput.Raw, &trigData); err == nil {
 							if trackedSha, ok := trigData["trackedSha"].(string); ok && trackedSha != "" {
 								foundEnvWithData = true
 								break
@@ -650,7 +670,11 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						BodyTemplate: `{"branch": "{{ .Environment.Branch }}", "sha": "{{ .ReportedSha }}"}`,
 						Timeout:      metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Polling: &promoterv1alpha1.PollingModeSpec{
 							Interval: metav1.Duration{Duration: 30 * time.Second},
@@ -752,7 +776,11 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Polling: &promoterv1alpha1.PollingModeSpec{
 							Interval: metav1.Duration{Duration: 30 * time.Second},
@@ -864,7 +892,11 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Polling: &promoterv1alpha1.PollingModeSpec{
 							Interval: metav1.Duration{Duration: 30 * time.Second},
@@ -913,8 +945,8 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 	})
 })
 
-// Test ResponseData feature (trigger mode only)
-var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, func() {
+// Test ResponseOutput feature (trigger mode only)
+var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, func() {
 	var (
 		name                   string
 		promotionStrategy      *promoterv1alpha1.PromotionStrategy
@@ -984,7 +1016,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 	})
 
 	Context("Trigger Mode", func() {
-		It("should NOT store response data without response.dataExpression", func() {
+		It("should NOT store response data without response.output.expression", func() {
 			By("Creating a test HTTP server")
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -995,7 +1027,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				})
 			}))
 
-			By("Creating a WebRequestCommitStatus in trigger mode WITHOUT response.dataExpression")
+			By("Creating a WebRequestCommitStatus in trigger mode WITHOUT response.output.expression")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -1012,11 +1044,15 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 10 * time.Second},
-							Trigger: promoterv1alpha1.TriggerExpressionSpec{
+							When: promoterv1alpha1.WhenWithOutputSpec{
 								Expression: "true",
 							},
 							// NO response field
@@ -1026,7 +1062,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
 
-			By("Verifying ResponseData is NOT populated without response.dataExpression")
+			By("Verifying response output is NOT populated without response.output.expression")
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1041,8 +1077,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				// Verify validation succeeded
 				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
-				// Verify ResponseData is nil without response.dataExpression
-				g.Expect(devEnv.ResponseData).To(BeNil(), "ResponseData should be nil without response.dataExpression")
+				// Verify response output is nil without response.output.expression
+				g.Expect(devEnv.ResponseOutput).To(BeNil(), "response output should be nil without response.output.expression")
 
 				// But lastResponseStatusCode should still be populated
 				g.Expect(devEnv.LastResponseStatusCode).NotTo(BeNil())
@@ -1082,20 +1118,26 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 5 * time.Second},
-							Trigger: promoterv1alpha1.TriggerExpressionSpec{
-								Expression:     "TriggerData == nil || TriggerData[\"triggered\"] != true",
-								DataExpression: `{ triggered: true }`,
+							When: promoterv1alpha1.WhenWithOutputSpec{
+								Expression: "TriggerOutput == nil || TriggerOutput[\"triggered\"] != true",
+								Output:     &promoterv1alpha1.OutputSpec{Expression: `{ triggered: true }`},
 							},
-							Response: &promoterv1alpha1.ResponseExpressionSpec{
-								DataExpression: `{
+							Response: &promoterv1alpha1.ResponseOutputSpec{
+								Output: promoterv1alpha1.OutputSpec{
+									Expression: `{
 								statusCode: Response.StatusCode,
 								approved: Response.Body.approved,
 								count: Response.Body.count
 							}`,
+								},
 							},
 						},
 					},
@@ -1113,8 +1155,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
-				g.Expect(wrcs.Status.Environments[0].ResponseData).NotTo(BeNil())
-				firstResponseData = wrcs.Status.Environments[0].ResponseData.Raw
+				g.Expect(wrcs.Status.Environments[0].ResponseOutput).NotTo(BeNil())
+				firstResponseData = wrcs.Status.Environments[0].ResponseOutput.Raw
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying response data is preserved on subsequent reconciles")
@@ -1127,8 +1169,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
 
-				currentResponseData := wrcs.Status.Environments[0].ResponseData.Raw
-				g.Expect(currentResponseData).To(Equal(firstResponseData), "ResponseData should be preserved")
+				currentResponseData := wrcs.Status.Environments[0].ResponseOutput.Raw
+				g.Expect(currentResponseData).To(Equal(firstResponseData), "response output should be preserved")
 
 				// Verify only one request was made
 				g.Expect(requestCount).To(Equal(1), "Should only make one request")
@@ -1158,7 +1200,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				})
 			}))
 
-			By("Creating WebRequestCommitStatus that uses ResponseData in trigger")
+			By("Creating WebRequestCommitStatus that uses ResponseOutput in trigger")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -1175,19 +1217,25 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: `Response.StatusCode == 200 && Response.Body.status == "done"`,
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: `Response.StatusCode == 200 && Response.Body.status == "done"`,
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 3 * time.Second},
-							Trigger: promoterv1alpha1.TriggerExpressionSpec{
+							When: promoterv1alpha1.WhenWithOutputSpec{
 								// Trigger if no response data or if previous response said to retry
-								Expression: `ResponseData == nil || ResponseData.status == "retry"`,
+								Expression: `ResponseOutput == nil || ResponseOutput.status == "retry"`,
 							},
-							Response: &promoterv1alpha1.ResponseExpressionSpec{
-								DataExpression: `{
+							Response: &promoterv1alpha1.ResponseOutputSpec{
+								Output: promoterv1alpha1.OutputSpec{
+									Expression: `{
 								statusCode: Response.StatusCode,
 								status: Response.Body.status
 							}`,
+								},
 							},
 						},
 					},
@@ -1212,15 +1260,15 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				g.Expect(requestCount).To(BeNumerically(">=", 3))
 
 				// Verify final response data shows "done"
-				g.Expect(devEnv.ResponseData).NotTo(BeNil())
+				g.Expect(devEnv.ResponseOutput).NotTo(BeNil())
 				var responseData map[string]any
-				err = json.Unmarshal(devEnv.ResponseData.Raw, &responseData)
+				err = json.Unmarshal(devEnv.ResponseOutput.Raw, &responseData)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(responseData["status"]).To(Equal("done"))
 			}, 30*time.Second).Should(Succeed())
 		})
 
-		It("should extract custom fields using response.dataExpression", func() {
+		It("should extract custom fields using response.output.expression", func() {
 			By("Creating a test HTTP server with complex response")
 			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
@@ -1241,7 +1289,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				})
 			}))
 
-			By("Creating WebRequestCommitStatus with response.dataExpression")
+			By("Creating WebRequestCommitStatus with response.output.expression")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name,
@@ -1258,22 +1306,28 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Trigger: &promoterv1alpha1.TriggerModeSpec{
 							RequeueDuration: metav1.Duration{Duration: 10 * time.Second},
-							Trigger: promoterv1alpha1.TriggerExpressionSpec{
+							When: promoterv1alpha1.WhenWithOutputSpec{
 								Expression: "true",
 							},
 							// Extract only the fields we care about
-							Response: &promoterv1alpha1.ResponseExpressionSpec{
-								DataExpression: `{
+							Response: &promoterv1alpha1.ResponseOutputSpec{
+								Output: promoterv1alpha1.OutputSpec{
+									Expression: `{
 								statusCode: Response.StatusCode,
 								approved: Response.Body.approved,
 								nestedField: Response.Body.nested.field1,
 								rateLimit: int(Response.Headers["X-Rate-Limit-Remaining"][0]),
 								timestamp: Response.Body.metadata.timestamp
 							}`,
+								},
 							},
 						},
 					},
@@ -1281,7 +1335,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
 
-			By("Verifying only extracted fields are in ResponseData")
+			By("Verifying only extracted fields are in response output")
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1292,11 +1346,11 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
 
 				devEnv := wrcs.Status.Environments[0]
-				g.Expect(devEnv.ResponseData).NotTo(BeNil())
+				g.Expect(devEnv.ResponseOutput).NotTo(BeNil())
 
 				// Parse the response data
 				var responseData map[string]any
-				err = json.Unmarshal(devEnv.ResponseData.Raw, &responseData)
+				err = json.Unmarshal(devEnv.ResponseOutput.Raw, &responseData)
 				g.Expect(err).NotTo(HaveOccurred())
 
 				// Verify only the extracted fields are present
@@ -1351,7 +1405,11 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Polling: &promoterv1alpha1.PollingModeSpec{
 							Interval: metav1.Duration{Duration: 30 * time.Second},
@@ -1361,7 +1419,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 			}
 			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
 
-			By("Verifying ResponseData is NOT populated in polling mode")
+			By("Verifying response output is NOT populated in polling mode")
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(ctx, types.NamespacedName{
@@ -1374,8 +1432,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseData", Ordered, fu
 				// Verify validation succeeded
 				g.Expect(wrcs.Status.Environments[0].Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
 
-				// Verify ResponseData is nil in polling mode
-				g.Expect(wrcs.Status.Environments[0].ResponseData).To(BeNil(), "ResponseData should be nil in polling mode")
+				// Verify response output is nil in polling mode
+				g.Expect(wrcs.Status.Environments[0].ResponseOutput).To(BeNil(), "response output should be nil in polling mode")
 
 				// But lastResponseStatusCode should still be populated
 				g.Expect(wrcs.Status.Environments[0].LastResponseStatusCode).NotTo(BeNil())
@@ -1412,7 +1470,11 @@ var _ = Describe("WebRequestCommitStatus Controller - Missing PromotionStrategy"
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 					},
-					Expression: "Response.StatusCode == 200",
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200",
+						},
+					},
 					Mode: promoterv1alpha1.ModeSpec{
 						Polling: &promoterv1alpha1.PollingModeSpec{
 							Interval: metav1.Duration{Duration: 30 * time.Second},

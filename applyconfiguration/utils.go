@@ -149,6 +149,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.OAuth2AuthApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ObjectReference"):
 		return &apiv1alpha1.ObjectReferenceApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("OutputSpec"):
+		return &apiv1alpha1.OutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PollingModeSpec"):
 		return &apiv1alpha1.PollingModeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("PromotionStrategy"):
@@ -175,8 +177,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.RateLimiterApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RateLimiterTypes"):
 		return &apiv1alpha1.RateLimiterTypesApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("ResponseExpressionSpec"):
-		return &apiv1alpha1.ResponseExpressionSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("ResponseOutputSpec"):
+		return &apiv1alpha1.ResponseOutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommit"):
 		return &apiv1alpha1.RevertCommitApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("RevertCommitSpec"):
@@ -191,6 +193,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.ScmProviderSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("ScmProviderStatus"):
 		return &apiv1alpha1.ScmProviderStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("SuccessSpec"):
+		return &apiv1alpha1.SuccessSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatus"):
 		return &apiv1alpha1.TimedCommitStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TimedCommitStatusConfiguration"):
@@ -205,8 +209,6 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.TimedCommitStatusStatusApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TLSAuth"):
 		return &apiv1alpha1.TLSAuthApplyConfiguration{}
-	case v1alpha1.SchemeGroupVersion.WithKind("TriggerExpressionSpec"):
-		return &apiv1alpha1.TriggerExpressionSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("TriggerModeSpec"):
 		return &apiv1alpha1.TriggerModeSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("URLConfig"):
@@ -221,6 +223,10 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &apiv1alpha1.WebRequestCommitStatusSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WebRequestCommitStatusStatus"):
 		return &apiv1alpha1.WebRequestCommitStatusStatusApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WhenSpec"):
+		return &apiv1alpha1.WhenSpecApplyConfiguration{}
+	case v1alpha1.SchemeGroupVersion.WithKind("WhenWithOutputSpec"):
+		return &apiv1alpha1.WhenWithOutputSpecApplyConfiguration{}
 	case v1alpha1.SchemeGroupVersion.WithKind("WorkQueue"):
 		return &apiv1alpha1.WorkQueueApplyConfiguration{}
 

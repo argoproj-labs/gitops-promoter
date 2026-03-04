@@ -176,9 +176,9 @@ Key features:
 
 - **Polling or trigger mode:** Poll at an interval or only when a trigger expression fires (e.g. when SHA changes)
 - **Validation expression:** Uses the [expr](https://github.com/expr-lang/expr) language; `true` means validation passed (CommitStatus phase success), `false` means pending
-- **Optional response expression:** Extract a subset of the HTTP response into `ResponseData` for use in the next trigger evaluation and in description/URL templates
-- **TriggerData:** Trigger expression can return extra fields that are stored and available on the next run and in templates
-- **Templated URL, headers, body:** Go templates with `ReportedSha`, `Environment`, `TriggerData`, `ResponseData`, namespace metadata, etc.
+- **Optional response expression:** Extract a subset of the HTTP response into `ResponseOutput` for use in the next trigger evaluation and in description/URL templates
+- **TriggerOutput:** Trigger when.output expression can return extra fields that are stored and available on the next run and in templates
+- **Templated URL, headers, body:** Go templates with `ReportedSha`, `Environment`, `TriggerOutput`, `ResponseOutput`, namespace metadata, etc.
 - **Authentication:** Basic, Bearer, OAuth2, or mutual TLS via Secrets
 - **reportOn:** Report on the proposed commit (default) or the active (deployed) commit
 

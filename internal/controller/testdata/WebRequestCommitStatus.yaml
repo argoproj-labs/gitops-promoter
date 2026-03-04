@@ -31,8 +31,10 @@ spec:
     timeout: 30s
     # Optional: authentication (basic, bearer, oauth2, or tls with secretRef); omit if none
 
-  # expr expression evaluated against the HTTP response; true = validation passed (phase success)
-  expression: "Response.StatusCode == 200 && Response.Body.approved == true"
+  # When the HTTP response is considered successful (phase success)
+  success:
+    when:
+      expression: "Response.StatusCode == 200 && Response.Body.approved == true"
 
   # Exactly one of polling or trigger must be set.
   mode:
@@ -42,11 +44,13 @@ spec:
     # Trigger: use this instead of polling for expression-based triggering.
     # trigger:
     #   requeueDuration: 1m     # optional, default 1m
-    #   trigger:
+    #   when:
     #     expression: ""        # required; boolean expr deciding whether to fire the request
-    #     dataExpression: ""    # optional; expr returning map, stored in status.triggerData
+    #     output:
+    #       expression: ""      # optional; expr returning map, stored in status.triggerOutput
     #   response:               # optional
-    #     dataExpression: ""    # optional; expr returning map, stored in status.responseData
+    #     output:
+    #       expression: ""      # expr returning map, stored in status.responseOutput
 
 status:
   conditions:
@@ -65,5 +69,5 @@ status:
       phase: success
       lastRequestTime: "2024-01-15T10:30:00Z"
       lastResponseStatusCode: 200
-      # triggerData (trigger mode): custom data from trigger expression
-      # responseData (trigger + responseExpression): extracted response map
+      # triggerOutput (trigger mode): output from trigger.when.output.expression (available as TriggerOutput in expressions/templates)
+      # responseOutput (trigger + response.output): output from response.output.expression (available as ResponseOutput in expressions/templates)

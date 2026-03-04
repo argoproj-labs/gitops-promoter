@@ -82,20 +82,8 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	// HTTPRequest defines the HTTP request configuration.
 	// Supports Go templates in URL, Headers, and Body fields.
 	HTTPRequest *HTTPRequestSpecApplyConfiguration `json:"httpRequest,omitempty"`
-	// Expression is evaluated using the expr library (github.com/expr-lang/expr) against the HTTP response.
-	// The expression must return a boolean value where true indicates the validation passed.
-	//
-	// Available variables in the expression context:
-	// - Response.StatusCode (int): the HTTP response status code
-	// - Response.Body (any): parsed JSON as map[string]any, or raw string if not JSON
-	// - Response.Headers (map[string][]string): HTTP response headers
-	//
-	// Examples:
-	// - Response.StatusCode == 200
-	// - Response.StatusCode == 200 && Response.Body.approved == true
-	// - Response.StatusCode == 200 && Response.Body.status == "approved"
-	// - len(Response.Headers["X-Approval"]) > 0
-	Expression *string `json:"expression,omitempty"`
+	// Success defines when the HTTP response is considered successful (commit status phase success).
+	Success *SuccessSpecApplyConfiguration `json:"success,omitempty"`
 	// Mode controls how the controller polls or triggers HTTP requests.
 	// Exactly one of Polling or Trigger must be specified.
 	Mode *ModeSpecApplyConfiguration `json:"mode,omitempty"`
@@ -155,11 +143,11 @@ func (b *WebRequestCommitStatusSpecApplyConfiguration) WithHTTPRequest(value *HT
 	return b
 }
 
-// WithExpression sets the Expression field in the declarative configuration to the given value
+// WithSuccess sets the Success field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the Expression field is set to the value of the last call.
-func (b *WebRequestCommitStatusSpecApplyConfiguration) WithExpression(value string) *WebRequestCommitStatusSpecApplyConfiguration {
-	b.Expression = &value
+// If called multiple times, the Success field is set to the value of the last call.
+func (b *WebRequestCommitStatusSpecApplyConfiguration) WithSuccess(value *SuccessSpecApplyConfiguration) *WebRequestCommitStatusSpecApplyConfiguration {
+	b.Success = value
 	return b
 }
 
