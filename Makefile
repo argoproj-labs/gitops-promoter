@@ -173,6 +173,10 @@ lint-ui: lint-dashboard lint-extension ## Run all UI checks
 test-ui-test-dashboard: ## Run unit tests for the dashboard
 	cd ui/dashboard && npm test
 
+.PHONY: test-ui-test-extension
+test-ui-test-extension: ## Run unit tests for the dashboard
+	cd ui/extension && npm test
+
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/build/buildkit/

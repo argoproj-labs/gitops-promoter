@@ -77,6 +77,8 @@ jobs:
         run: make
       - name: Frontend Dashboard Unit Tests
         run: make test-ui-test-dashboard
+      - name: Frontend Extension Unit Tests
+        run: make test-ui-test-extension
       - name: Run Integration Tests
         run: make test-parallel
       - name: Generate code coverage artifacts
