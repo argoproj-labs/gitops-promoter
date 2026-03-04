@@ -29,7 +29,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up Docker
-        uses: docker/setup-docker-action@206b75dbd282c4008313f59196a28caf84eb4198
+        uses: docker/setup-docker-action@da08d0c6e001ad2b65101c000e79548669fc7050
         with:
           version: type=image,tag=29.1.5
     
