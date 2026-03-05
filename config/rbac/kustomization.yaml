@@ -43,3 +43,6 @@ resources:
 - timedcommitstatus_admin_role.yaml
 - timedcommitstatus_editor_role.yaml
 - timedcommitstatus_viewer_role.yaml
+- webrequestcommitstatus_admin_role.yaml
+- webrequestcommitstatus_editor_role.yaml
+- webrequestcommitstatus_viewer_role.yaml
