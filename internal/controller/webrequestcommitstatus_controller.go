@@ -748,7 +748,7 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 // applySCMAuthentication applies authentication using the SCM provider credentials from the PromotionStrategy.
 func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, req *http.Request) (*http.Client, error) {
 	if ps == nil {
-		return nil, fmt.Errorf("ScmAuth requires a PromotionStrategy (missing or not yet resolved)")
+		return nil, errors.New("ScmAuth requires a PromotionStrategy (missing or not yet resolved)")
 	}
 	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(
 		ctx,
@@ -767,7 +767,11 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 	if err != nil {
 		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
-	return httpauth.ApplySCMAuth(ctx, scmProvider, secret, req, gitRepo)
+	client, err := httpauth.ApplySCMAuth(ctx, scmProvider, secret, req, gitRepo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply SCM auth: %w", err)
+	}
+	return client, nil
 }
 
 // upsertCommitStatus creates or updates the CommitStatus resource that reports this WebRequestCommitStatus's result to the SCM.

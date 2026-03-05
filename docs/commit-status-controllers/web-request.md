@@ -394,32 +394,41 @@ Set `authentication.scmAuth: {}` and the controller will use the credentials fro
 | Forgejo / Gitea| Token or basic auth                | Bearer token or basic auth          |
 | Fake           | None                               | No authentication                   |
 
-**Example — GitHub API with ScmAuth:**
+**Example — Gate on GitHub branch protection rules being satisfied:**
+
+This uses the [GitHub check runs API](https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference) to check whether all required check runs on the proposed SHA have completed successfully. The `filter=latest` parameter returns only the most recent run for each check name.
 
 ```yaml
 apiVersion: promoter.argoproj.io/v1alpha1
 kind: WebRequestCommitStatus
 metadata:
-  name: github-api-check
+  name: github-required-statuses
 spec:
   promotionStrategyRef:
     name: my-promotion-strategy
-  key: github-api-validation
+  key: github-required-statuses
+  reportOn: proposed
+  descriptionTemplate: "GitHub required statuses: {{ .ReportedSha }}"
   httpRequest:
-    # Use your GitHub org and repo in the path (e.g. from GitRepository spec or a fixed value)
-    urlTemplate: "https://api.github.com/repos/my-org/my-repo/commits/{{ .ReportedSha }}"
+    urlTemplate: "https://api.github.com/repos/my-org/my-repo/commits/{{ .ReportedSha }}/check-runs?filter=latest"
     method: GET
+    headerTemplates:
+      Accept: "application/vnd.github+json"
+      X-GitHub-Api-Version: "2022-11-28"
     authentication:
       scmAuth: {}
   success:
     when:
-      expression: "Response.StatusCode == 200"
+      expression: |
+        Response.StatusCode == 200 &&
+        len(Response.Body.check_runs) > 0 &&
+        all(Response.Body.check_runs, # r, r.status == "completed" && (r.conclusion == "success" || r.conclusion == "skipped"))
   mode:
     polling:
-      interval: 5m
+      interval: 1m
 ```
 
-In this example, the WebRequestCommitStatus uses the same GitHub App credentials as the ScmProvider referenced by the PromotionStrategy. No additional secret is required.
+Replace `my-org/my-repo` with your repository's owner and name. The WebRequestCommitStatus uses the same GitHub App credentials as the ScmProvider in the PromotionStrategy — no additional secret is required.
 
 ### Active Commit Monitoring
 
