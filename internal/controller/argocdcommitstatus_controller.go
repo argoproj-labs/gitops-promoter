@@ -176,6 +176,10 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 	}
 	logger.V(4).Info("Found Applications", "appCount", appCount)
 
+	if appCount == 0 {
+		return ctrl.Result{}, fmt.Errorf("no Argo CD Applications found matching selector %v - check that the clusters successfully engaged", ls)
+	}
+
 	promotionStrategy := promoterv1alpha1.PromotionStrategy{}
 	err = r.localClient.Get(ctx, client.ObjectKey{Namespace: argoCDCommitStatus.Namespace, Name: argoCDCommitStatus.Spec.PromotionStrategyRef.Name}, &promotionStrategy)
 	if err != nil {
