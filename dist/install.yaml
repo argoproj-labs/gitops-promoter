@@ -37,8 +37,11 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ArgoCDCommitStatus is the Schema for the argocdcommitstatuses
-          API.
+        description: |-
+          ArgoCDCommitStatus aggregates the status of Argo CD Applications used in a promotion strategy. It selects
+          Applications via a label selector and a reference to a PromotionStrategy, then creates CommitStatus resources
+          (with key "argocd-health") so that promotion gates reflect whether the selected applications are synced and
+          healthy. Optional URL config can generate links (e.g. to the Argo CD UI) for each status.
         properties:
           apiVersion:
             description: |-
@@ -333,8 +336,11 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ChangeTransferPolicy is the Schema for the changetransferpolicies
-          API
+        description: |-
+          ChangeTransferPolicy represents a pair of hydrated environment branches: the proposed branch and the active
+          branch. When a new commit appears in the proposed branch, the controller opens a PR against the active branch.
+          When all configured proposed commit status checks pass, the controller merges the PR. Active checks are
+          continuously monitored, and their states are saved to the ChangeTransferPolicy status.
         properties:
           apiVersion:
             description: |-
@@ -1597,8 +1603,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ClusterScmProvider is the Schema for the clusterscmproviders
-          API.
+        description: |-
+          ClusterScmProvider is the cluster-scoped alternative to ScmProvider. It represents an SCM instance (e.g. GitHub)
+          and references a Secret in the namespace where the promoter runs. Any GitRepository in the cluster can reference
+          a ClusterScmProvider by name.
         properties:
           apiVersion:
             description: |-
@@ -1850,7 +1858,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: CommitStatus is the Schema for the commitstatuses API
+        description: |-
+          CommitStatus is a thin wrapper for the SCM's commit status API. CommitStatuses are the primary source of truth
+          for promotion gates: the controller writes their state to the SCM so checkmarks/failures appear in the SCM UI.
         properties:
           apiVersion:
             description: |-
@@ -2038,8 +2048,11 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ControllerConfiguration is the Schema for the controllerconfigurations
-          API.
+        description: |-
+          ControllerConfiguration configures the behavior of the promoter controllers. A global instance is typically
+          deployed with the controller and applies to all promotions. Each controller has a section (WorkQueue settings,
+          rate limiters, and controller-specific options such as PR templates or watchLocalApplications). All fields are
+          required; defaults are provided in the installation manifests.
         properties:
           apiVersion:
             description: |-
@@ -2079,6 +2092,8 @@ spec:
                       in the local cluster. When false, the controller will only watch Applications in remote clusters
                       configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed
                       in the local cluster or when all Applications are deployed to remote clusters.
+
+                      This value is evaluated at startup and requires a restart to change.
                     type: boolean
                   workQueue:
                     description: |-
@@ -3917,7 +3932,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: GitRepository is the Schema for the gitrepositories API
+        description: |-
+          GitRepository represents a single git repository. It references an ScmProvider (or ClusterScmProvider)
+          to enable access via some configured auth mechanism.
         properties:
           apiVersion:
             description: |-
@@ -4191,7 +4208,10 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PromotionStrategy is the Schema for the promotionstrategies API
+        description: |-
+          PromotionStrategy is the user's interface to controlling how changes are promoted through environments.
+          In this resource you configure the list of live hydrated environment branches in promotion order and the
+          checks (active and proposed commit statuses) that must pass between promotion steps.
         properties:
           apiVersion:
             description: |-
@@ -5631,7 +5651,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PullRequest is the Schema for the pullrequests API
+        description: PullRequest is a thin wrapper around the SCM's pull request API.
         properties:
           apiVersion:
             description: |-
@@ -5727,10 +5747,10 @@ spec:
             - title
             type: object
           status:
-            description: PullRequestStatus defines the observed state of PullRequest
+            description: PullRequestStatus defines the observed state of PullRequest.
             properties:
               conditions:
-                description: Conditions Represents the observations of the current
+                description: Conditions represent the observations of the current
                   state.
                 items:
                   description: Condition contains details for one aspect of the current
@@ -5792,21 +5812,29 @@ spec:
                 x-kubernetes-list-type: map
               externallyMergedOrClosed:
                 description: |-
-                  ExternallyMergedOrClosed indicates that the pull request was merged or closed externally.
-                  This is set to true when the pull request has an ID but is no longer found on the SCM provider.
-                  When true, the State field will be empty ("") since we cannot determine if it was merged or closed.
-                  The PullRequest resource will be deleted after this flag is set, but the status is preserved in
-                  the owning ChangeTransferPolicy to maintain a record of the external action.
+                  ExternallyMergedOrClosed indicates that the pull request was merged or closed outside the controller
+                  (e.g. via the SCM UI). Set to true when the resource has an ID but is no longer found on the SCM.
+                  When true, State may be empty since we cannot determine if it was merged or closed. The PullRequest
+                  resource may be deleted after this is set; the owning ChangeTransferPolicy preserves the status.
                 type: boolean
               id:
-                description: ID the id of the pull request
+                description: ID is the unique identifier of the pull request, set
+                  by the SCM.
                 type: string
               prCreationTime:
-                description: PRCreationTime the time the PR was created
+                description: PRCreationTime is the time when the pull request was
+                  created.
+                format: date-time
+                type: string
+              prMergeTime:
+                description: |-
+                  PRMergeTime is the time when the pull request was merged. This is set when the controller
+                  sets the PR to merged; it may vary slightly from the SCM's actual merge time.
                 format: date-time
                 type: string
               state:
-                description: State of the merge request closed/merged/open
+                description: State is the state of the pull request (closed, merged,
+                  or open).
                 enum:
                 - ""
                 - closed
@@ -5908,7 +5936,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ScmProvider is the Schema for the scmproviders API
+        description: |-
+          ScmProvider represents an SCM instance (e.g. GitHub, GitLab). It references a Secret in the same namespace
+          to supply credentials for API access.
         properties:
           apiVersion:
             description: |-
@@ -6149,7 +6179,12 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: TimedCommitStatus is the Schema for the timedcommitstatuses API
+        description: |-
+          TimedCommitStatus provides time-based gating for environment promotions. It monitors how long commits have been
+          running in specified environments and creates CommitStatus resources (as active commit statuses) based on
+          configured duration requirements. This enables "soak time" or "bake time" policies: changes must run successfully
+          in an environment for at least the configured duration before being promoted. Referenced in PromotionStrategy
+          via activeCommitStatuses with key "timer".
         properties:
           apiVersion:
             description: |-

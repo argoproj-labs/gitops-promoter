@@ -129,6 +129,8 @@ type ArgoCDCommitStatusConfiguration struct {
 	// in the local cluster. When false, the controller will only watch Applications in remote clusters
 	// configured via kubeconfig secrets. This is useful when the Argo CD Application CRD is not installed
 	// in the local cluster or when all Applications are deployed to remote clusters.
+	//
+	// This value is evaluated at startup and requires a restart to change.
 	// +required
 	// +kubebuilder:default=true
 	WatchLocalApplications bool `json:"watchLocalApplications"`
@@ -332,7 +334,10 @@ type ControllerConfigurationStatus struct{}
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
-// ControllerConfiguration is the Schema for the controllerconfigurations API.
+// ControllerConfiguration configures the behavior of the promoter controllers. A global instance is typically
+// deployed with the controller and applies to all promotions. Each controller has a section (WorkQueue settings,
+// rate limiters, and controller-specific options such as PR templates or watchLocalApplications). All fields are
+// required; defaults are provided in the installation manifests.
 type ControllerConfiguration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

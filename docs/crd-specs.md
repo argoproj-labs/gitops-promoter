@@ -94,6 +94,17 @@ duration before being promoted.
 {!internal/controller/testdata/TimedCommitStatus.yaml!}
 ```
 
+### GitCommitStatus
+
+A GitCommitStatus validates commits from PromotionStrategy environments using configurable expressions (expr language)
+and creates CommitStatus resources with the validation results. Use the `target` field to validate either the active
+(deployed) commit or the proposed commit. The validation result is always reported on the proposed commit for promotion
+gating. See the [Git Commit Status controller](commit-status-controllers/git-commit.md) documentation.
+
+```yaml
+{!internal/controller/testdata/GitCommitStatus.yaml!}
+```
+
 ### ControllerConfiguration
 
 A ControllerConfiguration is used to configure the behavior of the promoter.
