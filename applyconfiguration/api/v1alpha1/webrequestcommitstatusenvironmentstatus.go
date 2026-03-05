@@ -37,6 +37,7 @@ type WebRequestCommitStatusEnvironmentStatusApplyConfiguration struct {
 	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	LastSuccessfulSha *string `json:"lastSuccessfulSha,omitempty"`
 	// Phase represents the current phase of the validation.
+	// This controller sets only "pending" or "success"; it never sets "failure" (failure is allowed by the enum for API consistency).
 	Phase *string `json:"phase,omitempty"`
 	// LastRequestTime is when the last HTTP request was made.
 	LastRequestTime *v1.Time `json:"lastRequestTime,omitempty"`

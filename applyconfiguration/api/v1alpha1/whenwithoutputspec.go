@@ -55,8 +55,9 @@ type WhenWithOutputSpecApplyConfiguration struct {
 	// - "ResponseOutput == nil || ResponseOutput.status == 'retry'"
 	Expression *string `json:"expression,omitempty"`
 	// Output optionally holds an expression that produces a map of data to persist across reconcile cycles.
-	// Its result is stored in status.environments[].triggerOutput and is available in the next reconcile
-	// as the TriggerOutput variable. Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
+	// The expression runs on every reconcile (whether or not the HTTP request is made). Its result is stored in
+	// status.environments[].triggerOutput and is available in the next reconcile as TriggerOutput (in when.expression,
+	// when.output.expression, and in all templates). Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
 	//
 	// Available variables (same as Expression):
 	// - PromotionStrategy, Environment, Phase, ReportedSha, LastSuccessfulSha, TriggerOutput, ResponseOutput

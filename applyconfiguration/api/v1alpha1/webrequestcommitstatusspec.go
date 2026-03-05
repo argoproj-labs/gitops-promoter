@@ -34,10 +34,13 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	// It is used as the commit status key and in status messages.
 	// This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses
 	// to determine which environments this validation applies to.
+	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	Key *string `json:"key,omitempty"`
 	// DescriptionTemplate is a human-readable description of this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status description.
-	// Supports Go templates with environment-specific variables.
+	// Supports Go templates; Sprig functions are available except env, expandenv, getHostByName; urlQueryEscape is also available.
+	//
+	// Template data is the latest: rendered after the most recent HTTP request and trigger evaluation, so description/URL reflect current status.
 	//
 	// Available template variables:
 	// - {{ .ReportedSha }}: the commit SHA being reported on
@@ -47,6 +50,8 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	// - {{ .Environment }}: current environment status from PromotionStrategy
 	// - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 	// - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
+	// - {{ index .TriggerOutput "key" }}: (trigger mode only) map from trigger.when.output.expression
+	// - {{ index .ResponseOutput "key" }}: (trigger mode only) map from response.output.expression
 	//
 	// Examples:
 	// - "External approval for {{ .Environment.Branch }}"
@@ -57,7 +62,7 @@ type WebRequestCommitStatusSpecApplyConfiguration struct {
 	DescriptionTemplate *string `json:"descriptionTemplate,omitempty"`
 	// UrlTemplate is a link to more details about this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status target URL.
-	// Supports Go templates with the same variables as DescriptionTemplate.
+	// Supports Go templates with the same variables and timing as DescriptionTemplate (latest data; TriggerOutput/ResponseOutput in trigger mode).
 	//
 	// This can link to:
 	// - External approval system UI

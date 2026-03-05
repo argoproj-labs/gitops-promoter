@@ -37,6 +37,7 @@ type WebRequestCommitStatusSpec struct {
 	// It is used as the commit status key and in status messages.
 	// This key is matched against PromotionStrategy's proposedCommitStatuses or activeCommitStatuses
 	// to determine which environments this validation applies to.
+	// Must be lowercase alphanumeric with hyphens, 1–63 characters (pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$).
 	// +required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
@@ -45,7 +46,9 @@ type WebRequestCommitStatusSpec struct {
 
 	// DescriptionTemplate is a human-readable description of this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status description.
-	// Supports Go templates with environment-specific variables.
+	// Supports Go templates; Sprig functions are available except env, expandenv, getHostByName; urlQueryEscape is also available.
+	//
+	// Template data is the latest: rendered after the most recent HTTP request and trigger evaluation, so description/URL reflect current status.
 	//
 	// Available template variables:
 	//   - {{ .ReportedSha }}: the commit SHA being reported on
@@ -55,6 +58,8 @@ type WebRequestCommitStatusSpec struct {
 	//   - {{ .Environment }}: current environment status from PromotionStrategy
 	//   - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 	//   - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
+	//   - {{ index .TriggerOutput "key" }}: (trigger mode only) map from trigger.when.output.expression
+	//   - {{ index .ResponseOutput "key" }}: (trigger mode only) map from response.output.expression
 	//
 	// Examples:
 	//   - "External approval for {{ .Environment.Branch }}"
@@ -67,7 +72,7 @@ type WebRequestCommitStatusSpec struct {
 
 	// UrlTemplate is a link to more details about this validation that will be shown in the SCM provider
 	// (GitHub, GitLab, etc.) as the commit status target URL.
-	// Supports Go templates with the same variables as DescriptionTemplate.
+	// Supports Go templates with the same variables and timing as DescriptionTemplate (latest data; TriggerOutput/ResponseOutput in trigger mode).
 	//
 	// This can link to:
 	//   - External approval system UI
@@ -142,8 +147,8 @@ type PollingModeSpec struct {
 
 // SuccessSpec defines when the HTTP response is considered successful (commit status phase success).
 type SuccessSpec struct {
-	// When holds the boolean expression evaluated against the HTTP response.
-	// Available variables: Response.StatusCode (int), Response.Body (any), Response.Headers (map[string][]string).
+	// When holds the boolean expression evaluated against the HTTP response (expr library).
+	// Available variables: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
 	// The expression must return true for validation to pass. Example: "Response.StatusCode == 200 && Response.Body.approved == true"
 	// +required
 	When WhenSpec `json:"when"`
@@ -217,8 +222,9 @@ type WhenWithOutputSpec struct {
 	Expression string `json:"expression"`
 
 	// Output optionally holds an expression that produces a map of data to persist across reconcile cycles.
-	// Its result is stored in status.environments[].triggerOutput and is available in the next reconcile
-	// as the TriggerOutput variable. Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
+	// The expression runs on every reconcile (whether or not the HTTP request is made). Its result is stored in
+	// status.environments[].triggerOutput and is available in the next reconcile as TriggerOutput (in when.expression,
+	// when.output.expression, and in all templates). Use it to track state such as attempt counts, last-seen SHAs, or timestamps.
 	//
 	// Available variables (same as Expression):
 	//   - PromotionStrategy, Environment, Phase, ReportedSha, LastSuccessfulSha, TriggerOutput, ResponseOutput
@@ -241,15 +247,21 @@ type ResponseOutputSpec struct {
 	// Output holds the expression that extracts and transforms data from the HTTP response.
 	// The expression is evaluated after the HTTP request completes (for any response status) and its
 	// result is stored in status.environments[].responseOutput. On the next reconcile that value is
-	// available as the ResponseOutput variable. Available in the expression: Response.StatusCode,
-	// Response.Body (parsed JSON or raw string), Response.Headers. The expression must return a map/object.
+	// available as the ResponseOutput variable in trigger expressions and in all templates.
+	// Available in the expression: Response.StatusCode (int), Response.Body (parsed JSON or raw string), Response.Headers (map[string][]string).
+	// The expression must return a map/object.
 	// +required
 	Output OutputSpec `json:"output"`
 }
 
 // HTTPRequestSpec defines the HTTP request configuration.
 //
-// The URL, Headers, and Body fields support Go templates with the following variables:
+// URLTemplate, HeaderTemplates, and BodyTemplate support Go templates (same Sprig/exclusions as DescriptionTemplate).
+// These fields are rendered with previous-attempt data: they are evaluated before the current HTTP request is made,
+// so they never contain the response from the request being built. Use TriggerOutput/ResponseOutput for state from
+// the previous run (trigger mode only).
+//
+// Template variables:
 //   - {{ .ReportedSha }}: the commit SHA being reported on (based on reportOn setting)
 //   - {{ .LastSuccessfulSha }}: last SHA that achieved success (empty until first success)
 //   - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending)
@@ -257,6 +269,7 @@ type ResponseOutputSpec struct {
 //   - {{ .Environment }}: current environment status from PromotionStrategy
 //   - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 //   - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
+//   - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
 //
 // Example: "https://api.example.com/validate/{{ .Environment.Branch }}/{{ .ReportedSha }}"
 type HTTPRequestSpec struct {
@@ -364,6 +377,7 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	LastSuccessfulSha string `json:"lastSuccessfulSha,omitempty"`
 
 	// Phase represents the current phase of the validation.
+	// This controller sets only "pending" or "success"; it never sets "failure" (failure is allowed by the enum for API consistency).
 	// +kubebuilder:validation:Enum=pending;success;failure
 	// +required
 	Phase string `json:"phase"`

@@ -26,7 +26,12 @@ import (
 //
 // HTTPRequestSpec defines the HTTP request configuration.
 //
-// The URL, Headers, and Body fields support Go templates with the following variables:
+// URLTemplate, HeaderTemplates, and BodyTemplate support Go templates (same Sprig/exclusions as DescriptionTemplate).
+// These fields are rendered with previous-attempt data: they are evaluated before the current HTTP request is made,
+// so they never contain the response from the request being built. Use TriggerOutput/ResponseOutput for state from
+// the previous run (trigger mode only).
+//
+// Template variables:
 // - {{ .ReportedSha }}: the commit SHA being reported on (based on reportOn setting)
 // - {{ .LastSuccessfulSha }}: last SHA that achieved success (empty until first success)
 // - {{ .Phase }}: phase from previous reconcile (success/pending/failure, defaults to pending)
@@ -34,6 +39,7 @@ import (
 // - {{ .Environment }}: current environment status from PromotionStrategy
 // - {{ .NamespaceMetadata.Labels }}: map of labels from the namespace
 // - {{ .NamespaceMetadata.Annotations }}: map of annotations from the namespace
+// - {{ index .TriggerOutput "key" }}, {{ index .ResponseOutput "key" }}: (trigger mode only) from previous reconcile
 //
 // Example: "https://api.example.com/validate/{{ .Environment.Branch }}/{{ .ReportedSha }}"
 type HTTPRequestSpecApplyConfiguration struct {

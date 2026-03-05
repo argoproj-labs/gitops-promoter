@@ -25,8 +25,9 @@ type ResponseOutputSpecApplyConfiguration struct {
 	// Output holds the expression that extracts and transforms data from the HTTP response.
 	// The expression is evaluated after the HTTP request completes (for any response status) and its
 	// result is stored in status.environments[].responseOutput. On the next reconcile that value is
-	// available as the ResponseOutput variable. Available in the expression: Response.StatusCode,
-	// Response.Body (parsed JSON or raw string), Response.Headers. The expression must return a map/object.
+	// available as the ResponseOutput variable in trigger expressions and in all templates.
+	// Available in the expression: Response.StatusCode (int), Response.Body (parsed JSON or raw string), Response.Headers (map[string][]string).
+	// The expression must return a map/object.
 	Output *OutputSpecApplyConfiguration `json:"output,omitempty"`
 }
 
