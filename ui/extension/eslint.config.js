@@ -14,6 +14,7 @@ export default [
   // Base config for all files
   {
     files: ['**/*.{ts,tsx,js,jsx}'],
+
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -85,6 +86,30 @@ export default [
       'no-debugger': 'error',
       'prefer-const': 'error',
       'no-var': 'error',
+    },
+  },
+
+  // Test files override
+  {
+    files: ['test/**/*.{ts,tsx,js,jsx}'],
+    languageOptions: {
+      globals: {
+        // Mocha globals
+        describe: 'readonly',
+        it: 'readonly',
+        before: 'readonly',
+        after: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        // Node.js CJS globals (used for dynamic require in tests)
+        require: 'readonly',
+        // DOM globals used in tests
+        HTMLDivElement: 'readonly',
+      },
+    },
+    rules: {
+      'no-console': 'off',
+      '@typescript-eslint/no-var-requires': 'off',
     },
   },
 ];

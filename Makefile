@@ -166,6 +166,10 @@ lint-dashboard: ## Run dashboard type-check, lint and audit checks
 lint-extension: ## Run extension type-check, lint and audit checks
 	cd ui/extension && npm run type-check && npm run lint && npm audit --omit=dev
 
+.PHONY: test-unit-test-extension
+test-unit-test-extension: ## Run unit tests for the extension
+	cd ui/extension && npm test
+
 .PHONY: lint-ui
 lint-ui: lint-dashboard lint-extension ## Run all UI checks
 
