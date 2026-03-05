@@ -38,7 +38,10 @@ import (
 //  4. TLS - Mutual TLS authentication using client certificates
 //     Applied at: Transport layer (not as HTTP header)
 //
-// +kubebuilder:validation:AtMostOneOf=basic;bearer;oauth2;tls
+//  5. SCM - Uses credentials from the SCM provider referenced in the PromotionStrategy.
+//     Automatically applies the appropriate authentication method based on the SCM provider type.
+//
+// +kubebuilder:validation:AtMostOneOf=basic;bearer;oauth2;tls;scmAuth
 type HTTPAuthentication struct {
 	// Basic specifies HTTP Basic Authentication.
 	// Credentials can be provided inline (with secret references) or via secretRef.
@@ -59,6 +62,13 @@ type HTTPAuthentication struct {
 	// Requires a secret containing the client certificate and private key.
 	// +optional
 	TLS *TLSAuth `json:"tls,omitempty"`
+
+	// ScmAuth specifies authentication using credentials from the SCM provider.
+	// This uses the credentials configured in the ScmProvider referenced by the PromotionStrategy,
+	// applying the appropriate authentication method based on the SCM provider type
+	// (GitHub App, GitLab token, Azure DevOps PAT, etc.).
+	// +optional
+	ScmAuth *ScmAuth `json:"scmAuth,omitempty"`
 }
 
 // BasicAuth defines HTTP Basic Authentication.
@@ -174,3 +184,17 @@ type TLSAuth struct {
 	// +required
 	SecretRef *corev1.LocalObjectReference `json:"secretRef"`
 }
+
+// ScmAuth specifies authentication using SCM provider credentials.
+//
+// This authentication method uses the credentials from the ScmProvider referenced
+// by the PromotionStrategy. The controller retrieves the SCM provider and secret
+// and applies the appropriate authentication based on the provider type:
+//
+//   - GitHub: GitHub App (JWT / installation transport)
+//   - GitLab: Access token as Bearer
+//   - Azure DevOps: PAT as Basic auth
+//   - Bitbucket Cloud: Token as Bearer
+//   - Forgejo/Gitea: Token or basic auth as Bearer
+//   - Fake: No authentication
+type ScmAuth struct{}

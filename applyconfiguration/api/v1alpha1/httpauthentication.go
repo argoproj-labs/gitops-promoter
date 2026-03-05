@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+)
+
 // HTTPAuthenticationApplyConfiguration represents a declarative configuration of the HTTPAuthentication type for use
 // with apply.
 //
@@ -37,6 +41,9 @@ package v1alpha1
 //
 // 4. TLS - Mutual TLS authentication using client certificates
 // Applied at: Transport layer (not as HTTP header)
+//
+// 5. SCM - Uses credentials from the SCM provider referenced in the PromotionStrategy.
+// Automatically applies the appropriate authentication method based on the SCM provider type.
 type HTTPAuthenticationApplyConfiguration struct {
 	// Basic specifies HTTP Basic Authentication.
 	// Credentials can be provided inline (with secret references) or via secretRef.
@@ -50,6 +57,11 @@ type HTTPAuthenticationApplyConfiguration struct {
 	// TLS specifies TLS client certificate authentication (mutual TLS).
 	// Requires a secret containing the client certificate and private key.
 	TLS *TLSAuthApplyConfiguration `json:"tls,omitempty"`
+	// ScmAuth specifies authentication using credentials from the SCM provider.
+	// This uses the credentials configured in the ScmProvider referenced by the PromotionStrategy,
+	// applying the appropriate authentication method based on the SCM provider type
+	// (GitHub App, GitLab token, Azure DevOps PAT, etc.).
+	ScmAuth *apiv1alpha1.ScmAuth `json:"scmAuth,omitempty"`
 }
 
 // HTTPAuthenticationApplyConfiguration constructs a declarative configuration of the HTTPAuthentication type for use with
@@ -87,5 +99,13 @@ func (b *HTTPAuthenticationApplyConfiguration) WithOAuth2(value *OAuth2AuthApply
 // If called multiple times, the TLS field is set to the value of the last call.
 func (b *HTTPAuthenticationApplyConfiguration) WithTLS(value *TLSAuthApplyConfiguration) *HTTPAuthenticationApplyConfiguration {
 	b.TLS = value
+	return b
+}
+
+// WithScmAuth sets the ScmAuth field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ScmAuth field is set to the value of the last call.
+func (b *HTTPAuthenticationApplyConfiguration) WithScmAuth(value apiv1alpha1.ScmAuth) *HTTPAuthenticationApplyConfiguration {
+	b.ScmAuth = &value
 	return b
 }

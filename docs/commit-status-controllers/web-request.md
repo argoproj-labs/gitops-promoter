@@ -375,6 +375,52 @@ data:
   ca.crt: <base64-encoded-ca-cert>  # Optional, for custom CA
 ```
 
+### SCM Provider Credentials
+
+Instead of creating separate secrets, you can reuse the SCM provider credentials configured in your PromotionStrategy. This is useful when:
+
+- Making requests to the same SCM provider's API (e.g. GitHub API, GitLab API)
+- Your external API accepts the same credentials as your SCM provider
+- You want to avoid duplicating secrets
+
+Set `authentication.scmAuth: {}` and the controller will use the credentials from the ScmProvider referenced by the PromotionStrategy's repository. The authentication method is applied automatically based on the SCM provider type (GitHub App, GitLab token, Azure DevOps PAT, etc.).
+
+| SCM Provider   | Authentication method              | Applied as                          |
+|----------------|------------------------------------|-------------------------------------|
+| GitHub         | GitHub App (JWT / installation)    | Custom HTTP client (installation transport) |
+| GitLab         | Access token                       | Bearer token header                 |
+| Azure DevOps   | Personal Access Token (PAT)        | Basic auth (empty username, PAT as password) |
+| Bitbucket Cloud| Repository token                   | Bearer token header                 |
+| Forgejo / Gitea| Token or basic auth                | Bearer token or basic auth          |
+| Fake           | None                               | No authentication                   |
+
+**Example — GitHub API with ScmAuth:**
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: github-api-check
+spec:
+  promotionStrategyRef:
+    name: my-promotion-strategy
+  key: github-api-validation
+  httpRequest:
+    # Use your GitHub org and repo in the path (e.g. from GitRepository spec or a fixed value)
+    urlTemplate: "https://api.github.com/repos/my-org/my-repo/commits/{{ .ReportedSha }}"
+    method: GET
+    authentication:
+      scmAuth: {}
+  success:
+    when:
+      expression: "Response.StatusCode == 200"
+  mode:
+    polling:
+      interval: 5m
+```
+
+In this example, the WebRequestCommitStatus uses the same GitHub App credentials as the ScmProvider referenced by the PromotionStrategy. No additional secret is required.
+
 ### Active Commit Monitoring
 
 Monitor the currently deployed commit rather than the proposed commit:

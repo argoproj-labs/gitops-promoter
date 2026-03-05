@@ -638,7 +638,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	// overwriting r.httpClient would create a data race and wrong client usage across goroutines.
 	clientToUse := r.httpClient
 	if wrcs.Spec.HTTPRequest.Authentication != nil {
-		authClient, err := r.applyAuthentication(ctx, wrcs, req)
+		authClient, err := r.applyAuthentication(ctx, wrcs, templateData.PromotionStrategy, req)
 		if err != nil {
 			return httpResponse{}, fmt.Errorf("failed to apply authentication: %w", err)
 		}
@@ -698,10 +698,10 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	return response, nil
 }
 
-// applyAuthentication configures the request (or client) with the auth from spec: Basic, Bearer, OAuth2, or TLS.
-// For Basic/Bearer/OAuth2 it mutates the request and returns nil. For TLS it builds and returns a custom
-// http.Client; the caller uses that client for the request. Credentials are read from the referenced Secrets.
-func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, req *http.Request) (*http.Client, error) {
+// applyAuthentication configures the request (or client) with the auth from spec: Basic, Bearer, OAuth2, TLS, or ScmAuth.
+// For Basic/Bearer/OAuth2 it mutates the request and returns nil. For TLS or ScmAuth (GitHub) it builds and returns
+// a custom http.Client. Credentials are read from the referenced Secrets or from the PromotionStrategy's SCM provider (ScmAuth).
+func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, req *http.Request) (*http.Client, error) {
 	auth := wrcs.Spec.HTTPRequest.Authentication
 
 	if auth.Basic != nil {
@@ -738,7 +738,36 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 		return client, nil
 	}
 
+	if auth.ScmAuth != nil {
+		return r.applySCMAuthentication(ctx, ps, req)
+	}
+
 	return nil, nil
+}
+
+// applySCMAuthentication applies authentication using the SCM provider credentials from the PromotionStrategy.
+func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, req *http.Request) (*http.Client, error) {
+	if ps == nil {
+		return nil, fmt.Errorf("ScmAuth requires a PromotionStrategy (missing or not yet resolved)")
+	}
+	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(
+		ctx,
+		r.Client,
+		r.SettingsMgr.GetControllerNamespace(),
+		ps.Spec.RepositoryReference,
+		ps,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SCM provider and secret: %w", err)
+	}
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{
+		Namespace: ps.Namespace,
+		Name:      ps.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+	return httpauth.ApplySCMAuth(ctx, scmProvider, secret, req, gitRepo)
 }
 
 // upsertCommitStatus creates or updates the CommitStatus resource that reports this WebRequestCommitStatus's result to the SCM.
