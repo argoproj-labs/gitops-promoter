@@ -822,11 +822,11 @@ func makeChangeAndHydrateRepoWithReferences(gitPath string, repoOwner string, re
 
 		metadata := git.HydratorMetadata{
 			RepoURL:    "", // Not used; SCM provider's HTTPS URL is used instead
-			DrySha:    sha,
-			Author:    "testuser <testmail@test.com>",
-			Date:      metav1.Now(),
-			Subject:   subject,
-			Body:      body,
+			DrySha:     sha,
+			Author:     "testuser <testmail@test.com>",
+			Date:       metav1.Now(),
+			Subject:    subject,
+			Body:       body,
 			References: references,
 		}
 		m, err := json.MarshalIndent(metadata, "", "\t")
