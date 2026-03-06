@@ -6,9 +6,6 @@ import './DashboardPage.scss';
 
 interface NamespaceStore {
   namespace: string;
-  namespaces: string[];
-  setNamespace: (namespace: string) => void;
-  setNamespaces: (namespaces: string[]) => void;
 }
 
 const DashboardPage: React.FC = () => {

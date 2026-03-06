@@ -4,10 +4,10 @@ export type ViewMode = 'cards' | 'yaml';
 
 interface ViewStore {
   currentView: ViewMode;
-  setView: (view: ViewMode) => void;
+  setView: (_mode: ViewMode) => void;
 }
 
 export const viewStore = create<ViewStore>((set) => ({
   currentView: 'cards',
-  setView: (view) => set({ currentView: view }),
+  setView: (viewMode) => set({ currentView: viewMode }),
 })); 

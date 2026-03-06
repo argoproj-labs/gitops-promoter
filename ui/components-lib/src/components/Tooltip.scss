@@ -1,17 +1,19 @@
 @use '../styles/colors' as *;
 
-.tooltip-wrapper {
+// Use class names without "tooltip" so host [class*="tooltip"] selectors
+// (e.g. Argo CD UI) don't apply arrow/pseudo-elements that render as a black bar.
+.promoter-popover-wrapper {
   position: relative;
   min-width: 0;
 }
 
-.tooltip {
+.promoter-popover {
   position: fixed;
   z-index: 10000;
   pointer-events: none;
 }
 
-.tooltip-content {
+.promoter-popover-content {
   background: #24292e;
   color: white;
   padding: 10px 12px;

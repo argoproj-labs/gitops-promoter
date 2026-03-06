@@ -50,6 +50,12 @@ import (
 var testPromotionStrategyYAML string
 
 var _ = Describe("PromotionStrategy Controller", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the PromotionStrategy resource", func() {
 			err := unmarshalYamlStrict(testPromotionStrategyYAML, &promoterv1alpha1.PromotionStrategy{})
@@ -58,8 +64,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with no commit statuses", func() {
-		ctx := context.Background()
-
 		Context("When git repo is not initialized", func() {
 			var name string
 			var promotionStrategy *promoterv1alpha1.PromotionStrategy
@@ -1085,8 +1089,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with active commit statuses", func() {
-		ctx := context.Background()
-
 		Context("When git repo is initialized with active commit statuses", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -1519,8 +1521,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a proposed commit status", func() {
-		ctx := context.Background()
-
 		Context("When git repo is initialized with proposed commit statuses", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -1545,7 +1545,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 						Key: "no-deployments-allowed",
 					},
 				}
-				proposedCommitStatusDevelopment.Spec.Name = "no-deployments-allowed" //nolint:goconst
+				proposedCommitStatusDevelopment.Spec.Name = "no-deployments-allowed" //nolint:goconst // test value used only in this context
 				proposedCommitStatusDevelopment.Labels = map[string]string{
 					promoterv1alpha1.CommitStatusLabel: "no-deployments-allowed",
 				}
@@ -1938,7 +1938,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with active commit status using ArgoCDCommitStatus", Label("argocdcommitstatus"), func() {
-		ctx := context.Background()
 		const argocdCSLabel = "argocd-health"
 		const namespace = "default"
 
@@ -2450,8 +2449,6 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 
 	Context("When reconciling a resource with a proposed commit status we should have history", func() {
-		ctx := context.Background()
-
 		Context("When tracking proposed commit history", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -2804,7 +2801,7 @@ var _ = Describe("PromotionStrategy Controller", func() {
 	})
 })
 
-func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) { //nolint:unparam
+func promotionStrategyResource(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.PromotionStrategy) { //nolint:unparam // namespace is always "default" in tests but kept for consistency
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 
 	scmSecret := &v1.Secret{
@@ -2946,8 +2943,6 @@ func argocdApplications(namespace string, name string) (argocd.Application, argo
 
 var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("When PR merges while previous environment has non-passing checks", func() {
-		ctx := context.Background()
-
 		Context("When PR is merged before checks pass", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -3165,8 +3160,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	})
 
 	Context("When environment branch names are changed", func() {
-		ctx := context.Background()
-
 		Context("When cleaning up orphaned CTPs", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -3346,7 +3339,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 	Context("Out-of-order hydration protection", func() {
 		// This test verifies that the system correctly blocks downstream environments
 		// from promoting when upstream environments haven't been hydrated yet.
-		ctx := context.Background()
 
 		var name string
 		var gitRepo *promoterv1alpha1.GitRepository
@@ -4115,13 +4107,14 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		}
 
 		// Truth table for isPreviousEnvironmentPending (per environment):
-		// | Hydrated | NoOp | Merged | Healthy | Result |
-		// |----------|------|--------|---------|--------|
-		// | N        | -    | -      | -       | BLOCK (hydrator) |
-		// | Y        | N    | N      | -       | BLOCK (waiting for promotion) |
-		// | Y        | N    | Y      | N       | BLOCK (commit status) |
-		// | Y        | N    | Y      | Y       | ALLOW |
-		// | Y        | Y    | -      | -       | RECURSE (or ALLOW if base case) |
+		// | Hydrated | NoOp | Pending | Merged | Healthy | Result |
+		// |----------|------|---------|--------|---------|--------|
+		// | N        | -    | -       | -      | -       | BLOCK (hydrator) |
+		// | Y        | N    | -       | N      | -       | BLOCK (waiting for promotion) |
+		// | Y        | N    | -       | Y      | N       | BLOCK (commit status) |
+		// | Y        | N    | -       | Y      | Y       | ALLOW |
+		// | Y        | Y    | Y       | -      | -       | BLOCK (pending changes from previous commit) |
+		// | Y        | Y    | N       | -      | -       | RECURSE (or ALLOW if base case) |
 
 		// Single preceding environment tests - covers the truth table
 		DescribeTable("single preceding environment - truth table coverage",
@@ -4291,6 +4284,71 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 
 				isPending, reason := isPreviousEnvironmentPending([]promoterv1alpha1.EnvironmentStatus{env1, env2}, getEffectiveHydratedDrySha(env3), env3.Active.Dry.CommitTime)
 
+				Expect(isPending).To(BeFalse())
+				Expect(reason).To(BeEmpty())
+			})
+
+			// Edge case: no-op for current commit but has pending changes from previous commit
+			// Scenario:
+			// - Commit 1 (COMMIT1) changes env1 (autoMerge=false, PR not merged)
+			// - Commit 2 (COMMIT2) does NOT change env1 (no-op for commit 2)
+			// - env2 should still wait for env1's PR from commit 1 to be merged
+			//
+			// This tests the fix for the bug where a no-op environment with pending changes
+			// was incorrectly skipped, allowing downstream environments to promote prematurely.
+			It("blocks when no-op for current commit but has pending changes from previous commit", func() {
+				// env1: Commit 1 changed it, PR created but not merged (autoMerge=false)
+				//       Commit 2 is a no-op (note=COMMIT2, proposed=COMMIT1, active=OLD)
+				env1 := makeEnv("env1",
+					"OLD",     // active: still on OLD (PR not merged)
+					"COMMIT1", // proposed: has changes from commit 1
+					"COMMIT2", // note: hydrator processed commit 2 (no-op)
+					olderTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
+
+				// env2: Both commits changed it, trying to promote commit 2
+				env2 := makeEnv("env2",
+					"OLD",     // active: still on OLD
+					"COMMIT2", // proposed: has changes from commit 2
+					"COMMIT2", // note: hydrator processed commit 2
+					olderTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := isPreviousEnvironmentPending(
+					[]promoterv1alpha1.EnvironmentStatus{env1},
+					getEffectiveHydratedDrySha(env2),
+					env2.Active.Dry.CommitTime)
+
+				// Should block because env1 has pending changes (active=OLD != proposed=COMMIT1)
+				// even though commit 2 is a no-op for env1
+				Expect(isPending).To(BeTrue())
+				Expect(reason).To(Equal("Waiting for previous environment to be promoted"))
+			})
+
+			// Same scenario but env1's PR has been merged - should allow
+			It("allows when no-op for current commit and previous changes have been merged", func() {
+				// env1: Commit 1 changed it and was merged, Commit 2 is a no-op
+				env1 := makeEnv("env1",
+					"COMMIT1", // active: merged commit 1
+					"COMMIT1", // proposed: same as active (no pending changes)
+					"COMMIT2", // note: hydrator processed commit 2 (no-op)
+					newerTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
+
+				// env2: Both commits changed it, trying to promote commit 2
+				env2 := makeEnv("env2",
+					"OLD",     // active: still on OLD
+					"COMMIT2", // proposed: has changes from commit 2
+					"COMMIT2", // note: hydrator processed commit 2
+					olderTime,
+					string(promoterv1alpha1.CommitPhaseSuccess))
+
+				isPending, reason := isPreviousEnvironmentPending(
+					[]promoterv1alpha1.EnvironmentStatus{env1},
+					getEffectiveHydratedDrySha(env2),
+					env2.Active.Dry.CommitTime)
+
+				// Should allow because env1 has no pending changes (active=proposed=COMMIT1)
 				Expect(isPending).To(BeFalse())
 				Expect(reason).To(BeEmpty())
 			})
@@ -4489,7 +4547,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should enqueue CTP on first call", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4506,7 +4563,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should rate limit second call within threshold", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4532,7 +4588,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should schedule delayed enqueue on rate limited call", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4561,7 +4616,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should not accumulate multiple delayed enqueues", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("test-ctp"),
 			}
@@ -4589,7 +4643,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should rate limit multiple CTPs independently", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctps := []*promoterv1alpha1.ChangeTransferPolicy{
 				makeCTP("ctp-1"),
 				makeCTP("ctp-2"),
@@ -4621,7 +4674,6 @@ var _ = Describe("PromotionStrategy Bug Tests", func() {
 		It("should rate limit one CTP while allowing others through", func() {
 			reconciler, enqueuedCTPs, enqueueMutex := makeReconciler()
 
-			ctx := context.Background()
 			ctp1 := makeCTP("ctp-1")
 			ctp2 := makeCTP("ctp-2")
 

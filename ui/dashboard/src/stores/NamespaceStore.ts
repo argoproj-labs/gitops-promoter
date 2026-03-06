@@ -5,14 +5,14 @@ import { persist } from 'zustand/middleware';
 export const namespaceStore = create(persist<{
   namespace: string;
   namespaces: string[];
-  setNamespace: (namespace: string) => void;
-  setNamespaces: (namespaces: string[]) => void;
+  setNamespace: (ns: string) => void;
+  setNamespaces: (nsList: string[]) => void;
 }>(
   (set) => ({
     namespace: '',
     namespaces: [],
-    setNamespace: (namespace) => set({ namespace }),
-    setNamespaces: (namespaces) => set({ namespaces }),
+    setNamespace: (ns) => set({ namespace: ns }),
+    setNamespaces: (nsList) => set({ namespaces: nsList }),
   }),
   {
     name: 'namespace-storage'

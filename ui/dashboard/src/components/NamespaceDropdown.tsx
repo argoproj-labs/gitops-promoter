@@ -7,8 +7,8 @@ import './NamespaceDropdown.scss';
 interface NamespaceStore {
   namespace: string;
   namespaces: string[];
-  setNamespace: (namespace: string) => void;
-  setNamespaces: (namespaces: string[]) => void;
+  setNamespace: (_ns: string) => void;
+  setNamespaces: (_nsList: string[]) => void;
 }
 
 interface SelectOption {
@@ -28,7 +28,7 @@ const NamespaceDropdown: React.FC = () => {
       .then(res => res.json())
       .then(data => setNamespaces(Array.isArray(data) ? data : []))
       .catch(() => setNamespace('default'));
-  }, [setNamespaces]);
+  }, [setNamespaces, setNamespace]);
 
   const options = Array.isArray(namespaces) ? namespaces.map((ns: string) => ({
     value: ns,

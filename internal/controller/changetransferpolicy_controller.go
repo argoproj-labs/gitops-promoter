@@ -30,10 +30,8 @@ import (
 
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
-	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
-	v1 "k8s.io/api/core/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -103,7 +101,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
@@ -130,9 +128,9 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 		return ctrl.Result{}, fmt.Errorf("failed to get ScmProvider and secret for repo %q: %w", ctp.Spec.RepositoryReference.Name, err)
 	}
 
-	gitAuthProvider, err := r.getGitAuthProvider(ctx, scmProvider, secret, ctp.Namespace, ctp.Spec.RepositoryReference)
+	gitAuthProvider, err := gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: ctp.Namespace, Name: ctp.Spec.RepositoryReference.Name})
 	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to get git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
+		return ctrl.Result{}, fmt.Errorf("failed to create git auth provider for ScmProvider %q: %w", scmProvider.GetName(), err)
 	}
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{Namespace: ctp.GetNamespace(), Name: ctp.Spec.RepositoryReference.Name})
 	if err != nil {
@@ -441,7 +439,7 @@ func removeKnownTrailers(input string) string {
 func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	// This index gets used by the CommitStatus controller and the webhook server to find the ChangeTransferPolicy to trigger reconcile
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.proposed.hydrated.sha", func(rawObj client.Object) []string {
-		//nolint:forcetypeassert
+		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Proposed.Hydrated.Sha}
 	}); err != nil {
@@ -450,7 +448,7 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 
 	// This gets used by the CommitStatus controller to find the ChangeTransferPolicy to trigger reconcile
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.ChangeTransferPolicy{}, ".status.active.hydrated.sha", func(rawObj client.Object) []string {
-		//nolint:forcetypeassert
+		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		ctp := rawObj.(*promoterv1alpha1.ChangeTransferPolicy)
 		return []string{ctp.Status.Active.Hydrated.Sha}
 	}); err != nil {
@@ -515,14 +513,6 @@ func (r *ChangeTransferPolicyReconciler) SetupWithManager(ctx context.Context, m
 		return fmt.Errorf("failed to create controller: %w", err)
 	}
 	return nil
-}
-
-func (r *ChangeTransferPolicyReconciler) getGitAuthProvider(ctx context.Context, scmProvider promoterv1alpha1.GenericScmProvider, secret *v1.Secret, namespace string, repoRef promoterv1alpha1.ObjectReference) (scms.GitOperationsProvider, error) {
-	provider, err := gitauth.CreateGitOperationsProvider(ctx, r.Client, scmProvider, secret, client.ObjectKey{Namespace: namespace, Name: repoRef.Name})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create git operations provider: %w", err)
-	}
-	return provider, nil
 }
 
 func (r *ChangeTransferPolicyReconciler) calculateStatus(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy, gitOperations *git.EnvironmentOperations) error {
@@ -683,17 +673,20 @@ func (r *ChangeTransferPolicyReconciler) setCommitStatusState(ctx context.Contex
 		found := false
 		phase := promoterv1alpha1.CommitPhasePending
 		if len(csList.Items) == 1 {
-			// Default to pending if the phase is empty (can happen when CommitStatus is newly created
-			// and the controller hasn't updated status yet)
-			csPhase := csList.Items[0].Status.Phase
+			cs := csList.Items[0]
+
+			// Read phase from spec instead of status. Since we query by spec.sha, reading from
+			// spec.phase ensures we get the phase that corresponds to the SHA we're checking.
+			// This prevents reading stale status.phase values when spec was just updated.
+			csPhase := cs.Spec.Phase
 			if csPhase == "" {
 				csPhase = promoterv1alpha1.CommitPhasePending
 			}
 			commitStatusesState = append(commitStatusesState, promoterv1alpha1.ChangeRequestPolicyCommitStatusPhase{
 				Key:         status.Key,
 				Phase:       string(csPhase),
-				Url:         csList.Items[0].Spec.Url,
-				Description: csList.Items[0].Spec.Description,
+				Url:         cs.Spec.Url,
+				Description: cs.Spec.Description,
 			})
 			found = true
 			phase = csPhase

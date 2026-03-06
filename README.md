@@ -1,4 +1,6 @@
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/gitops-promoter)](https://artifacthub.io/packages/search?repo=gitops-promoter)
 [![codecov](https://codecov.io/gh/argoproj-labs/gitops-promoter/graph/badge.svg?token=Nbye3NDioO)](https://codecov.io/gh/argoproj-labs/gitops-promoter)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/argoproj-labs/gitops-promoter/badge)](https://scorecard.dev/viewer/?uri=github.com/argoproj-labs/gitops-promoter)
 
 # GitOps Promoter
 
@@ -48,3 +50,9 @@ spec:
 
 The project is currently experimental, please use with caution. See the 
 [docs site](https://gitops-promoter.readthedocs.io/en/latest/getting-started/) for setup instructions.
+
+## Users
+
+If you're using GitOps Promoter, please add yourself to [USERS.md](USERS.md)!
+
+If you're evaluating GitOps Promoter, we'd love to hear from you — please [open a discussion](https://github.com/argoproj-labs/gitops-promoter/discussions) to share your feedback.

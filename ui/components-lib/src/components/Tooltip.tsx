@@ -48,16 +48,16 @@ export const Tooltip: React.FC<TooltipProps> = ({ content, children }) => {
   }, [showTooltip]);
   
   return (
-    <div ref={tooltip} className="tooltip-wrapper">
+    <div ref={tooltip} className="promoter-popover-wrapper">
       {showTooltip && content && (
-        <div 
-          className="tooltip"
+        <div
+          className="promoter-popover"
           style={{
             top: `${position.top}px`,
             left: `${position.left}px`
           }}
         >
-          <div className="tooltip-content">
+          <div className="promoter-popover-content">
             {content}
           </div>
         </div>

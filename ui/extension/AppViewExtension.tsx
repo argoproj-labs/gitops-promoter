@@ -8,17 +8,12 @@ const AppViewExtension = ({ tree, application }: AppViewComponentProps) => {
     () => tree.nodes.filter((node) => node.kind === "PromotionStrategy"),
     [tree.nodes]
   );
-  if (promotionStrategyNodes.length !== 1) {
-    throw new Error(
-      `Expected exactly one PromotionStrategy resource in Gitops Promoter Extension, found ${promotionStrategyNodes.length}`
-    );
-  }
-
   const [promotionStrategy, setPromotionStrategy] =
     useState<PromotionStrategy>();
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    if (promotionStrategyNodes.length !== 1) return;
     const promotionStrategyNode = promotionStrategyNodes[0];
     const group = "promoter.argoproj.io";
     const url = `/api/v1/applications/${application.metadata.name}/resource?name=${promotionStrategyNode.name}&appNamespace=${application.metadata.namespace}&namespace=${promotionStrategyNode.namespace}&resourceName=${promotionStrategyNode.name}&version=${promotionStrategyNode?.version}&kind=${promotionStrategyNode.kind}&group=${group}`;
@@ -38,7 +33,14 @@ const AppViewExtension = ({ tree, application }: AppViewComponentProps) => {
         setIsLoading(false);
         throw new Error("Error fetching promotion strategy data: " + err);
       });
-  }, [promotionStrategyNodes]);
+  }, [promotionStrategyNodes, application.metadata.name, application.metadata.namespace]);
+
+  if (promotionStrategyNodes.length === 0) {
+    return <div>No PromotionStrategy resource found for this application.</div>;
+  }
+  if (promotionStrategyNodes.length > 1) {
+    return <div>Expected exactly one PromotionStrategy resource, found {promotionStrategyNodes.length}.</div>;
+  }
   if (isLoading && !promotionStrategy) {
     return <div>Loading...</div>;
   }

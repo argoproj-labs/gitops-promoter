@@ -74,6 +74,7 @@ type PromotionStrategyReconciler struct {
 
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+//+kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -87,7 +88,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var ps promoterv1alpha1.PromotionStrategy
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
@@ -156,7 +157,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 // SetupWithManager sets up the controller with the Manager.
 func (r *PromotionStrategyReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	if err := mgr.GetFieldIndexer().IndexField(ctx, &promoterv1alpha1.CommitStatus{}, ".spec.sha", func(rawObj client.Object) []string {
-		//nolint:forcetypeassert
+		//nolint:forcetypeassert // type is guaranteed by the IndexField API
 		cs := rawObj.(*promoterv1alpha1.CommitStatus)
 		return []string{cs.Spec.Sha}
 	}); err != nil {
@@ -762,13 +763,20 @@ func isPreviousEnvironmentPending(precedingEnvStatuses []promoterv1alpha1.Enviro
 	// to a newer dry SHA, but hydrator.metadata still has the old value because no new commit was created.
 	envIsNoOp := envHydratedForDrySha != envProposedDrySha
 
-	// If this environment is NOT a no-op (i.e., it has real changes to deploy),
-	// but it hasn't merged yet, we need to wait for it.
-	if !envIsNoOp {
+	// Check if this environment has pending changes (PR not yet merged).
+	// This catches the case where:
+	// - Commit 1 changed this env (autoMerge=false, PR not merged)
+	// - Commit 2 did NOT change this env (no-op for commit 2)
+	// - Downstream envs should still wait for commit 1's PR to be merged
+	envHasPendingChanges := envStatus.Active.Dry.Sha != envProposedDrySha
+
+	// Only recurse (skip this environment) if it's a no-op AND has no pending changes.
+	// If it's not a no-op OR has pending changes, we need to wait for it.
+	if !envIsNoOp || envHasPendingChanges {
 		return true, "Waiting for previous environment to be promoted"
 	}
 
-	// This environment is a no-op - recurse to check earlier environments
+	// This environment is a no-op with no pending changes - recurse to check earlier environments
 	return isPreviousEnvironmentPending(precedingEnvStatuses[:len(precedingEnvStatuses)-1], targetDrySha, currentActiveCommitTime)
 }
 
