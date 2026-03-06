@@ -72,7 +72,7 @@ import (
 // This helps avoid premature acceptance of a transitive healthy state.
 const lastTransitionTimeThreshold = 5 * time.Second
 
-// ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object
+// ArgoCDCommitStatusReconciler reconciles a ArgoCDCommitStatus object CI TEST
 type ArgoCDCommitStatusReconciler struct {
 	Manager                mcmanager.Manager
 	Recorder               events.EventRecorder
