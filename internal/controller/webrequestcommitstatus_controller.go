@@ -705,6 +705,9 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 	auth := wrcs.Spec.HTTPRequest.Authentication
 
 	if auth.Basic != nil {
+		if auth.Basic.SecretRef == nil {
+			return nil, errors.New("authentication.basic.secretRef is required")
+		}
 		if err := httpauth.ApplyBasicAuthFromSecret(ctx, r.Client, wrcs.Namespace, auth.Basic.SecretRef.Name, req); err != nil {
 			return nil, fmt.Errorf("failed to apply basic auth: %w", err)
 		}
@@ -712,6 +715,9 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 	}
 
 	if auth.Bearer != nil {
+		if auth.Bearer.SecretRef == nil {
+			return nil, errors.New("authentication.bearer.secretRef is required")
+		}
 		if err := httpauth.ApplyBearerAuthFromSecret(ctx, r.Client, wrcs.Namespace, auth.Bearer.SecretRef.Name, req); err != nil {
 			return nil, fmt.Errorf("failed to apply bearer auth: %w", err)
 		}
@@ -719,6 +725,9 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 	}
 
 	if auth.OAuth2 != nil {
+		if auth.OAuth2.SecretRef == nil {
+			return nil, errors.New("authentication.oauth2.secretRef is required")
+		}
 		config := &httpauth.OAuth2Config{
 			SecretName: auth.OAuth2.SecretRef.Name,
 			TokenURL:   auth.OAuth2.TokenURL,
@@ -731,7 +740,14 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 	}
 
 	if auth.TLS != nil {
-		client, err := httpauth.BuildTLSClientFromSecret(ctx, r.Client, wrcs.Namespace, auth.TLS.SecretRef.Name, 60*time.Second)
+		if auth.TLS.SecretRef == nil {
+			return nil, errors.New("authentication.tls.secretRef is required")
+		}
+		timeout := wrcs.Spec.HTTPRequest.Timeout.Duration
+		if timeout == 0 {
+			timeout = 30 * time.Second
+		}
+		client, err := httpauth.BuildTLSClientFromSecret(ctx, r.Client, wrcs.Namespace, auth.TLS.SecretRef.Name, timeout)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build TLS client: %w", err)
 		}

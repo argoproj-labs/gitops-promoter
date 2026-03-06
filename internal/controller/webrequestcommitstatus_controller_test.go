@@ -1533,7 +1533,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			scmAuthLastRequestMu.Unlock()
 			Expect(lastReq).ToNot(BeNil())
 			Expect(lastReq.Header.Get("Authorization")).To(BeEmpty(), "Fake provider should not set Authorization")
-			Expect(lastReq.Header.Get("PRIVATE-TOKEN")).To(BeEmpty(), "Fake provider should not set PRIVATE-TOKEN")
+			Expect(lastReq.Header.Get("Private-Token")).To(BeEmpty(), "Fake provider should not set PRIVATE-TOKEN")
 		})
 	})
 })
