@@ -281,6 +281,172 @@ var _ = Describe("LsRemote", func() {
 	})
 })
 
+var _ = Describe("GetShaMetadataFromFile", func() {
+	var tempRepoDir string
+	var workDir string
+	var defaultBranch string
+	ctx := context.Background()
+
+	BeforeEach(func() {
+		var err error
+		tempRepoDir, err = os.MkdirTemp("", "git-metadata-test-bare-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(tempRepoDir, "init", "--bare")
+		Expect(err).NotTo(HaveOccurred())
+
+		workDir, err = os.MkdirTemp("", "git-metadata-test-work-*")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "clone", tempRepoDir, ".")
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = runGitCmd(workDir, "config", "user.name", "Test User")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "user.email", "test@example.com")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "config", "commit.gpgsign", "false")
+		Expect(err).NotTo(HaveOccurred())
+
+		err = os.WriteFile(filepath.Join(workDir, "README.md"), []byte("# Test"), 0o644)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "add", "README.md")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = runGitCmd(workDir, "commit", "-m", "Initial commit")
+		Expect(err).NotTo(HaveOccurred())
+
+		defaultBranch, err = runGitCmd(workDir, "rev-parse", "--abbrev-ref", "HEAD")
+		Expect(err).NotTo(HaveOccurred())
+		defaultBranch = strings.TrimSpace(defaultBranch)
+		_, err = runGitCmd(workDir, "push", "-u", "origin", defaultBranch)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		if tempRepoDir != "" {
+			Expect(os.RemoveAll(tempRepoDir)).To(Succeed())
+		}
+		if workDir != "" {
+			Expect(os.RemoveAll(workDir)).To(Succeed())
+		}
+	})
+
+	Context("when hydrator.metadata contains references that fail API validation", func() {
+		It("clears only the invalid fields (Sha, RepoURL) and keeps the reference so status update does not fail", func() {
+			// Bad data that would fail CommitMetadata CRD validation: invalid Sha (not 40/64 hex), invalid RepoURL (not http(s)).
+			badMetadata := []byte(`{
+	"drySha": "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
+	"references": [
+		{
+			"commit": {
+				"sha": "not-a-valid-sha",
+				"repoURL": "ftp://invalid.example.com/repo",
+				"subject": "Bad ref"
+			}
+		}
+	]}`)
+			err := os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), badMetadata, 0o644)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "add", "hydrator.metadata")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "commit", "-m", "Add bad hydrator metadata")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "push", "origin", defaultBranch)
+			Expect(err).NotTo(HaveOccurred())
+
+			headSha, err := runGitCmd(workDir, "rev-parse", "HEAD")
+			Expect(err).NotTo(HaveOccurred())
+			headSha = strings.TrimSpace(headSha)
+
+			repo := &v1alpha1.GitRepository{
+				Spec: v1alpha1.GitRepositorySpec{
+					GitHub: &v1alpha1.GitHubRepo{
+						Owner: "test-owner",
+						Name:  "testrepo",
+					},
+					ScmProviderRef: v1alpha1.ScmProviderObjectReference{
+						Kind: "ScmProvider",
+						Name: "testprovider",
+					},
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testrepo",
+					Namespace: "default",
+				},
+			}
+			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+			g := git.NewEnvironmentOperations(repo, gap, defaultBranch)
+			Expect(g.CloneRepo(ctx)).To(Succeed())
+
+			state, err := g.GetShaMetadataFromFile(ctx, headSha)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Invalid fields are cleared; the reference item is kept so status patch succeeds.
+			Expect(state.References).To(HaveLen(1))
+			Expect(state.References[0].Commit).ToNot(BeNil())
+			Expect(state.References[0].Commit.Sha).To(BeEmpty())
+			Expect(state.References[0].Commit.RepoURL).To(BeEmpty())
+			Expect(state.References[0].Commit.Subject).To(Equal("Bad ref"))
+		})
+	})
+
+	Context("when hydrator.metadata contains valid references", func() {
+		It("preserves valid references in the returned CommitShaState", func() {
+			validMetadata := []byte(`{
+	"drySha": "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
+	"references": [
+		{
+			"commit": {
+				"sha": "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
+				"repoURL": "https://github.com/upstream/repo",
+				"subject": "Valid ref"
+			}
+		}
+	]}`)
+			err := os.WriteFile(filepath.Join(workDir, "hydrator.metadata"), validMetadata, 0o644)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "add", "hydrator.metadata")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "commit", "-m", "Add valid hydrator metadata")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = runGitCmd(workDir, "push", "origin", defaultBranch)
+			Expect(err).NotTo(HaveOccurred())
+
+			headSha, err := runGitCmd(workDir, "rev-parse", "HEAD")
+			Expect(err).NotTo(HaveOccurred())
+			headSha = strings.TrimSpace(headSha)
+
+			repo := &v1alpha1.GitRepository{
+				Spec: v1alpha1.GitRepositorySpec{
+					GitHub: &v1alpha1.GitHubRepo{
+						Owner: "test-owner",
+						Name:  "testrepo",
+					},
+					ScmProviderRef: v1alpha1.ScmProviderObjectReference{
+						Kind: "ScmProvider",
+						Name: "testprovider",
+					},
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testrepo",
+					Namespace: "default",
+				},
+			}
+			gap := &fakeGitProvider{tempDirPath: tempRepoDir}
+			g := git.NewEnvironmentOperations(repo, gap, defaultBranch)
+			Expect(g.CloneRepo(ctx)).To(Succeed())
+
+			state, err := g.GetShaMetadataFromFile(ctx, headSha)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(state.References).To(HaveLen(1))
+			Expect(state.References[0].Commit).NotTo(BeNil())
+			Expect(state.References[0].Commit.Sha).To(Equal("c4c862564afe56abf8cc8ac683eee3dc8bf96108"))
+			Expect(state.References[0].Commit.RepoURL).To(Equal("https://github.com/upstream/repo"))
+		})
+	})
+})
+
 type fakeGitProvider struct {
 	tempDirPath string
 }
