@@ -160,15 +160,18 @@ run-dashboard: build-dashboard
 
 .PHONY: lint-dashboard
 lint-dashboard: ## Run dashboard type-check, lint and audit checks
-	cd ui/dashboard && npm run type-check && npm run lint && npm audit
+	cd ui/dashboard && npm run type-check && npm run lint && npm audit --omit=dev
 
 .PHONY: lint-extension
 lint-extension: ## Run extension type-check, lint and audit checks
-	cd ui/extension && npm run type-check && npm run lint && npm audit
+	cd ui/extension && npm run type-check && npm run lint && npm audit --omit=dev
 
 .PHONY: lint-ui
 lint-ui: lint-dashboard lint-extension ## Run all UI checks
 
+.PHONY: test-ui-test-dashboard
+test-ui-test-dashboard: ## Run unit tests for the dashboard
+	cd ui/dashboard && npm test
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
@@ -259,9 +262,9 @@ GORELEASER ?= $(LOCALBIN)/goreleaser-$(GORELEASER_VERSION)
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.3.0
-CONTROLLER_TOOLS_VERSION ?= v0.20.0
+CONTROLLER_TOOLS_VERSION ?= v0.20.1
 ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v2.8.0
+GOLANGCI_LINT_VERSION ?= v2.10.0
 MOCKERY_VERSION ?= v2.42.2
 NILAWAY_VERSION ?= latest
 GINKGO_VERSION=$(shell go list -m all | grep github.com/onsi/ginkgo/v2 | awk '{print $$2}')
