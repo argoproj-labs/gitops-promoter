@@ -34,6 +34,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/httpauth"
 )
@@ -447,5 +448,133 @@ var _ = Describe("BuildTLSClientFromSecret", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("TLS secret"))
 		Expect(err.Error()).To(ContainSubstring("missing-tls-secret"))
+	})
+})
+
+// scmProvider returns a namespaced ScmProvider with the given spec (caller sets exactly one of GitHub, GitLab, etc.).
+func scmProvider(name string, spec promoterv1alpha1.ScmProviderSpec) *promoterv1alpha1.ScmProvider {
+	return &promoterv1alpha1.ScmProvider{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		Spec:       spec,
+	}
+}
+
+var _ = Describe("ApplySCMAuth", func() {
+	ctx := context.Background()
+
+	It("sets PRIVATE-TOKEN header for GitLab", func() {
+		provider := scmProvider("gitlab-prov", promoterv1alpha1.ScmProviderSpec{GitLab: &promoterv1alpha1.GitLab{}})
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "gitlab-secret"},
+			Data:       map[string][]byte{httpauth.TokenKey: []byte("glpat-xyz")},
+		}
+		req := httptest.NewRequest(http.MethodGet, "https://gitlab.example.com/api/", nil)
+
+		client, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client).To(BeNil())
+		Expect(req.Header.Get("Private-Token")).To(Equal("glpat-xyz"))
+		Expect(req.Header.Get("Authorization")).To(BeEmpty())
+	})
+
+	It("sets Authorization token for Forgejo/Gitea when token is present", func() {
+		provider := scmProvider("forgejo-prov", promoterv1alpha1.ScmProviderSpec{Forgejo: &promoterv1alpha1.Forgejo{Domain: "codeberg.org"}})
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "forgejo-secret"},
+			Data:       map[string][]byte{httpauth.TokenKey: []byte("gitea-token")},
+		}
+		req := httptest.NewRequest(http.MethodGet, "https://codeberg.org/api/", nil)
+
+		client, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client).To(BeNil())
+		Expect(req.Header.Get("Authorization")).To(Equal("token gitea-token"))
+	})
+
+	It("sets Authorization Basic for Forgejo/Gitea when username and password are present", func() {
+		provider := scmProvider("gitea-prov", promoterv1alpha1.ScmProviderSpec{Gitea: &promoterv1alpha1.Gitea{Domain: "gitea.example.com"}})
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "gitea-secret"},
+			Data: map[string][]byte{
+				httpauth.UsernameKey: []byte("git"),
+				httpauth.PasswordKey: []byte("pass"),
+			},
+		}
+		req := httptest.NewRequest(http.MethodGet, "https://gitea.example.com/api/", nil)
+
+		client, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client).To(BeNil())
+		Expect(req.Header.Get("Authorization")).To(HavePrefix("Basic "))
+		Expect(req.Header.Get("Authorization")).To(Equal("Basic Z2l0OnBhc3M=")) // base64("git:pass")
+	})
+
+	It("returns error for Forgejo/Gitea when neither token nor username/password", func() {
+		provider := scmProvider("forgejo-prov", promoterv1alpha1.ScmProviderSpec{Forgejo: &promoterv1alpha1.Forgejo{Domain: "codeberg.org"}})
+		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "empty"}, Data: map[string][]byte{}}
+		req := httptest.NewRequest(http.MethodGet, "https://codeberg.org/", nil)
+
+		_, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("Forgejo/Gitea"))
+	})
+
+	It("sets Bearer header for Bitbucket Cloud", func() {
+		provider := scmProvider("bb-prov", promoterv1alpha1.ScmProviderSpec{BitbucketCloud: &promoterv1alpha1.BitbucketCloud{}})
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "bb-secret"},
+			Data:       map[string][]byte{httpauth.TokenKey: []byte("bb-token")},
+		}
+		req := httptest.NewRequest(http.MethodGet, "https://api.bitbucket.org/", nil)
+
+		client, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client).To(BeNil())
+		Expect(req.Header.Get("Authorization")).To(Equal("Bearer bb-token"))
+	})
+
+	It("sets Basic auth for Azure DevOps (empty username, PAT as password)", func() {
+		provider := scmProvider("ado-prov", promoterv1alpha1.ScmProviderSpec{AzureDevOps: &promoterv1alpha1.AzureDevOps{Organization: "myorg"}})
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "ado-secret"},
+			Data:       map[string][]byte{httpauth.TokenKey: []byte("ado-pat")},
+		}
+		req := httptest.NewRequest(http.MethodGet, "https://dev.azure.com/", nil)
+
+		client, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client).To(BeNil())
+		Expect(req.Header.Get("Authorization")).To(Equal("Basic " + "OmFkby1wYXQ=")) // base64(":ado-pat")
+	})
+
+	It("applies no auth for Fake provider", func() {
+		provider := scmProvider("fake-prov", promoterv1alpha1.ScmProviderSpec{Fake: &promoterv1alpha1.Fake{}})
+		req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
+
+		client, err := httpauth.ApplySCMAuth(ctx, provider, nil, req, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client).To(BeNil())
+		Expect(req.Header.Get("Authorization")).To(BeEmpty())
+		Expect(req.Header.Get("Private-Token")).To(BeEmpty())
+	})
+
+	It("returns error for GitHub when secret is nil", func() {
+		provider := scmProvider("github-prov", promoterv1alpha1.ScmProviderSpec{GitHub: &promoterv1alpha1.GitHub{AppID: 1}})
+		req := httptest.NewRequest(http.MethodGet, "https://api.github.com/", nil)
+
+		_, err := httpauth.ApplySCMAuth(ctx, provider, nil, req, nil)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("GitHub"))
+		Expect(err.Error()).To(ContainSubstring("secret"))
+	})
+
+	It("returns error for unknown provider type", func() {
+		provider := scmProvider("empty-prov", promoterv1alpha1.ScmProviderSpec{})
+		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "s"}, Data: map[string][]byte{}}
+		req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
+
+		_, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unknown SCM provider"))
 	})
 })

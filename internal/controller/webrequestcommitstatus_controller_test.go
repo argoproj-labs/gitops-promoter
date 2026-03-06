@@ -1441,6 +1441,101 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
+
+	Describe("ScmAuth - use PromotionStrategy SCM credentials", func() {
+		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+		var scmAuthTestServer *httptest.Server
+		var scmAuthLastRequest *http.Request
+		var scmAuthLastRequestMu sync.Mutex
+
+		BeforeEach(func() {
+			scmAuthLastRequestMu.Lock()
+			scmAuthLastRequest = nil
+			scmAuthLastRequestMu.Unlock()
+			By("Creating a test HTTP server for ScmAuth test")
+			scmAuthTestServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				scmAuthLastRequestMu.Lock()
+				scmAuthLastRequest = r
+				scmAuthLastRequestMu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			}))
+
+			By("Creating a WebRequestCommitStatus with authentication.scmAuth (Fake provider = no auth applied)")
+			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-scmauth",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
+						Name: name,
+					},
+					Key:      "responsedata-test",
+					ReportOn: constants.CommitRefActive,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: scmAuthTestServer.URL + "/check/{{ .ReportedSha }}",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						Authentication: &promoterv1alpha1.HTTPAuthentication{
+							ScmAuth: &promoterv1alpha1.ScmAuth{},
+						},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200 && Response.Body.ok == true",
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 30 * time.Second},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			if scmAuthTestServer != nil {
+				scmAuthTestServer.Close()
+			}
+			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+		})
+
+		It("should make HTTP request and report success when using ScmAuth with Fake SCM provider", func() {
+			By("Waiting for WebRequestCommitStatus to process environments with ScmAuth")
+			Eventually(func(g Gomega) {
+				var wrcs promoterv1alpha1.WebRequestCommitStatus
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-scmauth",
+					Namespace: "default",
+				}, &wrcs)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+				var devEnv *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
+				for i := range wrcs.Status.Environments {
+					if wrcs.Status.Environments[i].Branch == testBranchDevelopment {
+						devEnv = &wrcs.Status.Environments[i]
+						break
+					}
+				}
+				g.Expect(devEnv).ToNot(BeNil())
+				g.Expect(devEnv.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+				g.Expect(devEnv.LastResponseStatusCode).ToNot(BeNil())
+				g.Expect(*devEnv.LastResponseStatusCode).To(Equal(200))
+			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying Fake SCM provider applied no auth headers to the request")
+			scmAuthLastRequestMu.Lock()
+			lastReq := scmAuthLastRequest
+			scmAuthLastRequestMu.Unlock()
+			Expect(lastReq).ToNot(BeNil())
+			Expect(lastReq.Header.Get("Authorization")).To(BeEmpty(), "Fake provider should not set Authorization")
+			Expect(lastReq.Header.Get("Private-Token")).To(BeEmpty(), "Fake provider should not set PRIVATE-TOKEN")
+		})
+	})
 })
 
 // Separate Describe block for the test that doesn't need infrastructure

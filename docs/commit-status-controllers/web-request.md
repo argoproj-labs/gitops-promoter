@@ -375,6 +375,60 @@ data:
   ca.crt: <base64-encoded-ca-cert>  # Optional, for custom CA
 ```
 
+### SCM Provider Credentials
+
+Instead of creating separate secrets, you can reuse the SCM provider credentials configured in your PromotionStrategy. This is useful when:
+
+- Making requests to the same SCM provider's API (e.g. GitHub API, GitLab API)
+- Your external API accepts the same credentials as your SCM provider
+- You want to avoid duplicating secrets
+
+Set `authentication.scmAuth: {}` and the controller will use the credentials from the ScmProvider referenced by the PromotionStrategy's repository. The authentication method is applied automatically based on the SCM provider type (GitHub App, GitLab token, Azure DevOps PAT, etc.).
+
+| SCM Provider   | Authentication method              | Applied as                          |
+|----------------|------------------------------------|-------------------------------------|
+| GitHub         | GitHub App (JWT / installation)    | Custom HTTP client (installation transport) |
+| GitLab         | Access token                       | `PRIVATE-TOKEN` header               |
+| Azure DevOps   | Personal Access Token (PAT)        | Basic auth (empty username, PAT as password) |
+| Bitbucket Cloud| Repository token                   | Bearer token header                 |
+| Forgejo / Gitea| Token or basic auth                | `Authorization: token <token>` or Basic auth (username/password) |
+
+**Example — Gate on GitHub branch protection rules being satisfied:**
+
+This uses the [GitHub check runs API](https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference) to check whether all required check runs on the proposed SHA have completed successfully. The `filter=latest` parameter returns only the most recent run for each check name.
+
+```yaml
+apiVersion: promoter.argoproj.io/v1alpha1
+kind: WebRequestCommitStatus
+metadata:
+  name: github-required-statuses
+spec:
+  promotionStrategyRef:
+    name: my-promotion-strategy
+  key: github-required-statuses
+  reportOn: proposed
+  descriptionTemplate: "GitHub required statuses: {{ .ReportedSha }}"
+  httpRequest:
+    urlTemplate: "https://api.github.com/repos/my-org/my-repo/commits/{{ .ReportedSha }}/check-runs?filter=latest"
+    method: GET
+    headerTemplates:
+      Accept: "application/vnd.github+json"
+      X-GitHub-Api-Version: "2022-11-28"
+    authentication:
+      scmAuth: {}
+  success:
+    when:
+      expression: |
+        Response.StatusCode == 200 &&
+        len(Response.Body.check_runs) > 0 &&
+        all(Response.Body.check_runs, # r, r.status == "completed" && (r.conclusion == "success" || r.conclusion == "skipped"))
+  mode:
+    polling:
+      interval: 1m
+```
+
+Replace `my-org/my-repo` with your repository's owner and name. The WebRequestCommitStatus uses the same GitHub App credentials as the ScmProvider in the PromotionStrategy — no additional secret is required.
+
 ### Active Commit Monitoring
 
 Monitor the currently deployed commit rather than the proposed commit:

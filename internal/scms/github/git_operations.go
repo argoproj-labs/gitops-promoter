@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -198,4 +199,26 @@ func GetClient(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, sec
 	}
 	appInstallationIdCacheMutex.Unlock()
 	return nil, nil, fmt.Errorf("installation of app %d not found for org: %s", scmProvider.GetSpec().GitHub.AppID, org)
+}
+
+// GetHTTPTransport returns an http.RoundTripper that authenticates requests using the GitHub App
+// credentials from the ScmProvider and secret. It is used for arbitrary HTTP requests (e.g. WebRequestCommitStatus)
+// that need to call the GitHub API with the same credentials as the rest of the promoter.
+// gitRepo is used to resolve the installation ID from the repo owner when InstallationID is not set on the ScmProvider.
+func GetHTTPTransport(ctx context.Context, scmProvider v1alpha1.GenericScmProvider, secret v1.Secret, gitRepo *v1alpha1.GitRepository) (http.RoundTripper, error) {
+	org := ""
+	if scmProvider.GetSpec().GitHub.InstallationID == 0 && gitRepo != nil && gitRepo.Spec.GitHub != nil {
+		org = gitRepo.Spec.GitHub.Owner
+	}
+	if scmProvider.GetSpec().GitHub.InstallationID == 0 && org == "" {
+		return nil, errors.New("gitRepo (owner) is required when GitHub InstallationID is not set")
+	}
+	_, itr, err := GetClient(ctx, scmProvider, secret, org)
+	if err != nil {
+		return nil, err
+	}
+	if scmProvider.GetSpec().GitHub.Domain != "" {
+		itr.BaseURL = fmt.Sprintf("https://%s/api/v3", scmProvider.GetSpec().GitHub.Domain)
+	}
+	return itr, nil
 }
