@@ -1445,10 +1445,13 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 	Describe("ScmAuth - use PromotionStrategy SCM credentials", func() {
 		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 		var scmAuthTestServer *httptest.Server
+		var scmAuthLastRequest *http.Request
 
 		BeforeEach(func() {
+			scmAuthLastRequest = nil
 			By("Creating a test HTTP server for ScmAuth test")
 			scmAuthTestServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				scmAuthLastRequest = r
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
@@ -1518,6 +1521,11 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				g.Expect(devEnv.LastResponseStatusCode).ToNot(BeNil())
 				g.Expect(*devEnv.LastResponseStatusCode).To(Equal(200))
 			}, constants.EventuallyTimeout).Should(Succeed())
+
+			By("Verifying Fake SCM provider applied no auth headers to the request")
+			Expect(scmAuthLastRequest).ToNot(BeNil())
+			Expect(scmAuthLastRequest.Header.Get("Authorization")).To(BeEmpty(), "Fake provider should not set Authorization")
+			Expect(scmAuthLastRequest.Header.Get("PRIVATE-TOKEN")).To(BeEmpty(), "Fake provider should not set PRIVATE-TOKEN")
 		})
 	})
 })

@@ -419,7 +419,8 @@ func getSecret(ctx context.Context, reader client.Reader, namespace, name string
 // repo owner when InstallationID is not set on the ScmProvider; pass nil to use InstallationID only.
 //
 // Returns a custom *http.Client for GitHub (App transport); for other providers the request
-// is mutated (Bearer or Basic) and (nil, nil) is returned.
+// is mutated with provider-specific authentication headers (e.g. PRIVATE-TOKEN,
+// Authorization: token, or Basic) and (nil, nil) is returned.
 func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmProvider, secret *corev1.Secret, req *http.Request, gitRepo *promoterv1alpha1.GitRepository) (*http.Client, error) {
 	logger := log.FromContext(ctx)
 	spec := scmProvider.GetSpec()
@@ -427,7 +428,7 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 	switch {
 	case spec.GitHub != nil:
 		if secret == nil {
-			return nil, fmt.Errorf("GitHub SCM auth requires a secret")
+			return nil, errors.New("GitHub SCM auth requires a secret")
 		}
 		transport, err := github.GetHTTPTransport(ctx, scmProvider, *secret, gitRepo)
 		if err != nil {
@@ -441,7 +442,7 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 		if err != nil {
 			return nil, fmt.Errorf("failed to get token from secret for GitLab SCM auth: %w", err)
 		}
-		req.Header.Set("PRIVATE-TOKEN", token)
+		req.Header.Set("Private-Token", token)
 		logger.V(4).Info("Applied SCM authentication (GitLab PRIVATE-TOKEN)", "scmProvider", scmProvider.GetName())
 		return nil, nil
 
@@ -460,7 +461,7 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 			logger.V(4).Info("Applied SCM authentication (Basic)", "scmProvider", scmProvider.GetName())
 			return nil, nil
 		}
-		return nil, fmt.Errorf("Forgejo/Gitea SCM auth requires token or username/password in secret")
+		return nil, errors.New("Forgejo/Gitea SCM auth requires token or username/password in secret")
 
 	case spec.BitbucketCloud != nil:
 		token, err := GetSecretValue(secret, TokenKey)

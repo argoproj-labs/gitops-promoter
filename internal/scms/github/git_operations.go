@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -210,7 +211,7 @@ func GetHTTPTransport(ctx context.Context, scmProvider v1alpha1.GenericScmProvid
 		org = gitRepo.Spec.GitHub.Owner
 	}
 	if scmProvider.GetSpec().GitHub.InstallationID == 0 && org == "" {
-		return nil, fmt.Errorf("gitRepo (owner) is required when GitHub InstallationID is not set")
+		return nil, errors.New("gitRepo (owner) is required when GitHub InstallationID is not set")
 	}
 	_, itr, err := GetClient(ctx, scmProvider, secret, org)
 	if err != nil {

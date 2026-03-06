@@ -192,9 +192,9 @@ type TLSAuth struct {
 // and applies the appropriate authentication based on the provider type:
 //
 //   - GitHub: GitHub App (JWT / installation transport)
-//   - GitLab: Access token as Bearer
+//   - GitLab: Personal access token via PRIVATE-TOKEN header
 //   - Azure DevOps: PAT as Basic auth
 //   - Bitbucket Cloud: Token as Bearer
-//   - Forgejo/Gitea: Token or basic auth as Bearer
+//   - Forgejo/Gitea: Personal access token via Authorization: token header or Basic auth
 //   - Fake: No authentication
 type ScmAuth struct{}
