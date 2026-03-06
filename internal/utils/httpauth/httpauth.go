@@ -438,15 +438,24 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 		return &http.Client{Transport: transport}, nil
 
 	case spec.GitLab != nil:
+		if secret == nil {
+			return nil, errors.New("GitLab SCM auth requires a secret")
+		}
 		token, err := GetSecretValue(secret, TokenKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get token from secret for GitLab SCM auth: %w", err)
+		}
+		if token == "" {
+			return nil, errors.New("GitLab SCM auth requires a non-empty token in the secret")
 		}
 		req.Header.Set("Private-Token", token)
 		logger.V(4).Info("Applied SCM authentication (GitLab PRIVATE-TOKEN)", "scmProvider", scmProvider.GetName())
 		return nil, nil
 
 	case spec.Forgejo != nil || spec.Gitea != nil:
+		if secret == nil {
+			return nil, errors.New("Forgejo/Gitea SCM auth requires a secret")
+		}
 		// Forgejo/Gitea accept "Authorization: token <token>" or HTTP Basic (username/password).
 		if token, err := GetSecretValue(secret, TokenKey); err == nil && token != "" {
 			req.Header.Set("Authorization", "token "+token)
@@ -464,18 +473,30 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 		return nil, errors.New("Forgejo/Gitea SCM auth requires token or username/password in secret")
 
 	case spec.BitbucketCloud != nil:
+		if secret == nil {
+			return nil, errors.New("bitbucket Cloud SCM auth requires a secret")
+		}
 		token, err := GetSecretValue(secret, TokenKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get token from secret for Bitbucket Cloud SCM auth: %w", err)
+		}
+		if token == "" {
+			return nil, errors.New("bitbucket Cloud SCM auth requires a non-empty token in the secret")
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		logger.V(4).Info("Applied SCM authentication (Bearer)", "scmProvider", scmProvider.GetName())
 		return nil, nil
 
 	case spec.AzureDevOps != nil:
+		if secret == nil {
+			return nil, errors.New("azure DevOps SCM auth requires a secret")
+		}
 		token, err := GetSecretValue(secret, TokenKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get token from secret for Azure DevOps SCM auth: %w", err)
+		}
+		if token == "" {
+			return nil, errors.New("azure DevOps SCM auth requires a non-empty token in the secret")
 		}
 		credentials := base64.StdEncoding.EncodeToString([]byte(":" + token))
 		req.Header.Set("Authorization", "Basic "+credentials)

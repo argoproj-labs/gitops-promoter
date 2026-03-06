@@ -1446,12 +1446,17 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
 		var scmAuthTestServer *httptest.Server
 		var scmAuthLastRequest *http.Request
+		var scmAuthLastRequestMu sync.Mutex
 
 		BeforeEach(func() {
+			scmAuthLastRequestMu.Lock()
 			scmAuthLastRequest = nil
+			scmAuthLastRequestMu.Unlock()
 			By("Creating a test HTTP server for ScmAuth test")
 			scmAuthTestServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				scmAuthLastRequestMu.Lock()
 				scmAuthLastRequest = r
+				scmAuthLastRequestMu.Unlock()
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
@@ -1523,9 +1528,12 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			}, constants.EventuallyTimeout).Should(Succeed())
 
 			By("Verifying Fake SCM provider applied no auth headers to the request")
-			Expect(scmAuthLastRequest).ToNot(BeNil())
-			Expect(scmAuthLastRequest.Header.Get("Authorization")).To(BeEmpty(), "Fake provider should not set Authorization")
-			Expect(scmAuthLastRequest.Header.Get("PRIVATE-TOKEN")).To(BeEmpty(), "Fake provider should not set PRIVATE-TOKEN")
+			scmAuthLastRequestMu.Lock()
+			lastReq := scmAuthLastRequest
+			scmAuthLastRequestMu.Unlock()
+			Expect(lastReq).ToNot(BeNil())
+			Expect(lastReq.Header.Get("Authorization")).To(BeEmpty(), "Fake provider should not set Authorization")
+			Expect(lastReq.Header.Get("PRIVATE-TOKEN")).To(BeEmpty(), "Fake provider should not set PRIVATE-TOKEN")
 		})
 	})
 })
