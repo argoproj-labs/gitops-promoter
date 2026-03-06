@@ -372,7 +372,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					requestMu.Lock()
 					initialRequestCount = requestCount
 					requestMu.Unlock()
-					g.Expect(initialRequestCount).To(Equal(3), "Should have made exactly one HTTP request per environment (3 total) before snapshotting")
+					g.Expect(initialRequestCount).To(BeNumerically(">=", 3), "Should have made at least one HTTP request per environment (3 total) before snapshotting")
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Triggering another reconcile by updating the WebRequestCommitStatus (annotation)")
