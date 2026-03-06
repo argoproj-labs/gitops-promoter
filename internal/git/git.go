@@ -14,8 +14,10 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -44,6 +46,14 @@ type HydratorMetadata = v1alpha1.HydratorMetadata
 
 // HydratorNotesRef is the git notes reference used by hydrators to store metadata about hydrated commits.
 const HydratorNotesRef = "refs/notes/hydrator.metadata"
+
+// CommitMetadata validation matches api/v1alpha1 CommitMetadata CRD rules so status updates do not fail API validation.
+var (
+	// shaValidPattern: 40 or 64 lowercase hex chars (SHA-1 or SHA-256).
+	shaValidPattern = regexp.MustCompile(`^[a-f0-9]{40}$|^[a-f0-9]{64}$`)
+	// repoURLValidPattern: empty or http(s) URL.
+	repoURLValidPattern = regexp.MustCompile(`^(https?://.*)?$`)
+)
 
 // NewEnvironmentOperations creates a new EnvironmentOperations instance. The activeBranch parameter is used to differentiate
 // between different environments that might use the same GitRepository and avoid conflicts between concurrent
@@ -165,6 +175,34 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string
 	return shas, nil
 }
 
+// sanitizeReferences clears only the fields that fail API validation (Sha, RepoURL) so status updates succeed. Reference items are kept.
+func sanitizeReferences(ctx context.Context, refs []v1alpha1.RevisionReference) []v1alpha1.RevisionReference {
+	logger := log.FromContext(ctx)
+	for i := range refs {
+		c := refs[i].Commit
+		if c == nil {
+			continue
+		}
+		if c.Sha != "" && !shaValidPattern.MatchString(c.Sha) {
+			logger.Info("Discarding invalid Sha in hydrator.metadata references", "index", i, "sha", c.Sha)
+			c.Sha = ""
+		}
+		if c.RepoURL != "" {
+			validURL := repoURLValidPattern.MatchString(c.RepoURL)
+			if validURL {
+				if u, err := url.Parse(c.RepoURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+					validURL = false
+				}
+			}
+			if !validURL {
+				logger.Info("Discarding invalid RepoURL in hydrator.metadata references", "index", i, "repoURL", c.RepoURL)
+				c.RepoURL = ""
+			}
+		}
+	}
+	return refs
+}
+
 // GetShaMetadataFromFile retrieves commit metadata from the hydrator.metadata file for a given SHA.
 func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha string) (v1alpha1.CommitShaState, error) {
 	logger := log.FromContext(ctx)
@@ -193,6 +231,9 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 	// Strip the .git suffix as the UI appends /commit/{sha} directly.
 	httpsRepoURL := strings.TrimSuffix(g.gap.GetGitHttpsRepoUrl(*g.gitRepo), ".git")
 
+	// Sanitize references so status updates do not fail CRD validation; clear only invalid fields.
+	references := sanitizeReferences(ctx, hydratorFile.References)
+
 	commitState := v1alpha1.CommitShaState{
 		Sha:        hydratorFile.DrySha,
 		CommitTime: hydratorFile.Date,
@@ -200,7 +241,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 		Author:     hydratorFile.Author,
 		Subject:    hydratorFile.Subject,
 		Body:       hydratorFile.Body,
-		References: hydratorFile.References,
+		References: references,
 	}
 
 	return commitState, nil
