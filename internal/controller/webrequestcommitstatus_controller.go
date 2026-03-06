@@ -64,6 +64,14 @@ type WebRequestCommitStatusReconciler struct {
 	EnqueueCTP      CTPEnqueueFunc
 	httpClient      *http.Client
 	expressionCache sync.Map
+	// lastRequestTimes tracks the last HTTP request time per environment in-memory.
+	// Key: "namespace/name/branch", value: time.Time.
+	// This is used as the primary source for polling interval short-circuit logic to avoid
+	// race conditions where the Kubernetes status cache has not yet been updated after a
+	// status write (brief window between Status().Update() returning and the cache receiving
+	// the watch event). Without this, reconciles triggered by PromotionStrategy watch events
+	// that start within this window would see LastRequestTime == nil and make redundant HTTP requests.
+	lastRequestTimes sync.Map
 }
 
 // templateData is the data passed to Go templates when rendering URL, headers, body, and description.
@@ -377,8 +385,21 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		// In polling mode: only make a request when the configured interval has elapsed since last request.
 		// Other events (e.g. PromotionStrategy update) can trigger reconcile; we respect the interval.
 		if wrcs.Spec.Mode.Polling != nil {
-			if prevEnvStatus != nil && prevEnvStatus.LastRequestTime != nil {
-				elapsed := time.Since(prevEnvStatus.LastRequestTime.Time)
+			// Prefer the in-memory last-request time over the status cache to avoid making redundant
+			// HTTP requests during the brief window where the status cache has not yet reflected the
+			// latest Status().Update() (i.e. after the update returns but before the watch event
+			// propagates to the cache). Fall back to the status-based time for resilience across restarts.
+			var lastReqTime time.Time
+			inMemoryKey := pollingIntervalKey(wrcs, branch)
+			if v, ok := r.lastRequestTimes.Load(inMemoryKey); ok {
+				if t, ok := v.(time.Time); ok {
+					lastReqTime = t
+				}
+			} else if prevEnvStatus != nil && prevEnvStatus.LastRequestTime != nil {
+				lastReqTime = prevEnvStatus.LastRequestTime.Time
+			}
+			if !lastReqTime.IsZero() {
+				elapsed := time.Since(lastReqTime)
 				if elapsed < wrcs.Spec.Mode.Polling.Interval.Duration {
 					logger.V(4).Info("Within polling interval, skipping HTTP request", "branch", branch, "elapsed", elapsed, "interval", wrcs.Spec.Mode.Polling.Interval.Duration)
 					shouldTrigger = false
@@ -410,6 +431,13 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 
 		//nolint:nestif // Extracted most logic to helper function, remaining complexity is minimal
 		if shouldTrigger {
+			// Record the request time in-memory before making the HTTP call so that any concurrent
+			// or immediately-following reconcile (triggered by a watch event) sees a non-nil last
+			// request time and correctly short-circuits. This is the primary guard against the cache-
+			// staleness race; the status-based LastRequestTime persists across restarts.
+			if wrcs.Spec.Mode.Polling != nil {
+				r.lastRequestTimes.Store(pollingIntervalKey(wrcs, branch), time.Now())
+			}
 			result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, templateData, branch)
 			if err != nil {
 				return nil, nil, 0, err
@@ -863,6 +891,12 @@ func (r *WebRequestCommitStatusReconciler) cleanupOrphanedCommitStatuses(ctx con
 	}
 
 	return nil
+}
+
+// pollingIntervalKey returns the sync.Map key used for lastRequestTimes.
+// Format: "namespace/name/branch"
+func pollingIntervalKey(wrcs *promoterv1alpha1.WebRequestCommitStatus, branch string) string {
+	return wrcs.Namespace + "/" + wrcs.Name + "/" + branch
 }
 
 // touchChangeTransferPolicies enqueues the ChangeTransferPolicy for each environment in transitionedEnvironments,
