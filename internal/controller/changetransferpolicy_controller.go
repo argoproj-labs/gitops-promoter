@@ -1003,7 +1003,7 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			WithTargetBranch(ctp.Spec.ActiveBranch).
 			WithSourceBranch(ctp.Spec.ProposedBranch).
 			WithDescription(description).
-			WithCommit(acv1alpha1.CommitConfiguration().WithMessage(commitMessage)).
+			WithCommit(acv1alpha1.CommitConfiguration().WithMessage(commitMessage).WithMergeStrategy(ctp.Spec.Commit.MergeStrategy)).
 			WithMergeSha(ctp.Status.Proposed.Hydrated.Sha).
 			WithState(prState))
 
@@ -1121,8 +1121,10 @@ func (r *ChangeTransferPolicyReconciler) mergePullRequests(ctx context.Context, 
 	if pullRequest.Spec.Description != "" {
 		prSpec = prSpec.WithDescription(pullRequest.Spec.Description)
 	}
-	if pullRequest.Spec.Commit.Message != "" {
-		prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().WithMessage(pullRequest.Spec.Commit.Message))
+	if pullRequest.Spec.Commit.Message != "" || pullRequest.Spec.Commit.MergeStrategy != "" {
+		prSpec = prSpec.WithCommit(acv1alpha1.CommitConfiguration().
+			WithMessage(pullRequest.Spec.Commit.Message).
+			WithMergeStrategy(pullRequest.Spec.Commit.MergeStrategy))
 	}
 
 	prApply := acv1alpha1.PullRequest(pullRequest.Name, pullRequest.Namespace).

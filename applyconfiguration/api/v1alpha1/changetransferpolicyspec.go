@@ -31,6 +31,8 @@ type ChangeTransferPolicySpecApplyConfiguration struct {
 	// ActiveBranch staging hydrated branch
 	ActiveBranch *string `json:"activeBranch,omitempty"`
 	AutoMerge    *bool   `json:"autoMerge,omitempty"`
+	// Commit contains configuration for how the pull request will be merged.
+	Commit *CommitConfigurationApplyConfiguration `json:"commit,omitempty"`
 	// ActiveCommitStatuses lists the statuses to be monitored on the active branch
 	ActiveCommitStatuses []CommitStatusSelectorApplyConfiguration `json:"activeCommitStatuses,omitempty"`
 	// ProposedCommitStatuses lists the statuses to be monitored on the proposed branch
@@ -72,6 +74,14 @@ func (b *ChangeTransferPolicySpecApplyConfiguration) WithActiveBranch(value stri
 // If called multiple times, the AutoMerge field is set to the value of the last call.
 func (b *ChangeTransferPolicySpecApplyConfiguration) WithAutoMerge(value bool) *ChangeTransferPolicySpecApplyConfiguration {
 	b.AutoMerge = &value
+	return b
+}
+
+// WithCommit sets the Commit field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Commit field is set to the value of the last call.
+func (b *ChangeTransferPolicySpecApplyConfiguration) WithCommit(value *CommitConfigurationApplyConfiguration) *ChangeTransferPolicySpecApplyConfiguration {
+	b.Commit = value
 	return b
 }
 
