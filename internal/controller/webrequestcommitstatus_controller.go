@@ -750,7 +750,7 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 	if ps == nil {
 		return nil, errors.New("ScmAuth requires a PromotionStrategy (missing or not yet resolved)")
 	}
-	scmProvider, secret, err := utils.GetScmProviderAndSecretFromRepositoryReference(
+	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(
 		ctx,
 		r.Client,
 		r.SettingsMgr.GetControllerNamespace(),
@@ -759,13 +759,6 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SCM provider and secret: %w", err)
-	}
-	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{
-		Namespace: ps.Namespace,
-		Name:      ps.Spec.RepositoryReference.Name,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get GitRepository: %w", err)
 	}
 	client, err := httpauth.ApplySCMAuth(ctx, scmProvider, secret, req, gitRepo)
 	if err != nil {

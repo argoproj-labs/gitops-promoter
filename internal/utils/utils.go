@@ -84,14 +84,10 @@ func GetGitRepositoryFromObjectKey(ctx context.Context, k8sClient client.Client,
 	return &gitRepo, nil
 }
 
-// GetScmProviderAndSecretFromRepositoryReference retrieves the ScmProvider and its associated Secret from a GitRepository reference.
-func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
+// getScmProviderAndSecretFromGitRepository returns the ScmProvider and Secret for the given GitRepository.
+// Used by GetScmProviderAndSecretFromRepositoryReference and GetScmProviderSecretAndGitRepositoryFromRepositoryReference.
+func getScmProviderAndSecretFromGitRepository(ctx context.Context, k8sClient client.Client, controllerNamespace string, gitRepo *promoterv1alpha1.GitRepository, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
 	logger := log.FromContext(ctx)
-	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get GitRepository: %w", err)
-	}
-
 	scmProvider, err := GetScmProviderFromGitRepository(ctx, k8sClient, gitRepo, obj)
 	if err != nil {
 		return nil, nil, err
@@ -122,6 +118,30 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 	}
 
 	return scmProvider, &secret, nil
+}
+
+// GetScmProviderAndSecretFromRepositoryReference retrieves the ScmProvider and its associated Secret from a GitRepository reference.
+func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClient client.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, error) {
+	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+	return getScmProviderAndSecretFromGitRepository(ctx, k8sClient, controllerNamespace, gitRepo, obj)
+}
+
+// GetScmProviderSecretAndGitRepositoryFromRepositoryReference retrieves the ScmProvider, its Secret, and the GitRepository
+// from a repository reference in a single GitRepository GET. Use when the GitRepository is also needed (e.g. ScmAuth
+// that requires repo owner for GitHub installation resolution).
+func GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx context.Context, k8sClient client.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, *promoterv1alpha1.GitRepository, error) {
+	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to get GitRepository: %w", err)
+	}
+	scmProvider, secret, err := getScmProviderAndSecretFromGitRepository(ctx, k8sClient, controllerNamespace, gitRepo, obj)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return scmProvider, secret, gitRepo, nil
 }
 
 // TruncateString truncates a string to a specified length. If the length is less than or equal to 0, it returns an

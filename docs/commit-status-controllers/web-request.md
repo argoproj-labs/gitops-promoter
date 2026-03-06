@@ -388,11 +388,10 @@ Set `authentication.scmAuth: {}` and the controller will use the credentials fro
 | SCM Provider   | Authentication method              | Applied as                          |
 |----------------|------------------------------------|-------------------------------------|
 | GitHub         | GitHub App (JWT / installation)    | Custom HTTP client (installation transport) |
-| GitLab         | Access token                       | Bearer token header                 |
+| GitLab         | Access token                       | `PRIVATE-TOKEN` header               |
 | Azure DevOps   | Personal Access Token (PAT)        | Basic auth (empty username, PAT as password) |
 | Bitbucket Cloud| Repository token                   | Bearer token header                 |
-| Forgejo / Gitea| Token or basic auth                | Bearer token or basic auth          |
-| Fake           | None                               | No authentication                   |
+| Forgejo / Gitea| Token or basic auth                | `Authorization: token <token>` or Basic auth (username/password) |
 
 **Example — Gate on GitHub branch protection rules being satisfied:**
 

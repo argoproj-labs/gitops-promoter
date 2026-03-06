@@ -426,6 +426,9 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 
 	switch {
 	case spec.GitHub != nil:
+		if secret == nil {
+			return nil, fmt.Errorf("GitHub SCM auth requires a secret")
+		}
 		transport, err := github.GetHTTPTransport(ctx, scmProvider, *secret, gitRepo)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build GitHub auth transport: %w", err)
@@ -433,10 +436,36 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 		logger.V(4).Info("Applied SCM authentication", "provider", "GitHub", "scmProvider", scmProvider.GetName())
 		return &http.Client{Transport: transport}, nil
 
-	case spec.GitLab != nil || spec.Forgejo != nil || spec.Gitea != nil || spec.BitbucketCloud != nil:
+	case spec.GitLab != nil:
 		token, err := GetSecretValue(secret, TokenKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get token from secret for SCM auth: %w", err)
+			return nil, fmt.Errorf("failed to get token from secret for GitLab SCM auth: %w", err)
+		}
+		req.Header.Set("PRIVATE-TOKEN", token)
+		logger.V(4).Info("Applied SCM authentication (GitLab PRIVATE-TOKEN)", "scmProvider", scmProvider.GetName())
+		return nil, nil
+
+	case spec.Forgejo != nil || spec.Gitea != nil:
+		// Forgejo/Gitea accept "Authorization: token <token>" or HTTP Basic (username/password).
+		if token, err := GetSecretValue(secret, TokenKey); err == nil && token != "" {
+			req.Header.Set("Authorization", "token "+token)
+			logger.V(4).Info("Applied SCM authentication (token)", "scmProvider", scmProvider.GetName())
+			return nil, nil
+		}
+		username, userErr := GetSecretValue(secret, UsernameKey)
+		password, passErr := GetSecretValue(secret, PasswordKey)
+		if userErr == nil && passErr == nil && username != "" && password != "" {
+			credentials := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+			req.Header.Set("Authorization", "Basic "+credentials)
+			logger.V(4).Info("Applied SCM authentication (Basic)", "scmProvider", scmProvider.GetName())
+			return nil, nil
+		}
+		return nil, fmt.Errorf("Forgejo/Gitea SCM auth requires token or username/password in secret")
+
+	case spec.BitbucketCloud != nil:
+		token, err := GetSecretValue(secret, TokenKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get token from secret for Bitbucket Cloud SCM auth: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 		logger.V(4).Info("Applied SCM authentication (Bearer)", "scmProvider", scmProvider.GetName())
