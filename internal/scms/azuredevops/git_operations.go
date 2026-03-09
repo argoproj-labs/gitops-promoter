@@ -2,10 +2,8 @@ package azuredevops
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"net/http"
 
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	"github.com/microsoft/azure-devops-go-api/azuredevops/v7"
@@ -122,16 +120,4 @@ func createPATConnection(scmProvider v1alpha1.GenericScmProvider, secret v1.Secr
 		authType:    AuthTypePAT,
 	}
 	return connection, authProvider, nil
-}
-
-// ApplyHTTPAuth applies Azure DevOps authentication to the HTTP request using Basic auth
-// with an empty username and the PAT as the password.
-func ApplyHTTPAuth(secret v1.Secret, req *http.Request) error {
-	token := string(secret.Data[azureDevOpsTokenSecretKey])
-	if token == "" {
-		return errors.New("non-empty token required in secret for Azure DevOps SCM auth")
-	}
-	credentials := base64.StdEncoding.EncodeToString([]byte(":" + token))
-	req.Header.Set("Authorization", "Basic "+credentials)
-	return nil
 }
