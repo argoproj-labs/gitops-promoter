@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strings"
 	"sync"
@@ -410,7 +411,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 
 		//nolint:nestif // Extracted most logic to helper function, remaining complexity is minimal
 		if shouldTrigger {
-			result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, templateData, branch)
+			result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, ps, templateData, branch)
 			if err != nil {
 				return nil, nil, 0, err
 			}
@@ -510,11 +511,11 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 // HTTP request, optionally runs the response expression to populate ResponseOutput, then runs the validation
 // expression to set Phase (Success or Pending). The returned httpValidationResult is used to update
 // environment status and to upsert the CommitStatus for that branch.
-func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData, branch string) (httpValidationResult, error) {
+func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, templateData templateData, branch string) (httpValidationResult, error) {
 	logger := log.FromContext(ctx)
 
 	// Make the HTTP request
-	response, err := r.makeHTTPRequest(ctx, wrcs, templateData)
+	response, err := r.makeHTTPRequest(ctx, wrcs, ps, templateData)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to make HTTP request for environment %q: %w", branch, err)
 	}
@@ -599,13 +600,23 @@ func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promote
 // URL, body, and headers from templateData, applies authentication (basic, bearer, OAuth2, or TLS), uses the
 // configured timeout, and parses the response body as JSON or plain text. The returned httpResponse is used
 // for validation and response expression evaluation.
-func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (httpResponse, error) {
+// When ScmAuth is configured, the rendered URL host is validated against the SCM provider's allowed
+// domains before the request is made, to prevent SCM credentials leaking to unintended hosts.
+func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, templateData templateData) (httpResponse, error) {
 	logger := log.FromContext(ctx)
 
 	// Render URL template
 	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, templateData)
 	if err != nil {
 		return httpResponse{}, fmt.Errorf("failed to render URL template: %w", err)
+	}
+
+	// When ScmAuth is configured, credentials are sourced directly from the SCM provider, so the
+	// URL host must belong to that provider's allowed domains to prevent credential leakage.
+	if wrcs.Spec.HTTPRequest.Authentication != nil && wrcs.Spec.HTTPRequest.Authentication.ScmAuth != nil {
+		if err := r.validateURLHostAgainstScmProvider(ctx, wrcs, ps, url); err != nil {
+			return httpResponse{}, fmt.Errorf("SCM host validation failed: %w", err)
+		}
 	}
 
 	// Render body template if present
@@ -973,4 +984,97 @@ func (r *WebRequestCommitStatusReconciler) getNamespaceMetadata(ctx context.Cont
 		Labels:      ns.Labels,
 		Annotations: ns.Annotations,
 	}, nil
+}
+
+// allowedHostsForScmProvider returns the list of URL hostnames permitted for the given ScmProviderSpec.
+// Each entry may optionally include a port (e.g. "gitlab.corp.example.com:8443"). Matching strips
+// the port from both the configured value and the request URL so that standard-port URLs always match.
+func allowedHostsForScmProvider(spec *promoterv1alpha1.ScmProviderSpec) []string {
+	switch {
+	case spec.GitHub != nil:
+		hosts := []string{"github.com", "api.github.com"}
+		if spec.GitHub.Domain != "" {
+			hosts = append(hosts, spec.GitHub.Domain)
+		}
+		return hosts
+	case spec.GitLab != nil:
+		hosts := []string{"gitlab.com"}
+		if spec.GitLab.Domain != "" {
+			hosts = append(hosts, spec.GitLab.Domain)
+		}
+		return hosts
+	case spec.Forgejo != nil:
+		return []string{spec.Forgejo.Domain}
+	case spec.Gitea != nil:
+		return []string{spec.Gitea.Domain}
+	case spec.BitbucketCloud != nil:
+		return []string{"bitbucket.org", "api.bitbucket.org"}
+	case spec.AzureDevOps != nil:
+		hosts := []string{"dev.azure.com"}
+		if spec.AzureDevOps.Domain != "" {
+			hosts = append(hosts, spec.AzureDevOps.Domain)
+		}
+		return hosts
+	case spec.Fake != nil:
+		return []string{spec.Fake.Domain}
+	default:
+		return nil
+	}
+}
+
+// hostMatches reports whether a request URL host matches a configured host entry.
+// If the configured entry includes a port (e.g. "host:8443"), the full host:port must match.
+// If the configured entry has no port (e.g. "host"), only the hostname is compared so any port is allowed.
+// All comparisons are case-insensitive.
+func hostMatches(configuredHost, requestHost, requestHostname string) bool {
+	configured := &url.URL{Host: configuredHost}
+	if configured.Port() != "" {
+		return strings.ToLower(configuredHost) == requestHost
+	}
+	return strings.ToLower(configured.Hostname()) == requestHostname
+}
+
+
+// validateURLHostAgainstScmProvider checks that the host of renderedURL is among the hosts permitted by
+// the SCM provider that backs the PromotionStrategy's GitRepository. This is called only when ScmAuth
+// is configured, preventing SCM credentials from being sent to an arbitrary host.
+func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
+	ctx context.Context,
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	ps *promoterv1alpha1.PromotionStrategy,
+	renderedURL string,
+) error {
+	parsed, err := url.Parse(renderedURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL %q: %w", renderedURL, err)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("URL %q has no host", renderedURL)
+	}
+	requestHost := strings.ToLower(parsed.Host)
+	requestHostname := strings.ToLower(parsed.Hostname())
+
+	// Resolve the GitRepository for this PromotionStrategy.
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{
+		Namespace: wrcs.Namespace,
+		Name:      ps.Spec.RepositoryReference.Name,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository for SCM host validation: %w", err)
+	}
+
+	// Resolve the ScmProvider (namespaced or cluster-scoped).
+	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, r.Client, gitRepo, wrcs)
+	if err != nil {
+		return fmt.Errorf("failed to get ScmProvider for SCM host validation: %w", err)
+	}
+
+	allowed := allowedHostsForScmProvider(scmProvider.GetSpec())
+	for _, h := range allowed {
+		if hostMatches(h, requestHost, requestHostname) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("URL host %q is not allowed for the configured SCM provider; permitted hosts: %v", requestHostname, allowed)
 }
