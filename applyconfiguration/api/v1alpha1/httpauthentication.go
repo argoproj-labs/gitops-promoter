@@ -61,6 +61,7 @@ type HTTPAuthenticationApplyConfiguration struct {
 	// This uses the credentials configured in the ScmProvider referenced by the PromotionStrategy,
 	// applying the appropriate authentication method based on the SCM provider type
 	// (GitHub App, GitLab token, Azure DevOps PAT, etc.).
+	// To use this auth type, just set it to an empty object, i.e. scm: {}.
 	ScmAuth *apiv1alpha1.ScmAuth `json:"scmAuth,omitempty"`
 }
 
