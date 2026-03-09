@@ -50,7 +50,7 @@ const HydratorNotesRef = "refs/notes/hydrator.metadata"
 // CommitMetadata validation matches api/v1alpha1 CommitMetadata CRD rules so status updates do not fail API validation.
 var (
 	// shaValidPattern: 40 or 64 lowercase hex chars (SHA-1 or SHA-256).
-	shaValidPattern = regexp.MustCompile(`^[a-f0-9]{40}$|^[a-f0-9]{64}$`)
+	shaValidPattern = regexp.MustCompile(`^([a-f0-9]{40}|[a-f0-9]{64})$`)
 	// repoURLValidPattern: empty or http(s) URL.
 	repoURLValidPattern = regexp.MustCompile(`^(https?://.*)?$`)
 )

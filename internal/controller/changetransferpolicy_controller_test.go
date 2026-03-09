@@ -278,7 +278,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 		// When hydrator.metadata has references that fail CommitMetadata CRD validation (e.g. invalid Sha,
 		// invalid RepoURL), the controller would compute status that fails API server validation on patch.
-		// Runtime validation in git package discards invalid references so status update succeeds.
+		// Runtime validation in git package clears invalid fields (Sha/RepoURL) on those references so status update succeeds.
 		Context("When hydrator.metadata contains references that fail API validation", func() {
 			var name string
 			var scmSecret *v1.Secret
