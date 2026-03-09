@@ -46,7 +46,7 @@ jobs:
         run: |
           python3 -m venv .venv
           . .venv/bin/activate
-          pip install -r docs/requirements.txt
+          pip install -r docs/requirements-hashed.txt --require-hashes
       - name: Lint Docs
         run: . .venv/bin/activate && make lint-docs
       - name: Get dependencies
@@ -97,8 +97,9 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload test results to codecov.io
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
         with:
+          report_type: test_results
           token: ${{ secrets.CODECOV_TOKEN }}
   codegen:
     name: Check Codegen
