@@ -315,7 +315,19 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 
 			AfterEach(func() {
 				By("Cleaning up resources")
-				_ = k8sClient.Delete(ctx, changeTransferPolicy)
+				if err := k8sClient.Delete(ctx, changeTransferPolicy); err != nil && !errors.IsNotFound(err) {
+					Fail(fmt.Sprintf("failed to delete ChangeTransferPolicy: %v", err))
+				}
+				if err := k8sClient.Delete(ctx, gitRepo); err != nil && !errors.IsNotFound(err) {
+					Fail(fmt.Sprintf("failed to delete GitRepository: %v", err))
+				}
+				if err := k8sClient.Delete(ctx, scmProvider); err != nil && !errors.IsNotFound(err) {
+					Fail(fmt.Sprintf("failed to delete ScmProvider: %v", err))
+				}
+				if err := k8sClient.Delete(ctx, scmSecret); err != nil && !errors.IsNotFound(err) {
+					Fail(fmt.Sprintf("failed to delete Secret: %v", err))
+				}
+				_ = os.RemoveAll(gitPath)
 			})
 
 			It("discards invalid references so status update succeeds and does not fail CRD validation", func() {
