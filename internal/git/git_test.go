@@ -18,7 +18,9 @@ import (
 )
 
 func TestGit(t *testing.T) {
-	t.Parallel()
+	// Do not use t.Parallel() here: the top-level test is already run in parallel by
+	// make test-parallel (ginkgo -p -procs=4). Using t.Parallel() can trigger a nil
+	// RPC client in Ginkgo's parallel support when the suite exits.
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Git Suite")
 }

@@ -2,7 +2,6 @@ package git
 
 import (
 	"context"
-	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -12,11 +11,8 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
-func TestGitInternal(t *testing.T) {
-	t.Parallel()
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "Git Internal Suite")
-}
+// Specs in this file run as part of the Git Suite (see git_test.go).
+// Do not add a second RunSpecs here: Ginkgo does not support multiple suites per package.
 
 var _ = Describe("sanitizeReferences", func() {
 	ctx := context.Background()
