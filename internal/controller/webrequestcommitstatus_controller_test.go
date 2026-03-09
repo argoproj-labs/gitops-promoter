@@ -1448,7 +1448,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 		})
 	})
 
-	Describe("ScmAuth - use PromotionStrategy SCM credentials", func() {
+	Describe("Scm - use PromotionStrategy SCM credentials", func() {
 		var (
 			scmAuthCtx               context.Context
 			scmAuthName              string
@@ -1468,7 +1468,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			scmAuthLastRequestMu.Unlock()
 			scmAuthCtx = context.Background()
 
-			By("Creating a test HTTP server for ScmAuth test")
+			By("Creating a test HTTP server for Scm test")
 			scmAuthTestServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				scmAuthLastRequestMu.Lock()
 				scmAuthLastRequest = r
@@ -1497,7 +1497,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			Expect(k8sClient.Create(scmAuthCtx, scmAuthGitRepo)).To(Succeed())
 			Expect(k8sClient.Create(scmAuthCtx, scmAuthPromotionStrategy)).To(Succeed())
 
-			By("Creating a WebRequestCommitStatus with authentication.scmAuth (Fake provider = no auth applied)")
+			By("Creating a WebRequestCommitStatus with authentication.scm (Fake provider = no auth applied)")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      scmAuthName + "-scmauth",
@@ -1514,7 +1514,7 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 						Authentication: &promoterv1alpha1.HTTPAuthentication{
-							ScmAuth: &promoterv1alpha1.ScmAuth{},
+							Scm: &promoterv1alpha1.Scm{},
 						},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
@@ -1559,8 +1559,8 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 			}
 		})
 
-		It("should make HTTP request and report success when using ScmAuth with Fake SCM provider", func() {
-			By("Waiting for WebRequestCommitStatus to process environments with ScmAuth")
+		It("should make HTTP request and report success when using Scm with Fake SCM provider", func() {
+			By("Waiting for WebRequestCommitStatus to process environments with Scm")
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
 				err := k8sClient.Get(scmAuthCtx, types.NamespacedName{
@@ -1729,7 +1729,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 		})
 
 		It("should make the HTTP request when the URL host matches the SCM provider domain", func() {
-			By("Creating a WebRequestCommitStatus with ScmAuth")
+			By("Creating a WebRequestCommitStatus with Scm")
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-host-match",
@@ -1744,7 +1744,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 						Authentication: &promoterv1alpha1.HTTPAuthentication{
-							ScmAuth: &promoterv1alpha1.ScmAuth{},
+							Scm: &promoterv1alpha1.Scm{},
 						},
 					},
 					Success: promoterv1alpha1.SuccessSpec{
@@ -1834,7 +1834,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 		})
 
 		It("should set Ready=False when the URL host does not match the SCM provider domain", func() {
-			By("Creating a WebRequestCommitStatus with ScmAuth pointing at the test server")
+			By("Creating a WebRequestCommitStatus with Scm pointing at the test server")
 			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      name + "-host-mismatch",
@@ -1850,7 +1850,7 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func
 						Method:      "GET",
 						Timeout:     metav1.Duration{Duration: 10 * time.Second},
 						Authentication: &promoterv1alpha1.HTTPAuthentication{
-							ScmAuth: &promoterv1alpha1.ScmAuth{},
+							Scm: &promoterv1alpha1.Scm{},
 						},
 					},
 					Success: promoterv1alpha1.SuccessSpec{

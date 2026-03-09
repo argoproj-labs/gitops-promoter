@@ -41,7 +41,7 @@ import (
 //  5. SCM - Uses credentials from the SCM provider referenced in the PromotionStrategy.
 //     Automatically applies the appropriate authentication method based on the SCM provider type.
 //
-// +kubebuilder:validation:AtMostOneOf=basic;bearer;oauth2;tls;scmAuth
+// +kubebuilder:validation:AtMostOneOf=basic;bearer;oauth2;tls;scm
 type HTTPAuthentication struct {
 	// Basic specifies HTTP Basic Authentication.
 	// Credentials can be provided inline (with secret references) or via secretRef.
@@ -63,13 +63,13 @@ type HTTPAuthentication struct {
 	// +optional
 	TLS *TLSAuth `json:"tls,omitempty"`
 
-	// ScmAuth specifies authentication using credentials from the SCM provider.
+	// Scm specifies authentication using credentials from the SCM provider.
 	// This uses the credentials configured in the ScmProvider referenced by the PromotionStrategy,
 	// applying the appropriate authentication method based on the SCM provider type
 	// (GitHub App, GitLab token, Azure DevOps PAT, etc.).
 	// To use this auth type, just set it to an empty object, i.e. scm: {}.
 	// +optional
-	ScmAuth *ScmAuth `json:"scmAuth,omitempty"`
+	Scm *Scm `json:"scm,omitempty"`
 }
 
 // BasicAuth defines HTTP Basic Authentication.
@@ -186,9 +186,9 @@ type TLSAuth struct {
 	SecretRef *corev1.LocalObjectReference `json:"secretRef"`
 }
 
-// ScmAuth specifies authentication using SCM provider credentials.
+// Scm specifies authentication using SCM provider credentials.
 //
 // This authentication method uses the credentials from the ScmProvider referenced
 // by the PromotionStrategy. The controller retrieves the SCM provider and secret
 // and applies the appropriate authentication based on the provider type.
-type ScmAuth struct{}
+type Scm struct{}

@@ -131,7 +131,7 @@ func GetScmProviderAndSecretFromRepositoryReference(ctx context.Context, k8sClie
 }
 
 // GetScmProviderSecretAndGitRepositoryFromRepositoryReference retrieves the ScmProvider, its Secret, and the GitRepository
-// from a repository reference in a single GitRepository GET. Use when the GitRepository is also needed (e.g. ScmAuth
+// from a repository reference in a single GitRepository GET. Use when the GitRepository is also needed (e.g. scm
 // that requires repo owner for GitHub installation resolution).
 func GetScmProviderSecretAndGitRepositoryFromRepositoryReference(ctx context.Context, k8sClient client.Client, controllerNamespace string, repositoryRef promoterv1alpha1.ObjectReference, obj metav1.Object) (promoterv1alpha1.GenericScmProvider, *v1.Secret, *promoterv1alpha1.GitRepository, error) {
 	gitRepo, err := GetGitRepositoryFromObjectKey(ctx, k8sClient, client.ObjectKey{Namespace: obj.GetNamespace(), Name: repositoryRef.Name})

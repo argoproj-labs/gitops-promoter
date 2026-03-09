@@ -600,7 +600,7 @@ func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promote
 // URL, body, and headers from templateData, applies authentication (basic, bearer, OAuth2, or TLS), uses the
 // configured timeout, and parses the response body as JSON or plain text. The returned httpResponse is used
 // for validation and response expression evaluation.
-// When ScmAuth is configured, the rendered URL host is validated against the SCM provider's allowed
+// When Scm is configured, the rendered URL host is validated against the SCM provider's allowed
 // domains before the request is made, to prevent SCM credentials leaking to unintended hosts.
 func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (httpResponse, error) {
 	logger := log.FromContext(ctx)
@@ -611,9 +611,9 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 		return httpResponse{}, fmt.Errorf("failed to render URL template: %w", err)
 	}
 
-	// When ScmAuth is configured, credentials are sourced directly from the SCM provider, so the
+	// When Scm is configured, credentials are sourced directly from the SCM provider, so the
 	// URL host must belong to that provider's allowed domains to prevent credential leakage.
-	if wrcs.Spec.HTTPRequest.Authentication != nil && wrcs.Spec.HTTPRequest.Authentication.ScmAuth != nil {
+	if wrcs.Spec.HTTPRequest.Authentication != nil && wrcs.Spec.HTTPRequest.Authentication.Scm != nil {
 		if err := r.validateURLHostAgainstScmProvider(ctx, wrcs, url); err != nil {
 			return httpResponse{}, fmt.Errorf("SCM host validation failed: %w", err)
 		}
@@ -709,9 +709,9 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	return response, nil
 }
 
-// applyAuthentication configures the request (or client) with the auth from spec: Basic, Bearer, OAuth2, TLS, or ScmAuth.
-// For Basic/Bearer/OAuth2 it mutates the request and returns nil. For TLS or ScmAuth it builds and returns
-// a custom http.Client. Credentials are read from the referenced Secrets or from the SCM provider (ScmAuth).
+// applyAuthentication configures the request (or client) with the auth from spec: Basic, Bearer, OAuth2, TLS, or Scm.
+// For Basic/Bearer/OAuth2 it mutates the request and returns nil. For TLS or Scm it builds and returns
+// a custom http.Client. Credentials are read from the referenced Secrets or from the SCM provider (Scm).
 func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, req *http.Request) (*http.Client, error) {
 	auth := wrcs.Spec.HTTPRequest.Authentication
 
@@ -753,10 +753,10 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 		return client, nil
 	}
 
-	if auth.ScmAuth != nil {
+	if auth.Scm != nil {
 		var ps promoterv1alpha1.PromotionStrategy
 		if err := r.Get(ctx, client.ObjectKey{Namespace: wrcs.Namespace, Name: wrcs.Spec.PromotionStrategyRef.Name}, &ps); err != nil {
-			return nil, fmt.Errorf("failed to get PromotionStrategy for ScmAuth: %w", err)
+			return nil, fmt.Errorf("failed to get PromotionStrategy for Scm: %w", err)
 		}
 		return r.applySCMAuthentication(ctx, wrcs.Namespace, ps.Spec.RepositoryReference, req)
 	}
@@ -1021,7 +1021,7 @@ func hostMatches(configuredHost, requestHost, requestHostname string) bool {
 }
 
 // validateURLHostAgainstScmProvider checks that the host of renderedURL is among the hosts permitted by
-// the SCM provider that backs the PromotionStrategy's GitRepository. This is called only when ScmAuth
+// the SCM provider that backs the PromotionStrategy's GitRepository. This is called only when Scm
 // is configured, preventing SCM credentials from being sent to an arbitrary host.
 func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 	ctx context.Context,

@@ -57,12 +57,12 @@ type HTTPAuthenticationApplyConfiguration struct {
 	// TLS specifies TLS client certificate authentication (mutual TLS).
 	// Requires a secret containing the client certificate and private key.
 	TLS *TLSAuthApplyConfiguration `json:"tls,omitempty"`
-	// ScmAuth specifies authentication using credentials from the SCM provider.
+	// Scm specifies authentication using credentials from the SCM provider.
 	// This uses the credentials configured in the ScmProvider referenced by the PromotionStrategy,
 	// applying the appropriate authentication method based on the SCM provider type
 	// (GitHub App, GitLab token, Azure DevOps PAT, etc.).
 	// To use this auth type, just set it to an empty object, i.e. scm: {}.
-	ScmAuth *apiv1alpha1.ScmAuth `json:"scmAuth,omitempty"`
+	Scm *apiv1alpha1.Scm `json:"scm,omitempty"`
 }
 
 // HTTPAuthenticationApplyConfiguration constructs a declarative configuration of the HTTPAuthentication type for use with
@@ -103,10 +103,10 @@ func (b *HTTPAuthenticationApplyConfiguration) WithTLS(value *TLSAuthApplyConfig
 	return b
 }
 
-// WithScmAuth sets the ScmAuth field in the declarative configuration to the given value
+// WithScm sets the Scm field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
-// If called multiple times, the ScmAuth field is set to the value of the last call.
-func (b *HTTPAuthenticationApplyConfiguration) WithScmAuth(value apiv1alpha1.ScmAuth) *HTTPAuthenticationApplyConfiguration {
-	b.ScmAuth = &value
+// If called multiple times, the Scm field is set to the value of the last call.
+func (b *HTTPAuthenticationApplyConfiguration) WithScm(value apiv1alpha1.Scm) *HTTPAuthenticationApplyConfiguration {
+	b.Scm = &value
 	return b
 }

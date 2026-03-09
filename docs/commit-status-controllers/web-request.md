@@ -383,7 +383,7 @@ Instead of creating separate secrets, you can reuse the SCM provider credentials
 - Your external API accepts the same credentials as your SCM provider
 - You want to avoid duplicating secrets
 
-Set `authentication.scmAuth: {}` and the controller will use the credentials from the ScmProvider referenced by the PromotionStrategy's repository. The authentication method is applied automatically based on the SCM provider type (GitHub App, GitLab token, Azure DevOps PAT, etc.).
+Set `authentication.scm: {}` and the controller will use the credentials from the ScmProvider referenced by the PromotionStrategy's repository. The authentication method is applied automatically based on the SCM provider type (GitHub App, GitLab token, Azure DevOps PAT, etc.).
 
 
 **Example — Gate on GitHub branch protection rules being satisfied:**
@@ -408,7 +408,7 @@ spec:
       Accept: "application/vnd.github+json"
       X-GitHub-Api-Version: "2022-11-28"
     authentication:
-      scmAuth: {}
+      scm: {}
   success:
     when:
       expression: |

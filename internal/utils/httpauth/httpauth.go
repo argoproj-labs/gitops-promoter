@@ -479,6 +479,6 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 		return nil, nil
 
 	default:
-		return nil, errors.New("unknown SCM provider type for ScmAuth")
+		return nil, errors.New("unknown SCM provider type for scm")
 	}
 }
