@@ -590,7 +590,7 @@ func (e *TooManyMatchingShaError) Error() string {
 	// Construct a message that includes the namespace/name of each commit status.
 	// If there are more than two, finish the message with "and X more..."
 	var msg strings.Builder
-	msg.WriteString("there are to many matching SHAs for the '" + e.commitStatusKey + "' commit status: ")
+	msg.WriteString("there are too many matching SHAs for the '" + e.commitStatusKey + "' commit status: ")
 	for i, cs := range e.commitStatuses {
 		if i > 0 {
 			msg.WriteString(", ")
