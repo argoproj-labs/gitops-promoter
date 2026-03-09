@@ -362,7 +362,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 				wrcs.Status.Environments = append(wrcs.Status.Environments, *prevEnvStatus)
 
 				// Still ensure CommitStatus exists (it may have been deleted)
-				cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, templateData)
+				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, templateData)
 				if err != nil {
 					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q: %w", branch, err)
 				}
@@ -483,7 +483,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		}
 
 		// Create or update the CommitStatus
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, phase, commitTemplateData)
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, phase, commitTemplateData)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
@@ -649,7 +649,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	// overwriting r.httpClient would create a data race and wrong client usage across goroutines.
 	clientToUse := r.httpClient
 	if wrcs.Spec.HTTPRequest.Authentication != nil {
-		authClient, err := r.applyAuthentication(ctx, wrcs, templateData.PromotionStrategy, req)
+		authClient, err := r.applyAuthentication(ctx, wrcs, req)
 		if err != nil {
 			return httpResponse{}, fmt.Errorf("failed to apply authentication: %w", err)
 		}
@@ -710,9 +710,9 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 }
 
 // applyAuthentication configures the request (or client) with the auth from spec: Basic, Bearer, OAuth2, TLS, or ScmAuth.
-// For Basic/Bearer/OAuth2 it mutates the request and returns nil. For TLS or ScmAuth (GitHub) it builds and returns
-// a custom http.Client. Credentials are read from the referenced Secrets or from the PromotionStrategy's SCM provider (ScmAuth).
-func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, req *http.Request) (*http.Client, error) {
+// For Basic/Bearer/OAuth2 it mutates the request and returns nil. For TLS or ScmAuth it builds and returns
+// a custom http.Client. Credentials are read from the referenced Secrets or from the SCM provider (ScmAuth).
+func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, req *http.Request) (*http.Client, error) {
 	auth := wrcs.Spec.HTTPRequest.Authentication
 
 	if auth.Basic != nil {
@@ -754,23 +754,24 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 	}
 
 	if auth.ScmAuth != nil {
-		return r.applySCMAuthentication(ctx, ps, req)
+		var ps promoterv1alpha1.PromotionStrategy
+		if err := r.Get(ctx, client.ObjectKey{Namespace: wrcs.Namespace, Name: wrcs.Spec.PromotionStrategyRef.Name}, &ps); err != nil {
+			return nil, fmt.Errorf("failed to get PromotionStrategy for ScmAuth: %w", err)
+		}
+		return r.applySCMAuthentication(ctx, wrcs.Namespace, ps.Spec.RepositoryReference, req)
 	}
 
 	return nil, nil
 }
 
-// applySCMAuthentication applies authentication using the SCM provider credentials from the PromotionStrategy.
-func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Context, ps *promoterv1alpha1.PromotionStrategy, req *http.Request) (*http.Client, error) {
-	if ps == nil {
-		return nil, errors.New("ScmAuth requires a PromotionStrategy (missing or not yet resolved)")
-	}
+// applySCMAuthentication applies authentication using the SCM provider credentials from the referenced GitRepository.
+func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Context, namespace string, repositoryRef promoterv1alpha1.ObjectReference, req *http.Request) (*http.Client, error) {
 	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(
 		ctx,
 		r.Client,
 		r.SettingsMgr.GetControllerNamespace(),
-		ps.Spec.RepositoryReference,
-		ps,
+		repositoryRef,
+		&metav1.ObjectMeta{Namespace: namespace},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SCM provider and secret: %w", err)
@@ -785,7 +786,7 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 // upsertCommitStatus creates or updates the CommitStatus resource that reports this WebRequestCommitStatus's result to the SCM.
 // The phase (Success or Pending) and sha are set from the validation outcome; description and URL are rendered from templateData.
 // The created resource is owned by the WebRequestCommitStatus so it is cleaned up when the WebRequestCommitStatus is deleted.
-func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData templateData) (*promoterv1alpha1.CommitStatus, error) {
+func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName string, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData templateData) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch))
 
@@ -805,7 +806,7 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 
 	// Build the spec
 	commitStatusSpec := acv1alpha1.CommitStatusSpec().
-		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
+		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(repositoryRefName)).
 		WithName(wrcs.Spec.Key + "/" + branch).
 		WithDescription(description).
 		WithPhase(phase).
