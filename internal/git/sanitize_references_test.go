@@ -21,6 +21,10 @@ func TestGitInternal(t *testing.T) {
 var _ = Describe("sanitizeReferences", func() {
 	ctx := context.Background()
 
+	// sha40 and sha64 are valid test SHAs (40 and 64 lowercase hex chars).
+	const sha40 = "c4c862564bcd56bb78cc8bc683eee3dc8bf96108"
+	const sha64 = "c4c862564bcd56bb78cc8bc683eee3dc8bf96108c4c862564bcd56bb78cc8bc6"
+
 	DescribeTable("Sha validation",
 		func(sha string, expectCleared bool) {
 			refs := []v1alpha1.RevisionReference{
@@ -40,13 +44,13 @@ var _ = Describe("sanitizeReferences", func() {
 				Expect(result[0].Commit.Sha).To(Equal(sha), "expected Sha to be preserved for value %q", sha)
 			}
 		},
-		Entry("valid SHA-1 (40 hex chars) is preserved", "c4c862564afe56abf8cc8ac683eee3dc8bf96108", false),
-		Entry("valid SHA-256 (64 hex chars) is preserved", "c4c862564afe56abf8cc8ac683eee3dc8bf96108c4c862564afe56abf8cc8ac6", false),
+		Entry("valid SHA-1 (40 hex chars) is preserved", sha40, false),
+		Entry("valid SHA-256 (64 hex chars) is preserved", sha64, false),
 		Entry("invalid: too short is cleared", "abc123", true),
-		Entry("invalid: uppercase hex is cleared", "C4C862564AFE56ABF8CC8AC683EEE3DC8BF96108", true),
+		Entry("invalid: uppercase hex is cleared", "C4C862564BCD56BB78CC8BC683EEE3DC8BF96108", true),
 		Entry("invalid: non-hex chars is cleared", "not-a-valid-sha-at-all-xxxxxxxxxxxxxxxxxxxx", true),
-		Entry("invalid: 39 hex chars is cleared", "c4c862564afe56abf8cc8ac683eee3dc8bf9610", true),
-		Entry("invalid: 41 hex chars is cleared", "c4c862564afe56abf8cc8ac683eee3dc8bf961080", true),
+		Entry("invalid: 39 hex chars is cleared", "c4c862564bcd56bb78cc8bc683eee3dc8bf9610", true),
+		Entry("invalid: 41 hex chars is cleared", "c4c862564bcd56bb78cc8bc683eee3dc8bf961080", true),
 		Entry("empty Sha is preserved as-is (no change)", "", false),
 	)
 
@@ -55,7 +59,7 @@ var _ = Describe("sanitizeReferences", func() {
 			refs := []v1alpha1.RevisionReference{
 				{
 					Commit: &v1alpha1.CommitMetadata{
-						Sha:     "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
+						Sha:     sha40,
 						RepoURL: repoURL,
 					},
 				},
@@ -137,7 +141,7 @@ var _ = Describe("sanitizeReferences", func() {
 			refs := []v1alpha1.RevisionReference{
 				{
 					Commit: &v1alpha1.CommitMetadata{
-						Sha:     "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
+						Sha:     sha40,
 						RepoURL: "https://github.com/valid/repo",
 						Subject: "Valid entry",
 					},
@@ -155,7 +159,7 @@ var _ = Describe("sanitizeReferences", func() {
 			Expect(result).To(HaveLen(3))
 
 			// First entry: valid - both fields preserved.
-			Expect(result[0].Commit.Sha).To(Equal("c4c862564afe56abf8cc8ac683eee3dc8bf96108"))
+			Expect(result[0].Commit.Sha).To(Equal(sha40))
 			Expect(result[0].Commit.RepoURL).To(Equal("https://github.com/valid/repo"))
 			Expect(result[0].Commit.Subject).To(Equal("Valid entry"))
 
@@ -171,7 +175,7 @@ var _ = Describe("sanitizeReferences", func() {
 
 	Context("when Sha is longer than 64 characters", func() {
 		It("clears the overlong Sha without panicking (truncation for logging only)", func() {
-			overlongSha := "c4c862564afe56abf8cc8ac683eee3dc8bf96108c4c862564afe56abf8cc8ac6extra"
+			overlongSha := sha64 + "extra"
 			refs := []v1alpha1.RevisionReference{
 				{
 					Commit: &v1alpha1.CommitMetadata{
@@ -191,7 +195,7 @@ var _ = Describe("sanitizeReferences", func() {
 			refs := []v1alpha1.RevisionReference{
 				{
 					Commit: &v1alpha1.CommitMetadata{
-						Sha:     "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
+						Sha:     sha40,
 						RepoURL: longInvalidURL,
 					},
 				},
