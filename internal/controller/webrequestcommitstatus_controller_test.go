@@ -360,7 +360,12 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 						Namespace: "default",
 					}, &wrcs)
 					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(len(wrcs.Status.Environments)).To(BeNumerically(">=", 1))
+					// Wait until ALL environments have been processed (not just >= 1), so that every
+					// environment has made its first HTTP request before we snapshot initialRequestCount.
+					// The PromotionStrategy has 3 environments (dev, staging, production). If we only wait
+					// for >= 1, staging and production may not have fired yet, and their first requests
+					// would then race with the Consistently block and falsely increment the count.
+					g.Expect(len(wrcs.Status.Environments)).To(Equal(3), "all three environments must be processed before snapshotting the request count")
 					for i := range wrcs.Status.Environments {
 						g.Expect(wrcs.Status.Environments[i].LastRequestTime).ToNot(BeNil(), "LastRequestTime should be set after first request")
 						g.Expect(wrcs.Status.Environments[i].Phase).To(Equal(string(promoterv1alpha1.CommitPhasePending)), "validation fails (approved: false) so phase stays Pending")
@@ -368,7 +373,7 @@ var _ = Describe("WebRequestCommitStatus Controller", Ordered, func() {
 					requestMu.Lock()
 					initialRequestCount = requestCount
 					requestMu.Unlock()
-					g.Expect(initialRequestCount).To(BeNumerically(">=", 1), "Should have made at least one HTTP request on first reconcile")
+					g.Expect(initialRequestCount).To(BeNumerically(">=", 3), "Should have made at least one HTTP request per environment (3 total) before snapshotting")
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Triggering another reconcile by updating the WebRequestCommitStatus (annotation)")

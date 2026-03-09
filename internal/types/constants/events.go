@@ -11,9 +11,9 @@ const (
 	// TooManyMatchingShaReason indicates that there are too many matching SHAs for the active or proposed commit status.
 	TooManyMatchingShaReason = "TooManyMatchingSha"
 	// TooManyMatchingShaActiveMessage is the message for too many matching SHAs for the active commit status.
-	TooManyMatchingShaActiveMessage = "There are to many matching SHAs for the active commit status"
+	TooManyMatchingShaActiveMessage = "There are too many matching SHAs for the active commit status"
 	// TooManyMatchingShaProposedMessage is the message for too many matching SHAs for the proposed commit status.
-	TooManyMatchingShaProposedMessage = "There are to many matching SHAs for the proposed commit status"
+	TooManyMatchingShaProposedMessage = "There are too many matching SHAs for the proposed commit status"
 
 	// PullRequestCreatedReason indicates that a pull request has been created.
 	PullRequestCreatedReason = "PullRequestCreated"
