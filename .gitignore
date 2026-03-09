@@ -39,6 +39,9 @@ junit.xml
 release_dist
 
 venv
+.venv
+.venv-*
+.pip-cache/
 
 node_modules/
 
