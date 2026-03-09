@@ -197,7 +197,7 @@ func sanitizeReferences(ctx context.Context, refs []v1alpha1.RevisionReference) 
 			if validURL {
 				// ParseRequestURI is what k8s CEL validation uses: https://github.com/kubernetes/apiextensions-apiserver/blob/ab2ddc498e31f2701200bff261e89120b3d929c3/pkg/apiserver/schema/cel/library/urls.go#L233
 				u, err := url.ParseRequestURI(c.RepoURL)
-				validURL = err == nil && (u.Scheme == "http" || u.Scheme == "https")
+				validURL = err == nil && u != nil && (u.Scheme == "http" || u.Scheme == "https")
 			}
 			if validURL {
 				continue
