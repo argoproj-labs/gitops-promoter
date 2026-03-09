@@ -196,20 +196,21 @@ func sanitizeReferences(ctx context.Context, refs []v1alpha1.RevisionReference) 
 			validURL := repoURLValidPattern.MatchString(c.RepoURL)
 			if validURL {
 				// ParseRequestURI is what k8s CEL validation uses: https://github.com/kubernetes/apiextensions-apiserver/blob/ab2ddc498e31f2701200bff261e89120b3d929c3/pkg/apiserver/schema/cel/library/urls.go#L233
-				if u, err := url.ParseRequestURI(c.RepoURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-					validURL = false
-				}
+				u, err := url.ParseRequestURI(c.RepoURL)
+				validURL = err == nil && (u.Scheme == "http" || u.Scheme == "https")
 			}
-			if !validURL {
-				truncatedRepoURL := c.RepoURL
-				if len(truncatedRepoURL) > 100 {
-					// Truncate to avoid untrusted input blowing up logs.
-					truncatedRepoURL = truncatedRepoURL[:100]
-				}
-				logger.Info("Discarding invalid RepoURL in hydrator.metadata references", "index", i, "truncatedRepoURL", truncatedRepoURL)
-				c.RepoURL = ""
+			if validURL {
+				continue
 			}
 		}
+
+		truncatedRepoURL := c.RepoURL
+		if len(truncatedRepoURL) > 100 {
+			// Truncate to avoid untrusted input blowing up logs.
+			truncatedRepoURL = truncatedRepoURL[:100]
+		}
+		logger.Info("Discarding invalid RepoURL in hydrator.metadata references", "index", i, "truncatedRepoURL", truncatedRepoURL)
+		c.RepoURL = ""
 	}
 	return refs
 }
