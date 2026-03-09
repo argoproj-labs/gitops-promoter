@@ -470,6 +470,12 @@ func ApplySCMAuth(ctx context.Context, scmProvider promoterv1alpha1.GenericScmPr
 			logger.V(4).Info("Applied SCM authentication (Basic)", "scmProvider", scmProvider.GetName())
 			return nil, nil
 		}
+		if userErr != nil {
+			return nil, fmt.Errorf("failed to get username from secret for Forgejo/Gitea SCM auth: %w", userErr)
+		}
+		if passErr != nil {
+			return nil, fmt.Errorf("failed to get password from secret for Forgejo/Gitea SCM auth: %w", passErr)
+		}
 		return nil, errors.New("token or username/password required in secret for Forgejo/Gitea SCM auth")
 
 	case spec.BitbucketCloud != nil:

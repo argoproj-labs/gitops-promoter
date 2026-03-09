@@ -385,13 +385,6 @@ Instead of creating separate secrets, you can reuse the SCM provider credentials
 
 Set `authentication.scmAuth: {}` and the controller will use the credentials from the ScmProvider referenced by the PromotionStrategy's repository. The authentication method is applied automatically based on the SCM provider type (GitHub App, GitLab token, Azure DevOps PAT, etc.).
 
-| SCM Provider   | Authentication method              | Applied as                          |
-|----------------|------------------------------------|-------------------------------------|
-| GitHub         | GitHub App (JWT / installation)    | Custom HTTP client (installation transport) |
-| GitLab         | Access token                       | `PRIVATE-TOKEN` header               |
-| Azure DevOps   | Personal Access Token (PAT)        | Basic auth (empty username, PAT as password) |
-| Bitbucket Cloud| Repository token                   | Bearer token header                 |
-| Forgejo / Gitea| Token or basic auth                | `Authorization: token <token>` or Basic auth (username/password) |
 
 **Example — Gate on GitHub branch protection rules being satisfied:**
 
