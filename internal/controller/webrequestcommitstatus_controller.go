@@ -411,7 +411,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 
 		//nolint:nestif // Extracted most logic to helper function, remaining complexity is minimal
 		if shouldTrigger {
-			result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, ps, templateData, branch)
+			result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, templateData, branch)
 			if err != nil {
 				return nil, nil, 0, err
 			}
@@ -511,11 +511,11 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 // HTTP request, optionally runs the response expression to populate ResponseOutput, then runs the validation
 // expression to set Phase (Success or Pending). The returned httpValidationResult is used to update
 // environment status and to upsert the CommitStatus for that branch.
-func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, templateData templateData, branch string) (httpValidationResult, error) {
+func (r *WebRequestCommitStatusReconciler) handleHTTPRequestAndValidation(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData, branch string) (httpValidationResult, error) {
 	logger := log.FromContext(ctx)
 
 	// Make the HTTP request
-	response, err := r.makeHTTPRequest(ctx, wrcs, ps, templateData)
+	response, err := r.makeHTTPRequest(ctx, wrcs, templateData)
 	if err != nil {
 		return httpValidationResult{}, fmt.Errorf("failed to make HTTP request for environment %q: %w", branch, err)
 	}
@@ -602,7 +602,7 @@ func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promote
 // for validation and response expression evaluation.
 // When ScmAuth is configured, the rendered URL host is validated against the SCM provider's allowed
 // domains before the request is made, to prevent SCM credentials leaking to unintended hosts.
-func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, templateData templateData) (httpResponse, error) {
+func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (httpResponse, error) {
 	logger := log.FromContext(ctx)
 
 	// Render URL template

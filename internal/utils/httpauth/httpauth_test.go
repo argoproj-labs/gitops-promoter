@@ -470,7 +470,7 @@ var _ = Describe("ApplySCMAuth", func() {
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://gitlab.example.com/api/", nil)
 
-		client, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		client, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client).To(BeNil())
 		Expect(req.Header.Get("Private-Token")).To(Equal("glpat-xyz"))
@@ -485,7 +485,7 @@ var _ = Describe("ApplySCMAuth", func() {
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://codeberg.org/api/", nil)
 
-		client, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		client, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client).To(BeNil())
 		Expect(req.Header.Get("Authorization")).To(Equal("token gitea-token"))
@@ -502,7 +502,7 @@ var _ = Describe("ApplySCMAuth", func() {
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://gitea.example.com/api/", nil)
 
-		client, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		client, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client).To(BeNil())
 		Expect(req.Header.Get("Authorization")).To(HavePrefix("Basic "))
@@ -514,7 +514,7 @@ var _ = Describe("ApplySCMAuth", func() {
 		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "empty"}, Data: map[string][]byte{}}
 		req := httptest.NewRequest(http.MethodGet, "https://codeberg.org/", nil)
 
-		_, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		_, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("Forgejo/Gitea"))
 	})
@@ -527,7 +527,7 @@ var _ = Describe("ApplySCMAuth", func() {
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://api.bitbucket.org/", nil)
 
-		client, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		client, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client).To(BeNil())
 		Expect(req.Header.Get("Authorization")).To(Equal("Bearer bb-token"))
@@ -541,7 +541,7 @@ var _ = Describe("ApplySCMAuth", func() {
 		}
 		req := httptest.NewRequest(http.MethodGet, "https://dev.azure.com/", nil)
 
-		client, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		client, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client).To(BeNil())
 		Expect(req.Header.Get("Authorization")).To(Equal("Basic " + "OmFkby1wYXQ=")) // base64(":ado-pat")
@@ -551,21 +551,20 @@ var _ = Describe("ApplySCMAuth", func() {
 		provider := scmProvider("fake-prov", promoterv1alpha1.ScmProviderSpec{Fake: &promoterv1alpha1.Fake{}})
 		req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
 
-		client, err := httpauth.ApplySCMAuth(ctx, provider, nil, req, nil)
+		client, err := httpauth.ApplySCMAuth(ctx, provider, corev1.Secret{}, req, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client).To(BeNil())
 		Expect(req.Header.Get("Authorization")).To(BeEmpty())
 		Expect(req.Header.Get("Private-Token")).To(BeEmpty())
 	})
 
-	It("returns error for GitHub when secret is nil", func() {
+	It("returns error for GitHub when InstallationID is 0 and gitRepo is nil", func() {
 		provider := scmProvider("github-prov", promoterv1alpha1.ScmProviderSpec{GitHub: &promoterv1alpha1.GitHub{AppID: 1}})
 		req := httptest.NewRequest(http.MethodGet, "https://api.github.com/", nil)
 
-		_, err := httpauth.ApplySCMAuth(ctx, provider, nil, req, nil)
+		_, err := httpauth.ApplySCMAuth(ctx, provider, corev1.Secret{}, req, nil)
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("GitHub"))
-		Expect(err.Error()).To(ContainSubstring("secret"))
+		Expect(err.Error()).To(ContainSubstring("gitRepo is required"))
 	})
 
 	It("returns error for unknown provider type", func() {
@@ -573,7 +572,7 @@ var _ = Describe("ApplySCMAuth", func() {
 		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "s"}, Data: map[string][]byte{}}
 		req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
 
-		_, err := httpauth.ApplySCMAuth(ctx, provider, secret, req, nil)
+		_, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("unknown SCM provider"))
 	})
