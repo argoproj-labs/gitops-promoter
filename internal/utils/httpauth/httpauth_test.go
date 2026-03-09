@@ -509,14 +509,24 @@ var _ = Describe("ApplySCMAuth", func() {
 		Expect(req.Header.Get("Authorization")).To(Equal("Basic Z2l0OnBhc3M=")) // base64("git:pass")
 	})
 
-	It("returns error for Forgejo/Gitea when neither token nor username/password", func() {
+	It("returns error for Forgejo when neither token nor username/password", func() {
 		provider := scmProvider("forgejo-prov", promoterv1alpha1.ScmProviderSpec{Forgejo: &promoterv1alpha1.Forgejo{Domain: "codeberg.org"}})
 		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "empty"}, Data: map[string][]byte{}}
 		req := httptest.NewRequest(http.MethodGet, "https://codeberg.org/", nil)
 
 		_, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("Forgejo/Gitea"))
+		Expect(err.Error()).To(ContainSubstring("Forgejo"))
+	})
+
+	It("returns error for Gitea when neither token nor username/password", func() {
+		provider := scmProvider("gitea-prov", promoterv1alpha1.ScmProviderSpec{Gitea: &promoterv1alpha1.Gitea{Domain: "gitea.example.com"}})
+		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "empty"}, Data: map[string][]byte{}}
+		req := httptest.NewRequest(http.MethodGet, "https://gitea.example.com/", nil)
+
+		_, err := httpauth.ApplySCMAuth(ctx, provider, *secret, req, nil)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("Gitea"))
 	})
 
 	It("sets Bearer header for Bitbucket Cloud", func() {
