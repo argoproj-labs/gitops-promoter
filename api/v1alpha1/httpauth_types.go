@@ -67,6 +67,7 @@ type HTTPAuthentication struct {
 	// This uses the credentials configured in the ScmProvider referenced by the PromotionStrategy,
 	// applying the appropriate authentication method based on the SCM provider type
 	// (GitHub App, GitLab token, Azure DevOps PAT, etc.).
+	// To use this auth type, just set it to an empty object, i.e. scm: {}.
 	// +optional
 	ScmAuth *ScmAuth `json:"scmAuth,omitempty"`
 }
@@ -189,12 +190,5 @@ type TLSAuth struct {
 //
 // This authentication method uses the credentials from the ScmProvider referenced
 // by the PromotionStrategy. The controller retrieves the SCM provider and secret
-// and applies the appropriate authentication based on the provider type:
-//
-//   - GitHub: GitHub App (JWT / installation transport)
-//   - GitLab: Personal access token via PRIVATE-TOKEN header
-//   - Azure DevOps: PAT as Basic auth
-//   - Bitbucket Cloud: Token as Bearer
-//   - Forgejo/Gitea: Personal access token via Authorization: token header or Basic auth
-//   - Fake: No authentication
+// and applies the appropriate authentication based on the provider type.
 type ScmAuth struct{}
