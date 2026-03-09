@@ -1468,6 +1468,24 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 			}))
 
+			By("Patching the SCM provider to allow the test server's host for SCM host validation")
+			serverParsed, err := url.Parse(scmAuthTestServer.URL)
+			Expect(err).NotTo(HaveOccurred())
+			serverHost := serverParsed.Host
+			Eventually(func(g Gomega) {
+				current := &promoterv1alpha1.ScmProvider{}
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: scmProvider.Name, Namespace: scmProvider.Namespace}, current)).To(Succeed())
+				current.Spec.Fake = &promoterv1alpha1.Fake{Domain: serverHost}
+				g.Expect(k8sClient.Update(ctx, current)).To(Succeed())
+			}, constants.EventuallyTimeout).Should(Succeed())
+			DeferCleanup(func() {
+				reset := &promoterv1alpha1.ScmProvider{}
+				if err := k8sClient.Get(ctx, types.NamespacedName{Name: scmProvider.Name, Namespace: scmProvider.Namespace}, reset); err == nil {
+					reset.Spec.Fake = &promoterv1alpha1.Fake{}
+					_ = k8sClient.Update(ctx, reset)
+				}
+			})
+
 			By("Creating a WebRequestCommitStatus with authentication.scmAuth (Fake provider = no auth applied)")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
