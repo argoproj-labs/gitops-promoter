@@ -981,7 +981,7 @@ func (r *WebRequestCommitStatusReconciler) getNamespaceMetadata(ctx context.Cont
 func allowedHostsForScmProvider(spec *promoterv1alpha1.ScmProviderSpec) []string {
 	switch {
 	case spec.GitHub != nil:
-		hosts := []string{"github.com", "api.github.com"}
+		hosts := []string{"api.github.com"}
 		if spec.GitHub.Domain != "" {
 			hosts = append(hosts, spec.GitHub.Domain)
 		}

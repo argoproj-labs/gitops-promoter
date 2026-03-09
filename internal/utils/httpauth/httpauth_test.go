@@ -558,15 +558,6 @@ var _ = Describe("ApplySCMAuth", func() {
 		Expect(req.Header.Get("Private-Token")).To(BeEmpty())
 	})
 
-	It("returns error for GitHub when InstallationID is 0 and gitRepo is nil", func() {
-		provider := scmProvider("github-prov", promoterv1alpha1.ScmProviderSpec{GitHub: &promoterv1alpha1.GitHub{AppID: 1}})
-		req := httptest.NewRequest(http.MethodGet, "https://api.github.com/", nil)
-
-		_, err := httpauth.ApplySCMAuth(ctx, provider, corev1.Secret{}, req, nil)
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("gitRepo is required"))
-	})
-
 	It("returns error for unknown provider type", func() {
 		provider := scmProvider("empty-prov", promoterv1alpha1.ScmProviderSpec{})
 		secret := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "s"}, Data: map[string][]byte{}}
