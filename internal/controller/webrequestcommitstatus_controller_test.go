@@ -1450,16 +1450,16 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 
 	Describe("ScmAuth - use PromotionStrategy SCM credentials", func() {
 		var (
-			scmAuthCtx            context.Context
-			scmAuthName            string
-			scmAuthScmSecret       *corev1.Secret
-			scmAuthScmProvider     *promoterv1alpha1.ScmProvider
-			scmAuthGitRepo         *promoterv1alpha1.GitRepository
+			scmAuthCtx               context.Context
+			scmAuthName              string
+			scmAuthScmSecret         *corev1.Secret
+			scmAuthScmProvider       *promoterv1alpha1.ScmProvider
+			scmAuthGitRepo           *promoterv1alpha1.GitRepository
 			scmAuthPromotionStrategy *promoterv1alpha1.PromotionStrategy
-			webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
-			scmAuthTestServer      *httptest.Server
-			scmAuthLastRequest     *http.Request
-			scmAuthLastRequestMu   sync.Mutex
+			webRequestCommitStatus   *promoterv1alpha1.WebRequestCommitStatus
+			scmAuthTestServer        *httptest.Server
+			scmAuthLastRequest       *http.Request
+			scmAuthLastRequestMu     sync.Mutex
 		)
 
 		BeforeEach(func() {
