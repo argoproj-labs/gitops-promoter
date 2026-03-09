@@ -775,7 +775,7 @@ func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Co
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SCM provider and secret: %w", err)
 	}
-	client, err := httpauth.ApplySCMAuth(ctx, scmProvider, secret, req, gitRepo)
+	client, err := httpauth.ApplySCMAuth(ctx, scmProvider, *secret, req, gitRepo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply SCM auth: %w", err)
 	}
