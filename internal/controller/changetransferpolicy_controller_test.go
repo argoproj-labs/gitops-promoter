@@ -354,14 +354,12 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).ToNot(Equal(""))
 					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).ToNot(Equal(""))
 					// Invalid fields (Sha, RepoURL) are cleared; the reference item is kept.
+					// Only the proposed branch receives hydrator.metadata with refs in this test (see makeChangeAndHydrateRepoWithReferences).
 					g.Expect(changeTransferPolicy.Status.Proposed.Dry.References).To(HaveLen(1))
 					g.Expect(changeTransferPolicy.Status.Proposed.Dry.References[0].Commit).ToNot(BeNil())
 					g.Expect(changeTransferPolicy.Status.Proposed.Dry.References[0].Commit.Sha).To(BeEmpty())
 					g.Expect(changeTransferPolicy.Status.Proposed.Dry.References[0].Commit.RepoURL).To(BeEmpty())
 					g.Expect(changeTransferPolicy.Status.Proposed.Dry.References[0].Commit.Subject).To(Equal("Bad ref"))
-					g.Expect(changeTransferPolicy.Status.Active.Dry.References).To(HaveLen(1))
-					g.Expect(changeTransferPolicy.Status.Active.Dry.References[0].Commit.Sha).To(BeEmpty())
-					g.Expect(changeTransferPolicy.Status.Active.Dry.References[0].Commit.RepoURL).To(BeEmpty())
 				}, constants.EventuallyTimeout).Should(Succeed())
 
 				By("Verifying PR was created with expected title")
