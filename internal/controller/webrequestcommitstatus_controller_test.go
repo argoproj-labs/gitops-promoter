@@ -1449,15 +1449,25 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 	})
 
 	Describe("ScmAuth - use PromotionStrategy SCM credentials", func() {
-		var webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
-		var scmAuthTestServer *httptest.Server
-		var scmAuthLastRequest *http.Request
-		var scmAuthLastRequestMu sync.Mutex
+		var (
+			scmAuthCtx            context.Context
+			scmAuthName            string
+			scmAuthScmSecret       *corev1.Secret
+			scmAuthScmProvider     *promoterv1alpha1.ScmProvider
+			scmAuthGitRepo         *promoterv1alpha1.GitRepository
+			scmAuthPromotionStrategy *promoterv1alpha1.PromotionStrategy
+			webRequestCommitStatus *promoterv1alpha1.WebRequestCommitStatus
+			scmAuthTestServer      *httptest.Server
+			scmAuthLastRequest     *http.Request
+			scmAuthLastRequestMu   sync.Mutex
+		)
 
 		BeforeEach(func() {
 			scmAuthLastRequestMu.Lock()
 			scmAuthLastRequest = nil
 			scmAuthLastRequestMu.Unlock()
+			scmAuthCtx = context.Background()
+
 			By("Creating a test HTTP server for ScmAuth test")
 			scmAuthTestServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				scmAuthLastRequestMu.Lock()
@@ -1468,33 +1478,34 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 				_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 			}))
 
-			By("Patching the SCM provider to allow the test server's host for SCM host validation")
 			serverParsed, err := url.Parse(scmAuthTestServer.URL)
 			Expect(err).NotTo(HaveOccurred())
 			serverHost := serverParsed.Host
-			Eventually(func(g Gomega) {
-				current := &promoterv1alpha1.ScmProvider{}
-				g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: scmProvider.Name, Namespace: scmProvider.Namespace}, current)).To(Succeed())
-				current.Spec.Fake = &promoterv1alpha1.Fake{Domain: serverHost}
-				g.Expect(k8sClient.Update(ctx, current)).To(Succeed())
-			}, constants.EventuallyTimeout).Should(Succeed())
-			DeferCleanup(func() {
-				reset := &promoterv1alpha1.ScmProvider{}
-				if err := k8sClient.Get(ctx, types.NamespacedName{Name: scmProvider.Name, Namespace: scmProvider.Namespace}, reset); err == nil {
-					reset.Spec.Fake = &promoterv1alpha1.Fake{}
-					_ = k8sClient.Update(ctx, reset)
-				}
-			})
+
+			By("Creating unique SCM resources with Fake domain set to test server host")
+			scmAuthName, scmAuthScmSecret, scmAuthScmProvider, scmAuthGitRepo, _, _, scmAuthPromotionStrategy = promotionStrategyResource(scmAuthCtx, "webrequest-responsedata-scmauth", "default")
+			scmAuthScmProvider.Spec.Fake = &promoterv1alpha1.Fake{Domain: serverHost}
+			scmAuthPromotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchDevelopment},
+			}
+			scmAuthPromotionStrategy.Spec.ActiveCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "responsedata-test"},
+			}
+			setupInitialTestGitRepoOnServer(scmAuthCtx, scmAuthName, scmAuthName)
+			Expect(k8sClient.Create(scmAuthCtx, scmAuthScmSecret)).To(Succeed())
+			Expect(k8sClient.Create(scmAuthCtx, scmAuthScmProvider)).To(Succeed())
+			Expect(k8sClient.Create(scmAuthCtx, scmAuthGitRepo)).To(Succeed())
+			Expect(k8sClient.Create(scmAuthCtx, scmAuthPromotionStrategy)).To(Succeed())
 
 			By("Creating a WebRequestCommitStatus with authentication.scmAuth (Fake provider = no auth applied)")
 			webRequestCommitStatus = &promoterv1alpha1.WebRequestCommitStatus{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      name + "-scmauth",
+					Name:      scmAuthName + "-scmauth",
 					Namespace: "default",
 				},
 				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
 					PromotionStrategyRef: promoterv1alpha1.ObjectReference{
-						Name: name,
+						Name: scmAuthName,
 					},
 					Key:      "responsedata-test",
 					ReportOn: constants.CommitRefActive,
@@ -1518,22 +1529,42 @@ var _ = Describe("WebRequestCommitStatus Controller - ResponseOutput", Ordered, 
 					},
 				},
 			}
-			Expect(k8sClient.Create(ctx, webRequestCommitStatus)).To(Succeed())
+			Expect(k8sClient.Create(scmAuthCtx, webRequestCommitStatus)).To(Succeed())
 		})
 
 		AfterEach(func() {
 			if scmAuthTestServer != nil {
 				scmAuthTestServer.Close()
+				scmAuthTestServer = nil
 			}
-			_ = k8sClient.Delete(ctx, webRequestCommitStatus)
+			if webRequestCommitStatus != nil {
+				_ = k8sClient.Delete(scmAuthCtx, webRequestCommitStatus)
+				webRequestCommitStatus = nil
+			}
+			if scmAuthPromotionStrategy != nil {
+				_ = k8sClient.Delete(scmAuthCtx, scmAuthPromotionStrategy)
+				scmAuthPromotionStrategy = nil
+			}
+			if scmAuthGitRepo != nil {
+				_ = k8sClient.Delete(scmAuthCtx, scmAuthGitRepo)
+				scmAuthGitRepo = nil
+			}
+			if scmAuthScmProvider != nil {
+				_ = k8sClient.Delete(scmAuthCtx, scmAuthScmProvider)
+				scmAuthScmProvider = nil
+			}
+			if scmAuthScmSecret != nil {
+				_ = k8sClient.Delete(scmAuthCtx, scmAuthScmSecret)
+				scmAuthScmSecret = nil
+			}
 		})
 
 		It("should make HTTP request and report success when using ScmAuth with Fake SCM provider", func() {
 			By("Waiting for WebRequestCommitStatus to process environments with ScmAuth")
 			Eventually(func(g Gomega) {
 				var wrcs promoterv1alpha1.WebRequestCommitStatus
-				err := k8sClient.Get(ctx, types.NamespacedName{
-					Name:      name + "-scmauth",
+				err := k8sClient.Get(scmAuthCtx, types.NamespacedName{
+					Name:      scmAuthName + "-scmauth",
 					Namespace: "default",
 				}, &wrcs)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -1627,7 +1658,8 @@ var _ = Describe("WebRequestCommitStatus Controller - Missing PromotionStrategy"
 
 // SCM domain host validation tests — verifies that when authentication is configured,
 // the rendered URL host must match the SCM provider's allowed domains.
-var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", Ordered, func() {
+// Each test uses unique resources (via promotionStrategyResource) so no shared patch/reset is needed.
+var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", func() {
 	var (
 		ctx               context.Context
 		name              string
@@ -1636,212 +1668,224 @@ var _ = Describe("WebRequestCommitStatus Controller - SCM Host Validation", Orde
 		gitRepo           *promoterv1alpha1.GitRepository
 		promotionStrategy *promoterv1alpha1.PromotionStrategy
 		testServer        *httptest.Server
+		wrcs              *promoterv1alpha1.WebRequestCommitStatus
 	)
 
-	BeforeAll(func() {
-		ctx = context.Background()
+	Context("when the URL host matches the SCM provider domain", func() {
+		BeforeEach(func() {
+			ctx = context.Background()
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
+			}))
 
-		By("Setting up test git repository and SCM resources")
-		name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-scm-host-validation", "default")
+			serverURL := testServer.URL
+			serverParsed, err := url.Parse(serverURL)
+			Expect(err).NotTo(HaveOccurred())
+			serverHost := serverParsed.Host
 
-		// Only one environment is needed to keep the test focused.
-		promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
-			{Branch: testBranchDevelopment},
-		}
-		promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
-			{Key: "scm-host-check"},
-		}
+			By("Creating unique SCM resources with Fake domain set to test server host")
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-scm-host-validation", "default")
+			scmProvider.Spec.Fake = &promoterv1alpha1.Fake{Domain: serverHost}
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchDevelopment},
+			}
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "scm-host-check"},
+			}
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
+		})
 
-		setupInitialTestGitRepoOnServer(ctx, name, name)
-
-		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
-		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
-		Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
-		Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
-	})
-
-	AfterAll(func() {
-		By("Cleaning up shared resources")
-		if promotionStrategy != nil {
-			_ = k8sClient.Delete(ctx, promotionStrategy)
-		}
-		if gitRepo != nil {
-			_ = k8sClient.Delete(ctx, gitRepo)
-		}
-		if scmProvider != nil {
-			_ = k8sClient.Delete(ctx, scmProvider)
-		}
-		if scmSecret != nil {
-			_ = k8sClient.Delete(ctx, scmSecret)
-		}
-	})
-
-	AfterEach(func() {
-		if testServer != nil {
-			testServer.Close()
-			testServer = nil
-		}
-	})
-
-	It("should make the HTTP request when the URL host matches the SCM provider domain", func() {
-		By("Starting a test HTTP server")
-		testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_ = json.NewEncoder(w).Encode(map[string]any{"approved": true})
-		}))
-
-		// Extract the host:port from the test-server URL for use as the Fake provider domain.
-		serverURL := testServer.URL
-		serverParsed, err := url.Parse(serverURL)
-		Expect(err).NotTo(HaveOccurred())
-		serverHost := serverParsed.Host // e.g. "127.0.0.1:PORT"
-
-		By("Patching the SCM provider to allow the test server's host")
-		// Retry the update in case the ScmProvider controller reconciles between Get and Update.
-		Eventually(func(g Gomega) {
-			current := &promoterv1alpha1.ScmProvider{}
-			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: scmProvider.Name, Namespace: scmProvider.Namespace}, current)).To(Succeed())
-			current.Spec.Fake = &promoterv1alpha1.Fake{Domain: serverHost}
-			g.Expect(k8sClient.Update(ctx, current)).To(Succeed())
-		}, constants.EventuallyTimeout).Should(Succeed())
-		DeferCleanup(func() {
-			// Best-effort reset of the SCM provider domain; ignore errors if already cleaned up by AfterAll.
-			reset := &promoterv1alpha1.ScmProvider{}
-			if err := k8sClient.Get(ctx, types.NamespacedName{Name: scmProvider.Name, Namespace: scmProvider.Namespace}, reset); err == nil {
-				reset.Spec.Fake = &promoterv1alpha1.Fake{}
-				_ = k8sClient.Update(ctx, reset)
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+				testServer = nil
+			}
+			if wrcs != nil {
+				_ = k8sClient.Delete(ctx, wrcs)
+				wrcs = nil
+			}
+			if promotionStrategy != nil {
+				_ = k8sClient.Delete(ctx, promotionStrategy)
+				promotionStrategy = nil
+			}
+			if gitRepo != nil {
+				_ = k8sClient.Delete(ctx, gitRepo)
+				gitRepo = nil
+			}
+			if scmProvider != nil {
+				_ = k8sClient.Delete(ctx, scmProvider)
+				scmProvider = nil
+			}
+			if scmSecret != nil {
+				_ = k8sClient.Delete(ctx, scmSecret)
+				scmSecret = nil
 			}
 		})
 
-		By("Creating a WebRequestCommitStatus with ScmAuth")
-		wrcs := &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name + "-host-match",
-				Namespace: "default",
-			},
-			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
-				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-				Key:                  "scm-host-check",
-				ReportOn:             constants.CommitRefProposed,
-				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-					URLTemplate: serverURL + "/validate",
-					Method:      "GET",
-					Timeout:     metav1.Duration{Duration: 10 * time.Second},
-					Authentication: &promoterv1alpha1.HTTPAuthentication{
-						ScmAuth: &promoterv1alpha1.ScmAuth{},
+		It("should make the HTTP request when the URL host matches the SCM provider domain", func() {
+			By("Creating a WebRequestCommitStatus with ScmAuth")
+			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-host-match",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "scm-host-check",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						Authentication: &promoterv1alpha1.HTTPAuthentication{
+							ScmAuth: &promoterv1alpha1.ScmAuth{},
+						},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 5 * time.Second},
+						},
 					},
 				},
-				Success: promoterv1alpha1.SuccessSpec{
-					When: promoterv1alpha1.WhenSpec{
-						Expression: "Response.StatusCode == 200 && Response.Body.approved == true",
-					},
-				},
-				Mode: promoterv1alpha1.ModeSpec{
-					Polling: &promoterv1alpha1.PollingModeSpec{
-						Interval: metav1.Duration{Duration: 5 * time.Second},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
-		DeferCleanup(func() { _ = k8sClient.Delete(ctx, wrcs) })
-
-		By("Expecting the WRCS to process the environment and reach success")
-		Eventually(func(g Gomega) {
-			var fetched promoterv1alpha1.WebRequestCommitStatus
-			g.Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      name + "-host-match",
-				Namespace: "default",
-			}, &fetched)).To(Succeed())
-
-			g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
-			var devStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
-			for i := range fetched.Status.Environments {
-				if fetched.Status.Environments[i].Branch == testBranchDevelopment {
-					devStatus = &fetched.Status.Environments[i]
-					break
-				}
 			}
-			g.Expect(devStatus).ToNot(BeNil(), "dev environment status should exist")
-			g.Expect(devStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
-		}, constants.EventuallyTimeout).Should(Succeed())
+			Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+
+			By("Expecting the WRCS to process the environment and reach success")
+			Eventually(func(g Gomega) {
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-host-match",
+					Namespace: "default",
+				}, &fetched)).To(Succeed())
+
+				g.Expect(fetched.Status.Environments).ToNot(BeEmpty())
+				var devStatus *promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus
+				for i := range fetched.Status.Environments {
+					if fetched.Status.Environments[i].Branch == testBranchDevelopment {
+						devStatus = &fetched.Status.Environments[i]
+						break
+					}
+				}
+				g.Expect(devStatus).ToNot(BeNil(), "dev environment status should exist")
+				g.Expect(devStatus.Phase).To(Equal(string(promoterv1alpha1.CommitPhaseSuccess)))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 
-	It("should set Ready=False when the URL host does not match the SCM provider domain", func() {
-		By("Starting a test HTTP server")
-		testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}))
+	Context("when the URL host does not match the SCM provider domain", func() {
+		BeforeEach(func() {
+			ctx = context.Background()
+			By("Creating unique SCM resources with Fake domain that does not match the test server")
+			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy = promotionStrategyResource(ctx, "wrcs-scm-host-validation", "default")
+			scmProvider.Spec.Fake = &promoterv1alpha1.Fake{Domain: "allowed.example.com"}
+			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
+				{Branch: testBranchDevelopment},
+			}
+			promotionStrategy.Spec.ProposedCommitStatuses = []promoterv1alpha1.CommitStatusSelector{
+				{Key: "scm-host-check"},
+			}
+			setupInitialTestGitRepoOnServer(ctx, name, name)
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, promotionStrategy)).To(Succeed())
 
-		By("Patching the SCM provider with a domain that does NOT match the test server")
-		Eventually(func(g Gomega) {
-			patchedProvider := &promoterv1alpha1.ScmProvider{}
-			g.Expect(k8sClient.Get(ctx, types.NamespacedName{Name: scmProvider.Name, Namespace: scmProvider.Namespace}, patchedProvider)).To(Succeed())
-			patchedProvider.Spec.Fake = &promoterv1alpha1.Fake{Domain: "allowed.example.com"}
-			g.Expect(k8sClient.Update(ctx, patchedProvider)).To(Succeed())
-		}, constants.EventuallyTimeout).Should(Succeed())
-		DeferCleanup(func() {
-			// Best-effort reset of the SCM provider domain; ignore errors if already cleaned up by AfterAll.
-			reset := &promoterv1alpha1.ScmProvider{}
-			if err := k8sClient.Get(ctx, types.NamespacedName{Name: scmProvider.Name, Namespace: scmProvider.Namespace}, reset); err == nil {
-				reset.Spec.Fake = &promoterv1alpha1.Fake{}
-				_ = k8sClient.Update(ctx, reset)
+			testServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+		})
+
+		AfterEach(func() {
+			if testServer != nil {
+				testServer.Close()
+				testServer = nil
+			}
+			if wrcs != nil {
+				_ = k8sClient.Delete(ctx, wrcs)
+				wrcs = nil
+			}
+			if promotionStrategy != nil {
+				_ = k8sClient.Delete(ctx, promotionStrategy)
+				promotionStrategy = nil
+			}
+			if gitRepo != nil {
+				_ = k8sClient.Delete(ctx, gitRepo)
+				gitRepo = nil
+			}
+			if scmProvider != nil {
+				_ = k8sClient.Delete(ctx, scmProvider)
+				scmProvider = nil
+			}
+			if scmSecret != nil {
+				_ = k8sClient.Delete(ctx, scmSecret)
+				scmSecret = nil
 			}
 		})
 
-		By("Creating a WebRequestCommitStatus with ScmAuth pointing at the test server")
-		wrcs := &promoterv1alpha1.WebRequestCommitStatus{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      name + "-host-mismatch",
-				Namespace: "default",
-			},
-			Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
-				PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
-				Key:                  "scm-host-check",
-				ReportOn:             constants.CommitRefProposed,
-				HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
-					// URL points at the test server (127.0.0.1:PORT), not allowed.example.com
-					URLTemplate: testServer.URL + "/validate",
-					Method:      "GET",
-					Timeout:     metav1.Duration{Duration: 10 * time.Second},
-					Authentication: &promoterv1alpha1.HTTPAuthentication{
-						ScmAuth: &promoterv1alpha1.ScmAuth{},
+		It("should set Ready=False when the URL host does not match the SCM provider domain", func() {
+			By("Creating a WebRequestCommitStatus with ScmAuth pointing at the test server")
+			wrcs = &promoterv1alpha1.WebRequestCommitStatus{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name + "-host-mismatch",
+					Namespace: "default",
+				},
+				Spec: promoterv1alpha1.WebRequestCommitStatusSpec{
+					PromotionStrategyRef: promoterv1alpha1.ObjectReference{Name: name},
+					Key:                  "scm-host-check",
+					ReportOn:             constants.CommitRefProposed,
+					HTTPRequest: promoterv1alpha1.HTTPRequestSpec{
+						// URL points at the test server (127.0.0.1:PORT), not allowed.example.com
+						URLTemplate: testServer.URL + "/validate",
+						Method:      "GET",
+						Timeout:     metav1.Duration{Duration: 10 * time.Second},
+						Authentication: &promoterv1alpha1.HTTPAuthentication{
+							ScmAuth: &promoterv1alpha1.ScmAuth{},
+						},
+					},
+					Success: promoterv1alpha1.SuccessSpec{
+						When: promoterv1alpha1.WhenSpec{
+							Expression: "Response.StatusCode == 200",
+						},
+					},
+					Mode: promoterv1alpha1.ModeSpec{
+						Polling: &promoterv1alpha1.PollingModeSpec{
+							Interval: metav1.Duration{Duration: 5 * time.Second},
+						},
 					},
 				},
-				Success: promoterv1alpha1.SuccessSpec{
-					When: promoterv1alpha1.WhenSpec{
-						Expression: "Response.StatusCode == 200",
-					},
-				},
-				Mode: promoterv1alpha1.ModeSpec{
-					Polling: &promoterv1alpha1.PollingModeSpec{
-						Interval: metav1.Duration{Duration: 5 * time.Second},
-					},
-				},
-			},
-		}
-		Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
-		DeferCleanup(func() { _ = k8sClient.Delete(ctx, wrcs) })
-
-		By("Expecting the WRCS to surface a Ready=False condition with an SCM host validation error")
-		Eventually(func(g Gomega) {
-			var fetched promoterv1alpha1.WebRequestCommitStatus
-			g.Expect(k8sClient.Get(ctx, types.NamespacedName{
-				Name:      name + "-host-mismatch",
-				Namespace: "default",
-			}, &fetched)).To(Succeed())
-
-			var readyCondition *metav1.Condition
-			for i := range fetched.Status.Conditions {
-				if fetched.Status.Conditions[i].Type == "Ready" {
-					readyCondition = &fetched.Status.Conditions[i]
-					break
-				}
 			}
-			g.Expect(readyCondition).ToNot(BeNil(), "Ready condition should be set")
-			g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-			g.Expect(readyCondition.Message).To(ContainSubstring("SCM host validation failed"))
-		}, constants.EventuallyTimeout).Should(Succeed())
+			Expect(k8sClient.Create(ctx, wrcs)).To(Succeed())
+
+			By("Expecting the WRCS to surface a Ready=False condition with an SCM host validation error")
+			Eventually(func(g Gomega) {
+				var fetched promoterv1alpha1.WebRequestCommitStatus
+				g.Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      name + "-host-mismatch",
+					Namespace: "default",
+				}, &fetched)).To(Succeed())
+
+				var readyCondition *metav1.Condition
+				for i := range fetched.Status.Conditions {
+					if fetched.Status.Conditions[i].Type == "Ready" {
+						readyCondition = &fetched.Status.Conditions[i]
+						break
+					}
+				}
+				g.Expect(readyCondition).ToNot(BeNil(), "Ready condition should be set")
+				g.Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
+				g.Expect(readyCondition.Message).To(ContainSubstring("SCM host validation failed"))
+			}, constants.EventuallyTimeout).Should(Succeed())
+		})
 	})
 })
