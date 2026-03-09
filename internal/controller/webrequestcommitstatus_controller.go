@@ -614,7 +614,7 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	// When ScmAuth is configured, credentials are sourced directly from the SCM provider, so the
 	// URL host must belong to that provider's allowed domains to prevent credential leakage.
 	if wrcs.Spec.HTTPRequest.Authentication != nil && wrcs.Spec.HTTPRequest.Authentication.ScmAuth != nil {
-		if err := r.validateURLHostAgainstScmProvider(ctx, wrcs, ps, url); err != nil {
+		if err := r.validateURLHostAgainstScmProvider(ctx, wrcs, url); err != nil {
 			return httpResponse{}, fmt.Errorf("SCM host validation failed: %w", err)
 		}
 	}
@@ -1022,14 +1022,12 @@ func hostMatches(configuredHost, requestHost, requestHostname string) bool {
 	return strings.ToLower(configured.Hostname()) == requestHostname
 }
 
-
 // validateURLHostAgainstScmProvider checks that the host of renderedURL is among the hosts permitted by
 // the SCM provider that backs the PromotionStrategy's GitRepository. This is called only when ScmAuth
 // is configured, preventing SCM credentials from being sent to an arbitrary host.
 func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 	ctx context.Context,
 	wrcs *promoterv1alpha1.WebRequestCommitStatus,
-	ps *promoterv1alpha1.PromotionStrategy,
 	renderedURL string,
 ) error {
 	parsed, err := url.Parse(renderedURL)
@@ -1045,7 +1043,7 @@ func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 	// Resolve the GitRepository for this PromotionStrategy.
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{
 		Namespace: wrcs.Namespace,
-		Name:      ps.Spec.RepositoryReference.Name,
+		Name:      wrcs.Spec.PromotionStrategyRef.Name,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get GitRepository for SCM host validation: %w", err)
