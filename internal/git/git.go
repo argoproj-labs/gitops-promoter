@@ -175,8 +175,8 @@ func (g *EnvironmentOperations) GetBranchShas(ctx context.Context, branch string
 	return shas, nil
 }
 
-// sanitizeReferences clears only the fields that fail API validation (Sha, RepoURL) so status updates succeed. Reference items are kept.
-func sanitizeReferences(ctx context.Context, refs []v1alpha1.RevisionReference) []v1alpha1.RevisionReference {
+// SanitizeReferences clears only the fields that fail API validation (Sha, RepoURL) so status updates succeed. Reference items are kept.
+func SanitizeReferences(ctx context.Context, refs []v1alpha1.RevisionReference) []v1alpha1.RevisionReference {
 	logger := log.FromContext(ctx)
 	for i := range refs {
 		c := refs[i].Commit
@@ -244,7 +244,7 @@ func (g *EnvironmentOperations) GetShaMetadataFromFile(ctx context.Context, sha 
 	httpsRepoURL := strings.TrimSuffix(g.gap.GetGitHttpsRepoUrl(*g.gitRepo), ".git")
 
 	// Sanitize references so status updates do not fail CRD validation; clear only invalid fields.
-	references := sanitizeReferences(ctx, hydratorFile.References)
+	references := SanitizeReferences(ctx, hydratorFile.References)
 
 	commitState := v1alpha1.CommitShaState{
 		Sha:        hydratorFile.DrySha,
