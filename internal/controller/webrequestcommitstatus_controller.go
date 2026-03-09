@@ -975,39 +975,36 @@ func (r *WebRequestCommitStatusReconciler) getNamespaceMetadata(ctx context.Cont
 	}, nil
 }
 
-// allowedHostsForScmProvider returns the list of URL hostnames permitted for the given ScmProviderSpec.
-// Each entry may optionally include a port (e.g. "gitlab.corp.example.com:8443"). Matching strips
-// the port from both the configured value and the request URL so that standard-port URLs always match.
-func allowedHostsForScmProvider(spec *promoterv1alpha1.ScmProviderSpec) []string {
+// allowedHostsForScmProvider returns the URL hostname permitted for the given ScmProviderSpec.
+// It may include a port (e.g. "gitlab.corp.example.com:8443"). Matching strips the port from both
+// the configured value and the request URL so that standard-port URLs always match.
+func allowedHostsForScmProvider(spec *promoterv1alpha1.ScmProviderSpec) string {
 	switch {
 	case spec.GitHub != nil:
-		hosts := []string{"api.github.com"}
 		if spec.GitHub.Domain != "" {
-			hosts = append(hosts, spec.GitHub.Domain)
+			return spec.GitHub.Domain
 		}
-		return hosts
+		return "api.github.com"
 	case spec.GitLab != nil:
-		hosts := []string{"gitlab.com"}
 		if spec.GitLab.Domain != "" {
-			hosts = append(hosts, spec.GitLab.Domain)
+			return spec.GitLab.Domain
 		}
-		return hosts
+		return "gitlab.com"
 	case spec.Forgejo != nil:
-		return []string{spec.Forgejo.Domain}
+		return spec.Forgejo.Domain
 	case spec.Gitea != nil:
-		return []string{spec.Gitea.Domain}
+		return spec.Gitea.Domain
 	case spec.BitbucketCloud != nil:
-		return []string{"api.bitbucket.org"}
+		return "api.bitbucket.org"
 	case spec.AzureDevOps != nil:
-		hosts := []string{"dev.azure.com"}
 		if spec.AzureDevOps.Domain != "" {
-			hosts = append(hosts, spec.AzureDevOps.Domain)
+			return spec.AzureDevOps.Domain
 		}
-		return hosts
+		return "dev.azure.com"
 	case spec.Fake != nil:
-		return []string{spec.Fake.Domain}
+		return spec.Fake.Domain
 	default:
-		return nil
+		return ""
 	}
 }
 
@@ -1057,11 +1054,9 @@ func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 	}
 
 	allowed := allowedHostsForScmProvider(scmProvider.GetSpec())
-	for _, h := range allowed {
-		if hostMatches(h, requestHost, requestHostname) {
-			return nil
-		}
+	if hostMatches(allowed, requestHost, requestHostname) {
+		return nil
 	}
 
-	return fmt.Errorf("URL host %q is not allowed for the configured SCM provider; permitted hosts: %v", requestHostname, allowed)
+	return fmt.Errorf("URL host %q is not allowed for the configured SCM provider; permitted host: %q", requestHostname, allowed)
 }
