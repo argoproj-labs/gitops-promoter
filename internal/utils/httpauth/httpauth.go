@@ -421,7 +421,7 @@ func getSecret(ctx context.Context, reader client.Reader, namespace, name string
 // ApplySCMAuth applies authentication to the HTTP request using credentials from the given
 // SCM provider and secret. The controller resolves these from the PromotionStrategy's
 // RepositoryReference. For GitHub, gitRepo is used to resolve the installation ID from the
-// repo owner when InstallationID is not set on the ScmProvider; pass nil to use InstallationID only.
+// repo owner when InstallationID is not set on the ScmProvider.
 //
 // Returns a custom *http.Client for GitHub (App transport); for other providers the request
 // is mutated with provider-specific authentication headers (e.g. PRIVATE-TOKEN,
