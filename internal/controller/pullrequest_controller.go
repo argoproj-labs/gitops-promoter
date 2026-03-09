@@ -19,7 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -454,7 +454,7 @@ func (t trailers) String() string {
 	for k := range t {
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	var result strings.Builder
 	for _, k := range keys {

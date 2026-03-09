@@ -1,6 +1,6 @@
 site_name: GitOps Promoter - A GitOps First Environment Promotion Tool
 repo_url: https://github.com/argoproj-labs/gitops-promoter
-site_url: https://argo-gitops-promoter.readthedocs.io/
+site_url: https://gitops-promoter.readthedocs.io/
 theme:
   font:
     text: Work Sans

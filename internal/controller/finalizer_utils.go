@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -185,7 +185,7 @@ func handleResourceFinalizerWithDependencies(
 
 	if len(dependents) > 0 {
 		// Sort for deterministic error messages
-		sort.Strings(dependents)
+		slices.Sort(dependents)
 
 		// Format error message
 		errMsg := formatDependentResourceError(obj, resourceType, dependents)

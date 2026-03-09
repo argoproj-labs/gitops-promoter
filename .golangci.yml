@@ -81,6 +81,11 @@ linters:
         - name: struct-tag
           arguments:
             - "json,inline" # Used by kubebuilder.
+        - name: package-naming
+          exclude:
+            - "**/bitbucket_cloud/**"
+            - "**/internal/utils/**"
+            - "**/test/utils/**"
         - name: exported
           exclude:
             - "**/argocd_types.go" # The types here are only used internally.
