@@ -93,8 +93,3 @@ mkdocs-lint.log
 site/
 # Go build output (prevent accidentally committing the manager binary)
 main
-
-# Claude Code
-.claude
-CLAUDE.md
-

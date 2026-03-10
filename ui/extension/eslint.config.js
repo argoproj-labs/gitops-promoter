@@ -4,7 +4,6 @@ import tsParser from '@typescript-eslint/parser';
 import reactPlugin from 'eslint-plugin-react';
 import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import reactRefreshPlugin from 'eslint-plugin-react-refresh';
-import prettierConfig from 'eslint-config-prettier';
 
 export default [
   // Ignore patterns
@@ -88,7 +87,4 @@ export default [
       'no-var': 'error',
     },
   },
-
-  // Prettier config - must be last to override formatting rules
-  prettierConfig,
 ];

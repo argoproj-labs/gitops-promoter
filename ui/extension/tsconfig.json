@@ -16,5 +16,5 @@
       "@shared/*": ["../shared/src/*"]
     }
   },
-  "include": ["./index.tsx", "./*.test.ts", "./*.test.tsx", "./hasOnePromotionStrategy.ts", "./AppViewExtension.tsx"]
+  "include": ["./index.tsx"]
 } 
