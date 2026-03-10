@@ -9,6 +9,7 @@ import (
 	"github.com/ktrysmt/go-bitbucket"
 
 	v1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // BitbucketBaseURL is the base URL for Bitbucket Cloud
@@ -80,4 +81,14 @@ func createCommitURL(repo *v1alpha1.GitRepository, sha string) string {
 		repo.Spec.BitbucketCloud.Name,
 		sha,
 	)
+}
+
+// ApplyHTTPAuth applies Bitbucket Cloud authentication to the HTTP request using a Bearer token header.
+func ApplyHTTPAuth(secret corev1.Secret, req *http.Request) error {
+	token := string(secret.Data["token"])
+	if token == "" {
+		return errors.New("non-empty token required in secret for Bitbucket Cloud SCM auth")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	return nil
 }
