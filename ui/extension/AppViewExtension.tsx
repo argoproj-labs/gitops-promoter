@@ -3,50 +3,72 @@ import Card from "@components-lib/components/Card";
 import { PromotionStrategy } from "@shared/types/promotion";
 import { AppViewComponentProps } from "@shared/types/extension";
 
+const ANNOTATION = "promoter.argoproj.io/promotion-strategy";
+const GROUP = "promoter.argoproj.io";
+const KIND = "PromotionStrategy";
+
 const AppViewExtension = ({ tree, application }: AppViewComponentProps) => {
   const promotionStrategyNodes = useMemo(
-    () => tree.nodes.filter((node) => node.kind === "PromotionStrategy"),
-    [tree.nodes]
+    () => tree.nodes.filter((node) => node.kind === KIND),
+    [tree.nodes],
   );
-  const [promotionStrategy, setPromotionStrategy] =
-    useState<PromotionStrategy>();
-  const [isLoading, setIsLoading] = useState(false);
+  const [promotionStrategy, setPromotionStrategy] = useState<PromotionStrategy>();
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const annotationValue = application.metadata.annotations?.[ANNOTATION];
+
+  const fetchParams = useMemo(() => {
+    if (annotationValue) {
+      const [namespace, name] = annotationValue.split("/");
+      return { name, namespace, version: "v1alpha1" };
+    }
+    if (promotionStrategyNodes.length === 1) {
+      const node = promotionStrategyNodes[0];
+      return { name: node.name, namespace: node.namespace, version: node.version };
+    }
+    return null;
+  }, [annotationValue, promotionStrategyNodes]);
 
   useEffect(() => {
-    if (promotionStrategyNodes.length !== 1) return;
-    const promotionStrategyNode = promotionStrategyNodes[0];
-    const group = "promoter.argoproj.io";
-    const url = `/api/v1/applications/${application.metadata.name}/resource?name=${promotionStrategyNode.name}&appNamespace=${application.metadata.namespace}&namespace=${promotionStrategyNode.namespace}&resourceName=${promotionStrategyNode.name}&version=${promotionStrategyNode?.version}&kind=${promotionStrategyNode.kind}&group=${group}`;
+    if (!fetchParams) return;
+    const { name, namespace, version } = fetchParams;
+    const url = `/api/v1/applications/${application.metadata.name}/resource?name=${name}&appNamespace=${application.metadata.namespace}&namespace=${namespace}&resourceName=${name}&version=${version}&kind=${KIND}&group=${GROUP}`;
 
-    setIsLoading(true);
+    setFetchError(null);
     fetch(url)
       .then((response) => response.json())
       .then((data) => {
         setPromotionStrategy(
-          typeof data.manifest === "string"
-            ? JSON.parse(data.manifest)
-            : data.manifest
+          typeof data.manifest === "string" ? JSON.parse(data.manifest) : data.manifest,
         );
-        setIsLoading(false);
       })
       .catch((err) => {
-        setIsLoading(false);
-        throw new Error("Error fetching promotion strategy data: " + err);
+        console.error("Error fetching promotion strategy data: " + err);
+        setFetchError("Failed to load PromotionStrategy: " + err);
       });
-  }, [promotionStrategyNodes, application.metadata.name, application.metadata.namespace]);
+  }, [fetchParams, application.metadata.name, application.metadata.namespace]);
 
-  if (promotionStrategyNodes.length === 0) {
-    return <div>No PromotionStrategy resource found for this application.</div>;
+  if (!annotationValue) {
+    if (promotionStrategyNodes.length === 0) {
+      return <div>No PromotionStrategy resource found for this application.</div>;
+    }
+    if (promotionStrategyNodes.length > 1) {
+      return (
+        <div>
+          Expected exactly one PromotionStrategy resource, found {promotionStrategyNodes.length}.
+        </div>
+      );
+    }
   }
-  if (promotionStrategyNodes.length > 1) {
-    return <div>Expected exactly one PromotionStrategy resource, found {promotionStrategyNodes.length}.</div>;
-  }
-  if (isLoading && !promotionStrategy) {
+  if (!promotionStrategy) {
+    if (fetchError) {
+      return <div>{fetchError}</div>;
+    }
     return <div>Loading...</div>;
   }
   return (
     <div className="extension-container">
-      <Card environments={promotionStrategy?.status?.environments || []} />
+      <Card environments={promotionStrategy.status?.environments || []} />
     </div>
   );
 };
