@@ -8,8 +8,7 @@ on:
       - main
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 env:
   # If set in the repo env vars it will use this tag to build the release notes.
@@ -23,6 +22,9 @@ defaults:
 jobs:
   release-latest:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
     name: Push Latest Docker Image
     steps:
       - name: Checkout

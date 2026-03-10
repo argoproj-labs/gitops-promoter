@@ -1,3 +1,6 @@
+# Direct dependencies for docs (MkDocs). CI installs from requirements-hashed.txt
+# with --require-hashes for OpenSSF scorecard. To regenerate the hashed file:
+#   pip install pip-tools && pip-compile --generate-hashes -o docs/requirements-hashed.txt docs/requirements.txt
 markdown_include==0.8.1
 mkdocs==1.6.1
 mkdocs-get-deps==0.2.0

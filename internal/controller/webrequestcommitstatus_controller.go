@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strings"
 	"sync"
@@ -361,7 +362,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 				wrcs.Status.Environments = append(wrcs.Status.Environments, *prevEnvStatus)
 
 				// Still ensure CommitStatus exists (it may have been deleted)
-				cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, templateData)
+				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, templateData)
 				if err != nil {
 					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q: %w", branch, err)
 				}
@@ -482,7 +483,7 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 		}
 
 		// Create or update the CommitStatus
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps, branch, reportedSha, phase, commitTemplateData)
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, phase, commitTemplateData)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
@@ -599,6 +600,8 @@ func (r *WebRequestCommitStatusReconciler) getApplicableEnvironments(ps *promote
 // URL, body, and headers from templateData, applies authentication (basic, bearer, OAuth2, or TLS), uses the
 // configured timeout, and parses the response body as JSON or plain text. The returned httpResponse is used
 // for validation and response expression evaluation.
+// When Scm is configured, the rendered URL host is validated against the SCM provider's allowed
+// domains before the request is made, to prevent SCM credentials leaking to unintended hosts.
 func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, templateData templateData) (httpResponse, error) {
 	logger := log.FromContext(ctx)
 
@@ -606,6 +609,14 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	url, err := utils.RenderStringTemplate(wrcs.Spec.HTTPRequest.URLTemplate, templateData)
 	if err != nil {
 		return httpResponse{}, fmt.Errorf("failed to render URL template: %w", err)
+	}
+
+	// When Scm is configured, credentials are sourced directly from the SCM provider, so the
+	// URL host must belong to that provider's allowed domains to prevent credential leakage.
+	if wrcs.Spec.HTTPRequest.Authentication != nil && wrcs.Spec.HTTPRequest.Authentication.Scm != nil {
+		if err := r.validateURLHostAgainstScmProvider(ctx, wrcs, url); err != nil {
+			return httpResponse{}, fmt.Errorf("SCM host validation failed: %w", err)
+		}
 	}
 
 	// Render body template if present
@@ -698,9 +709,9 @@ func (r *WebRequestCommitStatusReconciler) makeHTTPRequest(ctx context.Context, 
 	return response, nil
 }
 
-// applyAuthentication configures the request (or client) with the auth from spec: Basic, Bearer, OAuth2, or TLS.
-// For Basic/Bearer/OAuth2 it mutates the request and returns nil. For TLS it builds and returns a custom
-// http.Client; the caller uses that client for the request. Credentials are read from the referenced Secrets.
+// applyAuthentication configures the request (or client) with the auth from spec: Basic, Bearer, OAuth2, TLS, or Scm.
+// For Basic/Bearer/OAuth2 it mutates the request and returns nil. For TLS or Scm it builds and returns
+// a custom http.Client. Credentials are read from the referenced Secrets or from the SCM provider (Scm).
 func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, req *http.Request) (*http.Client, error) {
 	auth := wrcs.Spec.HTTPRequest.Authentication
 
@@ -731,20 +742,51 @@ func (r *WebRequestCommitStatusReconciler) applyAuthentication(ctx context.Conte
 	}
 
 	if auth.TLS != nil {
-		client, err := httpauth.BuildTLSClientFromSecret(ctx, r.Client, wrcs.Namespace, auth.TLS.SecretRef.Name, 60*time.Second)
+		timeout := wrcs.Spec.HTTPRequest.Timeout.Duration
+		if timeout == 0 {
+			timeout = 30 * time.Second
+		}
+		client, err := httpauth.BuildTLSClientFromSecret(ctx, r.Client, wrcs.Namespace, auth.TLS.SecretRef.Name, timeout)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build TLS client: %w", err)
 		}
 		return client, nil
 	}
 
+	if auth.Scm != nil {
+		var ps promoterv1alpha1.PromotionStrategy
+		if err := r.Get(ctx, client.ObjectKey{Namespace: wrcs.Namespace, Name: wrcs.Spec.PromotionStrategyRef.Name}, &ps); err != nil {
+			return nil, fmt.Errorf("failed to get PromotionStrategy for Scm: %w", err)
+		}
+		return r.applySCMAuthentication(ctx, wrcs.Namespace, ps.Spec.RepositoryReference, req)
+	}
+
 	return nil, nil
+}
+
+// applySCMAuthentication applies authentication using the SCM provider credentials from the referenced GitRepository.
+func (r *WebRequestCommitStatusReconciler) applySCMAuthentication(ctx context.Context, namespace string, repositoryRef promoterv1alpha1.ObjectReference, req *http.Request) (*http.Client, error) {
+	scmProvider, secret, gitRepo, err := utils.GetScmProviderSecretAndGitRepositoryFromRepositoryReference(
+		ctx,
+		r.Client,
+		r.SettingsMgr.GetControllerNamespace(),
+		repositoryRef,
+		&metav1.ObjectMeta{Namespace: namespace},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get SCM provider and secret: %w", err)
+	}
+	client, err := httpauth.ApplySCMAuth(ctx, scmProvider, *secret, req, gitRepo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to apply SCM auth: %w", err)
+	}
+	return client, nil
 }
 
 // upsertCommitStatus creates or updates the CommitStatus resource that reports this WebRequestCommitStatus's result to the SCM.
 // The phase (Success or Pending) and sha are set from the validation outcome; description and URL are rendered from templateData.
 // The created resource is owned by the WebRequestCommitStatus so it is cleaned up when the WebRequestCommitStatus is deleted.
-func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData templateData) (*promoterv1alpha1.CommitStatus, error) {
+func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, repositoryRefName string, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, templateData templateData) (*promoterv1alpha1.CommitStatus, error) {
 	// Generate a consistent name for the CommitStatus
 	commitStatusName := utils.KubeSafeUniqueName(ctx, fmt.Sprintf("%s-%s-webrequest", wrcs.Name, branch))
 
@@ -764,7 +806,7 @@ func (r *WebRequestCommitStatusReconciler) upsertCommitStatus(ctx context.Contex
 
 	// Build the spec
 	commitStatusSpec := acv1alpha1.CommitStatusSpec().
-		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(ps.Spec.RepositoryReference.Name)).
+		WithRepositoryReference(acv1alpha1.ObjectReference().WithName(repositoryRefName)).
 		WithName(wrcs.Spec.Key + "/" + branch).
 		WithDescription(description).
 		WithPhase(phase).
@@ -931,4 +973,90 @@ func (r *WebRequestCommitStatusReconciler) getNamespaceMetadata(ctx context.Cont
 		Labels:      ns.Labels,
 		Annotations: ns.Annotations,
 	}, nil
+}
+
+// allowedHostsForScmProvider returns the URL hostname permitted for the given ScmProviderSpec.
+// It may include a port (e.g. "gitlab.corp.example.com:8443"). Matching strips the port from both
+// the configured value and the request URL so that standard-port URLs always match.
+func allowedHostsForScmProvider(spec *promoterv1alpha1.ScmProviderSpec) string {
+	switch {
+	case spec.GitHub != nil:
+		if spec.GitHub.Domain != "" {
+			return spec.GitHub.Domain
+		}
+		return "api.github.com"
+	case spec.GitLab != nil:
+		if spec.GitLab.Domain != "" {
+			return spec.GitLab.Domain
+		}
+		return "gitlab.com"
+	case spec.Forgejo != nil:
+		return spec.Forgejo.Domain
+	case spec.Gitea != nil:
+		return spec.Gitea.Domain
+	case spec.BitbucketCloud != nil:
+		return "api.bitbucket.org"
+	case spec.AzureDevOps != nil:
+		if spec.AzureDevOps.Domain != "" {
+			return spec.AzureDevOps.Domain
+		}
+		return "dev.azure.com"
+	case spec.Fake != nil:
+		return spec.Fake.Domain
+	default:
+		return ""
+	}
+}
+
+// hostMatches reports whether a request URL host matches a configured host entry.
+// If the configured entry includes a port (e.g. "host:8443"), the full host:port must match.
+// If the configured entry has no port (e.g. "host"), only the hostname is compared so any port is allowed.
+// All comparisons are case-insensitive.
+func hostMatches(configuredHost, requestHost, requestHostname string) bool {
+	configured := &url.URL{Host: configuredHost}
+	if configured.Port() != "" {
+		return strings.ToLower(configuredHost) == requestHost
+	}
+	return strings.ToLower(configured.Hostname()) == requestHostname
+}
+
+// validateURLHostAgainstScmProvider checks that the host of renderedURL is among the hosts permitted by
+// the SCM provider that backs the PromotionStrategy's GitRepository. This is called only when Scm
+// is configured, preventing SCM credentials from being sent to an arbitrary host.
+func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
+	ctx context.Context,
+	wrcs *promoterv1alpha1.WebRequestCommitStatus,
+	renderedURL string,
+) error {
+	parsed, err := url.Parse(renderedURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse URL %q: %w", renderedURL, err)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("URL %q has no host", renderedURL)
+	}
+	requestHost := strings.ToLower(parsed.Host)
+	requestHostname := strings.ToLower(parsed.Hostname())
+
+	// Resolve the GitRepository for this PromotionStrategy.
+	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{
+		Namespace: wrcs.Namespace,
+		Name:      wrcs.Spec.PromotionStrategyRef.Name,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get GitRepository for SCM host validation: %w", err)
+	}
+
+	// Resolve the ScmProvider (namespaced or cluster-scoped).
+	scmProvider, err := utils.GetScmProviderFromGitRepository(ctx, r.Client, gitRepo, wrcs)
+	if err != nil {
+		return fmt.Errorf("failed to get ScmProvider for SCM host validation: %w", err)
+	}
+
+	allowed := allowedHostsForScmProvider(scmProvider.GetSpec())
+	if hostMatches(allowed, requestHost, requestHostname) {
+		return nil
+	}
+
+	return fmt.Errorf("URL host %q is not allowed for the configured SCM provider; permitted host: %q", requestHostname, allowed)
 }
