@@ -43,6 +43,7 @@ nav:
       - Events: monitoring/events.md
       - Logs: monitoring/logs.md
       - Metrics: monitoring/metrics.md
+      - Https: monitoring/https.md
   - Tool Comparison: tool-comparison.md
   - FAQs: faqs.md
   - Tutorials:
