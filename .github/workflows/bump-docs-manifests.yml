@@ -9,11 +9,13 @@ on:
         type: string
 
 permissions:
-  contents: write  # for creating PRs and pushing changes
-  pull-requests: write  # for opening PRs
+  contents: read
 
 jobs:
   bump-docs:
+    permissions:
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
