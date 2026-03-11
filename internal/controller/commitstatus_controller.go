@@ -92,6 +92,11 @@ func (r *CommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, fmt.Errorf("failed to get CommitStatus %q: %w", req.Name, err)
 	}
 
+	// If resource has opted out from reconciliation, skip it
+	if cs.Labels != nil && cs.Labels[promoterv1alpha1.ReconcileLabel] == "false" {
+		return ctrl.Result{}, nil
+	}
+
 	// Remove any existing Ready condition. We want to start fresh.
 	meta.RemoveStatusCondition(cs.GetConditions(), string(promoterConditions.Ready))
 
