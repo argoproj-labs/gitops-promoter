@@ -42,7 +42,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
-	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1/statusapply"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/statusapply"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
