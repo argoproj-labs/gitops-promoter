@@ -17,9 +17,10 @@ spec:
         - name: manager
           args:
             - "--health-probe-bind-address=:8081"
+            - "--leader-elect"
+# These two lines are the relevant change. The other two should match the existing args.
             - "--metrics-bind-address=:8443"
             - "--metrics-secure=true"
-            - "--leader-elect"
 ```
 
 ### 2. Create Service Account
