@@ -11,26 +11,24 @@ interface NamespaceStore {
 }
 
 export function PromotionStrategies() {
-    
-    const namespace = namespaceStore((s: NamespaceStore) => s.namespace);
-    
-    const { items, loading, error, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
+  const namespace = namespaceStore((s: NamespaceStore) => s.namespace);
 
-    useEffect(() => {
-        if (!namespace) return;
-        fetchItems(namespace);
-        subscribe(namespace);
-        return () => unsubscribe();
-    }, [namespace, fetchItems, subscribe, unsubscribe]);
+  const { items, loading, error, fetchItems, subscribe, unsubscribe } = PromotionStrategyStore();
 
-    if (!namespace) return null;
-    if (loading) return <div>Loading...</div>;
-    if (error) return <div>Error: {error}</div>;
+  useEffect(() => {
+    if (!namespace) return;
+    fetchItems(namespace);
+    subscribe(namespace);
+    return () => unsubscribe();
+  }, [namespace, fetchItems, subscribe, unsubscribe]);
 
-    return (
-        <div>
-            <PromotionStrategiesTiles promotionStrategies={items || []} namespace={namespace} />
+  if (!namespace) return null;
+  if (loading) return <div>Loading...</div>;
+  if (error) return <div>Error: {error}</div>;
 
-        </div>
-    );
+  return (
+    <div>
+      <PromotionStrategiesTiles promotionStrategies={items || []} namespace={namespace} />
+    </div>
+  );
 }

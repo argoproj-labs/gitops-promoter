@@ -11,7 +11,7 @@ export default [
   {
     ignores: ['dist/', 'node_modules/', '*.min.js', '*.d.ts'],
   },
-  
+
   // Base config for all files
   {
     files: ['**/*.{ts,tsx,js,jsx}'],
@@ -48,7 +48,7 @@ export default [
     },
     plugins: {
       '@typescript-eslint': tsPlugin,
-      'react': reactPlugin,
+      react: reactPlugin,
       'react-hooks': reactHooksPlugin,
       'react-refresh': reactRefreshPlugin,
     },
@@ -60,28 +60,25 @@ export default [
     rules: {
       // ESLint recommended rules
       ...js.configs.recommended.rules,
-      
+
       // Disable base no-unused-vars in favor of TypeScript version
       'no-unused-vars': 'off',
-      
+
       // TypeScript rules
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
-      
+
       // React rules
       'react/prop-types': 'off',
       'react/react-in-jsx-scope': 'off',
-      
+
       // React Hooks rules
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
-      
+
       // React Refresh rules
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
-      
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+
       // General rules
       'no-console': 'warn',
       'no-debugger': 'error',
