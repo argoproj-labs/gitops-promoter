@@ -1,6 +1,7 @@
 ## Https
 
-In order to enable HTTPS support for git operations, you will need the following.
+This configuration enable HTTPS with self-served certificates support for git operations.
+You will also need authentication credentials for Prometheus to scrape the metrics endpoint. This can be done by creating a ServiceAccount, ClusterRoleBinding, and Secret in Kubernetes.
 
 ### 1.Enable HTTPS in Deployment
 
