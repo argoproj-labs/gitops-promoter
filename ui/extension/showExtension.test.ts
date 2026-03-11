@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { showExtension, ANNOTATION } from './showExtension';
+import { showExtension, LABEL } from './showExtension';
 import type { Application } from '@shared/types/extension';
 
 const makeApp = (overrides: Partial<Application> = {}): Application => ({
@@ -8,36 +8,36 @@ const makeApp = (overrides: Partial<Application> = {}): Application => ({
 });
 
 describe('showExtension', () => {
-  describe('annotation-based lookup', () => {
-    it('returns true when the annotation is present', () => {
+  describe('label-based lookup', () => {
+    it('returns true when the label is present', () => {
       const app = makeApp({
         metadata: {
           name: 'my-app',
           namespace: 'default',
-          annotations: { [ANNOTATION]: 'true' },
+          labels: { [LABEL]: 'true' },
         },
       });
       expect(showExtension(app)).toBe(true);
     });
 
-    it('returns true when annotation is present and there are no tree resources', () => {
+    it('returns true when label is present and there are no tree resources', () => {
       const app = makeApp({
         metadata: {
           name: 'my-app',
           namespace: 'default',
-          annotations: { [ANNOTATION]: 'true' },
+          labels: { [LABEL]: 'true' },
         },
         status: { resources: [] },
       });
       expect(showExtension(app)).toBe(true);
     });
 
-    it('returns true when annotation is present even with multiple PromotionStrategy resources', () => {
+    it('returns true when label is present even with multiple PromotionStrategy resources', () => {
       const app = makeApp({
         metadata: {
           name: 'my-app',
           namespace: 'default',
-          annotations: { [ANNOTATION]: 'true' },
+          labels: { [LABEL]: 'true' },
         },
         status: {
           resources: [
@@ -62,7 +62,7 @@ describe('showExtension', () => {
     });
   });
 
-  describe('tree-based fallback (no annotation)', () => {
+  describe('tree-based fallback (no label)', () => {
     it('returns true when exactly one PromotionStrategy resource is in the tree', () => {
       const app = makeApp({
         status: {
@@ -148,9 +148,9 @@ describe('showExtension', () => {
       expect(showExtension(app)).toBe(false);
     });
 
-    it('returns false when annotations object is empty', () => {
+    it('returns false when labels object is empty', () => {
       const app = makeApp({
-        metadata: { name: 'my-app', namespace: 'default', annotations: {} },
+        metadata: { name: 'my-app', namespace: 'default', labels: {} },
         status: { resources: [] },
       });
       expect(showExtension(app)).toBe(false);

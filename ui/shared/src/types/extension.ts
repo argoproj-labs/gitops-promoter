@@ -24,6 +24,7 @@ export interface Application {
   metadata: {
     name: string;
     namespace: string;
+    labels?: Record<string, string>;
     annotations?: Record<string, string>;
   };
   status?: {
