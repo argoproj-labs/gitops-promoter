@@ -45,7 +45,6 @@ nav:
       - Metrics:
           - Security: monitoring/https.md
           - Values: monitoring/metrics.md
-      - Https: monitoring/https.md
   - Tool Comparison: tool-comparison.md
   - FAQs: faqs.md
   - Tutorials:
