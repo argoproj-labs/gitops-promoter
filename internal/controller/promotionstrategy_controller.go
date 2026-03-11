@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1/statusapply"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
@@ -807,13 +808,13 @@ func (r *PromotionStrategyReconciler) buildStatusApplyConfiguration(v *promoterv
 		}
 		historyAC := make([]*acv1alpha1.HistoryApplyConfiguration, 0, len(env.History))
 		for _, h := range env.History {
-			historyAC = append(historyAC, utils.HistoryToApply(h))
+			historyAC = append(historyAC, statusapply.HistoryToApply(h))
 		}
 		envAC := acv1alpha1.EnvironmentStatus().
 			WithBranch(env.Branch).
-			WithProposed(utils.CommitBranchStateToApply(env.Proposed)).
-			WithActive(utils.CommitBranchStateToApply(env.Active)).
-			WithPullRequest(utils.PullRequestCommonStatusToApply(env.PullRequest)).
+			WithProposed(statusapply.CommitBranchStateToApply(env.Proposed)).
+			WithActive(statusapply.CommitBranchStateToApply(env.Active)).
+			WithPullRequest(statusapply.PullRequestCommonStatusToApply(env.PullRequest)).
 			WithLastHealthyDryShas(healthyDryShasAC...).
 			WithHistory(historyAC...)
 		envsAC = append(envsAC, envAC)
@@ -821,7 +822,7 @@ func (r *PromotionStrategyReconciler) buildStatusApplyConfiguration(v *promoterv
 	status := acv1alpha1.PromotionStrategyStatus().
 		WithObservedGeneration(v.GetGeneration()).
 		WithEnvironments(envsAC...).
-		WithConditions(utils.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
 	return acv1alpha1.PromotionStrategy(v.Name, v.Namespace).
 		WithStatus(status)
 }

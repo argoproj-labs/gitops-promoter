@@ -274,6 +274,8 @@ type StatusConditionUpdater interface {
 // It sets the ObservedGeneration, updates status conditions, and applies the status via SSA.
 // If result is non-nil and this function sets an error (e.g. status update failed), it clears any
 // Requeue/RequeueAfter in *result so the caller does not return both a requeue and an error.
+//
+//nolint:revive // argument-limit: many parameters required for defer-based status handling
 func HandleReconciliationResult(
 	ctx context.Context,
 	startTime time.Time,

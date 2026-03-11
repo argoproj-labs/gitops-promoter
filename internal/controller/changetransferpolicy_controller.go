@@ -52,6 +52,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1/statusapply"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 )
@@ -1204,15 +1205,15 @@ func boolPtrEqual(a, b *bool) bool {
 func (r *ChangeTransferPolicyReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.ChangeTransferPolicy) any {
 	historyAC := make([]*acv1alpha1.HistoryApplyConfiguration, 0, len(v.Status.History))
 	for _, h := range v.Status.History {
-		historyAC = append(historyAC, utils.HistoryToApply(h))
+		historyAC = append(historyAC, statusapply.HistoryToApply(h))
 	}
 	status := acv1alpha1.ChangeTransferPolicyStatus().
 		WithObservedGeneration(v.GetGeneration()).
-		WithProposed(utils.CommitBranchStateToApply(v.Status.Proposed)).
-		WithActive(utils.CommitBranchStateToApply(v.Status.Active)).
-		WithPullRequest(utils.PullRequestCommonStatusToApply(v.Status.PullRequest)).
+		WithProposed(statusapply.CommitBranchStateToApply(v.Status.Proposed)).
+		WithActive(statusapply.CommitBranchStateToApply(v.Status.Active)).
+		WithPullRequest(statusapply.PullRequestCommonStatusToApply(v.Status.PullRequest)).
 		WithHistory(historyAC...).
-		WithConditions(utils.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
 	return acv1alpha1.ChangeTransferPolicy(v.Name, v.Namespace).
 		WithStatus(status)
 }

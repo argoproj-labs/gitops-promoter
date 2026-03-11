@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1/statusapply"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
@@ -188,7 +189,7 @@ func (r *ClusterScmProviderReconciler) removeSecretFinalizer(ctx context.Context
 func (r *ClusterScmProviderReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.ClusterScmProvider) any {
 	status := acv1alpha1.ScmProviderStatus().
 		WithObservedGeneration(v.GetGeneration()).
-		WithConditions(utils.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
 	return acv1alpha1.ClusterScmProvider(v.Name, v.Namespace).
 		WithStatus(status)
 }

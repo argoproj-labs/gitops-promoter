@@ -6,6 +6,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1/statusapply"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -214,7 +215,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		buildApply = func() any {
 			return acv1alpha1.PromotionStrategy(obj.Name, obj.Namespace).
 				WithStatus(acv1alpha1.PromotionStrategyStatus().
-					WithConditions(utils.ConditionsToApplyConfiguration(obj.Status.Conditions)...))
+					WithConditions(statusapply.ConditionsToApplyConfiguration(obj.Status.Conditions)...))
 		}
 	})
 
@@ -362,7 +363,7 @@ var _ = Describe("HandleReconciliationResult SSA status apply", func() {
 		buildApply = func() any {
 			return acv1alpha1.ArgoCDCommitStatus(obj.Name, obj.Namespace).
 				WithStatus(acv1alpha1.ArgoCDCommitStatusStatus().
-					WithConditions(utils.ConditionsToApplyConfiguration(obj.Status.Conditions)...))
+					WithConditions(statusapply.ConditionsToApplyConfiguration(obj.Status.Conditions)...))
 		}
 	})
 

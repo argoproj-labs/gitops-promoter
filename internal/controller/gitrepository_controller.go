@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1/statusapply"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
@@ -120,7 +121,7 @@ func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *
 func (r *GitRepositoryReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.GitRepository) any {
 	status := acv1alpha1.GitRepositoryStatus().
 		WithObservedGeneration(v.GetGeneration()).
-		WithConditions(utils.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
 	return acv1alpha1.GitRepository(v.Name, v.Namespace).
 		WithStatus(status)
 }

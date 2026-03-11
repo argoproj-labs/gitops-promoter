@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1/statusapply"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -481,7 +482,7 @@ func (r *PullRequestReconciler) buildStatusApplyConfiguration(v *promoterv1alpha
 		WithID(v.Status.ID).
 		WithState(v.Status.State).
 		WithUrl(v.Status.Url).
-		WithConditions(utils.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
 	if !v.Status.PRCreationTime.IsZero() {
 		status = status.WithPRCreationTime(v.Status.PRCreationTime)
 	}

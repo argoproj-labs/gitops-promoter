@@ -42,6 +42,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1/statusapply"
 	"github.com/argoproj-labs/gitops-promoter/internal/git"
 	"github.com/argoproj-labs/gitops-promoter/internal/gitauth"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
@@ -683,7 +684,7 @@ func (r *ArgoCDCommitStatusReconciler) buildStatusApplyConfiguration(v *promoter
 	status := acv1alpha1.ArgoCDCommitStatusStatus().
 		WithObservedGeneration(v.GetGeneration()).
 		WithApplicationsSelected(appsAC...).
-		WithConditions(utils.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
 	return acv1alpha1.ArgoCDCommitStatus(v.Name, v.Namespace).
 		WithStatus(status)
 }

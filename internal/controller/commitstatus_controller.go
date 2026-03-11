@@ -31,6 +31,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/settings"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1/statusapply"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms"
 	"github.com/argoproj-labs/gitops-promoter/internal/scms/azuredevops"
@@ -264,7 +265,7 @@ func (r *CommitStatusReconciler) buildStatusApplyConfiguration(v *promoterv1alph
 		WithId(v.Status.Id).
 		WithSha(v.Status.Sha).
 		WithPhase(v.Status.Phase).
-		WithConditions(utils.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
 	return acv1alpha1.CommitStatus(v.Name, v.Namespace).
 		WithStatus(status)
 }
