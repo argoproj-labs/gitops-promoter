@@ -9,6 +9,7 @@ interface NamespaceStore {
   namespaces: string[];
   setNamespace: (_ns: string) => void;
   setNamespaces: (_nsList: string[]) => void;
+  addNamespace: (_ns: string) => void;
 }
 
 interface SelectOption {
@@ -20,6 +21,7 @@ const NamespaceDropdown: React.FC = () => {
   const namespaces = namespaceStore((s: NamespaceStore) => s.namespaces);
   const setNamespace = namespaceStore((s: NamespaceStore) => s.setNamespace);
   const setNamespaces = namespaceStore((s: NamespaceStore) => s.setNamespaces);
+  const addNamespace = namespaceStore((s: NamespaceStore) => s.addNamespace);
   const namespace = namespaceStore((s: NamespaceStore) => s.namespace);
 
   // Fetching namespace from API
@@ -28,7 +30,23 @@ const NamespaceDropdown: React.FC = () => {
       .then(res => res.json())
       .then(data => setNamespaces(Array.isArray(data) ? data : []))
       .catch(() => setNamespace('default'));
-  }, [setNamespaces, setNamespace]);
+
+    // Subscribe to PromotionStrategy events across all namespaces to detect new namespaces.
+    // Extract the namespace from the event payload directly to avoid extra API calls.
+    const eventSource = new EventSource('/watch?kind=PromotionStrategy');
+    eventSource.addEventListener('PromotionStrategy', (evt: MessageEvent) => {
+      try {
+        const ns = JSON.parse(evt.data)?.metadata?.namespace;
+        if (typeof ns === 'string' && ns) addNamespace(ns);
+      } catch {
+        // ignore parse errors
+      }
+    });
+
+    return () => {
+      eventSource.close();
+    };
+  }, [setNamespaces, setNamespace, addNamespace]);
 
   const options = Array.isArray(namespaces) ? namespaces.map((ns: string) => ({
     value: ns,
