@@ -83,7 +83,6 @@ type WebRequestCommitStatusSpec struct {
 	// Examples:
 	//   - "https://approvals.example.com/{{ .ReportedSha }}"
 	//   - "https://dashboard.example.com/{{ .Environment.Branch }}/status"
-	//   - "https://change-api.example.com/changes?asset={{ index .NamespaceMetadata.Labels \"asset-id\" }}"
 	//
 	// If not specified, defaults to empty string (no URL shown).
 	// +optional
