@@ -276,6 +276,105 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			})
 		})
 
+		// When hydrator.metadata has references that fail CommitMetadata CRD validation (e.g. invalid Sha,
+		// invalid RepoURL), the controller would compute status that fails API server validation on patch.
+		// Runtime validation in git package clears invalid fields (Sha/RepoURL) on those references so status update succeeds.
+		Context("When hydrator.metadata contains references that fail API validation", func() {
+			var name string
+			var scmSecret *v1.Secret
+			var scmProvider *promoterv1alpha1.ScmProvider
+			var gitRepo *promoterv1alpha1.GitRepository
+			var changeTransferPolicy *promoterv1alpha1.ChangeTransferPolicy
+			var typeNamespacedName types.NamespacedName
+			var gitPath string
+			var prName string
+
+			BeforeEach(func() {
+				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-bad-hydrator-refs", "default")
+
+				typeNamespacedName = types.NamespacedName{
+					Name:      name,
+					Namespace: "default",
+				}
+
+				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
+				changeTransferPolicy.Spec.ActiveBranch = testBranchDevelopment
+				changeTransferPolicy.Spec.AutoMerge = ptr.To(false)
+
+				Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+				Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+				Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+				Expect(k8sClient.Create(ctx, changeTransferPolicy)).To(Succeed())
+
+				prName = utils.GetPullRequestName(gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, changeTransferPolicy.Spec.ProposedBranch, changeTransferPolicy.Spec.ActiveBranch)
+
+				var err error
+				gitPath, err = os.MkdirTemp("", "*")
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			AfterEach(func() {
+				By("Cleaning up resources")
+				if err := k8sClient.Delete(ctx, changeTransferPolicy); err != nil && !errors.IsNotFound(err) {
+					Fail(fmt.Sprintf("failed to delete ChangeTransferPolicy: %v", err))
+				}
+				if err := k8sClient.Delete(ctx, gitRepo); err != nil && !errors.IsNotFound(err) {
+					Fail(fmt.Sprintf("failed to delete GitRepository: %v", err))
+				}
+				if err := k8sClient.Delete(ctx, scmProvider); err != nil && !errors.IsNotFound(err) {
+					Fail(fmt.Sprintf("failed to delete ScmProvider: %v", err))
+				}
+				if err := k8sClient.Delete(ctx, scmSecret); err != nil && !errors.IsNotFound(err) {
+					Fail(fmt.Sprintf("failed to delete Secret: %v", err))
+				}
+				_ = os.RemoveAll(gitPath)
+			})
+
+			It("discards invalid references so status update succeeds and does not fail CRD validation", func() {
+				By("Adding a pending commit with hydrator.metadata that has invalid references (bad Sha, bad RepoURL)")
+				fullSha, shortSha := makeChangeAndHydrateRepoWithBadHydratorReferences(gitPath, gitRepo.Spec.Fake.Owner, gitRepo.Spec.Fake.Name, "", "")
+
+				By("Triggering reconciliation by updating the CTP so the controller re-fetches and applies status")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					if changeTransferPolicy.Annotations == nil {
+						changeTransferPolicy.Annotations = make(map[string]string)
+					}
+					changeTransferPolicy.Annotations["test-trigger"] = "reconcile-after-bad-refs-push"
+					err = k8sClient.Update(ctx, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Reconciling the resource — status patch must succeed (invalid fields cleared, reference kept)")
+				Eventually(func(g Gomega) {
+					err := k8sClient.Get(ctx, typeNamespacedName, changeTransferPolicy)
+					g.Expect(err).To(Succeed())
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.Sha).To(Equal(fullSha))
+					g.Expect(changeTransferPolicy.Status.Active.Hydrated.Sha).ToNot(Equal(""))
+					g.Expect(changeTransferPolicy.Status.Proposed.Hydrated.Sha).ToNot(Equal(""))
+					// Invalid fields (Sha, RepoURL) are cleared; the reference item is kept.
+					// Only the proposed branch receives hydrator.metadata with refs in this test (see makeChangeAndHydrateRepoWithReferences).
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.References).To(HaveLen(1))
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.References[0].Commit).ToNot(BeNil())
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.References[0].Commit.Sha).To(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.References[0].Commit.RepoURL).To(BeEmpty())
+					g.Expect(changeTransferPolicy.Status.Proposed.Dry.References[0].Commit.Subject).To(Equal("Bad ref"))
+				}, constants.EventuallyTimeout).Should(Succeed())
+
+				By("Verifying PR was created with expected title")
+				Eventually(func(g Gomega) {
+					pr := promoterv1alpha1.PullRequest{}
+					err := k8sClient.Get(ctx, types.NamespacedName{
+						Name:      utils.KubeSafeUniqueName(ctx, prName),
+						Namespace: "default",
+					}, &pr)
+					g.Expect(err).To(Succeed())
+					g.Expect(pr.Spec.Title).To(Equal(fmt.Sprintf("Promote %s to `%s`", shortSha, testBranchDevelopment)))
+				}, constants.EventuallyTimeout).Should(Succeed())
+			})
+		})
+
 		// Happens if the active branch does not have a hydrator.metadata such as when the branch was just created
 		Context("When active branch has unknown dry sha", func() {
 			var name string
