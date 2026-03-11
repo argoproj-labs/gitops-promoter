@@ -15,7 +15,6 @@ spec:
     spec:
       containers:
         - name: manager
-          image: quay.io/argoprojlabs/gitops-promoter:latest
           args:
             - "--health-probe-bind-address=:8081"
             - "--metrics-bind-address=:8443"
