@@ -34,7 +34,9 @@ spec:
             - /gitops-promoter
             - controller
           args:
-            - --leader-elect
+            - "--health-probe-bind-address=:8081"
+            - "--metrics-bind-address=:9080"
+            - "--leader-elect"
           image: quay.io/argoprojlabs/gitops-promoter:latest
           name: manager
           ports:
