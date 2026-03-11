@@ -83,7 +83,7 @@ type TimedCommitStatusEnvironmentsStatus struct {
 	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +required
 	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	Sha string `json:"sha"`
 
 	// CommitTime is when the commit was deployed to the active environment.

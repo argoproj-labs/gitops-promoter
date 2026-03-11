@@ -43,11 +43,13 @@ func ConditionsToApplyConfiguration(conditions []metav1.Condition) []*acmetav1.C
 // CommitShaStateToApply converts a CommitShaState to its apply configuration.
 func CommitShaStateToApply(s v1alpha1.CommitShaState) *acv1alpha1.CommitShaStateApplyConfiguration {
 	ac := acv1alpha1.CommitShaState().
-		WithSha(s.Sha).
 		WithRepoURL(s.RepoURL).
 		WithAuthor(s.Author).
 		WithSubject(s.Subject).
 		WithBody(s.Body)
+	if s.Sha != "" {
+		ac = ac.WithSha(s.Sha)
+	}
 	if !s.CommitTime.IsZero() {
 		ac = ac.WithCommitTime(s.CommitTime)
 	}
@@ -58,8 +60,10 @@ func CommitShaStateToApply(s v1alpha1.CommitShaState) *acv1alpha1.CommitShaState
 				WithAuthor(ref.Commit.Author).
 				WithSubject(ref.Commit.Subject).
 				WithBody(ref.Commit.Body).
-				WithSha(ref.Commit.Sha).
 				WithRepoURL(ref.Commit.RepoURL)
+			if ref.Commit.Sha != "" {
+				cm = cm.WithSha(ref.Commit.Sha)
+			}
 			if ref.Commit.Date != nil {
 				cm = cm.WithDate(*ref.Commit.Date)
 			}
@@ -77,10 +81,12 @@ func HydratorMetadataToApply(m *v1alpha1.HydratorMetadata) *acv1alpha1.HydratorM
 	}
 	ac := acv1alpha1.HydratorMetadata().
 		WithRepoURL(m.RepoURL).
-		WithDrySha(m.DrySha).
 		WithAuthor(m.Author).
 		WithSubject(m.Subject).
 		WithBody(m.Body)
+	if m.DrySha != "" {
+		ac = ac.WithDrySha(m.DrySha)
+	}
 	if !m.Date.IsZero() {
 		ac = ac.WithDate(m.Date)
 	}
@@ -91,8 +97,10 @@ func HydratorMetadataToApply(m *v1alpha1.HydratorMetadata) *acv1alpha1.HydratorM
 				WithAuthor(ref.Commit.Author).
 				WithSubject(ref.Commit.Subject).
 				WithBody(ref.Commit.Body).
-				WithSha(ref.Commit.Sha).
 				WithRepoURL(ref.Commit.RepoURL)
+			if ref.Commit.Sha != "" {
+				cm = cm.WithSha(ref.Commit.Sha)
+			}
 			if ref.Commit.Date != nil {
 				cm = cm.WithDate(*ref.Commit.Date)
 			}

@@ -263,9 +263,11 @@ func (r *CommitStatusReconciler) buildStatusApplyConfiguration(v *promoterv1alph
 	status := acv1alpha1.CommitStatusStatus().
 		WithObservedGeneration(v.GetGeneration()).
 		WithId(v.Status.Id).
-		WithSha(v.Status.Sha).
 		WithPhase(v.Status.Phase).
 		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	if v.Status.Sha != "" {
+		status = status.WithSha(v.Status.Sha)
+	}
 	return acv1alpha1.CommitStatus(v.Name, v.Namespace).
 		WithStatus(status)
 }

@@ -1067,9 +1067,13 @@ func (r *WebRequestCommitStatusReconciler) buildStatusApplyConfiguration(v *prom
 	for _, env := range v.Status.Environments {
 		envAC := acv1alpha1.WebRequestCommitStatusEnvironmentStatus().
 			WithBranch(env.Branch).
-			WithReportedSha(env.ReportedSha).
-			WithLastSuccessfulSha(env.LastSuccessfulSha).
 			WithPhase(env.Phase)
+		if env.ReportedSha != "" {
+			envAC = envAC.WithReportedSha(env.ReportedSha)
+		}
+		if env.LastSuccessfulSha != "" {
+			envAC = envAC.WithLastSuccessfulSha(env.LastSuccessfulSha)
+		}
 		if env.LastRequestTime != nil {
 			envAC = envAC.WithLastRequestTime(*env.LastRequestTime)
 		}

@@ -533,10 +533,16 @@ func (r *GitCommitStatusReconciler) buildStatusApplyConfiguration(v *promoterv1a
 	for _, env := range v.Status.Environments {
 		envAC := acv1alpha1.GitCommitStatusEnvironmentStatus().
 			WithBranch(env.Branch).
-			WithProposedHydratedSha(env.ProposedHydratedSha).
-			WithActiveHydratedSha(env.ActiveHydratedSha).
-			WithTargetedSha(env.TargetedSha).
 			WithPhase(env.Phase)
+		if env.ProposedHydratedSha != "" {
+			envAC = envAC.WithProposedHydratedSha(env.ProposedHydratedSha)
+		}
+		if env.ActiveHydratedSha != "" {
+			envAC = envAC.WithActiveHydratedSha(env.ActiveHydratedSha)
+		}
+		if env.TargetedSha != "" {
+			envAC = envAC.WithTargetedSha(env.TargetedSha)
+		}
 		if env.ExpressionResult != nil {
 			envAC = envAC.WithExpressionResult(*env.ExpressionResult)
 		}
