@@ -6,6 +6,7 @@ import (
 	"time"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	. "github.com/onsi/ginkgo/v2"
@@ -187,10 +188,11 @@ var _ = Describe("InheritNotReadyConditionFromObjects", func() {
 
 var _ = Describe("HandleReconciliationResult panic recovery", func() {
 	var (
-		ctx      context.Context
-		obj      *promoterv1alpha1.PromotionStrategy
-		recorder events.EventRecorder
-		scheme   *runtime.Scheme
+		ctx        context.Context
+		obj        *promoterv1alpha1.PromotionStrategy
+		recorder   events.EventRecorder
+		scheme     *runtime.Scheme
+		buildApply func() any
 	)
 
 	BeforeEach(func() {
@@ -209,6 +211,11 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		scheme = runtime.NewScheme()
 		_ = promoterv1alpha1.AddToScheme(scheme)
 		recorder = events.NewFakeRecorder(10)
+		buildApply = func() any {
+			return acv1alpha1.PromotionStrategy(obj.Name, obj.Namespace).
+				WithStatus(acv1alpha1.PromotionStrategyStatus().
+					WithConditions(utils.ConditionsToApplyConfiguration(obj.Status.Conditions)...))
+		}
 	})
 
 	It("should recover from panic and convert it to an error", func() {
@@ -219,7 +226,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 		// This function will panic, and HandleReconciliationResult should recover from it
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, nil, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, nil, &err)
 			panic("test panic message")
 		}()
 
@@ -240,7 +247,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 		// This function will return an error normally
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, nil, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, nil, &err)
 			err = errors.New("test error message")
 		}()
 
@@ -260,7 +267,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 
 		// This function will complete successfully
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, nil, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, nil, &err)
 			// No error or panic
 		}()
 
@@ -274,7 +281,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
 
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, &result, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, &result, &err)
 			panic("test panic message")
 		}()
 
@@ -287,16 +294,25 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 	It("should clear result when status update fails", func() {
 		var err error
 		result := reconcile.Result{Requeue: true, RequeueAfter: 5 * time.Second}
-		// Deliberately do NOT create the object in the fake client so the status update will fail.
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(obj).Build()
+		// Use an interceptor to force status patch to fail (fake client may succeed when object is missing).
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithStatusSubresource(obj).
+			WithInterceptorFuncs(interceptor.Funcs{
+				SubResourcePatch: func(context.Context, client.Client, string, client.Object, client.Patch, ...client.SubResourcePatchOption) error {
+					return errors.New("status patch failed")
+				},
+			}).
+			Build()
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
 
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, &result, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, &result, &err)
 			// No error or panic — HandleReconciliationResult will try (and fail) to update status.
 		}()
 
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("failed to update status"))
+		Expect(err.Error()).To(ContainSubstring("failed to apply status"))
 		// result must be zeroed so the caller doesn't return both a requeue and an error
 		Expect(result).To(Equal(reconcile.Result{}))
 	})
@@ -308,7 +324,7 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
 
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, &result, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, &result, &err)
 			// No error or panic
 		}()
 
@@ -318,12 +334,13 @@ var _ = Describe("HandleReconciliationResult panic recovery", func() {
 	})
 })
 
-var _ = Describe("HandleReconciliationResult fallback status update", func() {
+var _ = Describe("HandleReconciliationResult SSA status apply", func() {
 	var (
-		ctx      context.Context
-		obj      *promoterv1alpha1.ArgoCDCommitStatus
-		recorder events.EventRecorder
-		scheme   *runtime.Scheme
+		ctx        context.Context
+		obj        *promoterv1alpha1.ArgoCDCommitStatus
+		recorder   events.EventRecorder
+		scheme     *runtime.Scheme
+		buildApply func() any
 	)
 
 	BeforeEach(func() {
@@ -342,72 +359,22 @@ var _ = Describe("HandleReconciliationResult fallback status update", func() {
 		scheme = runtime.NewScheme()
 		_ = promoterv1alpha1.AddToScheme(scheme)
 		recorder = events.NewFakeRecorder(10)
+		buildApply = func() any {
+			return acv1alpha1.ArgoCDCommitStatus(obj.Name, obj.Namespace).
+				WithStatus(acv1alpha1.ArgoCDCommitStatusStatus().
+					WithConditions(utils.ConditionsToApplyConfiguration(obj.Status.Conditions)...))
+		}
 	})
 
-	It("should use fallback when full status update fails", func() {
+	It("should report error when SSA status patch fails", func() {
 		var err error
-		updateCallCount := 0
 
-		// Create a fake client with an interceptor that fails the first status update
-		// but allows the second (fallback) update to succeed
+		// Create a fake client that fails all status patches
 		fakeClient := fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithStatusSubresource(obj).
 			WithInterceptorFuncs(interceptor.Funcs{
-				SubResourceUpdate: func(ctx context.Context, client client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
-					updateCallCount++
-					if updateCallCount == 1 {
-						// First update (full status) fails with a validation error
-						return apierrors.NewInvalid(
-							schema.GroupKind{Group: "promoter.argoproj.io", Kind: "ArgoCDCommitStatus"},
-							obj.GetName(),
-							nil,
-						)
-					}
-					// Second update (fallback with only condition) succeeds
-					return client.SubResource(subResourceName).Update(ctx, obj, opts...)
-				},
-			}).
-			Build()
-
-		// Create the object in the fake client
-		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
-
-		// Simulate a successful reconciliation followed by a status update failure
-		result := reconcile.Result{}
-		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, &result, &err)
-			// No reconciliation error - reconciliation succeeded
-		}()
-
-		// The error should indicate that the full status update failed but fallback succeeded
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("failed to update full status"))
-		Expect(err.Error()).To(ContainSubstring("updating only the Ready condition succeeded"))
-
-		// Verify that we attempted two updates: full status, then fallback
-		Expect(updateCallCount).To(Equal(2))
-
-		// Verify the Ready condition was set by fetching a fresh copy
-		updated := &promoterv1alpha1.ArgoCDCommitStatus{}
-		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), updated)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(*updated.GetConditions(), string(conditions.Ready))
-		Expect(readyCondition).ToNot(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-		Expect(readyCondition.Reason).To(Equal(string(conditions.ReconciliationError)))
-		Expect(readyCondition.Message).To(ContainSubstring("Reconciliation succeeded but failed to update status"))
-	})
-
-	It("should report error when both full update and fallback fail", func() {
-		var err error
-
-		// Create a fake client that fails all status updates
-		fakeClient := fake.NewClientBuilder().
-			WithScheme(scheme).
-			WithStatusSubresource(obj).
-			WithInterceptorFuncs(interceptor.Funcs{
-				SubResourceUpdate: func(ctx context.Context, client client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
-					// All updates fail
+				SubResourcePatch: func(ctx context.Context, client client.Client, subResourceName string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
 					return apierrors.NewInvalid(
 						schema.GroupKind{Group: "promoter.argoproj.io", Kind: "ArgoCDCommitStatus"},
 						obj.GetName(),
@@ -420,61 +387,54 @@ var _ = Describe("HandleReconciliationResult fallback status update", func() {
 		// Create the object in the fake client
 		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
 
-		// Simulate a successful reconciliation
 		result := reconcile.Result{}
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, &result, &err)
-			// No reconciliation error
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, &result, &err)
 		}()
 
-		// The error should indicate that both updates failed
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("updating only the Ready condition also failed"))
+		Expect(err.Error()).To(ContainSubstring("failed to apply status"))
+		Expect(result).To(Equal(reconcile.Result{}))
 	})
 
-	It("should include original reconciliation error in fallback condition", func() {
+	It("should apply status successfully when object exists", func() {
 		var err error
-		updateCallCount := 0
 
-		// Create a fake client that fails the first update but allows the fallback
 		fakeClient := fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithStatusSubresource(obj).
-			WithInterceptorFuncs(interceptor.Funcs{
-				SubResourceUpdate: func(ctx context.Context, client client.Client, subResourceName string, obj client.Object, opts ...client.SubResourceUpdateOption) error {
-					updateCallCount++
-					if updateCallCount == 1 {
-						return errors.New("simulated status update failure")
-					}
-					// Fallback succeeds
-					return client.SubResource(subResourceName).Update(ctx, obj, opts...)
-				},
-			}).
 			Build()
 
-		// Create the object in the fake client
 		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
 
-		// Simulate a reconciliation that returns an error
+		result := reconcile.Result{RequeueAfter: 5 * time.Second}
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, &result, &err)
+		}()
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).To(Equal(reconcile.Result{RequeueAfter: 5 * time.Second}))
+	})
+
+	It("should include original reconciliation error in status condition", func() {
+		var err error
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithStatusSubresource(obj).
+			Build()
+
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
 		reconcileErr := errors.New("reconciliation failed for test")
 		result := reconcile.Result{}
 		func() {
-			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, fakeClient, recorder, &result, &err)
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, &result, &err)
 			err = reconcileErr
 		}()
 
-		// The error should mention both the reconciliation error and that updating only the condition succeeded
+		// The error should be the original reconciliation error (SSA succeeded)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("reconciliation failed for test"))
-		Expect(err.Error()).To(ContainSubstring("updating only the Ready condition succeeded"))
-
-		// Verify the condition includes the original reconciliation error
-		updated := &promoterv1alpha1.ArgoCDCommitStatus{}
-		Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(obj), updated)).To(Succeed())
-		readyCondition := meta.FindStatusCondition(*updated.GetConditions(), string(conditions.Ready))
-		Expect(readyCondition).ToNot(BeNil())
-		Expect(readyCondition.Status).To(Equal(metav1.ConditionFalse))
-		Expect(readyCondition.Message).To(ContainSubstring("Reconciliation failed"))
-		Expect(readyCondition.Message).To(ContainSubstring("reconciliation failed for test"))
 	})
 })

@@ -246,7 +246,7 @@ spec:
                         May be empty if the PromotionStrategy hasn't reconciled yet.
                         Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
                       maxLength: 64
-                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
                       type: string
                     branch:
                       description: Branch is the environment branch name being validated.
@@ -278,8 +278,8 @@ spec:
                         May be empty if the PromotionStrategy hasn't reconciled yet.
                         Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
                       maxLength: 64
-                      minLength: 40
-                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      minLength: 0
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
                       type: string
                     targetedSha:
                       description: |-
@@ -289,7 +289,7 @@ spec:
                         This field clarifies which commit's data was used in the expression evaluation.
                         Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
                       maxLength: 64
-                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
                       type: string
                   required:
                   - branch
@@ -300,6 +300,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: ObservedGeneration is the generation of the resource
+                  that was last reconciled.
+                format: int64
+                type: integer
             type: object
         required:
         - spec

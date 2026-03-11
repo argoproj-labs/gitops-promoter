@@ -640,6 +640,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: ObservedGeneration is the generation of the resource
+                  that was last reconciled.
+                format: int64
+                type: integer
             type: object
         required:
         - spec

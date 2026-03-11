@@ -115,7 +115,7 @@ func (r *ArgoCDCommitStatusReconciler) Reconcile(ctx context.Context, req mcreco
 
 	var argoCDCommitStatus promoterv1alpha1.ArgoCDCommitStatus
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, r.localClient, r.Recorder, &result, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &argoCDCommitStatus, func() any { return r.buildStatusApplyConfiguration(&argoCDCommitStatus) }, r.localClient, constants.ArgoCDCommitStatusControllerFieldOwner, r.Recorder, &result, &err)
 
 	err = r.localClient.Get(ctx, req.NamespacedName, &argoCDCommitStatus, &client.GetOptions{})
 	if err != nil {
@@ -663,4 +663,27 @@ func calculateApplicationPhase(app *argocd.Application) promoterv1alpha1.CommitS
 		return promoterv1alpha1.CommitPhaseFailure
 	}
 	return promoterv1alpha1.CommitPhasePending
+}
+
+func (r *ArgoCDCommitStatusReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.ArgoCDCommitStatus) any {
+	appsAC := make([]*acv1alpha1.ApplicationsSelectedApplyConfiguration, 0, len(v.Status.ApplicationsSelected))
+	for _, app := range v.Status.ApplicationsSelected {
+		appAC := acv1alpha1.ApplicationsSelected().
+			WithNamespace(app.Namespace).
+			WithName(app.Name).
+			WithPhase(app.Phase).
+			WithSha(app.Sha).
+			WithEnvironment(app.Environment).
+			WithClusterName(app.ClusterName)
+		if app.LastTransitionTime != nil {
+			appAC = appAC.WithLastTransitionTime(*app.LastTransitionTime)
+		}
+		appsAC = append(appsAC, appAC)
+	}
+	status := acv1alpha1.ArgoCDCommitStatusStatus().
+		WithObservedGeneration(v.GetGeneration()).
+		WithApplicationsSelected(appsAC...).
+		WithConditions(utils.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	return acv1alpha1.ArgoCDCommitStatus(v.Name, v.Namespace).
+		WithStatus(status)
 }

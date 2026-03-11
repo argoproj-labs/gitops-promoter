@@ -38,6 +38,8 @@ type ChangeTransferPolicyStatusApplyConfiguration struct {
 	// History is constructed on a best-effort basis and should be used for informational purposes only.
 	// History is in reverse chronological order (newest is first).
 	History []HistoryApplyConfiguration `json:"history,omitempty"`
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
@@ -82,6 +84,14 @@ func (b *ChangeTransferPolicyStatusApplyConfiguration) WithHistory(values ...*Hi
 		}
 		b.History = append(b.History, *values[i])
 	}
+	return b
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *ChangeTransferPolicyStatusApplyConfiguration) WithObservedGeneration(value int64) *ChangeTransferPolicyStatusApplyConfiguration {
+	b.ObservedGeneration = &value
 	return b
 }
 

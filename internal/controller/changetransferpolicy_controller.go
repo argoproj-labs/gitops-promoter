@@ -101,7 +101,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &result, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, func() any { return r.buildStatusApplyConfiguration(&ctp) }, r.Client, constants.ChangeTransferPolicyControllerFieldOwner, r.Recorder, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
@@ -1199,4 +1199,20 @@ func boolPtrEqual(a, b *bool) bool {
 		return false
 	}
 	return *a == *b
+}
+
+func (r *ChangeTransferPolicyReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.ChangeTransferPolicy) any {
+	historyAC := make([]*acv1alpha1.HistoryApplyConfiguration, 0, len(v.Status.History))
+	for _, h := range v.Status.History {
+		historyAC = append(historyAC, utils.HistoryToApply(h))
+	}
+	status := acv1alpha1.ChangeTransferPolicyStatus().
+		WithObservedGeneration(v.GetGeneration()).
+		WithProposed(utils.CommitBranchStateToApply(v.Status.Proposed)).
+		WithActive(utils.CommitBranchStateToApply(v.Status.Active)).
+		WithPullRequest(utils.PullRequestCommonStatusToApply(v.Status.PullRequest)).
+		WithHistory(historyAC...).
+		WithConditions(utils.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	return acv1alpha1.ChangeTransferPolicy(v.Name, v.Namespace).
+		WithStatus(status)
 }

@@ -31,6 +31,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -55,7 +57,7 @@ func (r *GitRepositoryReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	var gitRepo promoterv1alpha1.GitRepository
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &gitRepo, r.Client, r.Recorder, &result, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &gitRepo, func() any { return r.buildStatusApplyConfiguration(&gitRepo) }, r.Client, constants.GitRepositoryControllerFieldOwner, r.Recorder, &result, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &gitRepo); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -113,4 +115,12 @@ func (r *GitRepositoryReconciler) handleFinalizer(ctx context.Context, gitRepo *
 		"GitRepository",
 		checkDependencies,
 	)
+}
+
+func (r *GitRepositoryReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.GitRepository) any {
+	status := acv1alpha1.GitRepositoryStatus().
+		WithObservedGeneration(v.GetGeneration()).
+		WithConditions(utils.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	return acv1alpha1.GitRepository(v.Name, v.Namespace).
+		WithStatus(status)
 }

@@ -138,7 +138,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 
 	var wrcs promoterv1alpha1.WebRequestCommitStatus
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, &result, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &wrcs, func() any { return r.buildStatusApplyConfiguration(&wrcs) }, r.Client, constants.WebRequestCommitStatusControllerFieldOwner, r.Recorder, &result, &err)
 
 	// 1. Fetch the WebRequestCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &wrcs)
@@ -1059,4 +1059,34 @@ func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 	}
 
 	return fmt.Errorf("URL host %q is not allowed for the configured SCM provider; permitted host: %q", requestHostname, allowed)
+}
+
+func (r *WebRequestCommitStatusReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.WebRequestCommitStatus) any {
+	envsAC := make([]*acv1alpha1.WebRequestCommitStatusEnvironmentStatusApplyConfiguration, 0, len(v.Status.Environments))
+	for _, env := range v.Status.Environments {
+		envAC := acv1alpha1.WebRequestCommitStatusEnvironmentStatus().
+			WithBranch(env.Branch).
+			WithReportedSha(env.ReportedSha).
+			WithLastSuccessfulSha(env.LastSuccessfulSha).
+			WithPhase(env.Phase)
+		if env.LastRequestTime != nil {
+			envAC = envAC.WithLastRequestTime(*env.LastRequestTime)
+		}
+		if env.LastResponseStatusCode != nil {
+			envAC = envAC.WithLastResponseStatusCode(*env.LastResponseStatusCode)
+		}
+		if env.TriggerOutput != nil {
+			envAC = envAC.WithTriggerOutput(*env.TriggerOutput)
+		}
+		if env.ResponseOutput != nil {
+			envAC = envAC.WithResponseOutput(*env.ResponseOutput)
+		}
+		envsAC = append(envsAC, envAC)
+	}
+	status := acv1alpha1.WebRequestCommitStatusStatus().
+		WithObservedGeneration(v.GetGeneration()).
+		WithEnvironments(envsAC...).
+		WithConditions(utils.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	return acv1alpha1.WebRequestCommitStatus(v.Name, v.Namespace).
+		WithStatus(status)
 }
