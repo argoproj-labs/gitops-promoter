@@ -42,7 +42,9 @@ nav:
       - Overview: monitoring/index.md
       - Events: monitoring/events.md
       - Logs: monitoring/logs.md
-      - Metrics: monitoring/metrics.md
+      - Metrics:
+          - Security: monitoring/https.md
+          - Values: monitoring/metrics.md
       - Https: monitoring/https.md
   - Tool Comparison: tool-comparison.md
   - FAQs: faqs.md
