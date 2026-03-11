@@ -1,6 +1,6 @@
 import type { Application } from '@shared/types/extension';
 
-export const LABEL = 'promoter.argoproj.io/extension-enabled';
+export const LABEL = 'promoter.argoproj.io/has-promotionstrategy';
 
 export const showExtension = (application: Application): boolean => {
   if (application.metadata.labels?.[LABEL]) return true;

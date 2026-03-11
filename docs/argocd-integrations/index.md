@@ -95,6 +95,23 @@ The following table shows the compatibility between GitOps Promoter versions and
 | v0.18.3+                | v2.3+           |
 | v0.18.2 and earlier     | v2.2.x and earlier |
 
+### Extension Discovery
+
+The extension tab appears on an Argo CD Application when either of the following is true:
+
+1. **Label-based (recommended):** The Application has the label `promoter.argoproj.io/has-promotionstrategy` set to any truthy value (e.g. `"true"`).
+2. **Auto-detection (default):** The extension checks the Application's top-level resource tree for `PromotionStrategy` resources. If at least one is found, the tab is shown.
+
+Use the label if your `PromotionStrategy` resources are nested or if you want explicit control over which Applications display the extension tab:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    promoter.argoproj.io/has-promotionstrategy: "true"
+```
+
 ## Deep Links
 
 Argo CD supports [deep links](https://argo-cd.readthedocs.io/en/stable/operator-manual/deep_links/) from a resource's details
