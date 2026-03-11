@@ -25,7 +25,6 @@ const AppViewExtension = ({ application }: AppViewComponentProps) => {
         setPromotionStrategy(JSON.parse(data.items[0].liveState));
       })
       .catch((err) => {
-        console.error('Error fetching promotion strategy data: ' + err);
         setFetchError('Failed to load PromotionStrategy: ' + err);
       });
   }, [application.metadata.name, application.metadata.namespace]);
