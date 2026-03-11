@@ -113,6 +113,10 @@ type GitCommitStatusStatus struct {
 	// +optional
 	Environments []GitCommitStatusEnvironmentStatus `json:"environments,omitempty"`
 
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions represent the latest available observations of the GitCommitStatus's state.
 	// Standard condition types include "Ready" which aggregates the status of all environments.
 	// +listType=map
@@ -135,9 +139,9 @@ type GitCommitStatusEnvironmentStatus struct {
 	// May be empty if the PromotionStrategy hasn't reconciled yet.
 	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +required
-	// +kubebuilder:validation:MinLength=40
+	// +kubebuilder:validation:MinLength=0
 	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
 	ProposedHydratedSha string `json:"proposedHydratedSha"`
 
 	// ActiveHydratedSha is the currently active (deployed) hydrated commit SHA that was validated.
@@ -147,7 +151,7 @@ type GitCommitStatusEnvironmentStatus struct {
 	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +optional
 	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
 	ActiveHydratedSha string `json:"activeHydratedSha,omitempty"`
 
 	// TargetedSha is the commit SHA that was actually validated by the expression.
@@ -157,7 +161,7 @@ type GitCommitStatusEnvironmentStatus struct {
 	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +optional
 	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
 	TargetedSha string `json:"targetedSha,omitempty"`
 
 	// Phase represents the current validation state of the commit.

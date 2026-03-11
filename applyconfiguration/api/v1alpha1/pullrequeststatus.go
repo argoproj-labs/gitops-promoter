@@ -42,6 +42,8 @@ type PullRequestStatusApplyConfiguration struct {
 	// The PullRequest resource will be deleted after this flag is set, but the status is preserved in
 	// the owning ChangeTransferPolicy to maintain a record of the external action.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []metav1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
@@ -89,6 +91,14 @@ func (b *PullRequestStatusApplyConfiguration) WithUrl(value string) *PullRequest
 // If called multiple times, the ExternallyMergedOrClosed field is set to the value of the last call.
 func (b *PullRequestStatusApplyConfiguration) WithExternallyMergedOrClosed(value bool) *PullRequestStatusApplyConfiguration {
 	b.ExternallyMergedOrClosed = &value
+	return b
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *PullRequestStatusApplyConfiguration) WithObservedGeneration(value int64) *PullRequestStatusApplyConfiguration {
+	b.ObservedGeneration = &value
 	return b
 }
 

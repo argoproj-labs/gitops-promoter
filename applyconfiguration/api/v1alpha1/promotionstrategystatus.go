@@ -28,6 +28,8 @@ import (
 type PromotionStrategyStatusApplyConfiguration struct {
 	// Environments holds the status of each environment in the promotion sequence.
 	Environments []EnvironmentStatusApplyConfiguration `json:"environments,omitempty"`
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
@@ -48,6 +50,14 @@ func (b *PromotionStrategyStatusApplyConfiguration) WithEnvironments(values ...*
 		}
 		b.Environments = append(b.Environments, *values[i])
 	}
+	return b
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *PromotionStrategyStatusApplyConfiguration) WithObservedGeneration(value int64) *PromotionStrategyStatusApplyConfiguration {
+	b.ObservedGeneration = &value
 	return b
 }
 

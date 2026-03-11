@@ -31,7 +31,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/statusapply"
 )
 
 // ScmProviderReconciler reconciles a ScmProvider object
@@ -56,7 +59,7 @@ func (r *ScmProviderReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	var scmProvider promoterv1alpha1.ScmProvider
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &scmProvider, r.Client, r.Recorder, &result, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &scmProvider, func() any { return r.buildStatusApplyConfiguration(&scmProvider) }, r.Client, constants.ScmProviderControllerFieldOwner, r.Recorder, &result, &err)
 
 	if err := r.Get(ctx, req.NamespacedName, &scmProvider); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -177,4 +180,12 @@ func (r *ScmProviderReconciler) removeSecretFinalizer(ctx context.Context, scmPr
 		promoterv1alpha1.ScmProviderSecretFinalizer,
 		checkOtherProviders,
 	)
+}
+
+func (r *ScmProviderReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.ScmProvider) any {
+	status := acv1alpha1.ScmProviderStatus().
+		WithObservedGeneration(v.GetGeneration()).
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	return acv1alpha1.ScmProvider(v.Name, v.Namespace).
+		WithStatus(status)
 }

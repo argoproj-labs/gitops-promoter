@@ -54,6 +54,7 @@ import (
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/statusapply"
 )
 
 // CTPEnqueueFunc is a function type that can be used to enqueue CTP reconcile requests
@@ -101,7 +102,7 @@ func (r *ChangeTransferPolicyReconciler) Reconcile(ctx context.Context, req ctrl
 
 	var ctp promoterv1alpha1.ChangeTransferPolicy
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, r.Client, r.Recorder, &result, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &ctp, func() any { return r.buildStatusApplyConfiguration(&ctp) }, r.Client, constants.ChangeTransferPolicyControllerFieldOwner, r.Recorder, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ctp, &client.GetOptions{})
 	if err != nil {
@@ -1199,4 +1200,20 @@ func boolPtrEqual(a, b *bool) bool {
 		return false
 	}
 	return *a == *b
+}
+
+func (r *ChangeTransferPolicyReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.ChangeTransferPolicy) any {
+	historyAC := make([]*acv1alpha1.HistoryApplyConfiguration, 0, len(v.Status.History))
+	for _, h := range v.Status.History {
+		historyAC = append(historyAC, statusapply.HistoryToApply(h))
+	}
+	status := acv1alpha1.ChangeTransferPolicyStatus().
+		WithObservedGeneration(v.GetGeneration()).
+		WithProposed(statusapply.CommitBranchStateToApply(v.Status.Proposed)).
+		WithActive(statusapply.CommitBranchStateToApply(v.Status.Active)).
+		WithPullRequest(statusapply.PullRequestCommonStatusToApply(v.Status.PullRequest)).
+		WithHistory(historyAC...).
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	return acv1alpha1.ChangeTransferPolicy(v.Name, v.Namespace).
+		WithStatus(status)
 }
