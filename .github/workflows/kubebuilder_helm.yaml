@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
 
+# this version will need to match the one in https://github.com/argoproj-labs/gitops-promoter-helm/
 env:
   KUBEBUILDER_VERSION: v4.11.1
 
