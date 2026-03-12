@@ -265,9 +265,7 @@ func (r *CommitStatusReconciler) buildStatusApplyConfiguration(v *promoterv1alph
 		WithId(v.Status.Id).
 		WithPhase(v.Status.Phase).
 		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
-	if v.Status.Sha != "" {
-		status = status.WithSha(v.Status.Sha)
-	}
+	status.Sha = statusapply.NilIfEmpty(v.Status.Sha)
 	return acv1alpha1.CommitStatus(v.Name, v.Namespace).
 		WithStatus(status)
 }

@@ -17,16 +17,31 @@ limitations under the License.
 package statusapply
 
 import (
-	"context"
-
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-var logger = logf.FromContext(context.Background()).WithName("statusapply")
+// NilIfEmpty returns nil if s is empty, otherwise returns a pointer to s.
+// Use this when assigning optional string fields in apply configuration structs:
+// a nil pointer means "omit this field from the SSA patch entirely", which avoids
+// writing an empty string that would fail CRD pattern/regex validation.
+func NilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// NilIfZeroTime returns nil if t is the zero Time, otherwise returns a pointer to t.
+// Use this when assigning optional metav1.Time fields in apply configuration structs.
+func NilIfZeroTime(t metav1.Time) *metav1.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
 
 // ConditionsToApplyConfiguration converts a []metav1.Condition slice to the apply configuration equivalent.
 func ConditionsToApplyConfiguration(conditions []metav1.Condition) []*acmetav1.ConditionApplyConfiguration {
@@ -52,14 +67,8 @@ func CommitShaStateToApply(s v1alpha1.CommitShaState) *acv1alpha1.CommitShaState
 		WithAuthor(s.Author).
 		WithSubject(s.Subject).
 		WithBody(s.Body)
-	if s.Sha != "" {
-		ac = ac.WithSha(s.Sha)
-	} else {
-		logger.V(4).Info("CommitShaState has empty sha, omitting from status patch to avoid CRD validation failure")
-	}
-	if !s.CommitTime.IsZero() {
-		ac = ac.WithCommitTime(s.CommitTime)
-	}
+	ac.Sha = NilIfEmpty(s.Sha)
+	ac.CommitTime = NilIfZeroTime(s.CommitTime)
 	for _, ref := range s.References {
 		refAC := acv1alpha1.RevisionReference()
 		if ref.Commit != nil {
@@ -68,12 +77,8 @@ func CommitShaStateToApply(s v1alpha1.CommitShaState) *acv1alpha1.CommitShaState
 				WithSubject(ref.Commit.Subject).
 				WithBody(ref.Commit.Body).
 				WithRepoURL(ref.Commit.RepoURL)
-			if ref.Commit.Sha != "" {
-				cm = cm.WithSha(ref.Commit.Sha)
-			}
-			if ref.Commit.Date != nil {
-				cm = cm.WithDate(*ref.Commit.Date)
-			}
+			cm.Sha = NilIfEmpty(ref.Commit.Sha)
+			cm.Date = ref.Commit.Date
 			refAC = refAC.WithCommit(cm)
 		}
 		ac = ac.WithReferences(refAC)
@@ -91,14 +96,8 @@ func HydratorMetadataToApply(m *v1alpha1.HydratorMetadata) *acv1alpha1.HydratorM
 		WithAuthor(m.Author).
 		WithSubject(m.Subject).
 		WithBody(m.Body)
-	if m.DrySha != "" {
-		ac = ac.WithDrySha(m.DrySha)
-	} else {
-		logger.V(4).Info("HydratorMetadata has empty drySha, omitting from status patch to avoid CRD validation failure")
-	}
-	if !m.Date.IsZero() {
-		ac = ac.WithDate(m.Date)
-	}
+	ac.DrySha = NilIfEmpty(m.DrySha)
+	ac.Date = NilIfZeroTime(m.Date)
 	for _, ref := range m.References {
 		refAC := acv1alpha1.RevisionReference()
 		if ref.Commit != nil {
@@ -107,12 +106,8 @@ func HydratorMetadataToApply(m *v1alpha1.HydratorMetadata) *acv1alpha1.HydratorM
 				WithSubject(ref.Commit.Subject).
 				WithBody(ref.Commit.Body).
 				WithRepoURL(ref.Commit.RepoURL)
-			if ref.Commit.Sha != "" {
-				cm = cm.WithSha(ref.Commit.Sha)
-			}
-			if ref.Commit.Date != nil {
-				cm = cm.WithDate(*ref.Commit.Date)
-			}
+			cm.Sha = NilIfEmpty(ref.Commit.Sha)
+			cm.Date = ref.Commit.Date
 			refAC = refAC.WithCommit(cm)
 		}
 		ac = ac.WithReferences(refAC)
@@ -125,7 +120,6 @@ func CommitStatusesToApply(statuses []v1alpha1.ChangeRequestPolicyCommitStatusPh
 	result := make([]*acv1alpha1.ChangeRequestPolicyCommitStatusPhaseApplyConfiguration, 0, len(statuses))
 	for _, s := range statuses {
 		if s.Phase == "" {
-			logger.V(4).Info("CommitStatus has empty phase, omitting from status patch to avoid CRD validation failure", "key", s.Key)
 			continue
 		}
 		result = append(result, acv1alpha1.ChangeRequestPolicyCommitStatusPhase().
@@ -158,15 +152,9 @@ func PullRequestCommonStatusToApply(pr *v1alpha1.PullRequestCommonStatus) *acv1a
 		WithID(pr.ID).
 		WithState(pr.State).
 		WithUrl(pr.Url)
-	if !pr.PRCreationTime.IsZero() {
-		ac = ac.WithPRCreationTime(pr.PRCreationTime)
-	}
-	if !pr.PRMergeTime.IsZero() {
-		ac = ac.WithPRMergeTime(pr.PRMergeTime)
-	}
-	if pr.ExternallyMergedOrClosed != nil {
-		ac = ac.WithExternallyMergedOrClosed(*pr.ExternallyMergedOrClosed)
-	}
+	ac.PRCreationTime = NilIfZeroTime(pr.PRCreationTime)
+	ac.PRMergeTime = NilIfZeroTime(pr.PRMergeTime)
+	ac.ExternallyMergedOrClosed = pr.ExternallyMergedOrClosed
 	return ac
 }
 
@@ -178,8 +166,6 @@ func HistoryToApply(h v1alpha1.History) *acv1alpha1.HistoryApplyConfiguration {
 	ac := acv1alpha1.History().
 		WithProposed(proposed).
 		WithActive(CommitBranchStateToApply(h.Active))
-	if h.PullRequest != nil {
-		ac = ac.WithPullRequest(PullRequestCommonStatusToApply(h.PullRequest))
-	}
+	ac.PullRequest = PullRequestCommonStatusToApply(h.PullRequest)
 	return ac
 }

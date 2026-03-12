@@ -802,9 +802,10 @@ func (r *PromotionStrategyReconciler) buildStatusApplyConfiguration(v *promoterv
 	for _, env := range v.Status.Environments {
 		healthyDryShasAC := make([]*acv1alpha1.HealthyDryShasApplyConfiguration, 0, len(env.LastHealthyDryShas))
 		for _, h := range env.LastHealthyDryShas {
-			healthyDryShasAC = append(healthyDryShasAC, acv1alpha1.HealthyDryShas().
-				WithSha(h.Sha).
-				WithTime(h.Time))
+			hAC := acv1alpha1.HealthyDryShas()
+			hAC.Sha = statusapply.NilIfEmpty(h.Sha)
+			hAC.Time = statusapply.NilIfZeroTime(h.Time)
+			healthyDryShasAC = append(healthyDryShasAC, hAC)
 		}
 		historyAC := make([]*acv1alpha1.HistoryApplyConfiguration, 0, len(env.History))
 		for _, h := range env.History {
@@ -816,9 +817,7 @@ func (r *PromotionStrategyReconciler) buildStatusApplyConfiguration(v *promoterv
 			WithActive(statusapply.CommitBranchStateToApply(env.Active)).
 			WithLastHealthyDryShas(healthyDryShasAC...).
 			WithHistory(historyAC...)
-		if env.PullRequest != nil {
-			envAC = envAC.WithPullRequest(statusapply.PullRequestCommonStatusToApply(env.PullRequest))
-		}
+		envAC.PullRequest = statusapply.PullRequestCommonStatusToApply(env.PullRequest)
 		envsAC = append(envsAC, envAC)
 	}
 	status := acv1alpha1.PromotionStrategyStatus().

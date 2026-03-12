@@ -483,12 +483,8 @@ func (r *PullRequestReconciler) buildStatusApplyConfiguration(v *promoterv1alpha
 		WithState(v.Status.State).
 		WithUrl(v.Status.Url).
 		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
-	if !v.Status.PRCreationTime.IsZero() {
-		status = status.WithPRCreationTime(v.Status.PRCreationTime)
-	}
-	if v.Status.ExternallyMergedOrClosed != nil {
-		status = status.WithExternallyMergedOrClosed(*v.Status.ExternallyMergedOrClosed)
-	}
+	status.PRCreationTime = statusapply.NilIfZeroTime(v.Status.PRCreationTime)
+	status.ExternallyMergedOrClosed = v.Status.ExternallyMergedOrClosed
 	return acv1alpha1.PullRequest(v.Name, v.Namespace).
 		WithStatus(status)
 }

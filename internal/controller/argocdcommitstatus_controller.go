@@ -676,9 +676,7 @@ func (r *ArgoCDCommitStatusReconciler) buildStatusApplyConfiguration(v *promoter
 			WithSha(app.Sha).
 			WithEnvironment(app.Environment).
 			WithClusterName(app.ClusterName)
-		if app.LastTransitionTime != nil {
-			appAC = appAC.WithLastTransitionTime(*app.LastTransitionTime)
-		}
+		appAC.LastTransitionTime = app.LastTransitionTime
 		appsAC = append(appsAC, appAC)
 	}
 	status := acv1alpha1.ArgoCDCommitStatusStatus().

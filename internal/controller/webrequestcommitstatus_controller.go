@@ -1068,24 +1068,12 @@ func (r *WebRequestCommitStatusReconciler) buildStatusApplyConfiguration(v *prom
 		envAC := acv1alpha1.WebRequestCommitStatusEnvironmentStatus().
 			WithBranch(env.Branch).
 			WithPhase(env.Phase)
-		if env.ReportedSha != "" {
-			envAC = envAC.WithReportedSha(env.ReportedSha)
-		}
-		if env.LastSuccessfulSha != "" {
-			envAC = envAC.WithLastSuccessfulSha(env.LastSuccessfulSha)
-		}
-		if env.LastRequestTime != nil {
-			envAC = envAC.WithLastRequestTime(*env.LastRequestTime)
-		}
-		if env.LastResponseStatusCode != nil {
-			envAC = envAC.WithLastResponseStatusCode(*env.LastResponseStatusCode)
-		}
-		if env.TriggerOutput != nil {
-			envAC = envAC.WithTriggerOutput(*env.TriggerOutput)
-		}
-		if env.ResponseOutput != nil {
-			envAC = envAC.WithResponseOutput(*env.ResponseOutput)
-		}
+		envAC.ReportedSha = statusapply.NilIfEmpty(env.ReportedSha)
+		envAC.LastSuccessfulSha = statusapply.NilIfEmpty(env.LastSuccessfulSha)
+		envAC.LastRequestTime = env.LastRequestTime
+		envAC.LastResponseStatusCode = env.LastResponseStatusCode
+		envAC.TriggerOutput = env.TriggerOutput
+		envAC.ResponseOutput = env.ResponseOutput
 		envsAC = append(envsAC, envAC)
 	}
 	status := acv1alpha1.WebRequestCommitStatusStatus().
