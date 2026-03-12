@@ -473,7 +473,6 @@ func (r *TimedCommitStatusReconciler) buildStatusApplyConfiguration(v *promoterv
 	for _, env := range v.Status.Environments {
 		envAC := acv1alpha1.TimedCommitStatusEnvironmentsStatus().
 			WithBranch(env.Branch).
-			WithSha(env.Sha).
 			WithCommitTime(env.CommitTime).
 			WithRequiredDuration(env.RequiredDuration).
 			WithPhase(env.Phase).
