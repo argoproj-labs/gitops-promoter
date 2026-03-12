@@ -60,6 +60,40 @@ describe('showExtension', () => {
       });
       expect(showExtension(app)).toBe(true);
     });
+
+    it('returns false when label is present but not "true" and no matching resources', () => {
+      const app = makeApp({
+        metadata: {
+          name: 'my-app',
+          namespace: 'default',
+          labels: { [LABEL]: 'false' },
+        },
+        status: { resources: [] },
+      });
+      expect(showExtension(app)).toBe(false);
+    });
+
+    it('returns false when label value is not "true" even with matching resources', () => {
+      const app = makeApp({
+        metadata: {
+          name: 'my-app',
+          namespace: 'default',
+          labels: { [LABEL]: 'something' },
+        },
+        status: {
+          resources: [
+            {
+              kind: 'PromotionStrategy',
+              group: 'promoter.argoproj.io',
+              name: 'ps1',
+              namespace: 'ns1',
+              status: 'Synced',
+            },
+          ],
+        },
+      });
+      expect(showExtension(app)).toBe(false);
+    });
   });
 
   describe('tree-based fallback (no label)', () => {
