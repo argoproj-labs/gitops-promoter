@@ -52,6 +52,7 @@ import (
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils/httpauth"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/statusapply"
 )
 
 // WebRequestCommitStatusReconciler reconciles WebRequestCommitStatus resources by running HTTP requests
@@ -138,7 +139,7 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 
 	var wrcs promoterv1alpha1.WebRequestCommitStatus
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &wrcs, r.Client, r.Recorder, &result, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &wrcs, func() any { return r.buildStatusApplyConfiguration(&wrcs) }, r.Client, constants.WebRequestCommitStatusControllerFieldOwner, r.Recorder, &result, &err)
 
 	// 1. Fetch the WebRequestCommitStatus instance
 	err = r.Get(ctx, req.NamespacedName, &wrcs)
@@ -1059,4 +1060,26 @@ func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 	}
 
 	return fmt.Errorf("URL host %q is not allowed for the configured SCM provider; permitted host: %q", requestHostname, allowed)
+}
+
+func (r *WebRequestCommitStatusReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.WebRequestCommitStatus) any {
+	envsAC := make([]*acv1alpha1.WebRequestCommitStatusEnvironmentStatusApplyConfiguration, 0, len(v.Status.Environments))
+	for _, env := range v.Status.Environments {
+		envAC := acv1alpha1.WebRequestCommitStatusEnvironmentStatus().
+			WithBranch(env.Branch).
+			WithPhase(env.Phase)
+		envAC.ReportedSha = statusapply.NilIfEmpty(env.ReportedSha)
+		envAC.LastSuccessfulSha = statusapply.NilIfEmpty(env.LastSuccessfulSha)
+		envAC.LastRequestTime = env.LastRequestTime
+		envAC.LastResponseStatusCode = env.LastResponseStatusCode
+		envAC.TriggerOutput = env.TriggerOutput
+		envAC.ResponseOutput = env.ResponseOutput
+		envsAC = append(envsAC, envAC)
+	}
+	status := acv1alpha1.WebRequestCommitStatusStatus().
+		WithObservedGeneration(v.GetGeneration()).
+		WithEnvironments(envsAC...).
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	return acv1alpha1.WebRequestCommitStatus(v.Name, v.Namespace).
+		WithStatus(status)
 }

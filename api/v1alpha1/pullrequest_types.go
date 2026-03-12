@@ -92,6 +92,10 @@ type PullRequestStatus struct {
 	// the owning ChangeTransferPolicy to maintain a record of the external action.
 	ExternallyMergedOrClosed *bool `json:"externallyMergedOrClosed,omitempty"`
 
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge

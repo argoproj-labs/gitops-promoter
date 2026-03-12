@@ -84,6 +84,10 @@ type CommitStatusStatus struct {
 	// +kubebuilder:validation:Optional
 	Phase CommitStatusPhase `json:"phase,omitempty"`
 
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge

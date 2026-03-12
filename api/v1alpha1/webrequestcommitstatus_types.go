@@ -346,6 +346,10 @@ type WebRequestCommitStatusStatus struct {
 	// +optional
 	Environments []WebRequestCommitStatusEnvironmentStatus `json:"environments,omitempty"`
 
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions represent the latest available observations of an object's state
 	// +listType=map
 	// +listMapKey=type
@@ -365,14 +369,14 @@ type WebRequestCommitStatusEnvironmentStatus struct {
 	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +optional
 	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	ReportedSha string `json:"reportedSha,omitempty"`
 
 	// LastSuccessfulSha is the last commit SHA that achieved success status for this environment.
 	// Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
 	// +optional
 	// +kubebuilder:validation:MaxLength=64
-	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})?$`
+	// +kubebuilder:validation:Pattern=`^([a-f0-9]{40}|[a-f0-9]{64})$`
 	LastSuccessfulSha string `json:"lastSuccessfulSha,omitempty"`
 
 	// Phase represents the current phase of the validation.

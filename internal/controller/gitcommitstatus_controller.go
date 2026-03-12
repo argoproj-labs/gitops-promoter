@@ -46,6 +46,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/statusapply"
 )
 
 // GitCommitStatusReconciler reconciles a GitCommitStatus object
@@ -82,7 +84,7 @@ func (r *GitCommitStatusReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	var gcs promoterv1alpha1.GitCommitStatus
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &gcs, r.Client, r.Recorder, &result, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &gcs, func() any { return r.buildStatusApplyConfiguration(&gcs) }, r.Client, constants.GitCommitStatusControllerFieldOwner, r.Recorder, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &gcs, &client.GetOptions{})
 	if err != nil {
@@ -524,4 +526,24 @@ func (r *GitCommitStatusReconciler) enqueueGitCommitStatusForPromotionStrategy()
 
 		return requests
 	})
+}
+
+func (r *GitCommitStatusReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.GitCommitStatus) any {
+	envsAC := make([]*acv1alpha1.GitCommitStatusEnvironmentStatusApplyConfiguration, 0, len(v.Status.Environments))
+	for _, env := range v.Status.Environments {
+		envAC := acv1alpha1.GitCommitStatusEnvironmentStatus().
+			WithBranch(env.Branch).
+			WithPhase(env.Phase)
+		envAC.ProposedHydratedSha = statusapply.NilIfEmpty(env.ProposedHydratedSha)
+		envAC.ActiveHydratedSha = statusapply.NilIfEmpty(env.ActiveHydratedSha)
+		envAC.TargetedSha = statusapply.NilIfEmpty(env.TargetedSha)
+		envAC.ExpressionResult = env.ExpressionResult
+		envsAC = append(envsAC, envAC)
+	}
+	status := acv1alpha1.GitCommitStatusStatus().
+		WithObservedGeneration(v.GetGeneration()).
+		WithEnvironments(envsAC...).
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	return acv1alpha1.GitCommitStatus(v.Name, v.Namespace).
+		WithStatus(status)
 }

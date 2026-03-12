@@ -26,6 +26,8 @@ import (
 //
 // GitRepositoryStatus defines the observed state of GitRepository
 type GitRepositoryStatusApplyConfiguration struct {
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
@@ -34,6 +36,14 @@ type GitRepositoryStatusApplyConfiguration struct {
 // apply.
 func GitRepositoryStatus() *GitRepositoryStatusApplyConfiguration {
 	return &GitRepositoryStatusApplyConfiguration{}
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *GitRepositoryStatusApplyConfiguration) WithObservedGeneration(value int64) *GitRepositoryStatusApplyConfiguration {
+	b.ObservedGeneration = &value
+	return b
 }
 
 // WithConditions adds the given value to the Conditions field in the declarative configuration

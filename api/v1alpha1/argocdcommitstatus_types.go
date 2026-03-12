@@ -92,6 +92,10 @@ type ArgoCDCommitStatusStatus struct {
 	// This field is sorted by environment (same order as the referenced PromotionStrategy), then namespace, then name.
 	ApplicationsSelected []ApplicationsSelected `json:"applicationsSelected,omitempty"`
 
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge

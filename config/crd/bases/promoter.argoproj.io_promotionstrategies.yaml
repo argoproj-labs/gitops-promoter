@@ -1030,6 +1030,7 @@ spec:
                               state:
                                 description: State is the state of the pull request.
                                 enum:
+                                - ""
                                 - closed
                                 - merged
                                 - open
@@ -1391,6 +1392,7 @@ spec:
                         state:
                           description: State is the state of the pull request.
                           enum:
+                          - ""
                           - closed
                           - merged
                           - open
@@ -1412,6 +1414,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: ObservedGeneration is the generation of the resource
+                  that was last reconciled.
+                format: int64
+                type: integer
             required:
             - environments
             type: object
