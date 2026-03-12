@@ -41,6 +41,12 @@ var testChangeTransferPolicyYAML string
 const healthCheckCSKey = "health-check"
 
 var _ = Describe("ChangeTransferPolicy Controller", func() {
+	var ctx context.Context
+
+	BeforeEach(func() {
+		ctx = context.Background()
+	})
+
 	Context("When unmarshalling the test data", func() {
 		It("should unmarshal the ChangeTransferPolicy resource", func() {
 			err := unmarshalYamlStrict(testChangeTransferPolicyYAML, &promoterv1alpha1.ChangeTransferPolicy{})
@@ -49,8 +55,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 	})
 
 	Context("When reconciling a resource", func() {
-		var ctx context.Context
-
 		Context("When no commit status checks are configured", func() {
 			var name string
 			var gitRepo *promoterv1alpha1.GitRepository
@@ -60,8 +64,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			var prName string
 
 			BeforeEach(func() {
-				ctx = context.Background()
-
 				var scmSecret *v1.Secret
 				var scmProvider *promoterv1alpha1.ScmProvider
 				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-without-commit-checks", "default")
@@ -173,8 +175,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			var prName string
 
 			BeforeEach(func() {
-				ctx = context.Background()
-
 				name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-with-commit-checks", "default")
 
 				typeNamespacedName = types.NamespacedName{
@@ -290,8 +290,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			var prName string
 
 			BeforeEach(func() {
-				ctx = context.Background()
-
 				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-without-dry-sha", "default")
 
 				typeNamespacedName = types.NamespacedName{
@@ -394,8 +392,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			var prName string
 
 			BeforeEach(func() {
-				ctx = context.Background()
-
 				_, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-merge-sha", "default")
 
 				changeTransferPolicy.Spec.ProposedBranch = testBranchDevelopmentNext
@@ -463,8 +459,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			var err error
 
 			BeforeEach(func() {
-				ctx = context.Background()
-
 				name, scmSecret, scmProvider, gitRepo, commitStatus, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-spec-phase", "default")
 
 				typeNamespacedName = types.NamespacedName{
@@ -573,8 +567,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 			var prName string
 
 			BeforeEach(func() {
-				ctx = context.Background()
-
 				name, scmSecret, scmProvider, gitRepo, _, changeTransferPolicy = changeTransferPolicyResources(ctx, "ctp-pr-lifecycle", "default")
 
 				typeNamespacedName = types.NamespacedName{
@@ -708,7 +700,7 @@ var _ = Describe("tooManyPRsError", func() {
 	})
 })
 
-//nolint:unparam
+//nolint:unparam // namespace is always "default" in tests but kept for consistency with other test helpers
 func changeTransferPolicyResources(ctx context.Context, name, namespace string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.CommitStatus, *promoterv1alpha1.ChangeTransferPolicy) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
 	setupInitialTestGitRepoOnServer(ctx, name, name)

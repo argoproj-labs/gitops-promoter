@@ -29,6 +29,6 @@ func TestE2E(t *testing.T) {
 	t.Parallel()
 	RegisterFailHandler(Fail)
 
-	fmt.Fprint(GinkgoWriter, "Starting promoter suite\n") //nolint:errcheck
+	fmt.Fprint(GinkgoWriter, "Starting promoter suite\n") //nolint:errcheck // logging to test output, error not critical
 	RunSpecs(t, "e2e suite")
 }

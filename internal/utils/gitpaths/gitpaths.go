@@ -12,7 +12,7 @@ func Get(key string) string {
 	if !ok {
 		return ""
 	}
-	//nolint:forcetypeassert
+	//nolint:forcetypeassert // sync.Map stores string values, type is guaranteed
 	return path.(string)
 }
 
@@ -20,7 +20,7 @@ func Get(key string) string {
 func GetValues() []string {
 	var values []string
 	storage.Range(func(key, path any) bool {
-		//nolint:forcetypeassert
+		//nolint:forcetypeassert // sync.Map stores string values, type is guaranteed
 		values = append(values, path.(string))
 		return true
 	})

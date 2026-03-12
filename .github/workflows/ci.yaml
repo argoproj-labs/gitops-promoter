@@ -24,9 +24,9 @@ jobs:
         with:
           go-version: "1.25"
       - name: Setup Node.js
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: ui/dashboard/package-lock.json
       - name: Install UI dependencies and build
@@ -46,7 +46,7 @@ jobs:
         run: |
           python3 -m venv .venv
           . .venv/bin/activate
-          pip install -r docs/requirements.txt
+          pip install -r docs/requirements-hashed.txt --require-hashes
       - name: Lint Docs
         run: . .venv/bin/activate && make lint-docs
       - name: Get dependencies
@@ -68,18 +68,22 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
-          version: v2.8.0
+          version: v2.11.1
           args: --timeout=5m
           skip-cache: false
           cache-invalidation-interval: 1 # day, default 7
       - name: Build
         if: steps.cache-build.outputs.cache-hit != 'true'
         run: make
+      - name: Frontend Extension Unit Tests
+        run: make test-unit-test-extension
+      - name: Frontend Dashboard Unit Tests
+        run: make test-ui-test-dashboard
       - name: Run Integration Tests
         run: make test-parallel
       - name: Generate code coverage artifacts
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: code-coverage
           path: cover.out
@@ -93,8 +97,9 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload test results to codecov.io
         if: ${{ !cancelled() }}
-        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1.2.1
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
         with:
+          report_type: test_results
           token: ${{ secrets.CODECOV_TOKEN }}
   codegen:
     name: Check Codegen

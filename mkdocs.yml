@@ -1,6 +1,6 @@
 site_name: GitOps Promoter - A GitOps First Environment Promotion Tool
 repo_url: https://github.com/argoproj-labs/gitops-promoter
-site_url: https://argo-gitops-promoter.readthedocs.io/
+site_url: https://gitops-promoter.readthedocs.io/
 theme:
   font:
     text: Work Sans
@@ -35,6 +35,7 @@ nav:
       - Argo CD: commit-status-controllers/argocd.md
       - Git Commit: commit-status-controllers/git-commit.md
       - Timed: commit-status-controllers/timed.md
+      - Web Request: commit-status-controllers/web-request.md
       - Development Best Practices: commit-status-controllers/development-best-practices.md
   - Multi-Tenancy: multi-tenancy.md
   - Monitoring:
@@ -46,7 +47,9 @@ nav:
   - FAQs: faqs.md
   - Tutorials:
       - Argo CD Apps: tutorial-argocd-apps.md
-  - Argo CD Integrations: argocd-integrations.md
+  - Argo CD Integrations:
+      - Overview: argocd-integrations/index.md
+      - Extension Development: argocd-integrations/development.md
 plugins:
   - gh-admonitions
   - redirects:

@@ -25,9 +25,9 @@ spec:
             - name: EXTENSION_NAME
               value: gitops-promoter
             - name: EXTENSION_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.22.4/gitops-promoter-argocd-extension.tar.gz
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.23.1/gitops-promoter-argocd-extension.tar.gz
             - name: EXTENSION_CHECKSUM_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.22.4/gitops-promoter_0.22.4_checksums.txt
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.23.1/gitops-promoter_0.23.1_checksums.txt
           volumeMounts:
             - name: extensions
               mountPath: /tmp/extensions/
@@ -49,11 +49,42 @@ You can apply the patch using the following command:
 kubectl patch deployment argocd-server -n argocd --patch-file argocd-server-extension-patch.yaml
 ```
 
+### Using the Argo CD Helm Chart
+
+If you are using the [official Argo CD Helm chart](https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd), add the
+following to your `values.yaml`:
+
+```yaml
+server:
+  initContainers:
+    - name: extension-gitops-promoter
+      image: quay.io/argoprojlabs/argocd-extension-installer:v0.0.9@sha256:d2b43c18ac1401f579f6d27878f45e253d1e3f30287471ae74e6a4315ceb0611
+      env:
+        - name: EXTENSION_NAME
+          value: gitops-promoter
+        - name: EXTENSION_URL
+          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.23.1/gitops-promoter-argocd-extension.tar.gz
+        - name: EXTENSION_CHECKSUM_URL
+          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.23.1/gitops-promoter_0.23.1_checksums.txt
+      volumeMounts:
+        - name: extensions
+          mountPath: /tmp/extensions/
+      securityContext:
+        runAsUser: 1000
+        allowPrivilegeEscalation: false
+  volumeMounts:
+    - name: extensions
+      mountPath: /tmp/extensions/
+  volumes:
+    - name: extensions
+      emptyDir: {}
+```
+
 > [!NOTE]
 > In order to see gitops-promoter CRDs and promoter UI in the ArgoCD UI, they must be deployed in an ArgoCD application
 
 Once applied, you should see a new gitops-promoter section in the Argo CD UI
-![Screenshot of Argo CD UI showing the Promoter section](assets/argocd-ui-extension.png)
+![Screenshot of Argo CD UI showing the Promoter section](../assets/argocd-ui-extension.png)
 
 ### Compatibility Matrix
 
@@ -67,10 +98,10 @@ The following table shows the compatibility between GitOps Promoter versions and
 ## Deep Links
 
 Argo CD supports [deep links](https://argo-cd.readthedocs.io/en/stable/operator-manual/deep_links/) from a resource's details
-page. This allows us to link directly from a [ChangeTransferPolicy](crd-specs.md#changetransferpolicy) or a
-[PullRequest](crd-specs.md#pullrequest) to the PR page in your SCM provider.
+page. This allows us to link directly from a [ChangeTransferPolicy](../crd-specs.md#changetransferpolicy) or a
+[PullRequest](../crd-specs.md#pullrequest) to the PR page in your SCM provider.
 
-![Screenshot of Argo CD resource details page. There are several rows of information, and the bottom one is "Links". There is a "Pull Request" link in the links section.](assets/argocd-deep-links.png)
+![Screenshot of Argo CD resource details page. There are several rows of information, and the bottom one is "Links". There is a "Pull Request" link in the links section.](../assets/argocd-deep-links.png)
 
 To enable these deep links, add the following to your `argocd-cm` ConfigMap:
 
@@ -86,14 +117,44 @@ To enable these deep links, add the following to your `argocd-cm` ConfigMap:
       if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "ChangeTransferPolicy" && resource.status.pullRequest != nil && resource.status.pullRequest.url != nil && resource.status.pullRequest.url != ""
 ```
 
+### Using the Argo CD Helm Chart
+
+If you are using the [official Argo CD Helm chart](https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd), add the
+following to your `values.yaml`:
+
+```yaml
+configs:
+  cm:
+    resource.links: |
+      - url: '{{.resource.status.url}}'
+        title: Pull Request
+        icon.class: fa-code-pull-request
+        if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "PullRequest" && resource.status.url != nil && resource.status.url != ""
+      - url: '{{.resource.status.pullRequest.url}}'
+        title: Pull Request
+        icon.class: fa-code-pull-request
+        if: resource.apiVersion == "promoter.argoproj.io/v1alpha1" && resource.kind == "ChangeTransferPolicy" && resource.status.pullRequest != nil && resource.status.pullRequest.url != nil && resource.status.pullRequest.url != ""
+```
+
 ## Commit Status Keys in Resource Tree
 
 Argo CD supports [showing values of specific labels in the resource tree](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#resource-custom-labels).
 
-![Screenshot of Argo CD resource tree. The CommitStatus resources are labeled with their key.](assets/argocd-resource-tree-labels.png)
+![Screenshot of Argo CD resource tree. The CommitStatus resources are labeled with their key.](../assets/argocd-resource-tree-labels.png)
 
 To enable this, add the following to your `argocd-cm` ConfigMap:
 
 ```yaml
   resource.customLabels: promoter.argoproj.io/commit-status
+```
+
+### Using the Argo CD Helm Chart
+
+If you are using the [official Argo CD Helm chart](https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd), add the
+following to your `values.yaml`:
+
+```yaml
+configs:
+  cm:
+    resource.customLabels: promoter.argoproj.io/commit-status
 ```
