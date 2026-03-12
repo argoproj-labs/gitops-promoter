@@ -928,6 +928,7 @@ spec:
                         state:
                           description: State is the state of the pull request.
                           enum:
+                          - ""
                           - closed
                           - merged
                           - open
@@ -942,6 +943,11 @@ spec:
                       type: object
                   type: object
                 type: array
+              observedGeneration:
+                description: ObservedGeneration is the generation of the resource
+                  that was last reconciled.
+                format: int64
+                type: integer
               proposed:
                 description: Proposed is the state of the proposed branch.
                 properties:
@@ -1256,6 +1262,7 @@ spec:
                   state:
                     description: State is the state of the pull request.
                     enum:
+                    - ""
                     - closed
                     - merged
                     - open

@@ -28,6 +28,8 @@ import (
 type WebRequestCommitStatusStatusApplyConfiguration struct {
 	// Environments holds the status of each environment being tracked.
 	Environments []WebRequestCommitStatusEnvironmentStatusApplyConfiguration `json:"environments,omitempty"`
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Conditions represent the latest available observations of an object's state
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
@@ -48,6 +50,14 @@ func (b *WebRequestCommitStatusStatusApplyConfiguration) WithEnvironments(values
 		}
 		b.Environments = append(b.Environments, *values[i])
 	}
+	return b
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *WebRequestCommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *WebRequestCommitStatusStatusApplyConfiguration {
+	b.ObservedGeneration = &value
 	return b
 }
 

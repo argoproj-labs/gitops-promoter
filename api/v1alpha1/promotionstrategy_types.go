@@ -116,6 +116,10 @@ type PromotionStrategyStatus struct {
 	// +listMapKey=branch
 	Environments []EnvironmentStatus `json:"environments"`
 
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge

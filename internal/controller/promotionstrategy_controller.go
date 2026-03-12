@@ -36,6 +36,7 @@ import (
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
 	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/statusapply"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -88,7 +89,7 @@ func (r *PromotionStrategyReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	var ps promoterv1alpha1.PromotionStrategy
 	// This function will update the resource status at the end of the reconciliation. don't call .Status().Update manually.
-	defer utils.HandleReconciliationResult(ctx, startTime, &ps, r.Client, r.Recorder, &result, &err)
+	defer utils.HandleReconciliationResult(ctx, startTime, &ps, func() any { return r.buildStatusApplyConfiguration(&ps) }, r.Client, constants.PromotionStrategyControllerFieldOwner, r.Recorder, &result, &err)
 
 	err = r.Get(ctx, req.NamespacedName, &ps, &client.GetOptions{})
 	if err != nil {
@@ -794,4 +795,36 @@ func checkCommitStatusesPassing(commitStatuses []promoterv1alpha1.ChangeRequestP
 		return true, fmt.Sprintf("Waiting for %s %q commit status to be successful", envDesc, commitStatuses[0].Key)
 	}
 	return true, fmt.Sprintf("Waiting for %s commit statuses to be successful", envDesc)
+}
+
+func (r *PromotionStrategyReconciler) buildStatusApplyConfiguration(v *promoterv1alpha1.PromotionStrategy) any {
+	envsAC := make([]*acv1alpha1.EnvironmentStatusApplyConfiguration, 0, len(v.Status.Environments))
+	for _, env := range v.Status.Environments {
+		healthyDryShasAC := make([]*acv1alpha1.HealthyDryShasApplyConfiguration, 0, len(env.LastHealthyDryShas))
+		for _, h := range env.LastHealthyDryShas {
+			healthyDryShasAC = append(healthyDryShasAC, acv1alpha1.HealthyDryShas().
+				WithSha(h.Sha).
+				WithTime(h.Time))
+		}
+		historyAC := make([]*acv1alpha1.HistoryApplyConfiguration, 0, len(env.History))
+		for _, h := range env.History {
+			historyAC = append(historyAC, statusapply.HistoryToApply(h))
+		}
+		envAC := acv1alpha1.EnvironmentStatus().
+			WithBranch(env.Branch).
+			WithProposed(statusapply.CommitBranchStateToApply(env.Proposed)).
+			WithActive(statusapply.CommitBranchStateToApply(env.Active)).
+			WithLastHealthyDryShas(healthyDryShasAC...).
+			WithHistory(historyAC...)
+		if env.PullRequest != nil {
+			envAC = envAC.WithPullRequest(statusapply.PullRequestCommonStatusToApply(env.PullRequest))
+		}
+		envsAC = append(envsAC, envAC)
+	}
+	status := acv1alpha1.PromotionStrategyStatus().
+		WithObservedGeneration(v.GetGeneration()).
+		WithEnvironments(envsAC...).
+		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	return acv1alpha1.PromotionStrategy(v.Name, v.Namespace).
+		WithStatus(status)
 }

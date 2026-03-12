@@ -14,11 +14,11 @@ import (
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	promoterConditions "github.com/argoproj-labs/gitops-promoter/internal/types/conditions"
+	"github.com/argoproj-labs/gitops-promoter/internal/utils/statusapply"
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -272,13 +272,18 @@ type StatusConditionUpdater interface {
 }
 
 // HandleReconciliationResult handles reconciliation results for any object with status conditions.
+// It sets the ObservedGeneration, updates status conditions, and applies the status via SSA.
 // If result is non-nil and this function sets an error (e.g. status update failed), it clears any
 // Requeue/RequeueAfter in *result so the caller does not return both a requeue and an error.
+//
+//nolint:revive // argument-limit: many parameters required for defer-based status handling
 func HandleReconciliationResult(
 	ctx context.Context,
 	startTime time.Time,
 	obj StatusConditionUpdater,
-	client client.Client,
+	buildApplyConfig func() any,
+	k8sClient client.Client,
+	fieldOwner string,
 	recorder events.EventRecorder,
 	result *reconcile.Result,
 	err *error,
@@ -347,30 +352,27 @@ func HandleReconciliationResult(
 		})
 	}
 
-	// Single status update. This function should be the only place Status().Update() is called for reconciled resources.
-	updateErr := client.Status().Update(ctx, obj)
-	if updateErr == nil {
+	// Build and apply the status via Server-Side Apply.
+	// This is the only place status is written for reconciled resources.
+	applyConfig := buildApplyConfig()
+	patchErr := k8sClient.Status().Patch(ctx, obj, ApplyPatch{ApplyConfig: applyConfig}, client.FieldOwner(fieldOwner), client.ForceOwnership)
+	if patchErr == nil {
 		return
 	}
 
-	// Full status update failed. Try a fallback: update only the status condition.
-	// This can help when the failure is due to validation errors in other status fields.
-	logger.V(4).Info("Full status update failed, attempting fallback to update only status condition", "error", updateErr)
+	// Full SSA patch failed. Try a fallback: apply only conditions and observedGeneration via SSA.
+	// This ensures the user gets a visible Ready=False even when other status fields (e.g. SHA
+	// fields) fail CRD validation. We look up the GVK from the scheme since obj.GetObjectKind()
+	// is often empty in controller context.
+	logger.Error(patchErr, "failed to apply status via SSA, attempting fallback to patch only conditions and observedGeneration")
 
-	// Get a fresh copy of the object from the API server to avoid using data that caused the original update failure.
-	// (For example, a status field that didn't pass validation.)
-	//nolint:forcetypeassert // Type assertion is guaranteed to succeed for all CRDs in this codebase.
-	freshObj := obj.DeepCopyObject().(StatusConditionUpdater)
-	objectKey := types.NamespacedName{
-		Name:      obj.GetName(),
-		Namespace: obj.GetNamespace(),
-	}
-	if getErr := client.Get(ctx, objectKey, freshObj); getErr != nil {
+	gvks, _, schemeErr := k8sClient.Scheme().ObjectKinds(obj)
+	if schemeErr != nil || len(gvks) == 0 {
 		if *err == nil {
-			*err = fmt.Errorf("failed to update status: %w", updateErr)
+			*err = fmt.Errorf("failed to apply status: %w", patchErr)
 		} else {
 			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-			*err = fmt.Errorf("failed to update status with error condition with error %q: %w", *err, updateErr)
+			*err = fmt.Errorf("failed to apply status with error condition regarding error %q: %w", *err, patchErr)
 		}
 		if result != nil {
 			*result = reconcile.Result{}
@@ -378,44 +380,54 @@ func HandleReconciliationResult(
 		return
 	}
 
-	// Build the Ready condition to write. If there was an original reconciliation error,
-	// use that. Otherwise, create an error condition indicating the status update failed.
-	conditionToWrite := metav1.Condition{
-		Type:               string(promoterConditions.Ready),
-		Status:             metav1.ConditionFalse,
-		Reason:             string(promoterConditions.ReconciliationError),
-		ObservedGeneration: obj.GetGeneration(),
+	gvk := gvks[0]
+	type conditionsOnlyMeta struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace,omitempty"`
 	}
-	if *err != nil {
-		conditionToWrite.Message = fmt.Sprintf("Reconciliation failed: %s", *err)
-	} else {
-		conditionToWrite.Message = fmt.Sprintf("Reconciliation succeeded but failed to update status: %s", updateErr)
+	type conditionsOnlyStatus struct {
+		Conditions         any   `json:"conditions,omitempty"`
+		ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	}
+	type conditionsOnlyApplyConfig struct {
+		APIVersion string               `json:"apiVersion"`
+		Kind       string               `json:"kind"`
+		Metadata   conditionsOnlyMeta   `json:"metadata"`
+		Status     conditionsOnlyStatus `json:"status"`
+	}
+	fallbackConfig := conditionsOnlyApplyConfig{
+		APIVersion: gvk.Group + "/" + gvk.Version,
+		Kind:       gvk.Kind,
+		Metadata:   conditionsOnlyMeta{Name: obj.GetName(), Namespace: obj.GetNamespace()},
+		Status: conditionsOnlyStatus{
+			Conditions:         statusapply.ConditionsToApplyConfiguration(*obj.GetConditions()),
+			ObservedGeneration: obj.GetGeneration(),
+		},
 	}
 
-	// Copy only the Ready status condition to the fresh object
-	freshConditions := freshObj.GetConditions()
-	meta.SetStatusCondition(freshConditions, conditionToWrite)
-
-	// Try updating only the status condition
-	fallbackErr := client.Status().Update(ctx, freshObj)
-	if fallbackErr != nil {
-		// Fallback also failed, report both errors
+	if fallbackErr := k8sClient.Status().Patch(ctx, obj, ApplyPatch{ApplyConfig: fallbackConfig}, client.FieldOwner(fieldOwner), client.ForceOwnership); fallbackErr != nil {
 		if *err == nil {
-			*err = fmt.Errorf("failed to update status (original error: %w), and updating only the Ready condition also failed: %w", updateErr, fallbackErr)
+			*err = fmt.Errorf("failed to apply status (original error: %w), and patching only conditions also failed: %w", patchErr, fallbackErr)
 		} else {
 			//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-			*err = fmt.Errorf("failed to update status with error condition regarding error %q (original status update error: %w), and updating only the Ready condition also failed: %w", *err, updateErr, fallbackErr)
+			*err = fmt.Errorf("failed to apply status with error condition regarding error %q (original patch error: %w), and patching only conditions also failed: %w", *err, patchErr, fallbackErr)
+		}
+		if result != nil {
+			*result = reconcile.Result{}
 		}
 		return
 	}
 
-	// Fallback succeeded, but report the original status update failure
-	logger.Info("Successfully updated only the Ready condition after full status update failed")
+	// Fallback succeeded — report the original patch failure so the reconciler requeues.
+	logger.Info("Successfully patched only conditions and observedGeneration after full SSA patch failed")
 	if *err == nil {
-		*err = fmt.Errorf("failed to update full status (but updating only the Ready condition succeeded): %w", updateErr)
+		*err = fmt.Errorf("failed to apply full status (but patching only conditions succeeded): %w", patchErr)
 	} else {
 		//nolint:errorlint // The initial error is intentionally quoted instead of wrapped for clarity.
-		*err = fmt.Errorf("failed to update status with error condition regarding error %q (but updating only the Ready condition succeeded): %w", *err, updateErr)
+		*err = fmt.Errorf("failed to apply status with error condition regarding error %q (but patching only conditions succeeded): %w", *err, patchErr)
+	}
+	if result != nil {
+		*result = reconcile.Result{}
 	}
 }
 

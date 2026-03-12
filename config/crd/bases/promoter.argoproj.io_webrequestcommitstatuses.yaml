@@ -589,7 +589,7 @@ spec:
                         LastSuccessfulSha is the last commit SHA that achieved success status for this environment.
                         Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
                       maxLength: 64
-                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                       type: string
                     phase:
                       description: |-
@@ -606,7 +606,7 @@ spec:
                         This is determined by the reportOn field (proposed or active).
                         Supports both SHA-1 (40 chars) and SHA-256 (64 chars) Git hash formats.
                       maxLength: 64
-                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})?$
+                      pattern: ^([a-f0-9]{40}|[a-f0-9]{64})$
                       type: string
                     responseOutput:
                       description: |-
@@ -639,6 +639,11 @@ spec:
                 x-kubernetes-list-map-keys:
                 - branch
                 x-kubernetes-list-type: map
+              observedGeneration:
+                description: ObservedGeneration is the generation of the resource
+                  that was last reconciled.
+                format: int64
+                type: integer
             type: object
         required:
         - spec

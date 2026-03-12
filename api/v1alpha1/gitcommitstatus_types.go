@@ -113,6 +113,10 @@ type GitCommitStatusStatus struct {
 	// +optional
 	Environments []GitCommitStatusEnvironmentStatus `json:"environments,omitempty"`
 
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions represent the latest available observations of the GitCommitStatus's state.
 	// Standard condition types include "Ready" which aggregates the status of all environments.
 	// +listType=map

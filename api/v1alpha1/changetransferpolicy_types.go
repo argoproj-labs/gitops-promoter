@@ -171,6 +171,10 @@ type ChangeTransferPolicyStatus struct {
 	// History is in reverse chronological order (newest is first).
 	History []History `json:"history,omitempty"`
 
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	// +kubebuilder:validation:Optional
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// Conditions Represents the observations of the current state.
 	// +patchMergeKey=type
 	// +patchStrategy=merge
@@ -204,7 +208,7 @@ type PullRequestCommonStatus struct {
 	// ID is the unique identifier of the pull request, set by the SCM.
 	ID string `json:"id,omitempty"`
 	// State is the state of the pull request.
-	// +kubebuilder:validation:Enum=closed;merged;open
+	// +kubebuilder:validation:Enum="";closed;merged;open
 	State PullRequestState `json:"state,omitempty"`
 	// PRCreationTime is the time when the pull request was created.
 	PRCreationTime metav1.Time `json:"prCreationTime,omitempty"`

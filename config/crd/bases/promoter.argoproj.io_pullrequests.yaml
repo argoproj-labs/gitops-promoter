@@ -209,6 +209,11 @@ spec:
               id:
                 description: ID the id of the pull request
                 type: string
+              observedGeneration:
+                description: ObservedGeneration is the generation of the resource
+                  that was last reconciled.
+                format: int64
+                type: integer
               prCreationTime:
                 description: PRCreationTime the time the PR was created
                 format: date-time

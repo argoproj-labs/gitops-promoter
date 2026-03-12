@@ -34,6 +34,8 @@ type CommitStatusStatusApplyConfiguration struct {
 	Sha *string `json:"sha,omitempty"`
 	// Phase is the state of the commit status. This will be mapped to the appropriate equivalent in the SCM.
 	Phase *apiv1alpha1.CommitStatusPhase `json:"phase,omitempty"`
+	// ObservedGeneration is the generation of the resource that was last reconciled.
+	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
 	// Conditions Represents the observations of the current state.
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
@@ -65,6 +67,14 @@ func (b *CommitStatusStatusApplyConfiguration) WithSha(value string) *CommitStat
 // If called multiple times, the Phase field is set to the value of the last call.
 func (b *CommitStatusStatusApplyConfiguration) WithPhase(value apiv1alpha1.CommitStatusPhase) *CommitStatusStatusApplyConfiguration {
 	b.Phase = &value
+	return b
+}
+
+// WithObservedGeneration sets the ObservedGeneration field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ObservedGeneration field is set to the value of the last call.
+func (b *CommitStatusStatusApplyConfiguration) WithObservedGeneration(value int64) *CommitStatusStatusApplyConfiguration {
+	b.ObservedGeneration = &value
 	return b
 }
 
