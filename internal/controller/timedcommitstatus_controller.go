@@ -478,6 +478,11 @@ func (r *TimedCommitStatusReconciler) buildStatusApplyConfiguration(v *promoterv
 			WithRequiredDuration(env.RequiredDuration).
 			WithPhase(env.Phase).
 			WithAtMostDurationRemaining(env.AtMostDurationRemaining)
+		if env.Sha != "" {
+			envAC = envAC.WithSha(env.Sha)
+		} else {
+			log.Log.V(4).Info("TimedCommitStatus environment has empty sha, omitting from status patch to avoid CRD validation failure", "branch", env.Branch)
+		}
 		envsAC = append(envsAC, envAC)
 	}
 	status := acv1alpha1.TimedCommitStatusStatus().

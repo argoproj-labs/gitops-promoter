@@ -814,9 +814,11 @@ func (r *PromotionStrategyReconciler) buildStatusApplyConfiguration(v *promoterv
 			WithBranch(env.Branch).
 			WithProposed(statusapply.CommitBranchStateToApply(env.Proposed)).
 			WithActive(statusapply.CommitBranchStateToApply(env.Active)).
-			WithPullRequest(statusapply.PullRequestCommonStatusToApply(env.PullRequest)).
 			WithLastHealthyDryShas(healthyDryShasAC...).
 			WithHistory(historyAC...)
+		if env.PullRequest != nil {
+			envAC = envAC.WithPullRequest(statusapply.PullRequestCommonStatusToApply(env.PullRequest))
+		}
 		envsAC = append(envsAC, envAC)
 	}
 	status := acv1alpha1.PromotionStrategyStatus().

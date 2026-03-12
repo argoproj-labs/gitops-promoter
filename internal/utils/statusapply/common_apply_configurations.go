@@ -17,11 +17,16 @@ limitations under the License.
 package statusapply
 
 import (
+	"context"
+
 	"github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 	acv1alpha1 "github.com/argoproj-labs/gitops-promoter/applyconfiguration/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	acmetav1 "k8s.io/client-go/applyconfigurations/meta/v1"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+var logger = logf.FromContext(context.Background()).WithName("statusapply")
 
 // ConditionsToApplyConfiguration converts a []metav1.Condition slice to the apply configuration equivalent.
 func ConditionsToApplyConfiguration(conditions []metav1.Condition) []*acmetav1.ConditionApplyConfiguration {
@@ -49,6 +54,8 @@ func CommitShaStateToApply(s v1alpha1.CommitShaState) *acv1alpha1.CommitShaState
 		WithBody(s.Body)
 	if s.Sha != "" {
 		ac = ac.WithSha(s.Sha)
+	} else {
+		logger.V(4).Info("CommitShaState has empty sha, omitting from status patch to avoid CRD validation failure")
 	}
 	if !s.CommitTime.IsZero() {
 		ac = ac.WithCommitTime(s.CommitTime)
@@ -86,6 +93,8 @@ func HydratorMetadataToApply(m *v1alpha1.HydratorMetadata) *acv1alpha1.HydratorM
 		WithBody(m.Body)
 	if m.DrySha != "" {
 		ac = ac.WithDrySha(m.DrySha)
+	} else {
+		logger.V(4).Info("HydratorMetadata has empty drySha, omitting from status patch to avoid CRD validation failure")
 	}
 	if !m.Date.IsZero() {
 		ac = ac.WithDate(m.Date)
@@ -115,6 +124,10 @@ func HydratorMetadataToApply(m *v1alpha1.HydratorMetadata) *acv1alpha1.HydratorM
 func CommitStatusesToApply(statuses []v1alpha1.ChangeRequestPolicyCommitStatusPhase) []*acv1alpha1.ChangeRequestPolicyCommitStatusPhaseApplyConfiguration {
 	result := make([]*acv1alpha1.ChangeRequestPolicyCommitStatusPhaseApplyConfiguration, 0, len(statuses))
 	for _, s := range statuses {
+		if s.Phase == "" {
+			logger.V(4).Info("CommitStatus has empty phase, omitting from status patch to avoid CRD validation failure", "key", s.Key)
+			continue
+		}
 		result = append(result, acv1alpha1.ChangeRequestPolicyCommitStatusPhase().
 			WithKey(s.Key).
 			WithPhase(s.Phase).
@@ -126,11 +139,14 @@ func CommitStatusesToApply(statuses []v1alpha1.ChangeRequestPolicyCommitStatusPh
 
 // CommitBranchStateToApply converts a CommitBranchState to its apply configuration.
 func CommitBranchStateToApply(s v1alpha1.CommitBranchState) *acv1alpha1.CommitBranchStateApplyConfiguration {
-	return acv1alpha1.CommitBranchState().
+	ac := acv1alpha1.CommitBranchState().
 		WithDry(CommitShaStateToApply(s.Dry)).
 		WithHydrated(CommitShaStateToApply(s.Hydrated)).
-		WithNote(HydratorMetadataToApply(s.Note)).
 		WithCommitStatuses(CommitStatusesToApply(s.CommitStatuses)...)
+	if s.Note != nil {
+		ac = ac.WithNote(HydratorMetadataToApply(s.Note))
+	}
+	return ac
 }
 
 // PullRequestCommonStatusToApply converts a PullRequestCommonStatus to its apply configuration.
@@ -159,8 +175,11 @@ func HistoryToApply(h v1alpha1.History) *acv1alpha1.HistoryApplyConfiguration {
 	proposed := acv1alpha1.CommitBranchStateHistoryProposed().
 		WithHydrated(CommitShaStateToApply(h.Proposed.Hydrated)).
 		WithCommitStatuses(CommitStatusesToApply(h.Proposed.CommitStatuses)...)
-	return acv1alpha1.History().
+	ac := acv1alpha1.History().
 		WithProposed(proposed).
-		WithActive(CommitBranchStateToApply(h.Active)).
-		WithPullRequest(PullRequestCommonStatusToApply(h.PullRequest))
+		WithActive(CommitBranchStateToApply(h.Active))
+	if h.PullRequest != nil {
+		ac = ac.WithPullRequest(PullRequestCommonStatusToApply(h.PullRequest))
+	}
+	return ac
 }

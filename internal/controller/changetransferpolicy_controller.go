@@ -1211,9 +1211,11 @@ func (r *ChangeTransferPolicyReconciler) buildStatusApplyConfiguration(v *promot
 		WithObservedGeneration(v.GetGeneration()).
 		WithProposed(statusapply.CommitBranchStateToApply(v.Status.Proposed)).
 		WithActive(statusapply.CommitBranchStateToApply(v.Status.Active)).
-		WithPullRequest(statusapply.PullRequestCommonStatusToApply(v.Status.PullRequest)).
 		WithHistory(historyAC...).
 		WithConditions(statusapply.ConditionsToApplyConfiguration(v.Status.Conditions)...)
+	if v.Status.PullRequest != nil {
+		status = status.WithPullRequest(statusapply.PullRequestCommonStatusToApply(v.Status.PullRequest))
+	}
 	return acv1alpha1.ChangeTransferPolicy(v.Name, v.Namespace).
 		WithStatus(status)
 }

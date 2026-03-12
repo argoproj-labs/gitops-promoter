@@ -438,4 +438,108 @@ var _ = Describe("HandleReconciliationResult SSA status apply", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("reconciliation failed for test"))
 	})
+
+	It("should fall back to conditions-only patch when full SSA patch fails", func() {
+		var err error
+
+		// Fail the first SubResourcePatch (full SSA patch), succeed on the second (fallback).
+		callCount := 0
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithStatusSubresource(obj).
+			WithInterceptorFuncs(interceptor.Funcs{
+				SubResourcePatch: func(ctx context.Context, c client.Client, subResourceName string, o client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+					callCount++
+					if callCount == 1 {
+						return apierrors.NewInvalid(
+							schema.GroupKind{Group: "promoter.argoproj.io", Kind: "ArgoCDCommitStatus"},
+							o.GetName(),
+							nil,
+						)
+					}
+					return nil
+				},
+			}).
+			Build()
+
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		result := reconcile.Result{RequeueAfter: 5 * time.Second}
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, &result, &err)
+		}()
+
+		Expect(callCount).To(Equal(2), "expected both the full patch and fallback patch to be attempted")
+		// Fallback succeeded, but we still get an error so the reconciler requeues
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("patching only conditions succeeded"))
+		// result must be cleared so the caller doesn't return both a requeue and an error
+		Expect(result).To(Equal(reconcile.Result{}))
+	})
+
+	It("should report both errors when full SSA patch and fallback conditions patch both fail", func() {
+		var err error
+
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithStatusSubresource(obj).
+			WithInterceptorFuncs(interceptor.Funcs{
+				SubResourcePatch: func(ctx context.Context, c client.Client, subResourceName string, o client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+					return apierrors.NewInvalid(
+						schema.GroupKind{Group: "promoter.argoproj.io", Kind: "ArgoCDCommitStatus"},
+						o.GetName(),
+						nil,
+					)
+				},
+			}).
+			Build()
+
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		result := reconcile.Result{RequeueAfter: 5 * time.Second}
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, &result, &err)
+		}()
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("patching only conditions also failed"))
+		Expect(result).To(Equal(reconcile.Result{}))
+	})
+
+	It("should include original reconciliation error when full SSA patch fails but fallback succeeds", func() {
+		var err error
+
+		callCount := 0
+		fakeClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithStatusSubresource(obj).
+			WithInterceptorFuncs(interceptor.Funcs{
+				SubResourcePatch: func(ctx context.Context, c client.Client, subResourceName string, o client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+					callCount++
+					if callCount == 1 {
+						return apierrors.NewInvalid(
+							schema.GroupKind{Group: "promoter.argoproj.io", Kind: "ArgoCDCommitStatus"},
+							o.GetName(),
+							nil,
+						)
+					}
+					return nil
+				},
+			}).
+			Build()
+
+		Expect(fakeClient.Create(ctx, obj)).To(Succeed())
+
+		result := reconcile.Result{}
+		func() {
+			defer utils.HandleReconciliationResult(ctx, metav1.Now().Time, obj, buildApply, fakeClient, "test-field-owner", recorder, &result, &err)
+			err = errors.New("original reconciliation error")
+		}()
+
+		Expect(callCount).To(Equal(2))
+		Expect(err).To(HaveOccurred())
+		// Error message should reference both the original reconciliation error and the patch failure
+		Expect(err.Error()).To(ContainSubstring("original reconciliation error"))
+		Expect(err.Error()).To(ContainSubstring("patching only conditions succeeded"))
+	})
 })
