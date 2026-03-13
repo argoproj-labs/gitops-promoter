@@ -7867,7 +7867,7 @@ spec:
     protocol: TCP
     targetPort: https
   - name: http
-    port: 9080
+    port: 8080
     protocol: TCP
     targetPort: http
   selector:
@@ -7929,7 +7929,7 @@ spec:
       containers:
       - args:
         - --health-probe-bind-address=:8081
-        - --metrics-bind-address=:9080
+        - --metrics-bind-address=:8443
         - --leader-elect
         command:
         - /usr/bin/tini
@@ -7948,7 +7948,7 @@ spec:
         - containerPort: 8443
           name: https
           protocol: TCP
-        - containerPort: 9080
+        - containerPort: 8080
           name: http
           protocol: TCP
         - containerPort: 8081

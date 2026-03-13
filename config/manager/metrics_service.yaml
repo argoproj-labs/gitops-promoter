@@ -19,6 +19,6 @@ spec:
       protocol: TCP
       targetPort: https
     - name: http
-      port: 9080
+      port: 8080
       protocol: TCP
       targetPort: http
