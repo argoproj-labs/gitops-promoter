@@ -11,7 +11,7 @@ permissions:
 
 # this version will need to match the one in https://github.com/argoproj-labs/gitops-promoter-helm/
 env:
-  KUBEBUILDER_VERSION: v4.11.1
+  KUBEBUILDER_VERSION: v4.12.0
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
