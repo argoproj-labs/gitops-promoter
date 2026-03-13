@@ -100,7 +100,7 @@ The following table shows the compatibility between GitOps Promoter versions and
 The extension tab appears on an Argo CD Application when either of the following is true:
 
 1. **Auto-detection (default):** The extension checks the Application's top-level resource tree for `PromotionStrategy` resources. If at least one is found, the tab is shown.
-2. **Label-based:** The Application has the label `promoter.argoproj.io/has-promotionstrategy` set to any truthy value (e.g. `"true"`). Use this when the PromotionStrategy is not top-level, i.e. it is a child of another resource.
+2. **Label-based:** The Application has the label `promoter.argoproj.io/has-promotionstrategy` set to `"true"`. Use this when the PromotionStrategy is not top-level, i.e. it is a child of another resource.
 
 Use the label if your `PromotionStrategy` resources are nested or if you want explicit control over which Applications display the extension tab:
 
