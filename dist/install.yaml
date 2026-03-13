@@ -7866,10 +7866,6 @@ spec:
     port: 8443
     protocol: TCP
     targetPort: https
-  - name: http
-    port: 8080
-    protocol: TCP
-    targetPort: http
   selector:
     control-plane: controller-manager
 ---
@@ -7947,9 +7943,6 @@ spec:
         ports:
         - containerPort: 8443
           name: https
-          protocol: TCP
-        - containerPort: 8080
-          name: http
           protocol: TCP
         - containerPort: 8081
           name: health
