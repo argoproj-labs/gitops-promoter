@@ -1,4 +1,4 @@
-# Metrics
+# Values
 
 GitOps Promoter produces metrics counter and histogram metrics for all network-bound operations.
 

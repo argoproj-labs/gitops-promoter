@@ -1,0 +1,141 @@
+## Https
+
+This configuration enable HTTPS with self-served certificates support for git operations.
+You will also need authentication credentials for Prometheus to scrape the metrics endpoint. This can be done by creating a ServiceAccount, ClusterRoleBinding, and Secret in Kubernetes.
+
+### 1.Enable HTTPS in Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          args:
+            - "--health-probe-bind-address=:8081"
+            - "--leader-elect"
+# These two lines are the relevant change. The other two should match the existing args.
+            - "--metrics-bind-address=:8443"
+            - "--metrics-secure=true"
+```
+
+### 2. Create Service Account
+
+The service account will authenticate the Prometheus server to access the metrics endpoint.
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-metrics
+  namespace: monitoring
+```
+A cluster role and cluster role binding will also need to be created to allow the service account to access the metrics endpoint.
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-metrics-reader-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: promoter-metrics-reader
+subjects:
+  - kind: ServiceAccount
+    name: prometheus-metrics
+    namespace: monitoring
+```
+
+A k8s Secret is also needed to create long-lived authentication credentials for Prometheus to scrape the metrics endpoint.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-metrics-token
+  namespace: monitoring
+  annotations:
+    kubernetes.io/service-account.name: prometheus-metrics
+type: kubernetes.io/service-account-token
+```
+
+Here is an example of a ServiceMonitor for scraping the metrics endpoint with Prometheus Operator:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gitops-promoter
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - promoter-system
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  endpoints:
+    - port: https
+      interval: 30s
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
+      authorization:
+        type: Bearer
+        credentials:
+          name: prometheus-metrics-token
+          key: token
+```
+
+If you want to use custom certificates instead of self-served ones, you can create a Secret with the certificate and reference it in the ServiceMonitor's tlsConfig:
+
+Secret:
+```yaml
+kubectl create secret generic prometheus-certs \
+  --from-file=ca.crt=./ca.crt \
+  --from-file=tls.crt=./client.crt \
+  --from-file=tls.key=./client.key
+```
+
+Service Monitor:
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gitops-promoter
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+      - promoter-system
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  endpoints:
+    - port: https
+      interval: 30s
+      scheme: https
+      tlsConfig:
+        ca:
+          secret:
+            name: prometheus-certs
+            key: ca.crt
+        cert:
+          secret:
+            name: prometheus-certs
+            key: tls.crt
+        keySecret:
+          name: prometheus-certs
+          key: tls.key
+      authorization:
+        type: Bearer
+        credentials:
+          name: prometheus-metrics-token
+          key: token
+```
