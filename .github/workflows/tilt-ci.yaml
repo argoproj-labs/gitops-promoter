@@ -57,7 +57,7 @@ jobs:
 
       - name: Check Metrics Endpoint
         run: |
-          kubectl port-forward -n promoter-system svc/controller-manager-metrics-service 8443:8443 &
+          kubectl port-forward -n promoter-system svc/promoter-controller-manager-metrics-service  8443:8443 &
           PF_PID=$!
           sleep 5
           curl -sk https://localhost:8443/metrics || (echo "Metrics endpoint check failed" && exit 1)
