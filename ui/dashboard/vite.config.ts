@@ -33,4 +33,4 @@ export default defineConfig({
       '@shared': resolve(__dirname, '../shared/src'),
     },
   },
-}); 
+});
