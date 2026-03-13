@@ -36,4 +36,4 @@ export default defineConfig({
     // otherwise, you might encounter issues with hooks or context not working properly
     dedupe: ['react', 'react-dom'],
   },
-}); 
+});
