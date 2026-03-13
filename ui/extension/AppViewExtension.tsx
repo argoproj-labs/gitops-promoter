@@ -1,52 +1,43 @@
-import React, { useEffect, useMemo, useState } from "react";
-import Card from "@components-lib/components/Card";
-import { PromotionStrategy } from "@shared/types/promotion";
-import { AppViewComponentProps } from "@shared/types/extension";
+import React, { useEffect, useState } from 'react';
+import Card from '@components-lib/components/Card';
+import { PromotionStrategy } from '@shared/types/promotion';
+import { AppViewComponentProps } from '@shared/types/extension';
 
-const AppViewExtension = ({ tree, application }: AppViewComponentProps) => {
-  const promotionStrategyNodes = useMemo(
-    () => tree.nodes.filter((node) => node.kind === "PromotionStrategy"),
-    [tree.nodes]
-  );
-  const [promotionStrategy, setPromotionStrategy] =
-    useState<PromotionStrategy>();
-  const [isLoading, setIsLoading] = useState(false);
+const GROUP = 'promoter.argoproj.io';
+const KIND = 'PromotionStrategy';
+
+const AppViewExtension = ({ application }: AppViewComponentProps) => {
+  const [promotionStrategy, setPromotionStrategy] = useState<PromotionStrategy>();
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (promotionStrategyNodes.length !== 1) return;
-    const promotionStrategyNode = promotionStrategyNodes[0];
-    const group = "promoter.argoproj.io";
-    const url = `/api/v1/applications/${application.metadata.name}/resource?name=${promotionStrategyNode.name}&appNamespace=${application.metadata.namespace}&namespace=${promotionStrategyNode.namespace}&resourceName=${promotionStrategyNode.name}&version=${promotionStrategyNode?.version}&kind=${promotionStrategyNode.kind}&group=${group}`;
+    const appName = application.metadata.name;
+    const appNamespace = application.metadata.namespace;
+    const url = `/api/v1/applications/${appName}/managed-resources?appNamespace=${appNamespace}&kind=${KIND}&group=${GROUP}`;
 
-    setIsLoading(true);
+    setFetchError(null);
     fetch(url)
       .then((response) => response.json())
       .then((data) => {
-        setPromotionStrategy(
-          typeof data.manifest === "string"
-            ? JSON.parse(data.manifest)
-            : data.manifest
-        );
-        setIsLoading(false);
+        if (!data.items || data.items.length === 0) {
+          throw new Error('No PromotionStrategy resources found');
+        }
+        setPromotionStrategy(JSON.parse(data.items[0].liveState));
       })
       .catch((err) => {
-        setIsLoading(false);
-        throw new Error("Error fetching promotion strategy data: " + err);
+        setFetchError('Failed to load PromotionStrategy: ' + err);
       });
-  }, [promotionStrategyNodes, application.metadata.name, application.metadata.namespace]);
+  }, [application.metadata.name, application.metadata.namespace]);
 
-  if (promotionStrategyNodes.length === 0) {
-    return <div>No PromotionStrategy resource found for this application.</div>;
-  }
-  if (promotionStrategyNodes.length > 1) {
-    return <div>Expected exactly one PromotionStrategy resource, found {promotionStrategyNodes.length}.</div>;
-  }
-  if (isLoading && !promotionStrategy) {
+  if (!promotionStrategy) {
+    if (fetchError) {
+      return <div>{fetchError}</div>;
+    }
     return <div>Loading...</div>;
   }
   return (
     <div className="extension-container">
-      <Card environments={promotionStrategy?.status?.environments || []} />
+      <Card environments={promotionStrategy.status?.environments || []} />
     </div>
   );
 };
