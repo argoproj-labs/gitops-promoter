@@ -16,46 +16,49 @@ const reactPath = require.resolve('react', { paths: [extensionDir] });
 const reactDomPath = require.resolve('react-dom/client', { paths: [extensionDir] });
 const reactDomServerPath = require.resolve('react-dom', { paths: [extensionDir] });
 
-Module.prototype.require = function(id) {
-    const ext = id.match(/\.[^./\\]+$/)?.[0];
+Module.prototype.require = function (id) {
+  const ext = id.match(/\.[^./\\]+$/)?.[0];
 
-    // Return empty object for style files
-    if (ext && styleExtensions.includes(ext)) {
-        return {};
-    }
+  // Return empty object for style files
+  if (ext && styleExtensions.includes(ext)) {
+    return {};
+  }
 
-    // Return mock path string for asset files
-    if (ext && assetExtensions.includes(ext)) {
-        return id;
-    }
+  // Return mock path string for asset files
+  if (ext && assetExtensions.includes(ext)) {
+    return id;
+  }
 
-    // Stub icon libraries used by shared components (react-icons/*)
-    if (id.startsWith('react-icons/')) {
-        return new Proxy({}, {
-            get: () => () => null,
-        });
-    }
+  // Stub icon libraries used by shared components (react-icons/*)
+  if (id.startsWith('react-icons/')) {
+    return new Proxy(
+      {},
+      {
+        get: () => () => null,
+      },
+    );
+  }
 
-    // Ensure single React instance across all packages
-    if (id === 'react') {
-        return originalRequire.call(this, reactPath);
-    }
-    if (id === 'react-dom/client') {
-        return originalRequire.call(this, reactDomPath);
-    }
-    if (id === 'react-dom') {
-        return originalRequire.call(this, reactDomServerPath);
-    }
+  // Ensure single React instance across all packages
+  if (id === 'react') {
+    return originalRequire.call(this, reactPath);
+  }
+  if (id === 'react-dom/client') {
+    return originalRequire.call(this, reactDomPath);
+  }
+  if (id === 'react-dom') {
+    return originalRequire.call(this, reactDomServerPath);
+  }
 
-    return originalRequire.apply(this, arguments);
+  return originalRequire.apply(this, arguments);
 };
 
 // Set up jsdom environment
 const { JSDOM } = require('jsdom');
 
 const dom = new JSDOM('<!DOCTYPE html><html><body><div id="root"></div></body></html>', {
-    url: 'http://localhost:3000',
-    pretendToBeVisual: true,
+  url: 'http://localhost:3000',
+  pretendToBeVisual: true,
 });
 
 // Set up global DOM environment
@@ -70,43 +73,43 @@ global.DocumentFragment = dom.window.DocumentFragment;
 
 // Mock extensionsAPI
 global.window.extensionsAPI = {
-    registerResourceExtension: () => {},
-    registerStatusPanelExtension: () => {},
-    registerAppViewExtension: () => {},
+  registerResourceExtension: () => {},
+  registerStatusPanelExtension: () => {},
+  registerAppViewExtension: () => {},
 };
 
 // Mock fetch API
 global.fetch = async () => {
-    return {
-        ok: true,
-        json: async () => ({}),
-        text: async () => '',
-    };
+  return {
+    ok: true,
+    json: async () => ({}),
+    text: async () => '',
+  };
 };
 
 // Mock matchMedia
 global.window.matchMedia = (query) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => true,
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener: () => {},
+  removeListener: () => {},
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  dispatchEvent: () => true,
 });
 
 // Mock ResizeObserver
 global.ResizeObserver = class ResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+  observe() {}
+  unobserve() {}
+  disconnect() {}
 };
 
 // Mock IntersectionObserver
 global.IntersectionObserver = class IntersectionObserver {
-    constructor(callback, options) {}
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+  constructor(callback, options) {}
+  observe() {}
+  unobserve() {}
+  disconnect() {}
 };
