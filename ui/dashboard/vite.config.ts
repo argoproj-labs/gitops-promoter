@@ -32,5 +32,6 @@ export default defineConfig({
       '@lib': resolve(__dirname, '../components-lib/src'),
       '@shared': resolve(__dirname, '../shared/src'),
     },
+    dedupe: ['react', 'react-dom'],
   },
 }); 
