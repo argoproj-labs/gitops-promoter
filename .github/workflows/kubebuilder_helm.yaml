@@ -11,7 +11,7 @@ permissions:
 
 # this version will need to match the one in https://github.com/argoproj-labs/gitops-promoter-helm/
 env:
-  KUBEBUILDER_VERSION: v4.11.1
+  KUBEBUILDER_VERSION: v4.12.0
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -50,7 +50,8 @@ jobs:
 
       - name: Lint Helm chart
         run: |
-          helm lint --debug ./tmp_chart/chart
+          # we set these to true to match the defaults from the Helm chart's values.yaml
+          helm lint --debug ./tmp_chart/chart  --set crd.enable=true --set webhook.enable=true
 
       - name: Upload Helm chart artifact
         uses: actions/upload-artifact@v4
