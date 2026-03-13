@@ -50,7 +50,7 @@ jobs:
 
       - name: Lint Helm chart
         run: |
-          helm lint --debug ./tmp_chart/chart
+          helm lint --debug ./tmp_chart/chart  --set crd.enable=true --set webhook.enable=true
 
       - name: Upload Helm chart artifact
         uses: actions/upload-artifact@v4
