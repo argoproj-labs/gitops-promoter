@@ -50,6 +50,7 @@ jobs:
 
       - name: Lint Helm chart
         run: |
+          # we set these to true to match the defaults from the Helm chart's values.yaml
           helm lint --debug ./tmp_chart/chart  --set crd.enable=true --set webhook.enable=true
 
       - name: Upload Helm chart artifact
