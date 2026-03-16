@@ -5,6 +5,8 @@
   <img src="docs/assets/logo/stacked/primary.svg" alt="GitOps Promoter" width="400">
 </picture>
 
+---
+
 GitOps Promoter facilitates environment promotion for config managed via GitOps.
 
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/gitops-promoter)](https://artifacthub.io/packages/search?repo=gitops-promoter)
