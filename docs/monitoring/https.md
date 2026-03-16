@@ -3,7 +3,7 @@
 By default, GitOps Promoter exposes its metrics over HTTPS with self-served certificates.
 This means that the metrics endpoint is secured with TLS, and Prometheus will need to be configured to scrape it over HTTPS.
 
-For production environments, it's recommended to use custom certificates that are signed by a trusted Certificate Authority (CA) to avoid issues with self-signed certificates.
+For production environments, it is recommended to use custom certificates that are signed by a trusted Certificate Authority (CA) to avoid issues with self-signed certificates.
 To do so, you can create a Secret with the certificate and reference it in the ServiceMonitor's tlsConfig:
 
 Secret:
