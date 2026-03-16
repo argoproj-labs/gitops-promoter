@@ -7944,9 +7944,6 @@ spec:
         - containerPort: 8443
           name: https
           protocol: TCP
-        - containerPort: 8081
-          name: health
-          protocol: TCP
         readinessProbe:
           httpGet:
             path: /readyz
