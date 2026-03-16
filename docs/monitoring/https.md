@@ -3,7 +3,6 @@
 By default, GitOps Promoter exposes its metrics over HTTPS with self-served certificates.
 This means that the metrics endpoint is secured with TLS, and Prometheus will need to be configured to scrape it over HTTPS.
 
-
 ### Self-Signed Certificates (Default)
 
 The controller automatically generates self-signed TLS certificates in-memory using `controller-runtime`. No additional configuration is needed in the deployment.
@@ -66,6 +65,7 @@ spec:
           args:
             - "--metrics-bind-address=:8443"
             - "--metrics-cert-dir=/etc/prometheus-certs"
+            - "--metrics-secure=true"
             - "--leader-elect"
           ports:
             - containerPort: 8443
