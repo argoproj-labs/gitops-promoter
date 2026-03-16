@@ -115,7 +115,7 @@ spec:
                     description: Name is the name of the object to refer to.
                     maxLength: 253
                     minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -197,7 +197,7 @@ spec:
                       description: Name is the name of the Argo CD application.
                       maxLength: 253
                       minLength: 1
-                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                      pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                       type: string
                     namespace:
                       description: Namespace is the namespace of the Argo CD application.
@@ -389,7 +389,7 @@ spec:
                     description: Name is the name of the object to refer to.
                     maxLength: 253
                     minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -1887,7 +1887,7 @@ spec:
                     description: Name is the name of the object to refer to.
                     maxLength: 253
                     minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -3925,7 +3925,7 @@ spec:
                     description: Name is the name of the object to refer to.
                     maxLength: 253
                     minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -4294,7 +4294,7 @@ spec:
                     description: Name is the name of the resource being referenced
                     maxLength: 253
                     minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                 required:
                 - kind
@@ -4527,7 +4527,7 @@ spec:
                     description: Name is the name of the object to refer to.
                     maxLength: 253
                     minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -5886,7 +5886,7 @@ spec:
                     description: Name is the name of the object to refer to.
                     maxLength: 253
                     minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -6409,7 +6409,7 @@ spec:
                     description: Name is the name of the object to refer to.
                     maxLength: 253
                     minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                 required:
                 - name
@@ -6979,7 +6979,7 @@ spec:
                     description: Name is the name of the object to refer to.
                     maxLength: 253
                     minLength: 1
-                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                    pattern: ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$
                     type: string
                 required:
                 - name
