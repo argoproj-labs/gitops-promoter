@@ -25,9 +25,9 @@ spec:
             - name: EXTENSION_NAME
               value: gitops-promoter
             - name: EXTENSION_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.23.1/gitops-promoter-argocd-extension.tar.gz
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.24.0/gitops-promoter-argocd-extension.tar.gz
             - name: EXTENSION_CHECKSUM_URL
-              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.23.1/gitops-promoter_0.23.1_checksums.txt
+              value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.24.0/gitops-promoter_0.24.0_checksums.txt
           volumeMounts:
             - name: extensions
               mountPath: /tmp/extensions/
@@ -63,9 +63,9 @@ server:
         - name: EXTENSION_NAME
           value: gitops-promoter
         - name: EXTENSION_URL
-          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.23.1/gitops-promoter-argocd-extension.tar.gz
+          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.24.0/gitops-promoter-argocd-extension.tar.gz
         - name: EXTENSION_CHECKSUM_URL
-          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.23.1/gitops-promoter_0.23.1_checksums.txt
+          value: https://github.com/argoproj-labs/gitops-promoter/releases/download/v0.24.0/gitops-promoter_0.24.0_checksums.txt
       volumeMounts:
         - name: extensions
           mountPath: /tmp/extensions/
@@ -94,6 +94,23 @@ The following table shows the compatibility between GitOps Promoter versions and
 |-------------------------|-----------------|
 | v0.18.3+                | v2.3+           |
 | v0.18.2 and earlier     | v2.2.x and earlier |
+
+### Extension Discovery
+
+The extension tab appears on an Argo CD Application when either of the following is true:
+
+1. **Auto-detection (default):** The extension checks the Application's top-level resource tree for `PromotionStrategy` resources. If at least one is found, the tab is shown.
+2. **Label-based:** The Application has the label `promoter.argoproj.io/has-promotionstrategy` set to `"true"`. Use this when the PromotionStrategy is not top-level, i.e. it is a child of another resource.
+
+Use the label if your `PromotionStrategy` resources are nested or if you want explicit control over which Applications display the extension tab:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    promoter.argoproj.io/has-promotionstrategy: "true"
+```
 
 ## Deep Links
 

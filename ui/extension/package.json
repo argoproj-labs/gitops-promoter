@@ -13,7 +13,8 @@
     "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "mocha --require ./test/register.cjs 'test/**/*.test.ts'"
+    "test": "vitest run",
+    "test:mocha": "mocha --require ./test/register.cjs 'test/**/*.test.ts'"
   },
   "devDependencies": {
     "@codecov/webpack-plugin": "^1.9.1",
@@ -27,6 +28,7 @@
     "chai": "^5.0.0",
     "css-loader": "^7.0.0",
     "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.0.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
@@ -37,6 +39,8 @@
     "style-loader": "^4.0.0",
     "ts-loader": "^9.5.1",
     "tsx": "^4.0.0",
+    "prettier": "^3.5.3",
+    "vitest": "^4.0.18",
     "webpack": "^5.91.0",
     "webpack-cli": "^6.0.0"
   },
