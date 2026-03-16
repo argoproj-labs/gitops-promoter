@@ -160,11 +160,11 @@ run-dashboard: build-dashboard
 
 .PHONY: lint-dashboard
 lint-dashboard: ## Run dashboard type-check, lint and audit checks
-	cd ui/dashboard && npm run type-check && npm run lint && npm audit --omit=dev
+	cd ui/dashboard && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
 
 .PHONY: lint-extension
 lint-extension: ## Run extension type-check, lint and audit checks
-	cd ui/extension && npm run type-check && npm run lint && npm audit --omit=dev
+	cd ui/extension && npm run type-check && npm run lint && npm run format:check && npm audit --omit=dev
 
 .PHONY: test-unit-test-extension
 test-unit-test-extension: ## Run unit tests for the extension

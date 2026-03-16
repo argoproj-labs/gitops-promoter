@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { namespaceStore } from '../stores/NamespaceStore'
+import { namespaceStore } from '../stores/NamespaceStore';
 import { viewStore } from '../stores/ViewStore';
 import { PromotionStrategyStore } from '../stores/PromotionStrategyStore';
 import BackButton from '../components/BackButton';
@@ -20,7 +20,10 @@ interface PromotionStrategyPageProps {
   strategyName?: string;
 }
 
-const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({ namespace: propsNamespace, strategyName: propsStrategyName }) => {
+const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({
+  namespace: propsNamespace,
+  strategyName: propsStrategyName,
+}) => {
   const { namespace: urlNamespace, name: urlStrategyName } = useParams();
   const namespace = propsNamespace || urlNamespace;
   const strategyName = propsStrategyName || urlStrategyName;
@@ -33,7 +36,7 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({ namespace
 
   // Find the selected strategy
   const selectedStrategy = items.find(
-    (ps: PromotionStrategy) => ps.metadata?.name === strategyName
+    (ps: PromotionStrategy) => ps.metadata?.name === strategyName,
   );
 
   useEffect(() => {
@@ -45,10 +48,19 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({ namespace
     if (!items.length || !selectedStrategy) {
       fetchItems(namespace);
     }
-    
+
     subscribe(namespace);
     return () => unsubscribe();
-  }, [namespace, currentNamespace, setNamespace, fetchItems, subscribe, unsubscribe, items, selectedStrategy]);
+  }, [
+    namespace,
+    currentNamespace,
+    setNamespace,
+    fetchItems,
+    subscribe,
+    unsubscribe,
+    items,
+    selectedStrategy,
+  ]);
 
   const navigate = useNavigate();
 
@@ -57,7 +69,6 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({ namespace
     navigate('/promotion-strategies');
   };
 
-
   // Loading State
   if (items.length === 0) {
     return <div style={{ textAlign: 'center', marginTop: '20px' }}>Loading strategies...</div>;
@@ -65,24 +76,24 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({ namespace
 
   // Not found state
   if (!selectedStrategy) {
-    return <div style={{ textAlign: 'center', marginTop: '20px' }}>No strategy found for {strategyName}</div>;
+    return (
+      <div style={{ textAlign: 'center', marginTop: '20px' }}>
+        No strategy found for {strategyName}
+      </div>
+    );
   }
 
   return (
     <>
       <div className="strategy-page-header">
-
-
         <div className="strategy-page-header-left">
           <BackButton onClick={handleBack} />
         </div>
 
-
         <div className="strategy-page-header-center">
-          <HeaderBar name={strategyName || ""} />
+          <HeaderBar name={strategyName || ''} />
         </div>
 
-        
         <div className="strategy-page-header-right">
           <div className="strategy-page-tabs">
             <button
@@ -92,12 +103,13 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({ namespace
               Overview
             </button>
 
-            
             <button
               className={`strategy-page-tab ${currentView === 'yaml' ? 'active' : ''}`}
               onClick={() => setView('yaml')}
             >
-              Live<br />Manifest
+              Live
+              <br />
+              Manifest
             </button>
           </div>
         </div>
@@ -114,4 +126,4 @@ const PromotionStrategyPage: React.FC<PromotionStrategyPageProps> = ({ namespace
   );
 };
 
-export default PromotionStrategyPage; 
+export default PromotionStrategyPage;
