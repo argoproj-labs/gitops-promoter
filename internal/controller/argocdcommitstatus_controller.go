@@ -673,6 +673,10 @@ func (r *ArgoCDCommitStatusReconciler) buildStatusApplyConfiguration(v *promoter
 			WithNamespace(app.Namespace).
 			WithName(app.Name).
 			WithPhase(app.Phase).
+			// Sha is +required in the CRD with no omitempty, so it must always be present in the
+			// SSA patch. NilIfEmpty would omit the field and fail CRD validation. The pattern
+			// ^(|[a-f0-9]{40}|[a-f0-9]{64})$ intentionally allows "" for OutOfSync apps where
+			// Status.Sync.Revision may be a branch name rather than a commit SHA.
 			WithSha(app.Sha).
 			WithEnvironment(app.Environment).
 			WithClusterName(app.ClusterName)
