@@ -10,7 +10,8 @@ theme:
   features:
     - content.code.copy
   palette:
-    - primary: teal
+    - primary: custom
+      accent: custom
       scheme: default
       toggle:
         icon: material/toggle-switch-off-outline
@@ -19,6 +20,8 @@ theme:
       toggle:
         icon: material/toggle-switch
         name: Switch to light mode
+extra_css:
+  - stylesheets/extra.css
 markdown_extensions:
   - markdown_include.include
   - codehilite:
