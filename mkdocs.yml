@@ -4,7 +4,8 @@ site_url: https://gitops-promoter.readthedocs.io/
 theme:
   font:
     text: Work Sans
-  logo: assets/logo.png
+  logo: assets/logo/icon/secondary.png
+  favicon: assets/logo/favicon.png
   name: material
   features:
     - content.code.copy
