@@ -26,7 +26,7 @@ package v1alpha1
 // manipulation and formatting.
 //
 // Template data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):
-// - .ChangeTransferPolicy – the ChangeTransferPolicy for the promotion
+// - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest
 // - .PromotionStrategy – the PromotionStrategy for the CTP
 type PullRequestTemplateApplyConfiguration struct {
 	// Title is the template used to generate the title of the pull request.
