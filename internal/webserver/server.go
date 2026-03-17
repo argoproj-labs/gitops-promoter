@@ -234,9 +234,23 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 		c.JSON(http.StatusOK, "ok")
 	})
 
-	// Handle favicon
+	// Handle favicon (serve from embed so /favicon.png is not caught by SPA catch-all)
 	router.GET("/favicon.ico", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
+	})
+	router.GET("/favicon.png", func(c *gin.Context) {
+		f, err := distFS.Open("favicon.png")
+		if err != nil {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		defer f.Close()
+		content, err := io.ReadAll(f)
+		if err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.Data(http.StatusOK, "image/png", content)
 	})
 
 	// Serve static files from embed
