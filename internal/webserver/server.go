@@ -244,7 +244,11 @@ func (ws *WebServer) StartDashboard(ctx context.Context, addr string) error {
 			c.Status(http.StatusNotFound)
 			return
 		}
-		defer f.Close()
+		defer func() {
+			if cerr := f.Close(); cerr != nil {
+				logger.Error(cerr, "failed to close favicon.png")
+			}
+		}()
 		content, err := io.ReadAll(f)
 		if err != nil {
 			c.Status(http.StatusInternalServerError)
