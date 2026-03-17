@@ -949,7 +949,6 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			return nil, fmt.Errorf("failed to get existing PullRequest: %w", err)
 		}
 		prExists = false
-		existingPR = nil
 	}
 
 	ps, err := r.getPromotionStrategy(ctx, ctp)
