@@ -946,12 +946,10 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 		return nil, fmt.Errorf("failed to get pull request template from settings: %w", err)
 	}
 
-	// Template receives the single current CTP and, when present, its PromotionStrategy (for env order).
+	// Template receives the current CTP and its PromotionStrategy.
 	templateData := map[string]any{
 		"ChangeTransferPolicy": ctp,
-	}
-	if ps != nil {
-		templateData["PromotionStrategy"] = ps
+		"PromotionStrategy":    ps,
 	}
 	title, description, err := TemplatePullRequest(templatePullRequestTemplate, templateData)
 	if err != nil {
