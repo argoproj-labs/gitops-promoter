@@ -139,7 +139,9 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 				}, &cs)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cs.Spec.Phase).To(Equal(promoterv1alpha1.CommitPhasePending))
-				g.Expect(cs.Spec.Description).To(ContainSubstring("Waiting for time-based gate on " + testBranchDevelopment))
+				expectedDuration := 1 * time.Hour
+				g.Expect(cs.Spec.Description).To(ContainSubstring(expectedDuration.String()), "Description should include the required duration")
+				g.Expect(cs.Spec.Description).To(ContainSubstring("duration gate to complete on " + testBranchDevelopment))
 			}, constants.EventuallyTimeout).Should(Succeed())
 		})
 	})
