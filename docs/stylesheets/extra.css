@@ -33,10 +33,10 @@
    Dark mode (slate)
    ------------------------------------------------------------------------- */
 [data-md-color-scheme="slate"] {
-  /* Primary: lighter navy so header stands out on dark background */
-  --md-primary-fg-color: color-mix(in srgb, var(--color-navy) 55%, white);
+  /* Primary: navy (slightly lifted so header is visible on dark) */
+  --md-primary-fg-color: color-mix(in srgb, var(--color-navy) 85%, white);
   --md-primary-fg-color--light: color-mix(in srgb, var(--color-navy) 65%, white);
-  --md-primary-fg-color--dark: color-mix(in srgb, var(--color-navy) 75%, black);
+  --md-primary-fg-color--dark: color-mix(in srgb, var(--color-navy) 90%, black);
   --md-primary-bg-color: #ffffff;
   --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
 
