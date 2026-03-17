@@ -159,7 +159,6 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
-
 		})
 
 		Context("When using commit status checks", func() {
@@ -710,7 +709,7 @@ var _ = Describe("TemplatePullRequest", func() {
 				ObjectMeta: metav1.ObjectMeta{Name: psName, Namespace: "default"},
 				Spec: promoterv1alpha1.PromotionStrategySpec{
 					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "test-repo"},
-					Environments:         []promoterv1alpha1.Environment{{Branch: testBranchDevelopment}},
+					Environments:        []promoterv1alpha1.Environment{{Branch: testBranchDevelopment}},
 				},
 			}
 			template := promoterv1alpha1.PullRequestTemplate{
