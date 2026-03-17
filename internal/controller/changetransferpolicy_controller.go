@@ -879,10 +879,7 @@ func (r *ChangeTransferPolicyReconciler) getPromotionStrategy(ctx context.Contex
 	}
 	var ps promoterv1alpha1.PromotionStrategy
 	if err := r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: psName}, &ps); err != nil {
-		if k8s_errors.IsNotFound(err) {
-			return nil, fmt.Errorf("PromotionStrategy %q not found in namespace %q", psName, ctp.Namespace)
-		}
-		return nil, fmt.Errorf("failed to get PromotionStrategy %q: %w", psName, err)
+		return nil, fmt.Errorf("failed to get PromotionStrategy %q in namespace %q: %w", psName, ctp.Namespace, err)
 	}
 	return &ps, nil
 }
