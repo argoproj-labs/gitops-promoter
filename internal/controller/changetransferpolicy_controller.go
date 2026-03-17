@@ -941,16 +941,6 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 
 	prName = utils.KubeSafeUniqueName(ctx, prName)
 
-	// Check if the PR already exists to determine the commit message
-	existingPR := &promoterv1alpha1.PullRequest{}
-	prExists := true
-	if err := r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: prName}, existingPR); err != nil {
-		if !k8s_errors.IsNotFound(err) {
-			return nil, fmt.Errorf("failed to get existing PullRequest: %w", err)
-		}
-		prExists = false
-	}
-
 	ps, err := r.getPromotionStrategy(ctx, ctp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get PromotionStrategy for template: %w", err)
@@ -971,6 +961,16 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 	title, description, err := TemplatePullRequest(templatePullRequestTemplate, templateData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to template pull request: %w", err)
+	}
+
+	// Check if the PR already exists to determine the commit message
+	existingPR := &promoterv1alpha1.PullRequest{}
+	prExists := true
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: prName}, existingPR); err != nil {
+		if !k8s_errors.IsNotFound(err) {
+			return nil, fmt.Errorf("failed to get existing PullRequest: %w", err)
+		}
+		prExists = false
 	}
 
 	// Build owner reference
