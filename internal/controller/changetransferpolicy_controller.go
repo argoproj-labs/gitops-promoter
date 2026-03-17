@@ -870,6 +870,23 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 	return nil
 }
 
+// getPromotionStrategy fetches the PromotionStrategy for the CTP (from its label).
+// Returns (nil, nil) when the CTP has no PromotionStrategy label or the strategy is not found.
+func (r *ChangeTransferPolicyReconciler) getPromotionStrategy(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PromotionStrategy, error) {
+	psName := ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]
+	if psName == "" {
+		return nil, nil
+	}
+	var ps promoterv1alpha1.PromotionStrategy
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: psName}, &ps); err != nil {
+		if k8s_errors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get PromotionStrategy %q: %w", psName, err)
+	}
+	return &ps, nil
+}
+
 // tooManyPRsError constructs an error indicating that there are too many open pull requests for the CTP.
 func tooManyPRsError(pr *promoterv1alpha1.PullRequestList) error {
 	prNames := make([]string, 0, len(pr.Items))
@@ -922,16 +939,6 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 
 	prName = utils.KubeSafeUniqueName(ctx, prName)
 
-	templatePullRequestTemplate, err := r.SettingsMgr.GetPullRequestControllersTemplate(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get pull request template from settings: %w", err)
-	}
-
-	title, description, err := TemplatePullRequest(templatePullRequestTemplate, map[string]any{"ChangeTransferPolicy": ctp})
-	if err != nil {
-		return nil, fmt.Errorf("failed to template pull request: %w", err)
-	}
-
 	// Check if the PR already exists to determine the commit message
 	existingPR := &promoterv1alpha1.PullRequest{}
 	prExists := true
@@ -940,6 +947,29 @@ func (r *ChangeTransferPolicyReconciler) creatOrUpdatePullRequest(ctx context.Co
 			return nil, fmt.Errorf("failed to get existing PullRequest: %w", err)
 		}
 		prExists = false
+		existingPR = nil
+	}
+
+	ps, err := r.getPromotionStrategy(ctx, ctp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get PromotionStrategy for template: %w", err)
+	}
+
+	templatePullRequestTemplate, err := r.SettingsMgr.GetPullRequestControllersTemplate(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pull request template from settings: %w", err)
+	}
+
+	// Template receives the single current CTP and, when present, its PromotionStrategy (for env order).
+	templateData := map[string]any{
+		"ChangeTransferPolicy": ctp,
+	}
+	if ps != nil {
+		templateData["PromotionStrategy"] = ps
+	}
+	title, description, err := TemplatePullRequest(templatePullRequestTemplate, templateData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to template pull request: %w", err)
 	}
 
 	// Build owner reference

@@ -159,6 +159,7 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
+
 		})
 
 		Context("When using commit status checks", func() {
@@ -662,6 +663,69 @@ var _ = Describe("ChangeTransferPolicy Controller", func() {
 					g.Expect(errors.IsNotFound(err)).To(BeTrue())
 				}, constants.EventuallyTimeout).Should(Succeed())
 			})
+		})
+	})
+})
+
+var _ = Describe("TemplatePullRequest", func() {
+	Context("PR template with ChangeTransferPolicy and optional PromotionStrategy", func() {
+		It("renders description with only CTP when PromotionStrategy is absent", func() {
+			ctp := &promoterv1alpha1.ChangeTransferPolicy{
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+					ActiveBranch:   testBranchDevelopment,
+					ProposedBranch: testBranchDevelopmentNext,
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{Sha: "abc1234"},
+					},
+				},
+			}
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
+				Description: "Promote to {{ .ChangeTransferPolicy.Spec.ActiveBranch }}{{ if .PromotionStrategy }} Strategy: {{ .PromotionStrategy.Name }}{{ end }}",
+			}
+			data := map[string]any{"ChangeTransferPolicy": ctp}
+			title, description, err := TemplatePullRequest(template, data)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(title).To(Equal("Promote abc1234 to `" + testBranchDevelopment + "`"))
+			Expect(description).To(Equal("Promote to " + testBranchDevelopment))
+			Expect(description).NotTo(ContainSubstring("Strategy:"))
+		})
+
+		It("renders description with CTP and PromotionStrategy when PromotionStrategy is present", func() {
+			ctp := &promoterv1alpha1.ChangeTransferPolicy{
+				Spec: promoterv1alpha1.ChangeTransferPolicySpec{
+					ActiveBranch:   testBranchDevelopment,
+					ProposedBranch: testBranchDevelopmentNext,
+				},
+				Status: promoterv1alpha1.ChangeTransferPolicyStatus{
+					Proposed: promoterv1alpha1.CommitBranchState{
+						Dry: promoterv1alpha1.CommitShaState{Sha: "def5678"},
+					},
+				},
+			}
+			psName := "my-promotion-strategy"
+			ps := &promoterv1alpha1.PromotionStrategy{
+				ObjectMeta: metav1.ObjectMeta{Name: psName, Namespace: "default"},
+				Spec: promoterv1alpha1.PromotionStrategySpec{
+					RepositoryReference: promoterv1alpha1.ObjectReference{Name: "test-repo"},
+					Environments:         []promoterv1alpha1.Environment{{Branch: testBranchDevelopment}},
+				},
+			}
+			template := promoterv1alpha1.PullRequestTemplate{
+				Title:       "Promote {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`",
+				Description: "Promote to {{ .ChangeTransferPolicy.Spec.ActiveBranch }}{{ if .PromotionStrategy }} Strategy: {{ .PromotionStrategy.Name }}{{ end }}",
+			}
+			data := map[string]any{
+				"ChangeTransferPolicy": ctp,
+				"PromotionStrategy":    ps,
+			}
+			title, description, err := TemplatePullRequest(template, data)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(title).To(Equal("Promote def5678 to `" + testBranchDevelopment + "`"))
+			Expect(description).To(ContainSubstring("Strategy: " + psName))
+			Expect(description).To(ContainSubstring("Promote to " + testBranchDevelopment))
 		})
 	})
 })
