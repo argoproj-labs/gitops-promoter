@@ -9,7 +9,7 @@
 
 GitOps Promoter facilitates environment promotion for config managed via GitOps.
 
-[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/gitops-promoter)](https://artifacthub.io/packages/search?repo=gitops-promoter)
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/gitops-promoter)](https://artifacthub.io/packages/helm/gitops-promoter/gitops-promoter)
 [![codecov](https://codecov.io/gh/argoproj-labs/gitops-promoter/graph/badge.svg?token=Nbye3NDioO)](https://codecov.io/gh/argoproj-labs/gitops-promoter)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/argoproj-labs/gitops-promoter/badge)](https://scorecard.dev/viewer/?uri=github.com/argoproj-labs/gitops-promoter)
 
