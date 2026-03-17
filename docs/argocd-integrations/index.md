@@ -95,6 +95,10 @@ The following table shows the compatibility between GitOps Promoter versions and
 | v0.18.3+                | v2.3+           |
 | v0.18.2 and earlier     | v2.2.x and earlier |
 
+### App view icon
+
+The extension injects the GitOps Promoter logo as the app view tab icon by adding a `<style>` to the document when it loads. No extra configuration is required. Argo CD's extension API only accepts FontAwesome icon class names, so the extension registers a custom CSS class and injects the corresponding styles itself.
+
 ### Extension Discovery
 
 The extension tab appears on an Argo CD Application when either of the following is true:

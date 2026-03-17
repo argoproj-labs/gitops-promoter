@@ -1,4 +1,8 @@
-# GitOps Promoter ArgoCD Extension
+# GitOps Promoter Argo CD Extension
+
+## App view icon
+
+The extension injects the GitOps Promoter logo as the app view tab icon via a `<style>` tag when it loads. No extra configuration is needed.
 
 ## Prerequisites
 
