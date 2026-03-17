@@ -871,11 +871,13 @@ func (r *ChangeTransferPolicyReconciler) handlePRFinalizerRemoval(ctx context.Co
 }
 
 // getPromotionStrategy fetches the PromotionStrategy for the CTP (from its label).
-// Returns an error if the CTP has no PromotionStrategy label or if the label is set but the PromotionStrategy is not found.
+// Returns nil, nil if the CTP has no PromotionStrategy label (PS is optional).
+// Returns an error only if the label is set but the PromotionStrategy cannot be found.
 func (r *ChangeTransferPolicyReconciler) getPromotionStrategy(ctx context.Context, ctp *promoterv1alpha1.ChangeTransferPolicy) (*promoterv1alpha1.PromotionStrategy, error) {
 	psName := ctp.Labels[promoterv1alpha1.PromotionStrategyLabel]
 	if psName == "" {
-		return nil, fmt.Errorf("ChangeTransferPolicy has no %s label", promoterv1alpha1.PromotionStrategyLabel)
+		log.FromContext(ctx).V(4).Info("ChangeTransferPolicy has no PromotionStrategy label, skipping PromotionStrategy lookup")
+		return nil, nil
 	}
 	var ps promoterv1alpha1.PromotionStrategy
 	if err := r.Get(ctx, client.ObjectKey{Namespace: ctp.Namespace, Name: psName}, &ps); err != nil {
