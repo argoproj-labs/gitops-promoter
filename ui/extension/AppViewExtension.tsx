@@ -41,7 +41,22 @@ const AppViewExtension = ({ application }: AppViewComponentProps) => {
 
     setFetchError(null);
     fetch(url)
-      .then((response) => response.json())
+      .then(async (response) => {
+        if (!response.ok) {
+          let errorText = '';
+          try {
+            errorText = await response.text();
+          } catch {
+            // ignore errors while reading error body
+          }
+          const messageParts = [
+            `Request failed with status ${response.status} ${response.statusText}`,
+            errorText && `body: ${errorText}`,
+          ].filter(Boolean);
+          throw new Error(messageParts.join(' - '));
+        }
+        return response.json();
+      })
       .then((data) => {
         if (!data.items || data.items.length === 0) {
           throw new Error('No PromotionStrategy resources found');
@@ -57,7 +72,8 @@ const AppViewExtension = ({ application }: AppViewComponentProps) => {
         setParam(initial);
       })
       .catch((err) => {
-        setFetchError('Failed to load PromotionStrategy: ' + err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        setFetchError('Failed to load PromotionStrategy: ' + errorMessage);
       });
   }, [application.metadata.name, application.metadata.namespace]);
 
