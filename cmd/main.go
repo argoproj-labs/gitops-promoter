@@ -428,6 +428,7 @@ func newCommand() *cobra.Command {
 
 	opts := zap.Options{
 		Development: true,
+		Level:       zapcore.InfoLevel, // default to info; use --zap-log-level=debug or =5 for verbose
 		TimeEncoder: zapcore.RFC3339NanoTimeEncoder,
 	}
 
