@@ -1,4 +1,4 @@
-import { FiChevronDown, FiChevronUp } from 'react-icons/fi';
+import { FiChevronDown, FiChevronUp, FiInfo } from 'react-icons/fi';
 import { StatusIcon, StatusType } from './StatusIcon';
 import React, { useState } from 'react';
 import { Tooltip } from './Tooltip';
@@ -8,15 +8,29 @@ export interface HealthSummaryProps {
   checks: any[];
   title: string;
   status?: StatusType;
-  healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean }; // Pre-calculated summary
+  healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
+  additionalChecks?: any[];
+  additionalChecksTitle?: string;
+  additionalChecksTitleTooltip?: string;
+  primaryChecksTitle?: string;
+  primaryChecksTitleTooltip?: string;
 }
 
-const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, healthSummary }) => {
-  const { successCount, totalCount, shouldDisplay } = healthSummary || {
-    successCount: checks.filter(check => check.status === 'success').length,
-    totalCount: checks.length,
-    shouldDisplay: checks && checks.length > 0
-  };
+const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, healthSummary, additionalChecks, additionalChecksTitle, additionalChecksTitleTooltip, primaryChecksTitle, primaryChecksTitleTooltip }) => {
+  const allChecks = additionalChecks ? [...checks, ...additionalChecks] : checks;
+  const { successCount, totalCount, shouldDisplay } = healthSummary
+    ? (additionalChecks
+      ? {
+          successCount: healthSummary.successCount + additionalChecks.filter(c => c.status === 'success').length,
+          totalCount: healthSummary.totalCount + additionalChecks.length,
+          shouldDisplay: healthSummary.shouldDisplay || additionalChecks.length > 0,
+        }
+      : healthSummary)
+    : {
+        successCount: allChecks.filter(check => check.status === 'success').length,
+        totalCount: allChecks.length,
+        shouldDisplay: allChecks && allChecks.length > 0,
+      };
 
   // Auto-expand if less than 3 checks
   const shouldAutoExpand = totalCount < 3;
@@ -42,6 +56,16 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
       
       {isExpanded && (
         <div className="health-details">
+          {primaryChecksTitle && (
+            <div className="health-subheading">
+              {primaryChecksTitle}
+              {primaryChecksTitleTooltip && (
+                <Tooltip content={primaryChecksTitleTooltip}>
+                  <span className="health-subheading-info"><FiInfo /></span>
+                </Tooltip>
+              )}
+            </div>
+          )}
           {checks.map((check, index) => (
             <Tooltip key={index} content={check.description}>
               <div className="health-check-item">
@@ -53,9 +77,9 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
                   )}
                 </span>
                 {check.url && (
-                  <a 
-                    href={check.url} 
-                    target="_blank" 
+                  <a
+                    href={check.url}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="health-check-link"
                     title="View details"
@@ -66,6 +90,42 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
               </div>
             </Tooltip>
           ))}
+          {additionalChecks && additionalChecks.length > 0 && (
+            <>
+              <div className="health-subheading">
+                {additionalChecksTitle || 'Additional Checks'}
+                {additionalChecksTitleTooltip && (
+                  <Tooltip content={additionalChecksTitleTooltip}>
+                    <span className="health-subheading-info"><FiInfo /></span>
+                  </Tooltip>
+                )}
+              </div>
+              {additionalChecks.map((check, index) => (
+                <Tooltip key={`additional-${index}`} content={check.description}>
+                  <div className="health-check-item">
+                    <StatusIcon phase={check.status as StatusType} type="status" />
+                    <span className="health-check-name">
+                      <span className="check-name-text">{check.name}</span>
+                      {check.description && (
+                        <span className="check-description-preview">&nbsp;—&nbsp;{check.description}</span>
+                      )}
+                    </span>
+                    {check.url && (
+                      <a
+                        href={check.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="health-check-link"
+                        title="View details"
+                      >
+                        View Details
+                      </a>
+                    )}
+                  </div>
+                </Tooltip>
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>

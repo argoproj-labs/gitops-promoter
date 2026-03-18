@@ -110,6 +110,31 @@
   min-width: 0;
 }
 
+.health-subheading {
+  font-size: 11px;
+  font-weight: 600;
+  color: $argo-color-gray-6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 6px;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.health-subheading-info {
+  display: inline-flex;
+  align-items: center;
+  color: $argo-color-gray-5;
+  cursor: default;
+
+  svg {
+    width: 11px;
+    height: 11px;
+  }
+}
+
 .health-check-link {
   color: $argo-color-gray-6;
   text-decoration: none;

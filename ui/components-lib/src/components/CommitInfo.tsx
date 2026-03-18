@@ -21,22 +21,36 @@ export interface CommitInfoProps {
   healthSummary?: { successCount: number; totalCount: number; shouldDisplay: boolean };
   prUrl: string | null;
   prNumber?: string;
+  hideCommitDetails?: boolean;
+  additionalChecks?: any[];
+  additionalChecksTitle?: string;
+  additionalChecksTitleTooltip?: string;
+  primaryChecksTitle?: string;
+  primaryChecksTitleTooltip?: string;
+  mergeTimeAgo?: string;
 }
 
 // Combined component to display commit information and groups
-const CommitInfo: React.FC<CommitInfoProps> = ({ 
+const CommitInfo: React.FC<CommitInfoProps> = ({
   title,
-  deploymentCommit, 
-  codeCommit, 
-  isActive = false, 
-  status = 'unknown', 
-  className = '', 
-  deploymentCommitUrl, 
-  codeCommitUrl, 
+  deploymentCommit,
+  codeCommit,
+  isActive = false,
+  status = 'unknown',
+  className = '',
+  deploymentCommitUrl,
+  codeCommitUrl,
   checks,
   healthSummary,
-  prUrl, 
-  prNumber
+  prUrl,
+  prNumber,
+  hideCommitDetails = false,
+  additionalChecks,
+  additionalChecksTitle,
+  additionalChecksTitleTooltip,
+  primaryChecksTitle,
+  primaryChecksTitleTooltip,
+  mergeTimeAgo
 }) => {
   const [showDeploymentTooltip, setShowDeploymentTooltip] = useState(false);
   const [showCodeTooltip, setShowCodeTooltip] = useState(false);
@@ -193,31 +207,39 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         <h4 className="commit-group-title">
           {title}
           {prUrl && prNumber && (
-            <a 
-              href={prUrl} 
-              target="_blank" 
+            <a
+              href={prUrl}
+              target="_blank"
               rel="noopener noreferrer"
               className={`pr-indicator ${isActive ? 'pr-merged' : ''}`}
               title={`View PR #${prNumber}${isActive ? ' (Merged)' : ''}`}
             >
               <GoGitPullRequest className="pr-icon" />
               PR #{prNumber}
+              {mergeTimeAgo && <span className="pr-merge-time">{mergeTimeAgo}</span>}
             </a>
           )}
         </h4>
       </div>
-      <div className="commits-section">
-        {renderCommit(deploymentCommit, 'deployment', deploymentCommitUrl)}
-        {codeCommit && renderCommit(codeCommit, 'code', codeCommitUrl || '')}
-      </div>
-      
+      {!hideCommitDetails && (
+        <div className="commits-section">
+          {renderCommit(deploymentCommit, 'deployment', deploymentCommitUrl)}
+          {codeCommit && renderCommit(codeCommit, 'code', codeCommitUrl || '')}
+        </div>
+      )}
+
       {/* Display checks for this section */}
-      {healthSummary?.shouldDisplay && checks && (
-        <HealthSummary 
-          checks={checks} 
-          title={`${title || 'Section'} Checks`} 
-          status={status} 
+      {(healthSummary?.shouldDisplay || (additionalChecks && additionalChecks.length > 0)) && checks && (
+        <HealthSummary
+          checks={checks}
+          title={`${title || 'Section'} Checks`}
+          status={status}
           healthSummary={healthSummary}
+          additionalChecks={additionalChecks}
+          additionalChecksTitle={additionalChecksTitle}
+          additionalChecksTitleTooltip={additionalChecksTitleTooltip}
+          primaryChecksTitle={primaryChecksTitle}
+          primaryChecksTitleTooltip={primaryChecksTitleTooltip}
         />
       )}
     </div>

@@ -136,6 +136,11 @@ $extension-wrapper-gap: 20px;
     background: linear-gradient(135deg, rgba(13, 173, 234, 0.06) 0%, rgba(13, 173, 234, 0.03) 100%);
     min-width: 0;
   }
+
+  .env-card.history-mode .commit-group.proposed {
+    border-left-color: $argo-color-gray-4;
+    background: linear-gradient(135deg, rgba(108, 117, 125, 0.06) 0%, rgba(108, 117, 125, 0.03) 100%);
+  }
   
   .arrow-separator {
     display: flex;

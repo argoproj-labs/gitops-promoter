@@ -30,6 +30,7 @@ export interface ReferenceCommit  {
 export interface PullRequest {
   id: string;
   url?: string;
+  prMergeTime?: string;
 }
 
 export interface History {
@@ -134,6 +135,9 @@ export interface EnrichedEnvDetails {
 
   proposedReferenceCommit: ReferenceCommit | null;
   proposedReferenceCommitUrl: string | null;
+
+  // History
+  historyMergeTimeAgo: string | null;
 }
 
 export type PromotionPhase = 'promoted' | 'failure' | 'pending' | 'unknown'; 

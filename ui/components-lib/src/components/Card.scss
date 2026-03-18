@@ -20,6 +20,12 @@
   &.single-commit-group {
     min-height: 250px;
   }
+
+  &.history-mode {
+    border: 1px dashed $argo-color-gray-5;
+    background: $argo-color-gray-4;
+    box-shadow: none;
+  }
 }
 
 .env-cards-wrapper {
@@ -47,11 +53,11 @@
   color: $argo-color-gray-7;
 }
 
-.history-indicator {
-  font-size: 9px;
-  color: $argo-color-gray-6;
+.env-card__subtitle {
+  font-size: 12px;
   font-weight: 400;
-  opacity: 0.8;
+  color: $argo-color-gray-6;
+  margin-top: 2px;
 }
 
 
