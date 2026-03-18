@@ -103,21 +103,21 @@ release:
   extra_files:
     - glob: ./install.yaml
   header: |
-    ## gitops-promoter
-    {{ .Date }}
-
-    ### Container images
-
-    - quay.io/argoprojlabs/gitops-promoter:{{ .Tag }}
-
-  footer: |
-    **Full Changelog**: https://github.com/argoproj-labs/gitops-promoter/compare/{{ .PreviousTag }}...{{ .Tag }}
-
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/argoproj-labs/gitops-promoter/b0d68761a0f8103ea83f84b5faa382cebcd0ebd4/docs/assets/logo/stacked/secondary.svg">
+      <img src="https://raw.githubusercontent.com/argoproj-labs/gitops-promoter/b0d68761a0f8103ea83f84b5faa382cebcd0ebd4/docs/assets/logo/stacked/primary.svg" alt="GitOps Promoter" width="400">
+    </picture>
+    
     ---
-
+    
     If you're using GitOps Promoter, please add yourself to [USERS.md](https://github.com/argoproj-labs/gitops-promoter/blob/main/USERS.md)!
 
     If you're evaluating GitOps Promoter, we'd love to hear from you — please [open a discussion](https://github.com/argoproj-labs/gitops-promoter/discussions) to share your feedback.
+    
+    ---
+
+  footer: |
+    **Full Changelog**: https://github.com/argoproj-labs/gitops-promoter/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 changelog:
   use:

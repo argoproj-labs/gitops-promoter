@@ -323,8 +323,11 @@ type Bucket struct {
 // PullRequestTemplate defines the template configuration for generating pull requests.
 //
 // Templates use Go template syntax and have access to Sprig functions for flexible string
-// manipulation and formatting. The template receives context about the promotion being performed,
-// which can be used to generate informative titles and descriptions.
+// manipulation and formatting.
+//
+// Template data available when rendering (used by the ChangeTransferPolicy controller when creating/updating PRs):
+//   - .ChangeTransferPolicy – the ChangeTransferPolicy for the managing this PullRequest
+//   - .PromotionStrategy – the PromotionStrategy for the CTP
 type PullRequestTemplate struct {
 	// Title is the template used to generate the title of the pull request.
 	// Uses Go template syntax with Sprig functions available for string manipulation.
