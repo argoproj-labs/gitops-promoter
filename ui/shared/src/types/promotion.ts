@@ -17,7 +17,7 @@ export interface Commit {
   }>;
 }
 
-export interface ReferenceCommit  {
+export interface ReferenceCommit {
   sha?: string;
   author?: string;
   subject?: string;
@@ -103,7 +103,7 @@ export interface EnrichedEnvDetails {
   // Environment info
   branch: string;
   promotionStatus: string;
-  
+
   // Active commits
   activeSha: string;
   activeCommitAuthor: string;
@@ -116,10 +116,10 @@ export interface EnrichedEnvDetails {
   activeStatus: 'success' | 'failure' | 'pending' | 'unknown';
   activePrUrl: string | null;
   activePrNumber: number | null;
-  
+
   activeReferenceCommit: ReferenceCommit | null;
   activeReferenceCommitUrl: string | null;
-  
+
   // Proposed commits
   proposedSha: string;
   prNumber: number | null;
@@ -140,4 +140,4 @@ export interface EnrichedEnvDetails {
   historyMergeTimeAgo: string | null;
 }
 
-export type PromotionPhase = 'promoted' | 'failure' | 'pending' | 'unknown'; 
+export type PromotionPhase = 'promoted' | 'failure' | 'pending' | 'unknown';
