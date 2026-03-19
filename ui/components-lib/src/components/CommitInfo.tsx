@@ -1,4 +1,4 @@
-import { GoArchive } from "react-icons/go";
+import { GoArchive } from 'react-icons/go';
 import { BsBraces } from 'react-icons/bs';
 import { GoGitPullRequest } from 'react-icons/go';
 import { StatusIcon, StatusType } from './StatusIcon';
@@ -6,7 +6,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import TimeAgo from './TimeAgo';
 import HealthSummary from './HealthSummary';
 import './CommitInfo.scss';
-import {ReferenceCommit} from "@shared/types/promotion";
+import { ReferenceCommit } from '@shared/types/promotion';
 
 export interface CommitInfoProps {
   title?: string;
@@ -50,7 +50,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
   additionalChecksTitleTooltip,
   primaryChecksTitle,
   primaryChecksTitleTooltip,
-  mergeTimeAgo
+  mergeTimeAgo,
 }) => {
   const [showDeploymentTooltip, setShowDeploymentTooltip] = useState(false);
   const [showCodeTooltip, setShowCodeTooltip] = useState(false);
@@ -71,9 +71,9 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
     const sha = commit.sha?.substring(0, 8) || 'N/A';
     if (commitUrl && commit.sha) {
       return (
-        <a 
-          href={commitUrl} 
-          target="_blank" 
+        <a
+          href={commitUrl}
+          target="_blank"
           rel="noopener noreferrer"
           className="commit-sha-link"
           title={`View commit ${sha}`}
@@ -89,7 +89,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
   const getTooltipContent = (commit: any) => {
     const subject = commit.subject || '';
     const body = commit.body || '';
-    
+
     if (subject && body) {
       return (
         <div className="github-tooltip">
@@ -98,15 +98,15 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
         </div>
       );
     }
-    
+
     if (body) {
       return <div className="github-tooltip">{body}</div>;
     }
-    
+
     if (subject) {
       return <div className="github-tooltip">{subject}</div>;
     }
-    
+
     return '';
   };
 
@@ -139,8 +139,8 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
           <div className="commit-content">
             <div className="commit-header">
               {renderSha(commit, commitUrl)}
-              <span 
-                className="commit-subject" 
+              <span
+                className="commit-subject"
                 onMouseEnter={() => handleMouseEnter(type)}
                 onMouseLeave={() => handleMouseLeave(type)}
               >
@@ -151,7 +151,10 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               <span className="commit-author">by {commit.author || 'N/A'}</span>
               {commit.date && (
                 <span className="commit-date">
-                  authored <span title={commit.date}><TimeAgo date={commit.date} /></span>
+                  authored{' '}
+                  <span title={commit.date}>
+                    <TimeAgo date={commit.date} />
+                  </span>
                 </span>
               )}
             </div>
@@ -165,9 +168,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               </div>
             )}
           </div>
-          <div className="commit-icon-wrapper">
-            {getIcon(iconType)}
-          </div>
+          <div className="commit-icon-wrapper">{getIcon(iconType)}</div>
         </div>
       );
     } else {
@@ -182,9 +183,7 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
               <span className="commit-author"></span>
             </div>
           </div>
-          <div className="commit-icon-wrapper">
-            {getIcon(iconType)}
-          </div>
+          <div className="commit-icon-wrapper">{getIcon(iconType)}</div>
         </div>
       );
     }
@@ -229,19 +228,20 @@ const CommitInfo: React.FC<CommitInfoProps> = ({
       )}
 
       {/* Display checks for this section */}
-      {(healthSummary?.shouldDisplay || (additionalChecks && additionalChecks.length > 0)) && checks && (
-        <HealthSummary
-          checks={checks}
-          title={`${title || 'Section'} Checks`}
-          status={status}
-          healthSummary={healthSummary}
-          additionalChecks={additionalChecks}
-          additionalChecksTitle={additionalChecksTitle}
-          additionalChecksTitleTooltip={additionalChecksTitleTooltip}
-          primaryChecksTitle={primaryChecksTitle}
-          primaryChecksTitleTooltip={primaryChecksTitleTooltip}
-        />
-      )}
+      {(healthSummary?.shouldDisplay || (additionalChecks && additionalChecks.length > 0)) &&
+        checks && (
+          <HealthSummary
+            checks={checks}
+            title={`${title || 'Section'} Checks`}
+            status={status}
+            healthSummary={healthSummary}
+            additionalChecks={additionalChecks}
+            additionalChecksTitle={additionalChecksTitle}
+            additionalChecksTitleTooltip={additionalChecksTitleTooltip}
+            primaryChecksTitle={primaryChecksTitle}
+            primaryChecksTitleTooltip={primaryChecksTitleTooltip}
+          />
+        )}
     </div>
   );
 };

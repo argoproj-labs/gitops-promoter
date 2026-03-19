@@ -80,8 +80,8 @@ const Card: React.FC<CardProps> = ({ environments }) => {
           };
 
           return (
-            <>
-              <div key={env.branch} className="env-card-column">
+            <React.Fragment key={env.branch}>
+              <div className="env-card-column">
                 <div
                   className={`env-card ${inHistoryMode ? 'history-mode' : ''} ${!inHistoryMode && proposedStatus && ['pending', 'failure'].includes(proposedStatus) ? '' : 'single-commit-group'}`}
                 >
@@ -146,7 +146,9 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                         ? 'State of active checks when this promotion was superseded'
                         : undefined
                     }
-                    mergeTimeAgo={inHistoryMode ? (env.historyMergeTimeAgo ?? undefined) : undefined}
+                    mergeTimeAgo={
+                      inHistoryMode ? (env.historyMergeTimeAgo ?? undefined) : undefined
+                    }
                   />
 
                   {/* Proposed Commits Section (normal mode only) */}
@@ -190,7 +192,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
                   </svg>
                 </div>
               )}
-            </>
+            </React.Fragment>
           );
         })}
       </div>

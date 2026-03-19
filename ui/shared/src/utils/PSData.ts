@@ -24,6 +24,7 @@ function getChecks(commitStatuses: CommitStatus[]): Check[] {
 function timeAgo(dateStr: string): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
+  if (!Number.isFinite(then)) return '-';
   const diffMs = now - then;
   if (diffMs < 0) return 'just now';
 

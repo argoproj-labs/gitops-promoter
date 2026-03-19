@@ -16,26 +16,48 @@ export interface HealthSummaryProps {
   primaryChecksTitleTooltip?: string;
 }
 
-const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, healthSummary, additionalChecks, additionalChecksTitle, additionalChecksTitleTooltip, primaryChecksTitle, primaryChecksTitleTooltip }) => {
+const HealthSummary: React.FC<HealthSummaryProps> = ({
+  checks,
+  title,
+  status,
+  healthSummary,
+  additionalChecks,
+  additionalChecksTitle,
+  additionalChecksTitleTooltip,
+  primaryChecksTitle,
+  primaryChecksTitleTooltip,
+}) => {
   const allChecks = additionalChecks ? [...checks, ...additionalChecks] : checks;
   const { successCount, totalCount, shouldDisplay } = healthSummary
-    ? (additionalChecks
+    ? additionalChecks
       ? {
-          successCount: healthSummary.successCount + additionalChecks.filter(c => c.status === 'success').length,
+          successCount:
+            healthSummary.successCount +
+            additionalChecks.filter((c) => c.status === 'success').length,
           totalCount: healthSummary.totalCount + additionalChecks.length,
           shouldDisplay: healthSummary.shouldDisplay || additionalChecks.length > 0,
         }
-      : healthSummary)
+      : healthSummary
     : {
-        successCount: allChecks.filter(check => check.status === 'success').length,
+        successCount: allChecks.filter((check) => check.status === 'success').length,
         totalCount: allChecks.length,
         shouldDisplay: allChecks && allChecks.length > 0,
       };
 
+  const displayStatus: StatusType = additionalChecks
+    ? allChecks.some((c) => c.status === 'failure')
+      ? 'failure'
+      : allChecks.some((c) => c.status === 'pending')
+        ? 'pending'
+        : allChecks.every((c) => c.status === 'success')
+          ? 'success'
+          : 'unknown'
+    : status || 'unknown';
+
   // Auto-expand if less than 3 checks
   const shouldAutoExpand = totalCount < 3;
   const [isExpanded, setIsExpanded] = useState(shouldAutoExpand);
-  
+
   if (!shouldDisplay) {
     return null;
   }
@@ -47,13 +69,13 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
   return (
     <div className="health-summary">
       <div className="health-header" onClick={handleClick}>
-        <StatusIcon phase={status || 'unknown'} type="health" />
-        <span className="health-count">{successCount}/{totalCount} Checks</span>
-        <span className="health-toggle">
-          {isExpanded ? <FiChevronUp /> : <FiChevronDown />}
+        <StatusIcon phase={displayStatus} type="health" />
+        <span className="health-count">
+          {successCount}/{totalCount} Checks
         </span>
+        <span className="health-toggle">{isExpanded ? <FiChevronUp /> : <FiChevronDown />}</span>
       </div>
-      
+
       {isExpanded && (
         <div className="health-details">
           {primaryChecksTitle && (
@@ -61,7 +83,13 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
               {primaryChecksTitle}
               {primaryChecksTitleTooltip && (
                 <Tooltip content={primaryChecksTitleTooltip}>
-                  <span className="health-subheading-info"><FiInfo /></span>
+                  <button
+                    type="button"
+                    className="health-subheading-info"
+                    aria-label="More information"
+                  >
+                    <FiInfo />
+                  </button>
                 </Tooltip>
               )}
             </div>
@@ -73,7 +101,9 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
                 <span className="health-check-name">
                   <span className="check-name-text">{check.name}</span>
                   {check.description && (
-                    <span className="check-description-preview">&nbsp;—&nbsp;{check.description}</span>
+                    <span className="check-description-preview">
+                      &nbsp;—&nbsp;{check.description}
+                    </span>
                   )}
                 </span>
                 {check.url && (
@@ -96,7 +126,13 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
                 {additionalChecksTitle || 'Additional Checks'}
                 {additionalChecksTitleTooltip && (
                   <Tooltip content={additionalChecksTitleTooltip}>
-                    <span className="health-subheading-info"><FiInfo /></span>
+                    <button
+                      type="button"
+                      className="health-subheading-info"
+                      aria-label="More information"
+                    >
+                      <FiInfo />
+                    </button>
                   </Tooltip>
                 )}
               </div>
@@ -107,7 +143,9 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
                     <span className="health-check-name">
                       <span className="check-name-text">{check.name}</span>
                       {check.description && (
-                        <span className="check-description-preview">&nbsp;—&nbsp;{check.description}</span>
+                        <span className="check-description-preview">
+                          &nbsp;—&nbsp;{check.description}
+                        </span>
                       )}
                     </span>
                     {check.url && (
@@ -132,4 +170,4 @@ const HealthSummary: React.FC<HealthSummaryProps> = ({ checks, title, status, he
   );
 };
 
-export default HealthSummary; 
+export default HealthSummary;

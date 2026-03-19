@@ -22,27 +22,29 @@
   max-height: 300px;
   width: max-content;
   border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
   overflow-y: auto;
   line-height: 1.5;
   word-wrap: break-word;
   word-break: break-word;
   white-space: pre-wrap;
-  
+
   // Custom scrollbar styling
   &::-webkit-scrollbar {
     width: 6px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
     border-radius: 3px;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.3);
     border-radius: 3px;
-    
+
     &:hover {
       background: rgba(255, 255, 255, 0.4);
     }
@@ -248,7 +250,8 @@
 }
 
 .commit-sha {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+  font-family:
+    'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
   font-size: 12px;
   color: $argo-color-gray-7;
   background-color: #f5f5f5;
@@ -259,7 +262,8 @@
 }
 
 .commit-sha-link {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+  font-family:
+    'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'Liberation Mono', 'Courier New', monospace;
   font-size: 12px;
   color: $argo-color-gray-7;
   background-color: #f5f5f5;
