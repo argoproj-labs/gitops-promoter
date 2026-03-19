@@ -73,8 +73,15 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) applyconfiguration:headerFile="hack/boilerplate.go.txt" object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+.PHONY: generate-extension-icon-styles
+generate-extension-icon-styles: ## Generate Argo CD extension icon styles from logo SVGs.
+	./hack/extension-icon-styles.sh
+
+.PHONY: generate-all
+generate-all: generate generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, extension icon styles). For mocks, run make mockery-gen separately.
+
 .PHONY: mockery-gen
-mockery-gen:
+mockery-gen: mockery
 	$(MOCKERY)
 
 .PHONY: fmt
@@ -214,7 +221,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+build-installer: manifests generate-all kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
 	# cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
