@@ -79,11 +79,23 @@ const Card: React.FC<CardProps> = ({ environments }) => {
             date: env.proposedDryCommitDate,
           };
 
+          const hasPendingProposal =
+            !inHistoryMode &&
+            proposedStatus !== undefined &&
+            ['pending', 'failure'].includes(proposedStatus);
+          const cardClassName = [
+            'env-card',
+            inHistoryMode ? 'history-mode' : '',
+            hasPendingProposal ? '' : 'single-commit-group',
+          ]
+            .filter(Boolean)
+            .join(' ');
+
           return (
             <React.Fragment key={env.branch}>
               <div className="env-card-column">
                 <div
-                  className={`env-card ${inHistoryMode ? 'history-mode' : ''} ${!inHistoryMode && proposedStatus && ['pending', 'failure'].includes(proposedStatus) ? '' : 'single-commit-group'}`}
+                  className={cardClassName}
                 >
                   <div
                     className="env-card__title"
