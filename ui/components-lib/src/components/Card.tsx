@@ -94,9 +94,7 @@ const Card: React.FC<CardProps> = ({ environments }) => {
           return (
             <React.Fragment key={env.branch}>
               <div className="env-card-column">
-                <div
-                  className={cardClassName}
-                >
+                <div className={cardClassName}>
                   <div
                     className="env-card__title"
                     style={{
