@@ -22,7 +22,7 @@ export const LiveManifestView: React.FC<LiveManifestViewProps> = ({ strategy }) 
         indent: 2,
         lineWidth: -1,
         quotingType: '"',
-        forceQuotes: false
+        forceQuotes: false,
       });
       setYamlString(formatted);
     }
@@ -59,15 +59,15 @@ export const LiveManifestView: React.FC<LiveManifestViewProps> = ({ strategy }) 
             showFoldWidgets: true,
             fadeFoldWidgets: false,
             behavioursEnabled: false,
-            displayIndentGuides: false
+            displayIndentGuides: false,
           }}
           editorProps={{
-            $blockScrolling: Infinity
+            $blockScrolling: Infinity,
           }}
           style={{
             fontFamily: 'Menlo, Monaco, monospace',
             lineHeight: '18px',
-            border: 'none'
+            border: 'none',
           }}
         />
       </div>
