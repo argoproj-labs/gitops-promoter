@@ -17,6 +17,10 @@ limitations under the License.
 
 package v1alpha1
 
+import (
+	apiv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+)
+
 // CommitConfigurationApplyConfiguration represents a declarative configuration of the CommitConfiguration type for use
 // with apply.
 //
@@ -24,6 +28,9 @@ package v1alpha1
 type CommitConfigurationApplyConfiguration struct {
 	// Message is the commit message that will be written for the commit that's made when merging the PR.
 	Message *string `json:"message,omitempty"`
+	// MergeStrategy is the strategy to use when merging the pull request. Can be "merge" or "squash".
+	// Defaults to "merge" if not specified.
+	MergeStrategy *apiv1alpha1.PullRequestMergeStrategy `json:"mergeStrategy,omitempty"`
 }
 
 // CommitConfigurationApplyConfiguration constructs a declarative configuration of the CommitConfiguration type for use with
@@ -37,5 +44,13 @@ func CommitConfiguration() *CommitConfigurationApplyConfiguration {
 // If called multiple times, the Message field is set to the value of the last call.
 func (b *CommitConfigurationApplyConfiguration) WithMessage(value string) *CommitConfigurationApplyConfiguration {
 	b.Message = &value
+	return b
+}
+
+// WithMergeStrategy sets the MergeStrategy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the MergeStrategy field is set to the value of the last call.
+func (b *CommitConfigurationApplyConfiguration) WithMergeStrategy(value apiv1alpha1.PullRequestMergeStrategy) *CommitConfigurationApplyConfiguration {
+	b.MergeStrategy = &value
 	return b
 }
