@@ -5,3 +5,4 @@ resources:
   - namespace.yaml
   - deployment.yaml
   - webhook_service.yaml
+  - metrics_service.yaml

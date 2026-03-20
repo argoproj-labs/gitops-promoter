@@ -139,12 +139,13 @@ k8s_resource(
         'promoter-gitcommitstatus-admin-role:clusterrole',
         'promoter-gitcommitstatus-editor-role:clusterrole',
         'promoter-gitcommitstatus-viewer-role:clusterrole',
-        'promoter-metrics-reader:clusterrole',
-        'promoter-proxy-role:clusterrole',
         'promoter-timedcommitstatus-admin-role:clusterrole',
         'promoter-timedcommitstatus-editor-role:clusterrole',
         'promoter-timedcommitstatus-viewer-role:clusterrole',
-        'promoter-proxy-rolebinding:clusterrolebinding',
+        'promoter-metrics-auth-role:clusterrole',
+        'promoter-metrics-auth-rolebinding:clusterrolebinding',
+        'promoter-metrics-reader:clusterrole',
+        'promoter-metrics-reader-rolebinding:clusterrolebinding',
         'promoter-controller-configuration:controllerconfiguration',
     ]
 )
