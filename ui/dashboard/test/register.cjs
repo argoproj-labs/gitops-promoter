@@ -8,28 +8,28 @@ const originalRequire = Module.prototype.require;
 const styleExtensions = ['.scss', '.css', '.sass', '.less'];
 const assetExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico'];
 
-Module.prototype.require = function(id) {
-    const ext = id.match(/\.[^./\\]+$/)?.[0];
+Module.prototype.require = function (id) {
+  const ext = id.match(/\.[^./\\]+$/)?.[0];
 
-    // Return empty object for style files
-    if (ext && styleExtensions.includes(ext)) {
-        return {};
-    }
+  // Return empty object for style files
+  if (ext && styleExtensions.includes(ext)) {
+    return {};
+  }
 
-    // Return mock path string for asset files
-    if (ext && assetExtensions.includes(ext)) {
-        return id;
-    }
+  // Return mock path string for asset files
+  if (ext && assetExtensions.includes(ext)) {
+    return id;
+  }
 
-    return originalRequire.apply(this, arguments);
+  return originalRequire.apply(this, arguments);
 };
 
 // Set up jsdom environment
 const { JSDOM } = require('jsdom');
 
 const dom = new JSDOM('<!DOCTYPE html><html><body><div id="root"></div></body></html>', {
-    url: 'http://localhost:3000',
-    pretendToBeVisual: true,
+  url: 'http://localhost:3000',
+  pretendToBeVisual: true,
 });
 
 // Set up global DOM environment
@@ -44,36 +44,36 @@ global.DocumentFragment = dom.window.DocumentFragment;
 
 // Mock fetch API
 global.fetch = async () => {
-    return {
-        ok: true,
-        json: async () => ({}),
-        text: async () => '',
-    };
+  return {
+    ok: true,
+    json: async () => ({}),
+    text: async () => '',
+  };
 };
 
 // Mock matchMedia
 global.window.matchMedia = (query) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: () => {},
-    removeListener: () => {},
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    dispatchEvent: () => true,
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener: () => {},
+  removeListener: () => {},
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  dispatchEvent: () => true,
 });
 
 // Mock ResizeObserver
 global.ResizeObserver = class ResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+  observe() {}
+  unobserve() {}
+  disconnect() {}
 };
 
 // Mock IntersectionObserver
 global.IntersectionObserver = class IntersectionObserver {
-    constructor() {}
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+  constructor() {}
+  observe() {}
+  unobserve() {}
+  disconnect() {}
 };

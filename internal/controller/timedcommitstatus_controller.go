@@ -336,7 +336,7 @@ func (r *TimedCommitStatusReconciler) calculateCommitStatusPhase(requiredDuratio
 	}
 
 	// Not enough time has passed yet
-	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for time-based gate on %s environment", envBranch)
+	return promoterv1alpha1.CommitPhasePending, fmt.Sprintf("Waiting for %s duration gate to complete on %s environment", requiredDuration.String(), envBranch)
 }
 
 func (r *TimedCommitStatusReconciler) upsertCommitStatus(ctx context.Context, tcs *promoterv1alpha1.TimedCommitStatus, ps *promoterv1alpha1.PromotionStrategy, branch, sha string, phase promoterv1alpha1.CommitStatusPhase, message string, envBranch string) (*promoterv1alpha1.CommitStatus, error) {
