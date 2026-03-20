@@ -4,6 +4,9 @@ package v1alpha1
 // PromotionStrategy CR
 const CommitStatusLabel = "promoter.argoproj.io/commit-status"
 
+// ReconcileLabel is the label used to identify whether a resource should be reconciled by its controller
+const ReconcileLabel = "promoter.argoproj.io/reconcile"
+
 // PreviousEnvProposedCommitPrefixNameLabel is the prefix name for copied proposed commits
 const PreviousEnvProposedCommitPrefixNameLabel = "promoter-previous-env-"
 

@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 	_ "embed"
+	"fmt"
+	"time"
 
 	v1 "k8s.io/api/core/v1"
 
@@ -26,8 +28,10 @@ import (
 	. "github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
+	"github.com/argoproj-labs/gitops-promoter/internal/types/constants"
 	"github.com/argoproj-labs/gitops-promoter/internal/utils"
 )
 
@@ -220,8 +224,54 @@ var _ = Describe("CommitStatus Controller", func() {
 			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
 			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
 
+			By("Verifying CommitStatusSet events were recorded")
+			Eventually(func(g Gomega) {
+				events, err := eventsForCommitStatus(ctx, commitStatus)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(events).ToNot(BeEmpty())
+			}, constants.EventuallyTimeout).Should(Succeed())
+
 			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
+		})
+	})
+
+	Context("When reconciling a CommitStatus with the reconcile label set to false", func() {
+		ctx := context.Background()
+
+		var scmSecret *v1.Secret
+		var scmProvider *promoterv1alpha1.ScmProvider
+		var gitRepo *promoterv1alpha1.GitRepository
+		var commitStatus *promoterv1alpha1.CommitStatus
+
+		BeforeEach(func() {
+			scmSecret, scmProvider, gitRepo, commitStatus = commitStatusResources(ctx, "test-reconcile-false")
+			// Set the reconcile label to false
+			commitStatus.Labels = map[string]string{
+				promoterv1alpha1.ReconcileLabel: "false",
+			}
+
+			Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
+			Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Create(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Create(ctx, commitStatus)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			By("Cleaning up resources")
+			Expect(k8sClient.Delete(ctx, commitStatus)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, gitRepo)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmProvider)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, scmSecret)).To(Succeed())
+		})
+
+		It("should skip pushing the status to SCM", func() {
+			By("Verifying no CommitStatusSet events were recorded")
+			Consistently(func(g Gomega) {
+				events, err := eventsForCommitStatus(ctx, commitStatus)
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(events).To(BeEmpty())
+			}, 5*time.Second, 500*time.Millisecond).Should(Succeed())
 		})
 	})
 
@@ -428,4 +478,21 @@ func commitStatusResources(ctx context.Context, name string) (*v1.Secret, *promo
 	}
 
 	return scmSecret, scmProvider, gitRepo, commitStatus
+}
+
+func eventsForCommitStatus(ctx context.Context, commitStatus *promoterv1alpha1.CommitStatus) ([]v1.Event, error) {
+	events := &v1.EventList{}
+	err := k8sClient.List(ctx, events, client.InNamespace(commitStatus.Namespace))
+	if err != nil {
+		return nil, fmt.Errorf("failed to list events: %w", err)
+	}
+
+	var filteredEvents []v1.Event
+	for _, e := range events.Items {
+		if e.InvolvedObject.Name == commitStatus.Name && e.Reason == constants.CommitStatusSetReason {
+			filteredEvents = append(filteredEvents, e)
+		}
+	}
+
+	return filteredEvents, nil
 }
