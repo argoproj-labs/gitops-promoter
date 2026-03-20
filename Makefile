@@ -177,8 +177,13 @@ lint-extension: ## Run extension type-check, lint and audit checks
 test-unit-test-extension: ## Run unit tests for the extension
 	cd ui/extension && npm test
 
+.PHONY: lint-components-lib
+lint-components-lib: ## Run components-lib type-check and format checks (includes shared/)
+	cd ui/components-lib && npm run type-check && npm run format:check
+	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}'
+
 .PHONY: lint-ui
-lint-ui: lint-dashboard lint-extension ## Run all UI checks
+lint-ui: lint-dashboard lint-extension lint-components-lib ## Run all UI checks
 
 .PHONY: test-ui-test-dashboard
 test-ui-test-dashboard: ## Run unit tests for the dashboard

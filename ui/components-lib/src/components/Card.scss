@@ -9,16 +9,24 @@
   flex-direction: column;
   border-radius: 8px;
   box-sizing: border-box;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.1),
+    0 1px 2px rgba(0, 0, 0, 0.06);
   border: 1px solid $argo-color-gray-4;
   min-height: 270px;
   transition: min-height 0.3s ease;
   display: flex;
   flex-direction: column;
   max-height: fit-content;
-  
+
   &.single-commit-group {
     min-height: 250px;
+  }
+
+  &.history-mode {
+    border: 1px dashed $argo-color-gray-5;
+    background: $argo-color-gray-4;
+    box-shadow: none;
   }
 }
 
@@ -47,14 +55,6 @@
   color: $argo-color-gray-7;
 }
 
-.history-indicator {
-  font-size: 9px;
-  color: $argo-color-gray-6;
-  font-weight: 400;
-  opacity: 0.8;
-}
-
-
 .history-toggle {
   background: none;
   border: none;
@@ -67,20 +67,20 @@
   align-items: center;
   justify-content: center;
   font-size: 14px;
-  
+
   &:hover {
     color: $argo-color-gray-7;
     background: rgba(108, 117, 125, 0.08);
   }
-  
+
   &:active {
     background: rgba(108, 117, 125, 0.15);
   }
-  
+
   &.active {
     color: $argo-running;
     background: rgba(13, 173, 234, 0.1);
-    
+
     &:hover {
       background: rgba(13, 173, 234, 0.15);
     }
