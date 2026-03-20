@@ -29,7 +29,7 @@ const setParam = (name: string) => {
   window.history.replaceState(null, '', url.toString());
 };
 
-const AppViewExtension = ({ application }: AppViewComponentProps) => {
+const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
   const [strategies, setStrategies] = useState<PromotionStrategy[]>([]);
   const [selectedName, setSelectedName] = useState<string>(getParam);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -37,11 +37,28 @@ const AppViewExtension = ({ application }: AppViewComponentProps) => {
   useEffect(() => {
     const appName = application.metadata.name;
     const appNamespace = application.metadata.namespace;
-    const url = `/api/v1/applications/${appName}/managed-resources?appNamespace=${appNamespace}&kind=${KIND}&group=${GROUP}`;
+
+    const strategyNodes = (tree.nodes || []).filter(
+      (node) => node.group === GROUP && node.kind === KIND,
+    );
+
+    if (strategyNodes.length === 0) {
+      setFetchError('No PromotionStrategy resources found');
+      return;
+    }
 
     setFetchError(null);
-    fetch(url)
-      .then(async (response) => {
+    Promise.all(
+      strategyNodes.map(async (node) => {
+        const params = new URLSearchParams({
+          appNamespace,
+          namespace: node.namespace,
+          resourceName: node.name,
+          version: node.version || '',
+          kind: KIND,
+          group: GROUP,
+        });
+        const response = await fetch(`/api/v1/applications/${appName}/resource?${params}`);
         if (!response.ok) {
           let errorText = '';
           try {
@@ -55,15 +72,11 @@ const AppViewExtension = ({ application }: AppViewComponentProps) => {
           ].filter(Boolean);
           throw new Error(messageParts.join(' - '));
         }
-        return response.json();
-      })
-      .then((data) => {
-        if (!data.items || data.items.length === 0) {
-          throw new Error('No PromotionStrategy resources found');
-        }
-        const parsed: PromotionStrategy[] = data.items.map((item: { liveState: string }) =>
-          JSON.parse(item.liveState),
-        );
+        const data: { manifest: string } = await response.json();
+        return JSON.parse(data.manifest) as PromotionStrategy;
+      }),
+    )
+      .then((parsed) => {
         setStrategies(parsed);
         const fromUrl = getParam();
         const match = parsed.find((s) => s.metadata.name === fromUrl);
@@ -75,7 +88,7 @@ const AppViewExtension = ({ application }: AppViewComponentProps) => {
         const errorMessage = err instanceof Error ? err.message : String(err);
         setFetchError('Failed to load PromotionStrategy: ' + errorMessage);
       });
-  }, [application.metadata.name, application.metadata.namespace]);
+  }, [application.metadata.name, application.metadata.namespace, tree]);
 
   if (strategies.length === 0) {
     if (fetchError) {
