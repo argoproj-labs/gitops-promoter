@@ -78,7 +78,7 @@ func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpression(expre
 }
 
 // getCompiledValidationExpressionFlexible returns a cached or newly compiled validation expression without AsBool.
-// Used by evaluateValidationExpressionForPromotionStrategy when context is promotionstrategy: expression may return bool or []{branch, phase}.
+// Used by evaluateValidationExpressionForPromotionStrategy when context is promotionstrategy: expression may return bool or object { defaultPhase?, environments? }.
 func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpressionFlexible(expression string) (*vm.Program, error) {
 	return r.getCompiledExpression(expressionCacheKey{Prefix: "validation_flex", Expression: expression})
 }
@@ -236,8 +236,14 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromot
 	// Object: { defaultPhase?, environments? } — defaultPhase defaults to "pending" when omitted
 	if obj, ok := output.(map[string]any); ok {
 		defaultPhase := parsePhaseString(getString(obj, "defaultPhase"), promoterv1alpha1.CommitPhasePending)
-		envsVal, _ := obj["environments"]
-		sl, _ := envsVal.([]any)
+		envsVal, hasEnvs := obj["environments"]
+		if !hasEnvs || envsVal == nil {
+			return defaultPhase, nil, nil
+		}
+		sl, ok := envsVal.([]any)
+		if !ok {
+			return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments must be an array, got %T", envsVal)
+		}
 		if len(sl) == 0 {
 			return defaultPhase, nil, nil
 		}
@@ -264,6 +270,17 @@ func getString(m map[string]any, key string) string {
 	v, _ := m[key]
 	s, _ := v.(string)
 	return s
+}
+
+// resolvePhaseForBranch returns the phase for a branch from phasePerBranch, falling back to defaultPhase
+// when phasePerBranch is nil or the branch is not in the map.
+func resolvePhaseForBranch(branch string, defaultPhase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase) promoterv1alpha1.CommitStatusPhase {
+	if phasePerBranch != nil {
+		if p, ok := phasePerBranch[branch]; ok {
+			return p
+		}
+	}
+	return defaultPhase
 }
 
 func parsePhaseString(phaseStr string, defaultPhase promoterv1alpha1.CommitStatusPhase) promoterv1alpha1.CommitStatusPhase {

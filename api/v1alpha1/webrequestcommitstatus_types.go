@@ -389,13 +389,13 @@ type WebRequestCommitStatusStatus struct {
 
 // WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (one request per reconcile).
 type WebRequestCommitStatusPromotionStrategyContextStatus struct {
-	// Phase is the validation result from the HTTP request (pending or success).
+	// Phase is the validation result from the HTTP request (pending, success, or failure).
 	// When PhasePerBranch is set, Phase is used as the default for any branch not listed in PhasePerBranch.
 	// +kubebuilder:validation:Enum=pending;success;failure
 	// +required
 	Phase string `json:"phase"`
 
-	// PhasePerBranch holds per-branch phases when the success expression returned an array of {branch, phase}.
+	// PhasePerBranch holds per-branch phases when the success expression returned an object with per-branch overrides.
 	// Key is branch name, value is "pending", "success", or "failure". When set, each environment's CommitStatus
 	// uses this phase; branches not in the map use Phase.
 	// +optional
