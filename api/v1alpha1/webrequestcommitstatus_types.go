@@ -21,6 +21,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Mode.Context allowed values for WebRequestCommitStatus.
+const (
+	// ContextEnvironments is the default: one HTTP request per environment; each environment has its own phase.
+	ContextEnvironments = "environments"
+	// ContextPromotionStrategy means one HTTP request per reconcile; phase(s) are applied to all environments' CommitStatuses.
+	ContextPromotionStrategy = "promotionstrategy"
+)
+
 // WebRequestCommitStatusSpec defines the desired state of WebRequestCommitStatus
 type WebRequestCommitStatusSpec struct {
 	// PromotionStrategyRef references the PromotionStrategy this applies to.
@@ -132,6 +140,17 @@ type ModeSpec struct {
 	// The controller will evaluate the expression to determine when to make HTTP requests.
 	// +optional
 	Trigger *TriggerModeSpec `json:"trigger,omitempty"`
+
+	// Context controls whether the controller makes one HTTP request per environment or one per PromotionStrategy.
+	// - "environments" (default): one HTTP request per environment; each environment gets its own phase and status.
+	// - "promotionstrategy": one HTTP request per reconcile; the same phase is applied to CommitStatuses for all
+	//   environments, each still reporting on that environment's reportOn SHA. When context is promotionstrategy,
+	//   per-environment template variables (Environment, ReportedSha, LastSuccessfulSha) are not set; do not use
+	//   them in URL, body, description, or trigger templates.
+	// +optional
+	// +kubebuilder:default=environments
+	// +kubebuilder:validation:Enum=environments;promotionstrategy
+	Context string `json:"context,omitempty"`
 }
 
 // PollingModeSpec defines interval-based polling configuration.
@@ -146,16 +165,25 @@ type PollingModeSpec struct {
 
 // SuccessSpec defines when the HTTP response is considered successful (commit status phase success).
 type SuccessSpec struct {
-	// When holds the boolean expression evaluated against the HTTP response (expr library).
+	// When holds the expression evaluated against the HTTP response (expr library).
 	// Available variables: Response.StatusCode (int), Response.Body (parsed JSON as map[string]any, or raw string if not JSON), Response.Headers (map[string][]string).
-	// The expression must return true for validation to pass. Example: "Response.StatusCode == 200 && Response.Body.approved == true"
+	//
+	// Return type:
+	// - When mode.context is "environments": must return a boolean. true sets phase Success, false sets Pending.
+	// - When mode.context is "promotionstrategy": may return:
+	//   - A boolean: same phase (Success or Pending) for all environments.
+	//   - An object with defaultPhase (optional) and environments (optional array):
+	//     - defaultPhase: "success", "pending", or "failure" — defaults to "pending" when omitted. Used for all when environments is empty, or for branches not listed in environments.
+	//     - environments: optional array of { branch (string), phase (string) }. Example: { defaultPhase: "pending", environments: [{ branch: "dev", phase: "success" }, { branch: "staging", phase: "pending" }] }.
 	// +required
 	When WhenSpec `json:"when"`
 }
 
-// WhenSpec holds a single boolean expression.
+// WhenSpec holds the success expression.
 type WhenSpec struct {
-	// Expression is evaluated using the expr library (github.com/expr-lang/expr). Must return a boolean.
+	// Expression is evaluated using the expr library (github.com/expr-lang/expr).
+	// Must return a boolean when mode.context is "environments".
+	// When mode.context is "promotionstrategy", may return a boolean or an object { defaultPhase?, environments? } as described in SuccessSpec.
 	// +required
 	Expression string `json:"expression"`
 }
@@ -340,17 +368,60 @@ type HTTPRequestSpec struct {
 
 // WebRequestCommitStatusStatus defines the observed state of WebRequestCommitStatus.
 type WebRequestCommitStatusStatus struct {
-	// Environments holds the status of each environment being tracked.
+	// Environments holds the status of each environment when context is "environments".
+	// When context is "promotionstrategy", this slice is empty and PromotionStrategyContext is used instead.
 	// +listType=map
 	// +listMapKey=branch
 	// +optional
 	Environments []WebRequestCommitStatusEnvironmentStatus `json:"environments,omitempty"`
+
+	// PromotionStrategyContext holds the result of the one HTTP run when context is "promotionstrategy".
+	// One request is made per reconcile; phase(s) are reported on each environment's CommitStatus.
+	// +optional
+	PromotionStrategyContext *WebRequestCommitStatusPromotionStrategyContextStatus `json:"promotionStrategyContext,omitempty"`
 
 	// Conditions represent the latest available observations of an object's state
 	// +listType=map
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (one request per reconcile).
+type WebRequestCommitStatusPromotionStrategyContextStatus struct {
+	// Phase is the validation result from the HTTP request (pending or success).
+	// When PhasePerBranch is set, Phase is used as the default for any branch not listed in PhasePerBranch.
+	// +kubebuilder:validation:Enum=pending;success;failure
+	// +required
+	Phase string `json:"phase"`
+
+	// PhasePerBranch holds per-branch phases when the success expression returned an array of {branch, phase}.
+	// Key is branch name, value is "pending", "success", or "failure". When set, each environment's CommitStatus
+	// uses this phase; branches not in the map use Phase.
+	// +optional
+	PhasePerBranch map[string]CommitStatusPhase `json:"phasePerBranch,omitempty"`
+
+	// LastRequestTime is when the last HTTP request was made.
+	// +optional
+	LastRequestTime *metav1.Time `json:"lastRequestTime,omitempty"`
+
+	// LastResponseStatusCode is the HTTP status code from the last request.
+	// +optional
+	LastResponseStatusCode *int `json:"lastResponseStatusCode,omitempty"`
+
+	// TriggerOutput stores the map returned by spec.mode.trigger.when.output.expression.
+	// +optional
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:validation:Type=object
+	// +kubebuilder:pruning:PreserveUnknownFields
+	TriggerOutput *apiextensionsv1.JSON `json:"triggerOutput,omitempty"`
+
+	// ResponseOutput stores the map returned by spec.mode.trigger.response.output.expression.
+	// +optional
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:validation:Type=object
+	// +kubebuilder:pruning:PreserveUnknownFields
+	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
 }
 
 // WebRequestCommitStatusEnvironmentStatus defines the observed status for a specific environment.

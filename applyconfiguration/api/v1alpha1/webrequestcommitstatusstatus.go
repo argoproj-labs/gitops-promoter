@@ -26,8 +26,12 @@ import (
 //
 // WebRequestCommitStatusStatus defines the observed state of WebRequestCommitStatus.
 type WebRequestCommitStatusStatusApplyConfiguration struct {
-	// Environments holds the status of each environment being tracked.
+	// Environments holds the status of each environment when context is "environments".
+	// When context is "promotionstrategy", this slice is empty and PromotionStrategyContext is used instead.
 	Environments []WebRequestCommitStatusEnvironmentStatusApplyConfiguration `json:"environments,omitempty"`
+	// PromotionStrategyContext holds the result of the one HTTP run when context is "promotionstrategy".
+	// One request is made per reconcile; phase(s) are reported on each environment's CommitStatus.
+	PromotionStrategyContext *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration `json:"promotionStrategyContext,omitempty"`
 	// Conditions represent the latest available observations of an object's state
 	Conditions []v1.ConditionApplyConfiguration `json:"conditions,omitempty"`
 }
@@ -48,6 +52,14 @@ func (b *WebRequestCommitStatusStatusApplyConfiguration) WithEnvironments(values
 		}
 		b.Environments = append(b.Environments, *values[i])
 	}
+	return b
+}
+
+// WithPromotionStrategyContext sets the PromotionStrategyContext field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the PromotionStrategyContext field is set to the value of the last call.
+func (b *WebRequestCommitStatusStatusApplyConfiguration) WithPromotionStrategyContext(value *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) *WebRequestCommitStatusStatusApplyConfiguration {
+	b.PromotionStrategyContext = value
 	return b
 }
 

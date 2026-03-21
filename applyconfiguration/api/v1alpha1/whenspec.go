@@ -20,9 +20,11 @@ package v1alpha1
 // WhenSpecApplyConfiguration represents a declarative configuration of the WhenSpec type for use
 // with apply.
 //
-// WhenSpec holds a single boolean expression.
+// WhenSpec holds the success expression.
 type WhenSpecApplyConfiguration struct {
-	// Expression is evaluated using the expr library (github.com/expr-lang/expr). Must return a boolean.
+	// Expression is evaluated using the expr library (github.com/expr-lang/expr).
+	// Must return a boolean when mode.context is "environments".
+	// When mode.context is "promotionstrategy", may return a boolean or an object { defaultPhase?, environments? } as described in SuccessSpec.
 	Expression *string `json:"expression,omitempty"`
 }
 

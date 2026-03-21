@@ -24,6 +24,8 @@ import (
 	"github.com/expr-lang/expr"
 	"github.com/expr-lang/expr/vm"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	promoterv1alpha1 "github.com/argoproj-labs/gitops-promoter/api/v1alpha1"
 )
 
 // expressionCacheKey identifies a compiled expression in the cache. Prefix (e.g. "trigger:", "validation:")
@@ -73,6 +75,12 @@ func (r *WebRequestCommitStatusReconciler) getCompiledTriggerDataExpression(expr
 // Used by evaluateValidationExpression. Compiled with expr.AsBool() so the expression must return a boolean.
 func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpression(expression string) (*vm.Program, error) {
 	return r.getCompiledExpression(expressionCacheKey{Prefix: "validation", Expression: expression}, expr.AsBool())
+}
+
+// getCompiledValidationExpressionFlexible returns a cached or newly compiled validation expression without AsBool.
+// Used by evaluateValidationExpressionForPromotionStrategy when context is promotionstrategy: expression may return bool or []{branch, phase}.
+func (r *WebRequestCommitStatusReconciler) getCompiledValidationExpressionFlexible(expression string) (*vm.Program, error) {
+	return r.getCompiledExpression(expressionCacheKey{Prefix: "validation_flex", Expression: expression})
 }
 
 // getCompiledResponseDataExpression returns a cached or newly compiled response output expression program.
@@ -190,6 +198,85 @@ func (r *WebRequestCommitStatusReconciler) evaluateValidationExpression(ctx cont
 
 	logger.V(4).Info("Validation expression evaluated", "passed", result)
 	return result, nil
+}
+
+// evaluateValidationExpressionForPromotionStrategy runs the success expression when mode.context is promotionstrategy.
+// The expression may return: a boolean (one phase for all); or an object { defaultPhase?, environments? }.
+// defaultPhase defaults to "pending" when omitted; it is used for all when environments is empty, or for branches not in environments.
+// environments is an optional array of { branch, phase }. Returns (phase, phasePerBranch, err).
+func (r *WebRequestCommitStatusReconciler) evaluateValidationExpressionForPromotionStrategy(ctx context.Context, expression string, resp httpResponse) (phase promoterv1alpha1.CommitStatusPhase, phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase, err error) {
+	logger := log.FromContext(ctx)
+
+	program, err := r.getCompiledValidationExpressionFlexible(expression)
+	if err != nil {
+		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("failed to compile validation expression: %w", err)
+	}
+
+	env := map[string]any{
+		"Response": map[string]any{
+			"StatusCode": resp.StatusCode,
+			"Body":       resp.Body,
+			"Headers":    resp.Headers,
+		},
+	}
+
+	output, err := expr.Run(program, env)
+	if err != nil {
+		return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("failed to evaluate validation expression: %w", err)
+	}
+
+	// Boolean: one phase for all environments
+	if b, ok := output.(bool); ok {
+		if b {
+			return promoterv1alpha1.CommitPhaseSuccess, nil, nil
+		}
+		return promoterv1alpha1.CommitPhasePending, nil, nil
+	}
+
+	// Object: { defaultPhase?, environments? } — defaultPhase defaults to "pending" when omitted
+	if obj, ok := output.(map[string]any); ok {
+		defaultPhase := parsePhaseString(getString(obj, "defaultPhase"), promoterv1alpha1.CommitPhasePending)
+		envsVal, _ := obj["environments"]
+		sl, _ := envsVal.([]any)
+		if len(sl) == 0 {
+			return defaultPhase, nil, nil
+		}
+		m := make(map[string]promoterv1alpha1.CommitStatusPhase, len(sl))
+		for i, item := range sl {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d] must be object with branch and phase, got %T", i, item)
+			}
+			branch := getString(entry, "branch")
+			if branch == "" {
+				return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression environments[%d]: branch is required", i)
+			}
+			m[branch] = parsePhaseString(getString(entry, "phase"), defaultPhase)
+		}
+		logger.V(4).Info("Validation expression evaluated (per-branch object)", "defaultPhase", defaultPhase, "phasePerBranch", m)
+		return defaultPhase, m, nil
+	}
+
+	return promoterv1alpha1.CommitPhasePending, nil, fmt.Errorf("validation expression (promotionstrategy context) must return bool or object { defaultPhase?, environments? }, got %T", output)
+}
+
+func getString(m map[string]any, key string) string {
+	v, _ := m[key]
+	s, _ := v.(string)
+	return s
+}
+
+func parsePhaseString(phaseStr string, defaultPhase promoterv1alpha1.CommitStatusPhase) promoterv1alpha1.CommitStatusPhase {
+	switch phaseStr {
+	case "success":
+		return promoterv1alpha1.CommitPhaseSuccess
+	case "pending":
+		return promoterv1alpha1.CommitPhasePending
+	case "failure":
+		return promoterv1alpha1.CommitPhaseFailure
+	default:
+		return defaultPhase
+	}
 }
 
 // evaluateResponseDataExpression runs the response.output expression to extract or transform data from the HTTP response.

@@ -29,6 +29,13 @@ type ModeSpecApplyConfiguration struct {
 	// Trigger enables expression-based triggering mode.
 	// The controller will evaluate the expression to determine when to make HTTP requests.
 	Trigger *TriggerModeSpecApplyConfiguration `json:"trigger,omitempty"`
+	// Context controls whether the controller makes one HTTP request per environment or one per PromotionStrategy.
+	// - "environments" (default): one HTTP request per environment; each environment gets its own phase and status.
+	// - "promotionstrategy": one HTTP request per reconcile; the same phase is applied to CommitStatuses for all
+	// environments, each still reporting on that environment's reportOn SHA. When context is promotionstrategy,
+	// per-environment template variables (Environment, ReportedSha, LastSuccessfulSha) are not set; do not use
+	// them in URL, body, description, or trigger templates.
+	Context *string `json:"context,omitempty"`
 }
 
 // ModeSpecApplyConfiguration constructs a declarative configuration of the ModeSpec type for use with
@@ -50,5 +57,13 @@ func (b *ModeSpecApplyConfiguration) WithPolling(value *PollingModeSpecApplyConf
 // If called multiple times, the Trigger field is set to the value of the last call.
 func (b *ModeSpecApplyConfiguration) WithTrigger(value *TriggerModeSpecApplyConfiguration) *ModeSpecApplyConfiguration {
 	b.Trigger = value
+	return b
+}
+
+// WithContext sets the Context field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the Context field is set to the value of the last call.
+func (b *ModeSpecApplyConfiguration) WithContext(value string) *ModeSpecApplyConfiguration {
+	b.Context = &value
 	return b
 }
