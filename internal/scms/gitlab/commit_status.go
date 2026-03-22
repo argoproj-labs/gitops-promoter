@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
@@ -66,6 +67,16 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
+		// Ignore :enqueue transition errors (pipeline in queue state, transient).
+		// GitLab cannot update a pipeline status with the same status it is already in.
+		// Issue: https://github.com/woodpecker-ci/woodpecker/issues/4067
+		// This is a known GitLab limitation that has not been resolved yet.
+		if strings.Contains(err.Error(), "enqueue") {
+			logger.Info("Skipping due to GitLab :enqueue state, treating as synced", "sha", commitStatus.Spec.Sha, "phase", commitStatus.Spec.Phase)
+			commitStatus.Status.Phase = commitStatus.Spec.Phase
+			commitStatus.Status.Sha = commitStatus.Spec.Sha
+			return commitStatus, nil
+		}
 		return nil, fmt.Errorf("failed to create status: %w", err)
 	}
 
