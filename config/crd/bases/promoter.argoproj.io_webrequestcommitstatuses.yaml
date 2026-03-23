@@ -676,9 +676,18 @@ spec:
                     description: LastResponseStatusCode is the HTTP status code from
                       the last request.
                     type: integer
+                  lastSuccessfulShas:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      LastSuccessfulShas tracks the last SHA that achieved success for each branch.
+                      Used with reportOn "proposed" + polling to skip HTTP requests when all environments
+                      have already succeeded for their current SHAs.
+                      Key is branch name, value is the SHA that last succeeded.
+                    type: object
                   phase:
                     description: |-
-                      Phase is the validation result from the HTTP request (pending or success).
+                      Phase is the validation result from the HTTP request (pending, success, or failure).
                       When PhasePerBranch is set, Phase is used as the default for any branch not listed in PhasePerBranch.
                     enum:
                     - pending
@@ -691,7 +700,7 @@ spec:
                         status.
                       type: string
                     description: |-
-                      PhasePerBranch holds per-branch phases when the success expression returned an array of {branch, phase}.
+                      PhasePerBranch holds per-branch phases when the success expression returned an object with per-branch overrides.
                       Key is branch name, value is "pending", "success", or "failure". When set, each environment's CommitStatus
                       uses this phase; branches not in the map use Phase.
                     type: object

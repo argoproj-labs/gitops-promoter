@@ -28,10 +28,10 @@ import (
 //
 // WebRequestCommitStatusPromotionStrategyContextStatus holds the observed state for context=promotionstrategy (one request per reconcile).
 type WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration struct {
-	// Phase is the validation result from the HTTP request (pending or success).
+	// Phase is the validation result from the HTTP request (pending, success, or failure).
 	// When PhasePerBranch is set, Phase is used as the default for any branch not listed in PhasePerBranch.
 	Phase *string `json:"phase,omitempty"`
-	// PhasePerBranch holds per-branch phases when the success expression returned an array of {branch, phase}.
+	// PhasePerBranch holds per-branch phases when the success expression returned an object with per-branch overrides.
 	// Key is branch name, value is "pending", "success", or "failure". When set, each environment's CommitStatus
 	// uses this phase; branches not in the map use Phase.
 	PhasePerBranch map[string]apiv1alpha1.CommitStatusPhase `json:"phasePerBranch,omitempty"`
@@ -43,6 +43,11 @@ type WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration stru
 	TriggerOutput *apiextensionsv1.JSON `json:"triggerOutput,omitempty"`
 	// ResponseOutput stores the map returned by spec.mode.trigger.response.output.expression.
 	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
+	// LastSuccessfulShas tracks the last SHA that achieved success for each branch.
+	// Used with reportOn "proposed" + polling to skip HTTP requests when all environments
+	// have already succeeded for their current SHAs.
+	// Key is branch name, value is the SHA that last succeeded.
+	LastSuccessfulShas map[string]string `json:"lastSuccessfulShas,omitempty"`
 }
 
 // WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration constructs a declarative configuration of the WebRequestCommitStatusPromotionStrategyContextStatus type for use with
@@ -102,5 +107,19 @@ func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration)
 // If called multiple times, the ResponseOutput field is set to the value of the last call.
 func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithResponseOutput(value apiextensionsv1.JSON) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
 	b.ResponseOutput = &value
+	return b
+}
+
+// WithLastSuccessfulShas puts the entries into the LastSuccessfulShas field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, the entries provided by each call will be put on the LastSuccessfulShas field,
+// overwriting an existing map entries in LastSuccessfulShas field with the same key.
+func (b *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration) WithLastSuccessfulShas(entries map[string]string) *WebRequestCommitStatusPromotionStrategyContextStatusApplyConfiguration {
+	if b.LastSuccessfulShas == nil && len(entries) > 0 {
+		b.LastSuccessfulShas = make(map[string]string, len(entries))
+	}
+	for k, v := range entries {
+		b.LastSuccessfulShas[k] = v
+	}
 	return b
 }

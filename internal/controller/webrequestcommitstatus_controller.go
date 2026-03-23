@@ -563,8 +563,48 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		}
 	}
 
-	// When context is promotionstrategy we do not expose per-environment data in templates (no Environment, ReportedSha, LastSuccessfulSha).
-	// Use "-" for branch in logs/errors (no per-environment branch for the request).
+	// Build current SHA per branch for skip detection and CommitStatus upsert.
+	currentShaPerBranch := make(map[string]string, len(applicableEnvs))
+	for _, env := range applicableEnvs {
+		envStatus, found := psEnvStatusMap[env.Branch]
+		if !found {
+			return nil, nil, 0, fmt.Errorf("environment %q not found in PromotionStrategy status", env.Branch)
+		}
+		sha := envStatus.Proposed.Hydrated.Sha
+		if wrcs.Spec.ReportOn == constants.CommitRefActive {
+			sha = envStatus.Active.Hydrated.Sha
+		}
+		if sha == "" {
+			return nil, nil, 0, fmt.Errorf("no SHA available for environment %q (reportOn: %q)", env.Branch, wrcs.Spec.ReportOn)
+		}
+		currentShaPerBranch[env.Branch] = sha
+	}
+
+	// For polling mode with reportOn "proposed": skip the HTTP request when every applicable
+	// environment has already succeeded for its current SHA (same optimization as the environments path).
+	if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed && prevPromotionStrategyContext != nil {
+		if allBranchesSucceededForCurrentShas(applicableEnvs, prevPromotionStrategyContext, currentShaPerBranch) {
+			logger.V(4).Info("All environments already successful for current SHAs (context=promotionstrategy), skipping HTTP request")
+
+			commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
+			commitBaseTemplateData := templateData{
+				Phase:             previousPhase,
+				PromotionStrategy: ps,
+				NamespaceMetadata: namespaceMeta,
+				TriggerOutput:     triggerData,
+				ResponseOutput:    previousResponseData,
+			}
+			for _, env := range applicableEnvs {
+				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, commitBaseTemplateData)
+				if err != nil {
+					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q (context=promotionstrategy): %w", env.Branch, err)
+				}
+				commitStatuses = append(commitStatuses, cs)
+			}
+			return nil, commitStatuses, wrcs.Spec.Mode.Polling.Interval.Duration, nil
+		}
+	}
+
 	const promotionStrategyContextBranch = "-"
 
 	requestTemplateData := templateData{
@@ -649,20 +689,21 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		}
 		triggerDataJSON = &apiextensionsv1.JSON{Raw: jsonBytes}
 	}
-	wrcs.Status.Environments = nil
-	wrcs.Status.PromotionStrategyContext = &promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{
-		Phase:                  string(phase),
-		PhasePerBranch:         phasePerBranch,
-		LastRequestTime:        lastRequestTime,
-		LastResponseStatusCode: lastResponseStatusCode,
-		TriggerOutput:          triggerDataJSON,
-		ResponseOutput:         responseDataJSON,
+	// Build LastSuccessfulShas: carry forward previous values and update for branches that succeeded.
+	lastSuccessfulShas := make(map[string]string, len(applicableEnvs))
+	if prevPromotionStrategyContext != nil {
+		for k, v := range prevPromotionStrategyContext.LastSuccessfulShas {
+			lastSuccessfulShas[k] = v
+		}
 	}
 
 	transitionedEnvironments := []string{}
 	for _, env := range applicableEnvs {
 		branch := env.Branch
 		envPhase := resolvePhaseForBranch(branch, phase, phasePerBranch)
+		if envPhase == promoterv1alpha1.CommitPhaseSuccess {
+			lastSuccessfulShas[branch] = currentShaPerBranch[branch]
+		}
 		prevEnvPhase := string(resolvePhaseForBranch(branch, promoterv1alpha1.CommitStatusPhase(previousPhase), prevPhasePerBranch))
 		if prevEnvPhase != string(promoterv1alpha1.CommitPhaseSuccess) && envPhase == promoterv1alpha1.CommitPhaseSuccess {
 			transitionedEnvironments = append(transitionedEnvironments, branch)
@@ -672,7 +713,17 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		logger.Info("Validation transitioned to success (context=promotionstrategy)", "branches", transitionedEnvironments)
 	}
 
-	// Commit status template data: use latest response/trigger for description/URL
+	wrcs.Status.Environments = nil
+	wrcs.Status.PromotionStrategyContext = &promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{
+		Phase:                  string(phase),
+		PhasePerBranch:         phasePerBranch,
+		LastRequestTime:        lastRequestTime,
+		LastResponseStatusCode: lastResponseStatusCode,
+		TriggerOutput:          triggerDataJSON,
+		ResponseOutput:         responseDataJSON,
+		LastSuccessfulShas:     lastSuccessfulShas,
+	}
+
 	commitBaseTemplateData := requestTemplateData
 	if responseDataJSON != nil {
 		var latestResponseData map[string]any
@@ -687,21 +738,10 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 	for _, env := range applicableEnvs {
 		branch := env.Branch
-		envStatus, found := psEnvStatusMap[branch]
-		if !found {
-			return nil, nil, 0, fmt.Errorf("environment %q not found in PromotionStrategy status", branch)
-		}
-		reportedSha := envStatus.Proposed.Hydrated.Sha
-		if wrcs.Spec.ReportOn == constants.CommitRefActive {
-			reportedSha = envStatus.Active.Hydrated.Sha
-		}
-		if reportedSha == "" {
-			return nil, nil, 0, fmt.Errorf("no SHA available for environment %q (reportOn: %q)", branch, wrcs.Spec.ReportOn)
-		}
 		envPhase := resolvePhaseForBranch(branch, phase, phasePerBranch)
 		commitTemplateData := commitBaseTemplateData
 		commitTemplateData.Phase = string(envPhase)
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, envPhase, commitTemplateData)
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, currentShaPerBranch[branch], envPhase, commitTemplateData)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q (context=promotionstrategy): %w", branch, err)
 		}
@@ -715,6 +755,29 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		requeueAfter = wrcs.Spec.Mode.Trigger.RequeueDuration.Duration
 	}
 	return transitionedEnvironments, commitStatuses, requeueAfter, nil
+}
+
+// allBranchesSucceededForCurrentShas returns true when every applicable environment has already
+// succeeded for its current SHA, meaning the HTTP request can be skipped entirely.
+func allBranchesSucceededForCurrentShas(
+	applicableEnvs []promoterv1alpha1.Environment,
+	prev *promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus,
+	currentShaPerBranch map[string]string,
+) bool {
+	if prev.LastSuccessfulShas == nil {
+		return false
+	}
+	defaultPhase := promoterv1alpha1.CommitStatusPhase(prev.Phase)
+	for _, env := range applicableEnvs {
+		branchPhase := resolvePhaseForBranch(env.Branch, defaultPhase, prev.PhasePerBranch)
+		if branchPhase != promoterv1alpha1.CommitPhaseSuccess {
+			return false
+		}
+		if prev.LastSuccessfulShas[env.Branch] != currentShaPerBranch[env.Branch] {
+			return false
+		}
+	}
+	return true
 }
 
 // handleHTTPRequestAndValidation is called when the trigger allows (or in polling mode). It performs the

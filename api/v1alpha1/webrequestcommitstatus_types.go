@@ -422,6 +422,13 @@ type WebRequestCommitStatusPromotionStrategyContextStatus struct {
 	// +kubebuilder:validation:Type=object
 	// +kubebuilder:pruning:PreserveUnknownFields
 	ResponseOutput *apiextensionsv1.JSON `json:"responseOutput,omitempty"`
+
+	// LastSuccessfulShas tracks the last SHA that achieved success for each branch.
+	// Used with reportOn "proposed" + polling to skip HTTP requests when all environments
+	// have already succeeded for their current SHAs.
+	// Key is branch name, value is the SHA that last succeeded.
+	// +optional
+	LastSuccessfulShas map[string]string `json:"lastSuccessfulShas,omitempty"`
 }
 
 // WebRequestCommitStatusEnvironmentStatus defines the observed status for a specific environment.
