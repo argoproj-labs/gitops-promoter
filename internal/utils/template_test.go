@@ -6,6 +6,10 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+func ptrBool(b bool) *bool {
+	return &b
+}
+
 var _ = Describe("test rendering a template", func() {
 	tests := map[string]struct {
 		data     any
@@ -40,6 +44,34 @@ var _ = Describe("test rendering a template", func() {
 			options:  []string{"missingkey=zero"},
 			expected: "",
 			wantErr:  false,
+		},
+		"can dereference bool pointer with true value": {
+			template: "{{ deref .Enabled }}",
+			data: map[string]*bool{
+				"Enabled": ptrBool(true),
+			},
+			expected: "true",
+		},
+		"can dereference bool pointer with false value": {
+			template: "{{ deref .Enabled }}",
+			data: map[string]*bool{
+				"Enabled": ptrBool(false),
+			},
+			expected: "false",
+		},
+		"can dereference nil bool pointer": {
+			template: "{{ deref .Enabled }}",
+			data: map[string]*bool{
+				"Enabled": nil,
+			},
+			expected: "false",
+		},
+		"can use deref in conditional": {
+			template: "{{ if deref .AutoMerge }}Enabled{{ else }}Disabled{{ end }}",
+			data: map[string]*bool{
+				"AutoMerge": ptrBool(true),
+			},
+			expected: "Enabled",
 		},
 	}
 
