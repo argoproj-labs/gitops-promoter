@@ -8080,7 +8080,7 @@ spec:
         \   \n## \U0001F500 Auto Merge Status\n{{- range .PromotionStrategy.Spec.Environments
         }}\n{{- if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}\n**PR Auto
         Merge**: {{ if deref .AutoMerge }}✅ Enabled{{ else }}❌ Disabled{{ end }} for
-        {{ $.ChangeTransferPolicy.Spec.ActiveBranch }}.\n{{- end }}{{- end }}\n\n##
+        `{{ $.ChangeTransferPolicy.Spec.ActiveBranch }}`.\n{{- end }}{{- end }}\n\n##
         \U0001F33F Promotion Branches\n\n| Branch | Status |\n|--------|--------|\n{{-
         range .PromotionStrategy.Status.Environments }}\n| `{{ .Branch }}` | {{ if
         eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}**⬅️ This PR**{{ else
