@@ -54,10 +54,10 @@ spec:
         ## Auto Merge Status
         {{- range .PromotionStrategy.Spec.Environments }}
         {{- if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}
-        **PR Auto Merge**: {{ if deref .AutoMerge }}✅ Enabled{{ else }}❌ Disabled{{ end }} for `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`.
+        **PR Auto Merge**: {{ if deref .AutoMerge }}✅ Enabled{{ else }}❌ Disabled{{ end }} for {{ $.ChangeTransferPolicy.Spec.ActiveBranch }}.
         {{- end }}{{- end }}
 
-        ## 🌿 Environment Branches
+        ## 🌿 Promotion Branches
 
         | Branch | Status |
         |--------|--------|
