@@ -8074,9 +8074,20 @@ spec:
       requeueDuration: 5m
   pullRequest:
     template:
-      description: This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch
-        }}` which is currently on dry sha {{ .ChangeTransferPolicy.Status.Active.Dry.Sha
-        }} to dry sha {{ .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}.
+      description: "This PR is promoting the environment branch `{{ .ChangeTransferPolicy.Spec.ActiveBranch
+        }}` which is currently on dry sha {{ trunc 7 .ChangeTransferPolicy.Status.Active.Dry.Sha
+        }} to dry sha {{ trunc 7 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }}.\n\n##
+        ✅ Required Commit Statuses\n  {{- range .PromotionStrategy.Spec.Environments
+        }}\n  {{- if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}\n  {{-
+        range .ActiveCommitStatuses }}\n  - {{ .Key }}\n  {{- end }}{{- end }}{{-
+        end }}\n    \n## \U0001F500 Auto Merge Status\n{{- range .PromotionStrategy.Spec.Environments
+        }}\n{{- if eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}\n**PR Auto
+        Merge**: {{ if deref .AutoMerge }}✅ Enabled{{ else }}❌ Disabled{{ end }} for
+        {{ $.ChangeTransferPolicy.Spec.ActiveBranch }}.\n{{- end }}{{- end }}\n\n##
+        \U0001F33F Promotion Branches\n\n| Branch | Status |\n|--------|--------|\n{{-
+        range .PromotionStrategy.Status.Environments }}\n| `{{ .Branch }}` | {{ if
+        eq .Branch $.ChangeTransferPolicy.Spec.ActiveBranch }}**⬅️ This PR**{{ else
+        }}—{{ end }} |\n{{- end }}\n"
       title: Promote {{ trunc 5 .ChangeTransferPolicy.Status.Proposed.Dry.Sha }} to
         `{{ .ChangeTransferPolicy.Spec.ActiveBranch }}`
     workQueue:
