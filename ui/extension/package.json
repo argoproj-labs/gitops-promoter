@@ -54,6 +54,7 @@
     "zustand": "^5.0.0"
   },
   "overrides": {
+    "picomatch": "2.3.2",
     "undici": "^7.18.2"
   }
 }
