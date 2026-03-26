@@ -90,6 +90,9 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
       .catch((err) => {
         const errorMessage = err instanceof Error ? err.message : String(err);
         setFetchError('Failed to load PromotionStrategy: ' + errorMessage);
+        setStrategies([]);
+        setSelectedName('');
+        setParam('');
       });
   }, [application.metadata.name, application.metadata.namespace, tree]);
 
