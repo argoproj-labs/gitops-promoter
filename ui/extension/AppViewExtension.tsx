@@ -44,6 +44,9 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
 
     if (strategyNodes.length === 0) {
       setFetchError('No PromotionStrategy resources found');
+      setStrategies([]);
+      setSelectedName('');
+      setParam('');
       return;
     }
 
