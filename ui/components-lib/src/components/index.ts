@@ -13,4 +13,4 @@ export { default as TimeAgo } from './TimeAgo';
 export type { StatusType } from './StatusIcon';
 export type { CardProps } from './Card';
 export type { CommitInfoProps } from './CommitInfo';
-export type { HealthSummaryProps } from './HealthSummary'; 
+export type { HealthSummaryProps } from './HealthSummary';

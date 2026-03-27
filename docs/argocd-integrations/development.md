@@ -41,22 +41,22 @@ To test **only** your local build:
 
 1. **Remove the init container** from the `argocd-server` deployment:
 
-   ```bash
-   kubectl patch deployment argocd-server -n argocd --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/initContainers"}]'
-   ```
+    ```bash
+    kubectl patch deployment argocd-server -n argocd --type='json' -p='[{"op": "remove", "path": "/spec/template/spec/initContainers"}]'
+    ```
 
 2. **Wait for the rollout** so a new pod starts with an empty `/tmp/extensions/`:
 
-   ```bash
-   kubectl rollout status deployment/argocd-server -n argocd --timeout=120s
-   ```
+    ```bash
+    kubectl rollout status deployment/argocd-server -n argocd --timeout=120s
+    ```
 
 3. **Copy your build** into the pod:
 
-   ```bash
-   POD=$(kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server -o jsonpath='{.items[0].metadata.name}')
-   kubectl cp ui/extension/dist/extension-promoter.js argocd/$POD:/tmp/extensions/extension-gitops-promoter.js -n argocd -c argocd-server
-   ```
+    ```bash
+    POD=$(kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server -o jsonpath='{.items[0].metadata.name}')
+    kubectl cp ui/extension/dist/extension-promoter.js argocd/$POD:/tmp/extensions/extension-gitops-promoter.js -n argocd -c argocd-server
+    ```
 
 4. Hard-refresh the Argo CD UI to load the new extension.
 

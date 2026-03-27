@@ -73,8 +73,15 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) applyconfiguration:headerFile="hack/boilerplate.go.txt" object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+.PHONY: generate-extension-icon-styles
+generate-extension-icon-styles: ## Generate Argo CD extension icon styles from logo SVGs.
+	./hack/extension-icon-styles.sh
+
+.PHONY: generate-all
+generate-all: generate generate-extension-icon-styles ## Run all code generation used in CI (controller-gen, extension icon styles). For mocks, run make mockery-gen separately.
+
 .PHONY: mockery-gen
-mockery-gen:
+mockery-gen: mockery
 	$(MOCKERY)
 
 .PHONY: fmt
@@ -170,8 +177,13 @@ lint-extension: ## Run extension type-check, lint and audit checks
 test-unit-test-extension: ## Run unit tests for the extension
 	cd ui/extension && npm test
 
+.PHONY: lint-components-lib
+lint-components-lib: ## Run components-lib type-check and format checks (includes shared/)
+	cd ui/components-lib && npm run type-check && npm run format:check
+	cd ui/components-lib && npx prettier --check '../shared/**/*.{ts,tsx}'
+
 .PHONY: lint-ui
-lint-ui: lint-dashboard lint-extension ## Run all UI checks
+lint-ui: lint-dashboard lint-extension lint-components-lib ## Run all UI checks
 
 .PHONY: test-ui-test-dashboard
 test-ui-test-dashboard: ## Run unit tests for the dashboard
@@ -214,7 +226,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+build-installer: manifests generate-all kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
 	# cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
