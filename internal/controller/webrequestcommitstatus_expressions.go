@@ -89,20 +89,9 @@ func (r *WebRequestCommitStatusReconciler) getCompiledResponseDataExpression(exp
 	return r.getCompiledExpression(expressionCacheKey{Prefix: "responsedata", Expression: expression})
 }
 
-// evaluateTriggerExpression runs the trigger expression to decide whether to perform the HTTP request for this environment.
-// It is called before each potential request; the expression has access to ReportedSha, LastSuccessfulSha, Phase, PromotionStrategy, Environment, TriggerOutput, and ResponseOutput.
-// Returns a bool: when true, the controller issues the request; when false, it keeps the previous phase (e.g. Pending) and skips the request.
-func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context.Context, expression string, td templateData) (triggerResult, error) {
-	logger := log.FromContext(ctx)
-
-	// Get compiled expression from cache or compile it
-	program, err := r.getCompiledTriggerExpression(expression)
-	if err != nil {
-		return triggerResult{}, fmt.Errorf("failed to compile trigger expression: %w", err)
-	}
-
-	// Build environment for expression evaluation
-	env := map[string]any{
+// triggerExprEnv builds the variable environment for trigger and trigger output expressions.
+func (td templateData) triggerExprEnv() map[string]any {
+	return map[string]any{
 		"ReportedSha":       td.ReportedSha,
 		"LastSuccessfulSha": td.LastSuccessfulSha,
 		"Phase":             td.Phase,
@@ -111,14 +100,23 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 		"TriggerOutput":     td.TriggerOutput,
 		"ResponseOutput":    td.ResponseOutput,
 	}
+}
 
-	// Run the expression
-	output, err := expr.Run(program, env)
+// evaluateTriggerExpression runs the trigger expression to decide whether to perform the HTTP request.
+// Returns true when the controller should issue the request; false keeps the previous phase and skips.
+func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context.Context, expression string, td templateData) (triggerResult, error) {
+	logger := log.FromContext(ctx)
+
+	program, err := r.getCompiledTriggerExpression(expression)
+	if err != nil {
+		return triggerResult{}, fmt.Errorf("failed to compile trigger expression: %w", err)
+	}
+
+	output, err := expr.Run(program, td.triggerExprEnv())
 	if err != nil {
 		return triggerResult{}, fmt.Errorf("failed to evaluate trigger expression: %w", err)
 	}
 
-	// Must return a boolean
 	boolResult, ok := output.(bool)
 	if !ok {
 		return triggerResult{}, fmt.Errorf("trigger expression must return bool, got %T", output)
@@ -129,8 +127,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerExpression(ctx context
 }
 
 // evaluateTriggerDataExpression runs the trigger when.output expression to produce state that is persisted
-// across reconcile cycles in status.triggerOutput. The expression has the same variable set as the trigger
-// expression. It must return a map[string]any; every key in that map is stored as TriggerOutput.
+// across reconcile cycles in status.triggerOutput. Must return a map[string]any.
 func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx context.Context, expression string, td templateData) (map[string]any, error) {
 	logger := log.FromContext(ctx)
 
@@ -139,17 +136,7 @@ func (r *WebRequestCommitStatusReconciler) evaluateTriggerDataExpression(ctx con
 		return nil, fmt.Errorf("failed to compile trigger data expression: %w", err)
 	}
 
-	env := map[string]any{
-		"ReportedSha":       td.ReportedSha,
-		"LastSuccessfulSha": td.LastSuccessfulSha,
-		"Phase":             td.Phase,
-		"PromotionStrategy": td.PromotionStrategy,
-		"Environment":       td.Environment,
-		"TriggerOutput":     td.TriggerOutput,
-		"ResponseOutput":    td.ResponseOutput,
-	}
-
-	output, err := expr.Run(program, env)
+	output, err := expr.Run(program, td.triggerExprEnv())
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
 	}

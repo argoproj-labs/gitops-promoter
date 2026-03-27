@@ -181,8 +181,16 @@ func (r *WebRequestCommitStatusReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, fmt.Errorf("failed to get namespace metadata: %w", err)
 	}
 
-	// 4. Process each environment defined in the WebRequestCommitStatus
-	transitionedEnvironments, commitStatuses, requeueAfter, err := r.processEnvironments(ctx, &wrcs, &ps, namespaceMeta)
+	// 4. Dispatch based on context mode
+	var transitionedEnvironments []string
+	var commitStatuses []*promoterv1alpha1.CommitStatus
+	var requeueAfter time.Duration
+
+	if wrcs.Spec.Mode.Context == promoterv1alpha1.ContextPromotionStrategy {
+		transitionedEnvironments, commitStatuses, requeueAfter, err = r.processContextPromotionStrategy(ctx, &wrcs, &ps, namespaceMeta)
+	} else {
+		transitionedEnvironments, commitStatuses, requeueAfter, err = r.processEnvironments(ctx, &wrcs, &ps, namespaceMeta)
+	}
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to process environments: %w", err)
 	}
@@ -243,125 +251,67 @@ func (r *WebRequestCommitStatusReconciler) SetupWithManager(ctx context.Context,
 // returns the list of branches that transitioned to success, all created/updated CommitStatuses, and the
 // requeue duration (from spec or default).
 //
-// When spec.mode.context is "promotionstrategy", one HTTP request is made per reconcile and the same phase(s) are applied to
-// per-environment CommitStatuses (each still using that environment's reportOn SHA); see processContextPromotionStrategy.
-//
-//nolint:gocyclo // Complex business logic, refactoring would reduce readability
+//nolint:gocyclo // Linear per-environment business logic; further extraction would scatter the flow.
 func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Context, wrcs *promoterv1alpha1.WebRequestCommitStatus, ps *promoterv1alpha1.PromotionStrategy, namespaceMeta namespaceMetadata) ([]string, []*promoterv1alpha1.CommitStatus, time.Duration, error) {
 	logger := log.FromContext(ctx)
 
-	ctxMode := wrcs.Spec.Mode.Context
-	if ctxMode == "" {
-		ctxMode = promoterv1alpha1.ContextEnvironments
-	}
-	if ctxMode == promoterv1alpha1.ContextPromotionStrategy {
-		return r.processContextPromotionStrategy(ctx, wrcs, ps, namespaceMeta)
-	}
-
-	// Context environments: clear PromotionStrategyContext so status reflects current context
+	// Clear the promotionstrategy-context status; this path uses per-environment status instead.
 	wrcs.Status.PromotionStrategyContext = nil
 
-	// Track which environments transitioned to success
-	transitionedEnvironments := []string{}
-	// Track all CommitStatus objects created/updated
-	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0)
-
-	// Save the previous status before we clear wrcs.Status.Environments and rebuild it below.
-	// We need this copy because:
-	// - Transition detection: identify when an environment first reaches Success (pending -> success).
-	// - Polling optimization: skip HTTP when we already succeeded for this SHA (reportOn proposed).
-	// - Trigger mode: when the trigger expression returns false, we keep the previous phase and
-	//   request metadata instead of making a new HTTP request.
-	// - Template/trigger input: URL, body, trigger expression, and descriptions can use previous
-	//   phase, lastSuccessfulSha, triggerOutput, and response output from the last run.
+	// Snapshot previous status before we rebuild it. Used for transition detection,
+	// polling skip optimization, and carrying forward state when the trigger doesn't fire.
 	previousStatus := wrcs.Status.DeepCopy()
 	if previousStatus == nil {
 		previousStatus = &promoterv1alpha1.WebRequestCommitStatusStatus{}
 	}
-
-	// Map branch -> previous environment status for quick lookup when processing each environment.
 	wrcsEnvStatusMap := make(map[string]*promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, len(previousStatus.Environments))
 	for i := range previousStatus.Environments {
 		wrcsEnvStatusMap[previousStatus.Environments[i].Branch] = &previousStatus.Environments[i]
 	}
 
-	// Build a map of environments from PromotionStrategy for efficient lookup
 	psEnvStatusMap := make(map[string]*promoterv1alpha1.EnvironmentStatus, len(ps.Status.Environments))
 	for i := range ps.Status.Environments {
 		psEnvStatusMap[ps.Status.Environments[i].Branch] = &ps.Status.Environments[i]
 	}
 
-	// Get applicable environments based on the key and reportOn (only proposed lists when reportOn is proposed, only active when reportOn is active)
 	applicableEnvs := r.getApplicableEnvironments(ps, wrcs.Spec.Key, wrcs.Spec.ReportOn)
-
-	// Initialize or clear the environments status
 	wrcs.Status.Environments = make([]promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus, 0, len(applicableEnvs))
+
+	transitionedEnvironments := []string{}
+	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 
 	for _, env := range applicableEnvs {
 		branch := env.Branch
 
-		// Look up the environment status in PromotionStrategy
 		envStatus, found := psEnvStatusMap[branch]
 		if !found {
 			return nil, nil, 0, fmt.Errorf("environment %q not found in PromotionStrategy status", branch)
 		}
-
-		// Determine which SHA to report on based on reportOn setting
-		reportedSha := envStatus.Proposed.Hydrated.Sha
-		if wrcs.Spec.ReportOn == constants.CommitRefActive {
-			reportedSha = envStatus.Active.Hydrated.Sha
-		}
-
+		reportedSha := resolveReportedSha(envStatus, wrcs.Spec.ReportOn)
 		if reportedSha == "" {
 			return nil, nil, 0, fmt.Errorf("no SHA available for environment %q (reportOn: %q)", branch, wrcs.Spec.ReportOn)
 		}
 
-		// --- Previous environment status (from last reconciliation) ---
-		// We use the last run's status for this branch for:
-		//
-		// 1. previousPhase: Last reported phase (Success/Pending). Used to:
-		//    - Feed into templateData so URL/body/trigger/description templates can branch on it.
-		//    - In polling mode: skip the HTTP request when we already succeeded for this SHA.
-		//    - In trigger mode: when the trigger expression is false, we keep previousPhase instead of making a new request.
-		//    - Detect "transition to success" (previousPhase != Success && new phase == Success) for downstream logic.
-		//
-		// 2. lastSuccessfulSha: SHA that last passed validation. Used to:
-		//    - Expose in templateData (e.g. "last known good" in descriptions or trigger logic).
-		//    - In polling mode: skip request when reportedSha == lastSuccessfulSha and phase is already Success.
-		//
-		// 3. triggerOutput: Output from the last when.output expression evaluation (when it ran). Used to:
-		//    - Feed into templateData so the next trigger expression and request templates can use it (e.g. cursor, token).
-		//
-		// 4. previousResponseData: Body of the last HTTP response (after response expression). Used to:
-		//    - Feed into templateData so the trigger expression can decide whether to re-request (e.g. "re-run only if previous result was pending").
+		// Load previous state for this branch
 		prevEnvStatus := wrcsEnvStatusMap[branch]
 		previousPhase := ""
 		lastSuccessfulSha := ""
-		var triggerData map[string]any
-
+		var triggerData, previousResponseData map[string]any
 		if prevEnvStatus != nil {
 			previousPhase = prevEnvStatus.Phase
 			lastSuccessfulSha = prevEnvStatus.LastSuccessfulSha
-			if prevEnvStatus.TriggerOutput != nil {
-				triggerData = make(map[string]any)
-				if err := json.Unmarshal(prevEnvStatus.TriggerOutput.Raw, &triggerData); err != nil {
-					// Log but do not return: corrupted or legacy-format data should not block reconciliation.
-					// We continue with nil triggerData; the next successful run will overwrite status.
-					logger.Error(err, "Failed to unmarshal trigger data", "branch", branch)
-				}
+			var err error
+			triggerData, err = unmarshalJSONMap(prevEnvStatus.TriggerOutput)
+			if err != nil {
+				logger.Error(err, "Failed to unmarshal trigger data", "branch", branch)
 			}
-		}
-
-		var previousResponseData map[string]any
-		if prevEnvStatus != nil && prevEnvStatus.ResponseOutput != nil {
-			if err := json.Unmarshal(prevEnvStatus.ResponseOutput.Raw, &previousResponseData); err != nil {
-				// Log but do not return: same resilience as trigger data; continue with nil previousResponseData.
+			previousResponseData, err = unmarshalJSONMap(prevEnvStatus.ResponseOutput)
+			if err != nil {
 				logger.Error(err, "Failed to unmarshal response data", "branch", branch)
 			}
 		}
 
-		// Build template data
-		templateData := templateData{
+		td := templateData{
 			ReportedSha:       reportedSha,
 			LastSuccessfulSha: lastSuccessfulSha,
 			Phase:             previousPhase,
@@ -372,16 +322,12 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			ResponseOutput:    previousResponseData,
 		}
 
-		// For polling mode with reportOn "proposed", skip HTTP request if already succeeded for this SHA
-		// but still ensure CommitStatus exists
+		// Polling+proposed optimization: skip when this SHA already succeeded
 		if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed {
 			if prevEnvStatus != nil && previousPhase == string(promoterv1alpha1.CommitPhaseSuccess) && lastSuccessfulSha == reportedSha {
 				logger.V(4).Info("Skipping already successful SHA in polling mode", "branch", branch, "sha", reportedSha)
-				// Keep the previous status
 				wrcs.Status.Environments = append(wrcs.Status.Environments, *prevEnvStatus)
-
-				// Still ensure CommitStatus exists (it may have been deleted)
-				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, templateData)
+				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, promoterv1alpha1.CommitPhaseSuccess, td)
 				if err != nil {
 					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q: %w", branch, err)
 				}
@@ -390,47 +336,24 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			}
 		}
 
-		// Decide whether to make the HTTP request this reconcile
-		shouldTrigger := true
-		var newTriggerData map[string]any
-
-		// In polling mode: only make a request when the configured interval has elapsed since last request.
-		// Other events (e.g. PromotionStrategy update) can trigger reconcile; we respect the interval.
-		if wrcs.Spec.Mode.Polling != nil {
-			if prevEnvStatus != nil && prevEnvStatus.LastRequestTime != nil {
-				elapsed := time.Since(prevEnvStatus.LastRequestTime.Time)
-				if elapsed < wrcs.Spec.Mode.Polling.Interval.Duration {
-					logger.V(4).Info("Within polling interval, skipping HTTP request", "branch", branch, "elapsed", elapsed, "interval", wrcs.Spec.Mode.Polling.Interval.Duration)
-					shouldTrigger = false
-				}
-			}
+		// Evaluate whether to fire the HTTP request
+		var prevLastRequestTime *metav1.Time
+		if prevEnvStatus != nil {
+			prevLastRequestTime = prevEnvStatus.LastRequestTime
+		}
+		decision, err := r.evaluateTriggerDecision(ctx, wrcs.Spec.Mode, td, prevLastRequestTime)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("trigger decision for environment %q: %w", branch, err)
 		}
 
-		if wrcs.Spec.Mode.Trigger != nil {
-			tr, err := r.evaluateTriggerExpression(ctx, wrcs.Spec.Mode.Trigger.When.Expression, templateData)
-			if err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to evaluate trigger expression for environment %q: %w", branch, err)
-			}
-			shouldTrigger = tr.Trigger
-
-			// Evaluate the when.output expression (if configured) to produce TriggerOutput for the next reconcile.
-			if wrcs.Spec.Mode.Trigger.When.Output != nil && wrcs.Spec.Mode.Trigger.When.Output.Expression != "" {
-				newTriggerData, err = r.evaluateTriggerDataExpression(ctx, wrcs.Spec.Mode.Trigger.When.Output.Expression, templateData)
-				if err != nil {
-					return nil, nil, 0, fmt.Errorf("failed to evaluate trigger data expression for environment %q: %w", branch, err)
-				}
-			}
-		}
-
+		// Execute HTTP request or carry forward previous state
 		var phase promoterv1alpha1.CommitStatusPhase
 		var lastRequestTime *metav1.Time
 		var lastResponseStatusCode *int
 		var responseDataJSON *apiextensionsv1.JSON
-		var err error
 
-		//nolint:nestif // Extracted most logic to helper function, remaining complexity is minimal
-		if shouldTrigger {
-			result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, templateData, branch)
+		if decision.ShouldFire {
+			result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, td, branch)
 			if err != nil {
 				return nil, nil, 0, err
 			}
@@ -438,21 +361,11 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			lastRequestTime = result.LastRequestTime
 			lastResponseStatusCode = result.LastResponseStatusCode
 			responseDataJSON = result.ResponseDataJSON
-			// Only update lastSuccessfulSha if validation actually succeeded
 			if phase == promoterv1alpha1.CommitPhaseSuccess {
 				lastSuccessfulSha = reportedSha
 			}
 		} else {
-			// Not making HTTP request: either trigger expression returned false or (polling mode) within interval
-			if wrcs.Spec.Mode.Trigger != nil {
-				logger.V(4).Info("Trigger expression returned false, not making HTTP request", "branch", branch, "triggerExpression", wrcs.Spec.Mode.Trigger.When.Expression)
-			}
-			if previousPhase != "" {
-				phase = promoterv1alpha1.CommitStatusPhase(previousPhase)
-			} else {
-				phase = promoterv1alpha1.CommitPhasePending
-			}
-			// Preserve previous request metadata
+			phase = resolvePhaseFromPrevious(previousPhase)
 			if prevEnvStatus != nil {
 				lastRequestTime = prevEnvStatus.LastRequestTime
 				lastResponseStatusCode = prevEnvStatus.LastResponseStatusCode
@@ -460,24 +373,17 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			}
 		}
 
-		// Check if this validation transitioned to success
 		if previousPhase != string(promoterv1alpha1.CommitPhaseSuccess) && phase == promoterv1alpha1.CommitPhaseSuccess {
 			transitionedEnvironments = append(transitionedEnvironments, branch)
 			logger.Info("Validation transitioned to success", "branch", branch, "sha", reportedSha)
 		}
 
-		// Convert trigger data to JSON for status
-		var triggerDataJSON *apiextensionsv1.JSON
-		if newTriggerData != nil {
-			jsonBytes, err := json.Marshal(newTriggerData)
-			if err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
-			}
-			triggerDataJSON = &apiextensionsv1.JSON{Raw: jsonBytes}
+		triggerDataJSON, err := marshalJSONMap(decision.NewTriggerData)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
 		}
 
-		// Update status for this environment
-		envWebRequestStatus := promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
+		wrcs.Status.Environments = append(wrcs.Status.Environments, promoterv1alpha1.WebRequestCommitStatusEnvironmentStatus{
 			Branch:                 branch,
 			ReportedSha:            reportedSha,
 			LastSuccessfulSha:      lastSuccessfulSha,
@@ -486,44 +392,18 @@ func (r *WebRequestCommitStatusReconciler) processEnvironments(ctx context.Conte
 			LastResponseStatusCode: lastResponseStatusCode,
 			TriggerOutput:          triggerDataJSON,
 			ResponseOutput:         responseDataJSON,
-		}
-		wrcs.Status.Environments = append(wrcs.Status.Environments, envWebRequestStatus)
+		})
 
-		// Use latest response and trigger output for commit status description template
-		commitTemplateData := templateData
-		if responseDataJSON != nil {
-			var latestResponseData map[string]any
-			if err := json.Unmarshal(responseDataJSON.Raw, &latestResponseData); err == nil {
-				commitTemplateData.ResponseOutput = latestResponseData
-			}
-		}
-		if newTriggerData != nil {
-			commitTemplateData.TriggerOutput = newTriggerData
-		}
-
-		// Create or update the CommitStatus
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, phase, commitTemplateData)
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, reportedSha, phase, td.withLatestOutputs(responseDataJSON, decision.NewTriggerData))
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q: %w", branch, err)
 		}
 		commitStatuses = append(commitStatuses, cs)
 
-		logger.Info("Processed environment",
-			"branch", branch,
-			"reportedSha", reportedSha,
-			"phase", phase,
-			"triggered", shouldTrigger)
+		logger.Info("Processed environment", "branch", branch, "reportedSha", reportedSha, "phase", phase, "triggered", decision.ShouldFire)
 	}
 
-	// Determine requeue duration based on mode
-	var requeueAfter time.Duration
-	if wrcs.Spec.Mode.Polling != nil {
-		requeueAfter = wrcs.Spec.Mode.Polling.Interval.Duration
-	} else if wrcs.Spec.Mode.Trigger != nil {
-		requeueAfter = wrcs.Spec.Mode.Trigger.RequeueDuration.Duration
-	}
-
-	return transitionedEnvironments, commitStatuses, requeueAfter, nil
+	return transitionedEnvironments, commitStatuses, requeueDuration(wrcs.Spec.Mode), nil
 }
 
 // processContextPromotionStrategy runs when mode.context is "promotionstrategy": one HTTP request per reconcile;
@@ -543,59 +423,45 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		psEnvStatusMap[ps.Status.Environments[i].Branch] = &ps.Status.Environments[i]
 	}
 
-	prevPromotionStrategyContext := wrcs.Status.PromotionStrategyContext
+	// Load previous state
+	prev := wrcs.Status.PromotionStrategyContext
 	previousPhase := ""
-	var triggerData map[string]any
-	var previousResponseData map[string]any
-	if prevPromotionStrategyContext != nil {
-		previousPhase = prevPromotionStrategyContext.Phase
-		if prevPromotionStrategyContext.TriggerOutput != nil {
-			triggerData = make(map[string]any)
-			if err := json.Unmarshal(prevPromotionStrategyContext.TriggerOutput.Raw, &triggerData); err != nil {
-				logger.Error(err, "Failed to unmarshal trigger data (context=promotionstrategy)")
-			}
+	var triggerData, previousResponseData map[string]any
+	if prev != nil {
+		previousPhase = prev.Phase
+		var err error
+		triggerData, err = unmarshalJSONMap(prev.TriggerOutput)
+		if err != nil {
+			logger.Error(err, "Failed to unmarshal trigger data (context=promotionstrategy)")
 		}
-		if prevPromotionStrategyContext.ResponseOutput != nil {
-			previousResponseData = make(map[string]any)
-			if err := json.Unmarshal(prevPromotionStrategyContext.ResponseOutput.Raw, &previousResponseData); err != nil {
-				logger.Error(err, "Failed to unmarshal response data (context=promotionstrategy)")
-			}
+		previousResponseData, err = unmarshalJSONMap(prev.ResponseOutput)
+		if err != nil {
+			logger.Error(err, "Failed to unmarshal response data (context=promotionstrategy)")
 		}
 	}
 
-	// Build current SHA per branch for skip detection and CommitStatus upsert.
+	// Build current SHA per branch for skip detection and CommitStatus upsert
 	currentShaPerBranch := make(map[string]string, len(applicableEnvs))
 	for _, env := range applicableEnvs {
 		envStatus, found := psEnvStatusMap[env.Branch]
 		if !found {
 			return nil, nil, 0, fmt.Errorf("environment %q not found in PromotionStrategy status", env.Branch)
 		}
-		sha := envStatus.Proposed.Hydrated.Sha
-		if wrcs.Spec.ReportOn == constants.CommitRefActive {
-			sha = envStatus.Active.Hydrated.Sha
-		}
+		sha := resolveReportedSha(envStatus, wrcs.Spec.ReportOn)
 		if sha == "" {
 			return nil, nil, 0, fmt.Errorf("no SHA available for environment %q (reportOn: %q)", env.Branch, wrcs.Spec.ReportOn)
 		}
 		currentShaPerBranch[env.Branch] = sha
 	}
 
-	// For polling mode with reportOn "proposed": skip the HTTP request when every applicable
-	// environment has already succeeded for its current SHA (same optimization as the environments path).
-	if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed && prevPromotionStrategyContext != nil {
-		if allBranchesSucceededForCurrentShas(applicableEnvs, prevPromotionStrategyContext, currentShaPerBranch) {
+	// Polling+proposed optimization: skip when all environments already succeeded for their current SHAs
+	if wrcs.Spec.Mode.Polling != nil && wrcs.Spec.ReportOn == constants.CommitRefProposed && prev != nil {
+		if allBranchesSucceededForCurrentShas(applicableEnvs, prev, currentShaPerBranch) {
 			logger.V(4).Info("All environments already successful for current SHAs (context=promotionstrategy), skipping HTTP request")
-
+			baseTd := templateData{Phase: previousPhase, PromotionStrategy: ps, NamespaceMetadata: namespaceMeta, TriggerOutput: triggerData, ResponseOutput: previousResponseData}
 			commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
-			commitBaseTemplateData := templateData{
-				Phase:             previousPhase,
-				PromotionStrategy: ps,
-				NamespaceMetadata: namespaceMeta,
-				TriggerOutput:     triggerData,
-				ResponseOutput:    previousResponseData,
-			}
 			for _, env := range applicableEnvs {
-				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, commitBaseTemplateData)
+				cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, env.Branch, currentShaPerBranch[env.Branch], promoterv1alpha1.CommitPhaseSuccess, baseTd)
 				if err != nil {
 					return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for skipped environment %q (context=promotionstrategy): %w", env.Branch, err)
 				}
@@ -605,60 +471,38 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		}
 	}
 
-	const promotionStrategyContextBranch = "-"
-
-	requestTemplateData := templateData{
-		ReportedSha:       "", // not exposed when context is promotionstrategy
-		LastSuccessfulSha: "", // not exposed when context is promotionstrategy
+	td := templateData{
 		Phase:             previousPhase,
 		PromotionStrategy: ps,
-		Environment:       nil, // not exposed when context is promotionstrategy
 		NamespaceMetadata: namespaceMeta,
 		TriggerOutput:     triggerData,
 		ResponseOutput:    previousResponseData,
 	}
 
-	shouldTrigger := true
-	var newTriggerData map[string]any
-
-	if wrcs.Spec.Mode.Polling != nil {
-		if prevPromotionStrategyContext != nil && prevPromotionStrategyContext.LastRequestTime != nil {
-			elapsed := time.Since(prevPromotionStrategyContext.LastRequestTime.Time)
-			if elapsed < wrcs.Spec.Mode.Polling.Interval.Duration {
-				logger.V(4).Info("Within polling interval (context=promotionstrategy), skipping HTTP request", "elapsed", elapsed, "interval", wrcs.Spec.Mode.Polling.Interval.Duration)
-				shouldTrigger = false
-			}
-		}
+	// Evaluate whether to fire the HTTP request
+	var prevLastRequestTime *metav1.Time
+	if prev != nil {
+		prevLastRequestTime = prev.LastRequestTime
+	}
+	decision, err := r.evaluateTriggerDecision(ctx, wrcs.Spec.Mode, td, prevLastRequestTime)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("trigger decision (context=promotionstrategy): %w", err)
 	}
 
-	if wrcs.Spec.Mode.Trigger != nil {
-		tr, err := r.evaluateTriggerExpression(ctx, wrcs.Spec.Mode.Trigger.When.Expression, requestTemplateData)
-		if err != nil {
-			return nil, nil, 0, fmt.Errorf("failed to evaluate trigger expression (context=promotionstrategy): %w", err)
-		}
-		shouldTrigger = tr.Trigger
-		if wrcs.Spec.Mode.Trigger.When.Output != nil && wrcs.Spec.Mode.Trigger.When.Output.Expression != "" {
-			newTriggerData, err = r.evaluateTriggerDataExpression(ctx, wrcs.Spec.Mode.Trigger.When.Output.Expression, requestTemplateData)
-			if err != nil {
-				return nil, nil, 0, fmt.Errorf("failed to evaluate trigger data expression (context=promotionstrategy): %w", err)
-			}
-		}
-	}
-
+	// Execute HTTP request or carry forward previous state
 	var phase promoterv1alpha1.CommitStatusPhase
 	var phasePerBranch map[string]promoterv1alpha1.CommitStatusPhase
 	var lastRequestTime *metav1.Time
 	var lastResponseStatusCode *int
 	var responseDataJSON *apiextensionsv1.JSON
 
-	// Previous per-branch phases (for transition detection when we have PhasePerBranch)
 	var prevPhasePerBranch map[string]promoterv1alpha1.CommitStatusPhase
-	if prevPromotionStrategyContext != nil {
-		prevPhasePerBranch = prevPromotionStrategyContext.PhasePerBranch
+	if prev != nil {
+		prevPhasePerBranch = prev.PhasePerBranch
 	}
 
-	if shouldTrigger {
-		result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, requestTemplateData, promotionStrategyContextBranch)
+	if decision.ShouldFire {
+		result, err := r.handleHTTPRequestAndValidation(ctx, wrcs, td, "-")
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -668,35 +512,27 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		lastResponseStatusCode = result.LastResponseStatusCode
 		responseDataJSON = result.ResponseDataJSON
 	} else {
-		if previousPhase != "" {
-			phase = promoterv1alpha1.CommitStatusPhase(previousPhase)
-		} else {
-			phase = promoterv1alpha1.CommitPhasePending
-		}
-		if prevPromotionStrategyContext != nil {
-			lastRequestTime = prevPromotionStrategyContext.LastRequestTime
-			lastResponseStatusCode = prevPromotionStrategyContext.LastResponseStatusCode
-			responseDataJSON = prevPromotionStrategyContext.ResponseOutput
-			phasePerBranch = prevPromotionStrategyContext.PhasePerBranch
+		phase = resolvePhaseFromPrevious(previousPhase)
+		if prev != nil {
+			lastRequestTime = prev.LastRequestTime
+			lastResponseStatusCode = prev.LastResponseStatusCode
+			responseDataJSON = prev.ResponseOutput
+			phasePerBranch = prev.PhasePerBranch
 		}
 	}
 
-	var triggerDataJSON *apiextensionsv1.JSON
-	if newTriggerData != nil {
-		jsonBytes, err := json.Marshal(newTriggerData)
-		if err != nil {
-			return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
-		}
-		triggerDataJSON = &apiextensionsv1.JSON{Raw: jsonBytes}
+	triggerDataJSON, err := marshalJSONMap(decision.NewTriggerData)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("failed to marshal trigger data: %w", err)
 	}
-	// Build LastSuccessfulShas: carry forward previous values and update for branches that succeeded.
+
+	// Build LastSuccessfulShas and detect transitions
 	lastSuccessfulShas := make(map[string]string, len(applicableEnvs))
-	if prevPromotionStrategyContext != nil {
-		for k, v := range prevPromotionStrategyContext.LastSuccessfulShas {
+	if prev != nil {
+		for k, v := range prev.LastSuccessfulShas {
 			lastSuccessfulShas[k] = v
 		}
 	}
-
 	transitionedEnvironments := []string{}
 	for _, env := range applicableEnvs {
 		branch := env.Branch
@@ -713,6 +549,7 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		logger.Info("Validation transitioned to success (context=promotionstrategy)", "branches", transitionedEnvironments)
 	}
 
+	// Update status
 	wrcs.Status.Environments = nil
 	wrcs.Status.PromotionStrategyContext = &promoterv1alpha1.WebRequestCommitStatusPromotionStrategyContextStatus{
 		Phase:                  string(phase),
@@ -724,37 +561,22 @@ func (r *WebRequestCommitStatusReconciler) processContextPromotionStrategy(ctx c
 		LastSuccessfulShas:     lastSuccessfulShas,
 	}
 
-	commitBaseTemplateData := requestTemplateData
-	if responseDataJSON != nil {
-		var latestResponseData map[string]any
-		if json.Unmarshal(responseDataJSON.Raw, &latestResponseData) == nil {
-			commitBaseTemplateData.ResponseOutput = latestResponseData
-		}
-	}
-	if newTriggerData != nil {
-		commitBaseTemplateData.TriggerOutput = newTriggerData
-	}
-
+	// Upsert CommitStatuses for each environment
+	commitTd := td.withLatestOutputs(responseDataJSON, decision.NewTriggerData)
 	commitStatuses := make([]*promoterv1alpha1.CommitStatus, 0, len(applicableEnvs))
 	for _, env := range applicableEnvs {
 		branch := env.Branch
 		envPhase := resolvePhaseForBranch(branch, phase, phasePerBranch)
-		commitTemplateData := commitBaseTemplateData
-		commitTemplateData.Phase = string(envPhase)
-		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, currentShaPerBranch[branch], envPhase, commitTemplateData)
+		perEnvTd := commitTd
+		perEnvTd.Phase = string(envPhase)
+		cs, err := r.upsertCommitStatus(ctx, wrcs, ps.Spec.RepositoryReference.Name, branch, currentShaPerBranch[branch], envPhase, perEnvTd)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("failed to upsert CommitStatus for environment %q (context=promotionstrategy): %w", branch, err)
 		}
 		commitStatuses = append(commitStatuses, cs)
 	}
 
-	var requeueAfter time.Duration
-	if wrcs.Spec.Mode.Polling != nil {
-		requeueAfter = wrcs.Spec.Mode.Polling.Interval.Duration
-	} else if wrcs.Spec.Mode.Trigger != nil {
-		requeueAfter = wrcs.Spec.Mode.Trigger.RequeueDuration.Duration
-	}
-	return transitionedEnvironments, commitStatuses, requeueAfter, nil
+	return transitionedEnvironments, commitStatuses, requeueDuration(wrcs.Spec.Mode), nil
 }
 
 // allBranchesSucceededForCurrentShas returns true when every applicable environment has already
@@ -778,6 +600,120 @@ func allBranchesSucceededForCurrentShas(
 		}
 	}
 	return true
+}
+
+// --- Shared helpers for processEnvironments and processContextPromotionStrategy ---
+
+// triggerDecision holds the result of evaluateTriggerDecision.
+type triggerDecision struct {
+	ShouldFire     bool
+	NewTriggerData map[string]any
+}
+
+// evaluateTriggerDecision determines whether the HTTP request should fire this reconcile.
+// For polling mode it checks whether the polling interval has elapsed since lastRequestTime.
+// For trigger mode it evaluates the trigger expression and optionally the trigger output expression.
+func (r *WebRequestCommitStatusReconciler) evaluateTriggerDecision(
+	ctx context.Context,
+	mode promoterv1alpha1.ModeSpec,
+	td templateData,
+	lastRequestTime *metav1.Time,
+) (triggerDecision, error) {
+	logger := log.FromContext(ctx)
+	shouldFire := true
+	var newTriggerData map[string]any
+
+	if mode.Polling != nil && lastRequestTime != nil {
+		if elapsed := time.Since(lastRequestTime.Time); elapsed < mode.Polling.Interval.Duration {
+			logger.V(4).Info("Within polling interval, skipping HTTP request",
+				"elapsed", elapsed, "interval", mode.Polling.Interval.Duration)
+			shouldFire = false
+		}
+	}
+
+	if mode.Trigger != nil {
+		tr, err := r.evaluateTriggerExpression(ctx, mode.Trigger.When.Expression, td)
+		if err != nil {
+			return triggerDecision{}, fmt.Errorf("failed to evaluate trigger expression: %w", err)
+		}
+		shouldFire = tr.Trigger
+		if mode.Trigger.When.Output != nil && mode.Trigger.When.Output.Expression != "" {
+			newTriggerData, err = r.evaluateTriggerDataExpression(ctx, mode.Trigger.When.Output.Expression, td)
+			if err != nil {
+				return triggerDecision{}, fmt.Errorf("failed to evaluate trigger data expression: %w", err)
+			}
+		}
+	}
+
+	return triggerDecision{ShouldFire: shouldFire, NewTriggerData: newTriggerData}, nil
+}
+
+// resolvePhaseFromPrevious returns the previous phase as a CommitStatusPhase,
+// defaulting to Pending when no previous phase exists.
+func resolvePhaseFromPrevious(previousPhase string) promoterv1alpha1.CommitStatusPhase {
+	if previousPhase != "" {
+		return promoterv1alpha1.CommitStatusPhase(previousPhase)
+	}
+	return promoterv1alpha1.CommitPhasePending
+}
+
+// resolveReportedSha returns the SHA to report on based on the reportOn setting.
+func resolveReportedSha(envStatus *promoterv1alpha1.EnvironmentStatus, reportOn string) string {
+	if reportOn == constants.CommitRefActive {
+		return envStatus.Active.Hydrated.Sha
+	}
+	return envStatus.Proposed.Hydrated.Sha
+}
+
+// unmarshalJSONMap unmarshals an apiextensionsv1.JSON into a map. Returns (nil, nil) when raw is nil.
+func unmarshalJSONMap(raw *apiextensionsv1.JSON) (map[string]any, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	result := make(map[string]any)
+	if err := json.Unmarshal(raw.Raw, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// marshalJSONMap marshals a map into an apiextensionsv1.JSON. Returns (nil, nil) when data is nil.
+func marshalJSONMap(data map[string]any) (*apiextensionsv1.JSON, error) {
+	if data == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	return &apiextensionsv1.JSON{Raw: raw}, nil
+}
+
+// withLatestOutputs returns a copy of the template data with ResponseOutput and TriggerOutput
+// updated from the latest HTTP response and trigger evaluation. Used before upserting CommitStatuses
+// so description/URL templates reflect current data.
+func (td templateData) withLatestOutputs(responseDataJSON *apiextensionsv1.JSON, newTriggerData map[string]any) templateData {
+	result := td
+	if responseDataJSON != nil {
+		if data, err := unmarshalJSONMap(responseDataJSON); err == nil && data != nil {
+			result.ResponseOutput = data
+		}
+	}
+	if newTriggerData != nil {
+		result.TriggerOutput = newTriggerData
+	}
+	return result
+}
+
+// requeueDuration returns the requeue interval from the mode spec.
+func requeueDuration(mode promoterv1alpha1.ModeSpec) time.Duration {
+	if mode.Polling != nil {
+		return mode.Polling.Interval.Duration
+	}
+	if mode.Trigger != nil {
+		return mode.Trigger.RequeueDuration.Duration
+	}
+	return 0
 }
 
 // handleHTTPRequestAndValidation is called when the trigger allows (or in polling mode). It performs the
