@@ -27,6 +27,25 @@ import (
 // State machine source: https://gitlab.com/gitlab-org/gitlab/-/blob/master/app/models/commit_status.rb
 var gitlabTransitionErrRe = regexp.MustCompile(`Cannot transition status via :\w+ from :(\w+)`)
 
+// isAlreadyInDesiredState checks whether a GitLab API error indicates a no-op state transition,
+// i.e. the commit status is already in the state we requested. GitLab's pipeline state machine
+// rejects transitions to the current state with HTTP 400 and an error like:
+//
+//	"Cannot transition status via :enqueue from :pending"
+//
+// We parse the current GitLab state from the error and compare it against the state we requested
+// (derived from phase via phaseToBuildState).
+func isAlreadyInDesiredState(resp *gitlab.Response, err error, phase v1alpha1.CommitStatusPhase) bool {
+	if resp == nil || resp.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	matches := gitlabTransitionErrRe.FindStringSubmatch(err.Error())
+	if len(matches) != 2 {
+		return false
+	}
+	return matches[1] == string(phaseToBuildState(phase))
+}
+
 // CommitStatus implements the scms.CommitStatusProvider interface for GitLab.
 type CommitStatus struct {
 	client    *gitlab.Client
@@ -76,33 +95,15 @@ func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitSt
 		metrics.RecordSCMCall(repo, metrics.SCMAPICommitStatus, metrics.SCMOperationCreate, resp.StatusCode, time.Since(start), nil)
 	}
 	if err != nil {
-		// GitLab's pipeline state machine cannot transition a status to the state it's already in.
-		// For example, setting state=pending on a commit already in pending returns HTTP 400:
-		//   "Cannot transition status via :enqueue from :pending"
-		// This is a known GitLab limitation (https://gitlab.com/gitlab-org/gitlab-foss/-/issues/25807)
-		// open since 2015. It applies to all states (pending, success, failed, etc.).
-		//
-		// We parse the current GitLab state from the error and compare it directly against the
-		// state we requested (derived from Spec.Phase via phaseToBuildState). If they match,
-		// GitLab is already in the desired state and this is a safe no-op. Mismatches like
-		// ":enqueue from :running" indicate a real state conflict and are propagated as errors.
-		//
 		// Status.Id is intentionally left unchanged: a prior successful Set call already populated
 		// it. On first reconcile (or after controller restart) Id may be empty, but GitLab's Set
 		// endpoint routes by project+SHA+name, not Id, so subsequent calls still succeed.
-		if resp != nil && resp.StatusCode == http.StatusBadRequest {
-			if matches := gitlabTransitionErrRe.FindStringSubmatch(err.Error()); len(matches) == 2 {
-				gitlabCurrentState := matches[1]
-				desiredState := string(phaseToBuildState(commitStatus.Spec.Phase))
-				if gitlabCurrentState == desiredState {
-					logger.Info("GitLab status already in desired state, treating as synced",
-						"sha", commitStatus.Spec.Sha, "phase", commitStatus.Spec.Phase,
-						"gitlabState", gitlabCurrentState)
-					commitStatus.Status.Phase = commitStatus.Spec.Phase
-					commitStatus.Status.Sha = commitStatus.Spec.Sha
-					return commitStatus, nil
-				}
-			}
+		if isAlreadyInDesiredState(resp, err, commitStatus.Spec.Phase) {
+			logger.Info("GitLab status already in desired state, treating as synced",
+				"sha", commitStatus.Spec.Sha, "phase", commitStatus.Spec.Phase)
+			commitStatus.Status.Phase = commitStatus.Spec.Phase
+			commitStatus.Status.Sha = commitStatus.Spec.Sha
+			return commitStatus, nil
 		}
 		return nil, fmt.Errorf("failed to create status: %w", err)
 	}
