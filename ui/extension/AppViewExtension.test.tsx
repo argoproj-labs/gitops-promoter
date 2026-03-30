@@ -215,7 +215,71 @@ describe('AppViewExtension', () => {
       );
       const lastCall = replaceState.mock.calls[replaceState.mock.calls.length - 1];
       const url = new URL(lastCall[2] as string, 'http://localhost');
-      expect(url.searchParams.get('promotionstrategy')).toBe('strategy-2');
+      expect(url.searchParams.get('promotionstrategy')).toBe('default/strategy-2');
+    });
+  });
+
+  describe('dropdown with duplicate strategy names across namespaces', () => {
+    it('includes namespace in option labels when names collide', async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ manifest: makeStrategy('my-strategy', 'ns-a') }),
+          text: async () => '',
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ manifest: makeStrategy('my-strategy', 'ns-b') }),
+          text: async () => '',
+        } as Response);
+
+      await render(
+        makeProps([makeTreeNode('my-strategy', 'ns-a'), makeTreeNode('my-strategy', 'ns-b')]),
+      );
+
+      container
+        .querySelector('.strategy-dropdown__control')!
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      await wait();
+
+      const options = Array.from(container.querySelectorAll('.strategy-dropdown__option'));
+      const optionTexts = options.map((o) => o.textContent);
+      expect(optionTexts).toContain('my-strategy (ns-a)');
+      expect(optionTexts).toContain('my-strategy (ns-b)');
+    });
+
+    it('uses namespace/name as the URL param for duplicate names', async () => {
+      const replaceState = vi.spyOn(window.history, 'replaceState');
+      vi.mocked(fetch)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ manifest: makeStrategy('my-strategy', 'ns-a') }),
+          text: async () => '',
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ manifest: makeStrategy('my-strategy', 'ns-b') }),
+          text: async () => '',
+        } as Response);
+
+      await render(
+        makeProps([makeTreeNode('my-strategy', 'ns-a'), makeTreeNode('my-strategy', 'ns-b')]),
+      );
+
+      container
+        .querySelector('.strategy-dropdown__control')!
+        .dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      await wait();
+
+      const options = Array.from(container.querySelectorAll('.strategy-dropdown__option'));
+      options
+        .find((o) => o.textContent === 'my-strategy (ns-b)')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      await wait();
+
+      const lastCall = replaceState.mock.calls[replaceState.mock.calls.length - 1];
+      const url = new URL(lastCall[2] as string, 'http://localhost');
+      expect(url.searchParams.get('promotionstrategy')).toBe('ns-b/my-strategy');
     });
   });
 

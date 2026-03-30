@@ -29,9 +29,12 @@ const setParam = (name: string) => {
   window.history.replaceState(null, '', url.toString());
 };
 
+const strategyKey = (s: PromotionStrategy) =>
+  `${s.metadata.namespace}/${s.metadata.name}`;
+
 const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
   const [strategies, setStrategies] = useState<PromotionStrategy[]>([]);
-  const [selectedName, setSelectedName] = useState<string>(getParam);
+  const [selectedKey, setSelectedKey] = useState<string>(getParam);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,7 +48,7 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     if (strategyNodes.length === 0) {
       setFetchError('No PromotionStrategy resources found');
       setStrategies([]);
-      setSelectedName('');
+      setSelectedKey('');
       setParam('');
       return;
     }
@@ -82,16 +85,16 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
       .then((parsed) => {
         setStrategies(parsed);
         const fromUrl = getParam();
-        const match = parsed.find((s) => s.metadata.name === fromUrl);
-        const initial = match ? fromUrl : parsed[0].metadata.name;
-        setSelectedName(initial);
+        const match = parsed.find((s) => strategyKey(s) === fromUrl);
+        const initial = match ? fromUrl : strategyKey(parsed[0]);
+        setSelectedKey(initial);
         setParam(initial);
       })
       .catch((err) => {
         const errorMessage = err instanceof Error ? err.message : String(err);
         setFetchError('Failed to load PromotionStrategy: ' + errorMessage);
         setStrategies([]);
-        setSelectedName('');
+        setSelectedKey('');
         setParam('');
       });
   }, [application.metadata.name, application.metadata.namespace, tree]);
@@ -103,11 +106,14 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
     return <div>Loading...</div>;
   }
 
-  const selected = strategies.find((s) => s.metadata.name === selectedName);
+  const selected = strategies.find((s) => strategyKey(s) === selectedKey);
+
+  const hasDuplicateNames =
+    new Set(strategies.map((s) => s.metadata.name)).size < strategies.length;
 
   const options: SelectOption[] = strategies.map((s) => ({
-    value: s.metadata.name,
-    label: s.metadata.name,
+    value: strategyKey(s),
+    label: hasDuplicateNames ? `${s.metadata.name} (${s.metadata.namespace})` : s.metadata.name,
   }));
 
   return (
@@ -118,11 +124,11 @@ const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
             classNamePrefix="strategy-dropdown"
             options={options}
             placeholder="Select a PromotionStrategy"
-            value={options.find((opt) => opt.value === selectedName) || null}
+            value={options.find((opt) => opt.value === selectedKey) || null}
             onChange={(option: SingleValue<SelectOption>) => {
-              const name = option ? option.value : '';
-              setSelectedName(name);
-              setParam(name);
+              const key = option ? option.value : '';
+              setSelectedKey(key);
+              setParam(key);
             }}
           />
         </div>
