@@ -29,8 +29,7 @@ const setParam = (name: string) => {
   window.history.replaceState(null, '', url.toString());
 };
 
-const strategyKey = (s: PromotionStrategy) =>
-  `${s.metadata.namespace}/${s.metadata.name}`;
+const strategyKey = (s: PromotionStrategy) => `${s.metadata.namespace}/${s.metadata.name}`;
 
 const AppViewExtension = ({ application, tree }: AppViewComponentProps) => {
   const [strategies, setStrategies] = useState<PromotionStrategy[]>([]);
