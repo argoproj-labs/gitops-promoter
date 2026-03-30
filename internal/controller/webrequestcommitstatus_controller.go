@@ -1041,7 +1041,8 @@ func (r *WebRequestCommitStatusReconciler) validateURLHostAgainstScmProvider(
 	var ps promoterv1alpha1.PromotionStrategy
 	if err := r.Get(ctx, client.ObjectKey{Namespace: wrcs.Namespace, Name: wrcs.Spec.PromotionStrategyRef.Name}, &ps); err != nil {
 		return fmt.Errorf("failed to get PromotionStrategy for SCM host validation: %w", err)
-    }
+	}
+
 	// Resolve the GitRepository for this PromotionStrategy.
 	gitRepo, err := utils.GetGitRepositoryFromObjectKey(ctx, r.Client, client.ObjectKey{
 		Namespace: wrcs.Namespace,
