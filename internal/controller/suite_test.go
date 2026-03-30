@@ -745,7 +745,10 @@ func setupInitialTestGitRepoOnServer(ctx context.Context, owner string, name str
 	GinkgoLogr.Info("Git repository initialized", "path", gitPath)
 }
 
-func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
+// makeChangeAndHydrateRepoWithReferences clones the repo, pushes a dry commit to the default branch,
+// then for each proposed branch (development-next, staging-next, production-next) writes
+// hydrator.metadata with the given references, commits, and pushes. Returns the full and short dry SHAs.
+func makeChangeAndHydrateRepoWithReferences(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string, references []promoterv1alpha1.RevisionReference) (string, string) {
 	repoURL := fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, repoOwner, repoName)
 	_, err := runGitCmd(ctx, gitPath, "clone", "--verbose", "--progress", "--filter=blob:none", repoURL, ".")
 	Expect(err).NotTo(HaveOccurred())
@@ -771,7 +774,6 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	_, err = runGitCmd(ctx, gitPath, "checkout", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Get the SHA before we make changes - this is the "before" SHA for the webhook
 	beforeSha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 	beforeSha = strings.TrimSpace(beforeSha)
@@ -793,7 +795,6 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", defaultBranch)
 	Expect(err).NotTo(HaveOccurred())
 
-	// Send webhook after push with the "before" SHA that the CTP knows about
 	sendWebhookForPush(ctx, beforeSha, defaultBranch)
 
 	sha, err := runGitCmd(ctx, gitPath, "rev-parse", defaultBranch)
@@ -803,42 +804,30 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 	Expect(err).NotTo(HaveOccurred())
 	shortSha = strings.TrimSpace(shortSha)
 
+	var subject string
+	var body string
+	parts := strings.SplitN(dryCommitMessage, "\n\n", 2)
+	subject = parts[0]
+	if len(parts) > 1 {
+		body = parts[1]
+	}
+
 	for _, environment := range []string{"environment/development-next", "environment/staging-next", "environment/production-next"} {
 		_, err = runGitCmd(ctx, gitPath, "checkout", "-B", environment, "origin/"+environment)
 		Expect(err).NotTo(HaveOccurred())
 
-		// Get the SHA before we make changes - this is the "before" SHA for the webhook
 		beforeBranchSha, err := runGitCmd(ctx, gitPath, "rev-parse", environment)
 		Expect(err).NotTo(HaveOccurred())
 		beforeBranchSha = strings.TrimSpace(beforeBranchSha)
 
-		var subject string
-		var body string
-		parts := strings.SplitN(dryCommitMessage, "\n\n", 2)
-		subject = parts[0]
-		if len(parts) > 1 {
-			body = parts[1]
-		}
-
 		metadata := git.HydratorMetadata{
-			RepoURL: "", // This is not used anywhere, we use the SCM provider's HTTPS URL instead
-			DrySha:  sha,
-			Author:  "testuser <testmail@test.com>",
-			Date:    metav1.Now(),
-			Subject: subject,
-			Body:    body,
-			References: []promoterv1alpha1.RevisionReference{
-				{
-					Commit: &promoterv1alpha1.CommitMetadata{
-						Author:  "upstream <upstream@example.com>",
-						Date:    ptr.To(metav1.Now()),
-						Subject: "This is a fix for an upstream issue",
-						Body:    "This is a body of the commit",
-						Sha:     "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
-						RepoURL: "https://github.com/upstream/repo",
-					},
-				},
-			},
+			RepoURL:    "", // Not used; SCM provider's HTTPS URL is used instead
+			DrySha:     sha,
+			Author:     "testuser <testmail@test.com>",
+			Date:       metav1.Now(),
+			Subject:    subject,
+			Body:       body,
+			References: references,
 		}
 		m, err := json.MarshalIndent(metadata, "", "\t")
 		Expect(err).NotTo(HaveOccurred())
@@ -854,7 +843,7 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 
 		f, err = os.Create(path.Join(gitPath, "manifests-fake.yaml"))
 		Expect(err).NotTo(HaveOccurred())
-		str := fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339Nano))
+		str = fmt.Sprintf("{\"time\": \"%s\"}", time.Now().Format(time.RFC3339Nano))
 		_, err = f.WriteString(str)
 		Expect(err).NotTo(HaveOccurred())
 		err = f.Close()
@@ -870,14 +859,52 @@ func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string,
 		_, err = runGitCmd(ctx, gitPath, "push", "-u", "origin", environment)
 		Expect(err).NotTo(HaveOccurred())
 
-		// Send webhook after push with the "before" SHA that the CTP knows about
 		sendWebhookForPush(ctx, beforeBranchSha, environment)
-
-		// Sleep one seconds to differentiate the commits to prevent same hash
 		time.Sleep(1 * time.Second)
 	}
 
 	return sha, shortSha
+}
+
+// defaultHydratorReferences returns the standard valid references used in most tests.
+func defaultHydratorReferences() []promoterv1alpha1.RevisionReference {
+	return []promoterv1alpha1.RevisionReference{
+		{
+			Commit: &promoterv1alpha1.CommitMetadata{
+				Author:  "upstream <upstream@example.com>",
+				Date:    ptr.To(metav1.Now()),
+				Subject: "This is a fix for an upstream issue",
+				Body:    "This is a body of the commit",
+				Sha:     "c4c862564afe56abf8cc8ac683eee3dc8bf96108",
+				RepoURL: "https://github.com/upstream/repo",
+			},
+		},
+	}
+}
+
+// badHydratorReferences returns references that fail CommitMetadata CRD validation (invalid Sha, invalid RepoURL).
+// Used to test that the controller sanitizes them and does not fail status updates.
+func badHydratorReferences() []promoterv1alpha1.RevisionReference {
+	return []promoterv1alpha1.RevisionReference{
+		{
+			Commit: &promoterv1alpha1.CommitMetadata{
+				Sha:     "not-a-valid-sha",
+				RepoURL: "ftp://invalid.example.com/repo",
+				Subject: "Bad ref",
+			},
+		},
+	}
+}
+
+func makeChangeAndHydrateRepo(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
+	return makeChangeAndHydrateRepoWithReferences(gitPath, repoOwner, repoName, dryCommitMessage, hydratedCommitMessage, defaultHydratorReferences())
+}
+
+// makeChangeAndHydrateRepoWithBadHydratorReferences is like makeChangeAndHydrateRepo but writes
+// hydrator.metadata with references that fail CommitMetadata CRD validation. Used to reproduce the bug
+// where the CTP controller would compute status that fails API validation.
+func makeChangeAndHydrateRepoWithBadHydratorReferences(gitPath string, repoOwner string, repoName string, dryCommitMessage string, hydratedCommitMessage string) (string, string) {
+	return makeChangeAndHydrateRepoWithReferences(gitPath, repoOwner, repoName, dryCommitMessage, hydratedCommitMessage, badHydratorReferences())
 }
 
 func runGitCmd(ctx context.Context, directory string, args ...string) (string, error) {
