@@ -65,6 +65,13 @@ func NewGitlabCommitStatusProvider(k8sClient client.Client, secret v1.Secret, do
 }
 
 // Set sets the commit status for a given commit SHA in the specified repository.
+//
+// GitLab limitation: Description and TargetURL can only be set during a state transition.
+// GitLab's pipeline state machine rejects re-posting the same state (e.g. pending → pending),
+// and there is no separate API to update metadata without a state change. This means if only
+// the description or URL changes while the phase stays the same, the update is silently lost.
+// The metadata will be delivered on the next phase transition (e.g. pending → success).
+// See https://gitlab.com/gitlab-org/gitlab-foss/-/issues/25807
 func (cs *CommitStatus) Set(ctx context.Context, commitStatus *v1alpha1.CommitStatus) (*v1alpha1.CommitStatus, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Setting Commit Phase")
