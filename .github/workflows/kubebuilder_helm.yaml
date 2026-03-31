@@ -27,7 +27,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@4aaadf42668403795cdfdb15b1c4250e9fed12b9 # pin@v5
         with:
-          go-version: "1.25"
+          go-version: "1.26"
 
       - name: Install kubebuilder
         run: |
