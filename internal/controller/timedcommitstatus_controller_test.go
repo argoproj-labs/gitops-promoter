@@ -55,7 +55,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			{Key: "timer"},
 		}
 
-		setupInitialTestGitRepoOnServer(ctx, name, name)
+		setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 		Expect(k8sClient.Create(ctx, scmSecret)).To(Succeed())
 		Expect(k8sClient.Create(ctx, scmProvider)).To(Succeed())
@@ -350,7 +350,7 @@ var _ = Describe("TimedCommitStatus Controller", Ordered, func() {
 			defer func() {
 				_ = os.RemoveAll(gitPath)
 			}()
-			makeChangeAndHydrateRepo(gitPath, name, name, "pending change in staging", "pending change")
+			makeChangeAndHydrateRepo(gitPath, gitRepo, "pending change in staging", "pending change")
 
 			// Trigger webhook to create PR in staging
 			var ctpStaging promoterv1alpha1.ChangeTransferPolicy

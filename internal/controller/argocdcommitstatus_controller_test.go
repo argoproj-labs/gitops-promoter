@@ -143,7 +143,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "non-hydrator-test", "default")
 
 			// Set up a real git repository on the test server
-			setupInitialTestGitRepoOnServer(ctx, name, name)
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 			// Simplify to just one environment for this test
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
@@ -162,7 +162,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				_ = os.RemoveAll(workTreePath)
 			}()
 
-			_, err = runGitCmd(ctx, workTreePath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name), ".")
+			_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
 			Expect(err).ToNot(HaveOccurred())
 			_, err = runGitCmd(ctx, workTreePath, "checkout", testBranchStaging)
 			Expect(err).ToNot(HaveOccurred())
@@ -186,7 +186,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				},
 				Spec: argocd.ApplicationSpec{
 					Source: &argocd.Source{
-						RepoURL:        fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name),
+						RepoURL:        testGitRepoCloneURL(gitRepo),
 						TargetRevision: testBranchStaging,
 					},
 				},
@@ -248,7 +248,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 			name, scmSecret, scmProvider, gitRepo, _, _, promotionStrategy := promotionStrategyResource(ctx, "sync-bug-test", "default")
 
 			// Set up a real git repository on the test server
-			setupInitialTestGitRepoOnServer(ctx, name, name)
+			setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 			// Simplify to just one environment for this test
 			promotionStrategy.Spec.Environments = []promoterv1alpha1.Environment{
@@ -411,7 +411,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 				_ = os.RemoveAll(workTreePath)
 			}()
 
-			_, err = runGitCmd(ctx, workTreePath, "clone", fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name), ".")
+			_, err = runGitCmd(ctx, workTreePath, "clone", testGitRepoCloneURL(gitRepo), ".")
 			Expect(err).ToNot(HaveOccurred())
 			_, err = runGitCmd(ctx, workTreePath, "config", "user.name", "testuser")
 			Expect(err).ToNot(HaveOccurred())
@@ -450,7 +450,7 @@ var _ = Describe("ArgoCDCommitStatus Controller", func() {
 							TargetBranch: testBranchStaging,
 						},
 						DrySource: argocd.DrySource{
-							RepoURL: fmt.Sprintf("http://localhost:%s/%s/%s", gitServerPort, name, name),
+							RepoURL: testGitRepoCloneURL(gitRepo),
 						},
 					},
 				},

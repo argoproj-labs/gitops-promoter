@@ -894,7 +894,23 @@ var _ = Describe("PullRequest Controller", func() {
 
 func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret, *promoterv1alpha1.ScmProvider, *promoterv1alpha1.GitRepository, *promoterv1alpha1.PullRequest) {
 	name = name + "-" + utils.KubeSafeUniqueName(ctx, randomString(15))
-	setupInitialTestGitRepoOnServer(ctx, name, name)
+	gitRepo := &promoterv1alpha1.GitRepository{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "default",
+		},
+		Spec: promoterv1alpha1.GitRepositorySpec{
+			Fake: &promoterv1alpha1.FakeRepo{
+				Owner: name,
+				Name:  name,
+			},
+			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
+				Kind: promoterv1alpha1.ScmProviderKind,
+				Name: name,
+			},
+		},
+	}
+	setupInitialTestGitRepoOnServer(ctx, gitRepo)
 
 	scmSecret := &v1.Secret{
 		TypeMeta: metav1.TypeMeta{},
@@ -916,23 +932,6 @@ func pullRequestResources(ctx context.Context, name string) (string, *v1.Secret,
 			Fake:      &promoterv1alpha1.Fake{},
 		},
 		Status: promoterv1alpha1.ScmProviderStatus{},
-	}
-
-	gitRepo := &promoterv1alpha1.GitRepository{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: "default",
-		},
-		Spec: promoterv1alpha1.GitRepositorySpec{
-			Fake: &promoterv1alpha1.FakeRepo{
-				Owner: name,
-				Name:  name,
-			},
-			ScmProviderRef: promoterv1alpha1.ScmProviderObjectReference{
-				Kind: promoterv1alpha1.ScmProviderKind,
-				Name: name,
-			},
-		},
 	}
 
 	pullRequest := &promoterv1alpha1.PullRequest{
