@@ -38,7 +38,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Docker
-        uses: docker/setup-docker-action@9d5b7667da0bfb2b97a34cc5758fa9bf41bbd6bb
+        uses: docker/setup-docker-action@cb6cea3aa805e0f60b506fa07d08dbce8a08a60b
         with:
           version: type=image,tag=29.1.5
 
