@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -172,7 +173,7 @@ func (r *ResourceCountRunnable) Start(ctx context.Context) error {
 		interval = defaultResourceCountInterval
 	}
 	if r.Client == nil {
-		return fmt.Errorf("resource count runnable client is nil")
+		return errors.New("resource count runnable client is nil")
 	}
 
 	refreshKubernetesResourceCounts(ctx, r.Client, log)
