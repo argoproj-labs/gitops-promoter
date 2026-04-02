@@ -58,6 +58,15 @@ spec:
 The project is currently experimental, please use with caution. See the 
 [docs site](https://gitops-promoter.readthedocs.io/en/latest/getting-started/) for setup instructions.
 
+## Roadmap
+
+Planned features include:
+
+* Support for additional SCMs (such as Bitbucket Server)
+* Advanced promotion strategies (such as full DAG support)
+* Deployment window commit status support
+* Multiple instances per cluster for horizontal scaling, reduced blast radius, etc.
+
 ## Users
 
 If you're using GitOps Promoter, please add yourself to [USERS.md](USERS.md)!
