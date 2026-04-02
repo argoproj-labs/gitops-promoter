@@ -1,4 +1,4 @@
-Maintainer access is maintained via the [gitops-promoter-approvers](https://github.com/orgs/argoproj-labs/teams/gitops-promoter-approvers/members) team.
+Maintainer access is managed via the [gitops-promoter-approvers](https://github.com/orgs/argoproj-labs/teams/gitops-promoter-approvers/members) team.
 
 | Maintainer                                             |
 |--------------------------------------------------------|
